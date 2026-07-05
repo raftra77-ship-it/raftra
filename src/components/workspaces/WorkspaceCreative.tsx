@@ -15,12 +15,14 @@ interface WorkspaceCreativeProps {
   brandUrl: string;
   assets: CreativeAsset[];
   onOpenReview: (itemId: string) => void;
+  onGenerate?: (targetProduct: string, conceptStrategy: string) => void;
 }
 
 export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   brandUrl,
   assets,
   onOpenReview,
+  onGenerate,
 }) => {
   const [targetProduct, setTargetProduct] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -29,6 +31,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     e.preventDefault();
     if (!targetProduct) return;
     setIsGenerating(true);
+    if (onGenerate) {
+      onGenerate(targetProduct, "USP Callout");
+    }
     setTimeout(() => {
       setIsGenerating(false);
       setTargetProduct('');

@@ -264,10 +264,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           <button className="nav-link" onClick={() => setCurrentSubView('pricing')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>Pricing</button>
         </div>
         <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-          <button className="nav-link" onClick={onStartFree} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
+          <button className="nav-link" onClick={() => window.location.href = '/admin'} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
+            Admin Panel
+          </button>
+          <button className="nav-link" onClick={() => window.location.href = '/login'} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
             Log In
           </button>
-          <GlowButton variant="glow" onClick={onStartFree}>
+          <GlowButton variant="glow" onClick={() => setCurrentSubView('pricing')}>
             Start Free
           </GlowButton>
         </div>
@@ -309,7 +312,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          <GlowButton variant="glow" onClick={onStartFree} icon={<ArrowRight size={16} />}>
+          <GlowButton variant="glow" onClick={() => setCurrentSubView('pricing')} icon={<ArrowRight size={16} />}>
             Start Free
           </GlowButton>
           <GlowButton variant="secondary" onClick={onBookDemo}>

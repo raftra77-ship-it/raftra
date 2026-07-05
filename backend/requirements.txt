@@ -1,0 +1,17 @@
+fastapi[all]
+sqlalchemy
+pydantic
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+psycopg2-binary
+stripe
+redis
+celery
+qdrant-client
+langgraph
+langchain
+authlib
+websockets
+alembic
+python-dotenv

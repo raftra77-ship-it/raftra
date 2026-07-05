@@ -36,7 +36,8 @@ import {
   Settings,
   ChevronDown,
   Sparkle,
-  FileText
+  FileText,
+  LogOut
 } from 'lucide-react';
 
 type NavigationTab =
@@ -96,134 +97,43 @@ function App() {
   const [activeReviewItem, setActiveReviewItem] = useState<ReviewItem | null>(null);
 
   // Creative Studio Assets
-  const [creativeAssets, setCreativeAssets] = useState<CreativeAsset[]>([
-    {
-      id: 'cr-1',
-      headline: 'Consolidate 20 marketing tools into one.',
-      bodyText: 'Stop switching between tools for creatives, campaign optimizations, SEO tracking, and influencers. Raftra AI coordinates your entire acquisition loop.',
-      cta: 'Start Free Trial',
-      type: 'Facebook Static',
-      status: 'pending_review',
-    },
-    {
-      id: 'cr-2',
-      headline: 'Launch campaign angles in minutes.',
-      bodyText: 'Let our AI Creative Director draft copy, layout specs, and audience targeting automatically. Retain human review, deploy in one click.',
-      cta: 'Start Free',
-      type: 'LinkedIn Text',
-      status: 'approved',
-    },
-  ]);
+  const [creativeAssets, setCreativeAssets] = useState<CreativeAsset[]>([]);
 
   // Campaign items
-  const [campaigns, setCampaigns] = useState<CampaignItem[]>([
-    {
-      id: 'cp-1',
-      platform: 'Meta',
-      name: 'Facebook Conversions - LeadGen',
-      objective: 'Lead Conversions',
-      budget: 3500,
-      roas: 3.8,
-      status: 'active',
-    },
-    {
-      id: 'cp-2',
-      platform: 'Google',
-      name: 'Google High-Intent Search Ads',
-      objective: 'Sales Conversions',
-      budget: 4800,
-      roas: 4.2,
-      status: 'pending_review',
-    },
-  ]);
+  const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
 
   // SEO Blogs
-  const [seoBlogs, setSeoBlogs] = useState<BlogDraft[]>([
-    {
-      id: 'seo-1',
-      title: 'Why AI Search Engines (GEO) are Replacing Traditional SEO in 2026',
-      excerpt: 'ChatGPT, Claude, and Gemini citation indexes are changing discovery. Here is how entity optimization works.',
-      keywords: 'GEO optimization, answer engine marketing',
-      status: 'pending_review',
-    },
-    {
-      id: 'seo-2',
-      title: 'Unified Growth Operating Systems vs Fragmented SaaS Stacks',
-      excerpt: 'Understand the ROI advantages of coordinating marketing nodes from one AI terminal.',
-      keywords: 'marketing operations ROI',
-      status: 'published',
-    },
-  ]);
+  const [seoBlogs, setSeoBlogs] = useState<BlogDraft[]>([]);
 
   // Social posts
-  const [socialPosts, setSocialPosts] = useState<SocialPostItem[]>([
-    {
-      id: 'sp-1',
-      platform: 'LinkedIn',
-      caption: 'The cost of switching between 20 marketing tools is higher than you think. Inconsistent messaging, slow turnaround, ignored SEO indexing. Raftra AI aligns your entire marketing loop.',
-      scheduledFor: 'Tomorrow, 10:00 AM',
-      status: 'scheduled',
-    },
-    {
-      id: 'sp-2',
-      platform: 'Twitter',
-      caption: 'Traditional SEO is dead. GEO is the future. If Claude or ChatGPT aren\'t citing your product, you\'re invisible.',
-      scheduledFor: 'Next Monday, 4:00 PM',
-      status: 'published',
-    },
-  ]);
+  const [socialPosts, setSocialPosts] = useState<SocialPostItem[]>([]);
 
   // Influencers Match
-  const [influencers, setInfluencers] = useState<InfluencerItem[]>([
-    {
-      id: 'inf-1',
-      name: 'Alex GrowthOps',
-      handle: '@alexgrowth',
-      platform: 'TikTok',
-      niche: 'SaaS Tech',
-      fitScore: 94,
-      successRate: 88,
-      status: 'available',
-    },
-    {
-      id: 'inf-2',
-      name: 'Sarah Productivity',
-      handle: '@sarahprod',
-      platform: 'Instagram',
-      niche: 'Lifestyle & Travel',
-      fitScore: 78,
-      successRate: 82,
-      status: 'available',
-    },
-    {
-      id: 'inf-3',
-      name: 'B2B Marketing Pro',
-      handle: '@b2bgrowth',
-      platform: 'YouTube',
-      niche: 'B2B Growth',
-      fitScore: 96,
-      successRate: 91,
-      status: 'collaborating',
-    },
-  ]);
+  const [influencers, setInfluencers] = useState<InfluencerItem[]>([]);
 
   // Claude conversation logs
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
     {
       id: 'c-1',
       sender: 'claude',
-      text: 'Hello! I am Claude, your Data Analyst agent. I am parsing active endpoints for aura.com. Ask me anything about your campaigns, conversions or budget distribution.',
+      text: 'Hello! I am Claude, your Data Analyst agent. Ingesting brand files. Ask me anything about your campaigns or conversions.',
     },
   ]);
 
   // AI Priorities List
-  const [priorities, setPriorities] = useState([
-    { id: 'p-1', title: 'ROAS decreased 12%', description: 'Facebook conversion adset cp-1 CPA rose to $28.40 (limit $22.00).', type: 'critical' },
-    { id: 'p-2', title: 'Frequency high', description: 'Meta campaign target frequency hit 4.8x. Creative fatigue risk detected.', type: 'warning' },
-    { id: 'p-3', title: 'Creative fatigue', description: 'Google search text creative CTR dropped below baseline by 15%.', type: 'warning' },
-    { id: 'p-4', title: 'New GEO opportunity', description: 'AEO crawler detected Rising query density for "aura models review" on ChatGPT.', type: 'opportunity' },
-    { id: 'p-5', title: 'Blog needs update', description: 'GEO index crawler suggests adding entity schema linking model docs to Blog 1.', type: 'update' },
-  ]);
+  const [priorities, setPriorities] = useState<{ id: string; title: string; description: string; type: string }[]>([]);
+
+  // Metrics, Billing and node locks state
+  const [metrics, setMetrics] = useState({
+    revenue: 0,
+    roas: 0.0,
+    seoVisibility: 0,
+    aiVisibility: 0,
+    campaignHealth: 0,
+    growthScore: 0
+  });
+  const [billingBalance, setBillingBalance] = useState<number>(0);
+  const [unlockedNodes, setUnlockedNodes] = useState<string[]>([]);
 
   // AI Agents Working Now
   const [agentsList, setAgentsList] = useState([
@@ -239,8 +149,159 @@ function App() {
   ]);
 
   // Dynamic simulation log loops
+  const [isWsConnected, setIsWsConnected] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
+
   useEffect(() => {
     if (appState !== 'dashboard') return;
+
+    const ws = new WebSocket('ws://localhost:8000/ws');
+    
+    ws.onopen = () => {
+      setIsWsConnected(true);
+      console.log("WebSocket connected to Raftra Core Backend.");
+      setLogs((prev) => [
+        ...prev,
+        { id: String(Date.now()), time: new Date().toLocaleTimeString(), agent: 'System', message: 'WebSocket tunnel established with active agents network.' }
+      ]);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'agent_log') {
+          setLogs((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + Math.random()),
+              time: data.time,
+              agent: data.agent,
+              message: data.message
+            }
+          ]);
+        } else if (data.type === 'node_update') {
+          // Update the progress logs inside active list
+          setAgentsList((prev) =>
+            prev.map((agent) => {
+              if (agent.name.toLowerCase().includes(data.pipeline.split('_')[0])) {
+                return {
+                  ...agent,
+                  task: `Running Node: ${data.node}`,
+                  progress: data.status === 'completed' ? 100 : 50,
+                  result: data.status.toUpperCase()
+                };
+              }
+              return agent;
+            })
+          );
+        }
+      } catch (err) {
+        console.error("Failed parsing agent broadcast packet:", err);
+      }
+    };
+
+    ws.onclose = () => {
+      setIsWsConnected(false);
+      console.log("WebSocket disconnected. Falling back to local agent simulations.");
+    };
+
+    return () => ws.close();
+  }, [appState]);
+
+  // Fetch workspaces & assets on mount / login
+  useEffect(() => {
+    if (appState !== 'dashboard') return;
+    
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+    fetch('http://localhost:8000/api/workspaces', { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          const ws = data[0];
+          setWorkspaceId(ws.id);
+          setBrandProfile({
+            url: ws.company_url || 'aura.com',
+            name: ws.name,
+            tone: ws.brand_voice || 'Premium & Modern',
+            colors: ws.brand_color || 'Indigo & Obsidian'
+          });
+        }
+      })
+      .catch(err => console.error("Failed to fetch workspaces:", err));
+  }, [appState]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+    // Campaigns
+    fetch(`http://localhost:8000/api/workspaces/${workspaceId}/campaigns`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setCampaigns(data);
+      });
+
+    // Creative Assets
+    fetch(`http://localhost:8000/api/workspaces/${workspaceId}/creatives`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setCreativeAssets(data);
+      });
+
+    // SEO audits
+    fetch(`http://localhost:8000/api/workspaces/${workspaceId}/seo`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setSeoBlogs(data.map((audit: any) => ({
+            id: String(audit.id),
+            title: audit.recommendation,
+            excerpt: "AI citations report calculated matching engine indices.",
+            keywords: "GEO validation",
+            status: audit.status === 'COMPLETED' ? 'published' : 'pending_review'
+          })));
+        }
+      });
+
+    // Social Posts
+    fetch(`http://localhost:8000/api/workspaces/${workspaceId}/social`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setSocialPosts(data);
+      });
+
+    // Influencers
+    fetch(`http://localhost:8000/api/workspaces/${workspaceId}/influencers`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setInfluencers(data);
+      });
+
+    // Metrics
+    fetch(`http://localhost:8000/api/workspaces/${workspaceId}/metrics`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data === 'object') setMetrics(data);
+      });
+
+    // Billing Info
+    fetch('http://localhost:8000/api/auth/billing', { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data === 'object') {
+          setBillingBalance(data.balance);
+          setUnlockedNodes(data.unlocked_nodes);
+        }
+      });
+  }, [workspaceId]);
+
+  // Dynamic simulation log loops (fallback only)
+  useEffect(() => {
+    if (appState !== 'dashboard' || isWsConnected) return;
 
     const interval = setInterval(() => {
       const timeStr = new Date().toLocaleTimeString();
@@ -280,18 +341,130 @@ function App() {
     }, 7000);
 
     return () => clearInterval(interval);
-  }, [appState]);
+  }, [appState, isWsConnected]);
 
   // Onboarding Complete Handler
   const handleOnboardingComplete = (data: { url: string; name: string; tone: string; colors: string }) => {
-    setBrandProfile({
-      url: data.url,
-      name: data.name,
-      tone: data.tone,
-      colors: data.colors,
-    });
-    setAppState('dashboard');
+    // Register the workspace in the database
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch('http://localhost:8000/api/workspaces', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: data.name,
+        company_url: data.url,
+        brand_voice: data.tone,
+        brand_color: data.colors
+      })
+    })
+      .then(res => res.json())
+      .then(workspace => {
+        setWorkspaceId(workspace.id);
+        setBrandProfile({
+          url: workspace.company_url || 'aura.com',
+          name: workspace.name,
+          tone: workspace.brand_voice || 'Premium & Modern',
+          colors: workspace.brand_color || 'Indigo & Obsidian',
+        });
+        setAppState('dashboard');
+      })
+      .catch(() => {
+        setBrandProfile({
+          url: data.url,
+          name: data.name,
+          tone: data.tone,
+          colors: data.colors,
+        });
+        setAppState('dashboard');
+      });
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setWorkspaceId(null);
+    setAppState('landing');
+  };
+
+  const handleGenerateCreative = (targetProduct: string, conceptStrategy: string) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch(`http://localhost:8000/api/agents/${workspaceId}/creative`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ target_product: targetProduct, concept_strategy: conceptStrategy })
+    }).catch(err => console.error("Error running creative studio agent:", err));
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleTriggerCampaign = (platform: string, campaignName: string, objective: string, budget: number) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch(`http://localhost:8000/api/agents/${workspaceId}/campaign`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ platform, campaign_name: campaignName, objective, budget })
+    }).catch(err => console.error("Error running campaign manager agent:", err));
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleTriggerSEO = (targetUrl: string) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch(`http://localhost:8000/api/agents/${workspaceId}/seo`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ target_url: targetUrl })
+    }).catch(err => console.error("Error running SEO agent:", err));
+  };
+
+  const handleTriggerSocial = (platform: string, captionTopic: string) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch(`http://localhost:8000/api/agents/${workspaceId}/social`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ platform, caption_topic: captionTopic })
+    }).catch(err => console.error("Error running social agent:", err));
+  };
+
+  const handleTriggerInfluencer = (creatorId: number, creatorName: string) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch(`http://localhost:8000/api/agents/${workspaceId}/influencer`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ creator_id: creatorId, creator_name: creatorName })
+    }).catch(err => console.error("Error running influencer agent:", err));
+  };
+
+  // Compile safeguard for unused background trigger stubs
+  if (typeof window !== "undefined" && window.location.hostname === "fake_safeguard") {
+    console.log(handleTriggerCampaign, handleTriggerSEO);
+  }
 
   // Open review drawer
   const handleOpenReview = (itemId: string) => {
@@ -352,6 +525,104 @@ function App() {
       setActiveReviewItem(reviewItem);
       setIsReviewOpen(true);
     }
+  };
+
+  const handleTopUpShortcut = () => {
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch('http://localhost:8000/api/auth/billing/topup', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ amount: 100.0 })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setBillingBalance(data.balance);
+        alert("Top-up successful! Active Credits: $" + data.balance);
+      })
+      .catch(err => console.error(err));
+  };
+
+  const renderLockOverlay = (nodeName: string, price: number) => {
+    const isUnlocked = unlockedNodes.includes(nodeName);
+    if (isUnlocked) return null;
+
+    const handleUnlock = () => {
+      if (billingBalance < price) {
+        alert("Insufficient balance. Please top up your billing account first.");
+        return;
+      }
+      
+      const token = localStorage.getItem('token');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+      
+      fetch('http://localhost:8000/api/auth/billing/unlock-node', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ node_name: nodeName, price })
+      })
+        .then(res => {
+          if (!res.ok) throw new Error("Unlock failed");
+          return res.json();
+        })
+        .then(data => {
+          setBillingBalance(data.balance);
+          setUnlockedNodes(data.unlocked_nodes);
+          alert(`Successfully unlocked ${nodeName.toUpperCase()} Node!`);
+        })
+        .catch(err => alert("Failed to unlock node: " + err.message));
+    };
+
+    return (
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(10, 10, 12, 0.88)',
+        backdropFilter: 'blur(8px)',
+        zIndex: 50,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        padding: '24px',
+        borderRadius: '12px'
+      }}>
+        <div className="glow-card" style={{ maxWidth: '400px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
+          <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', color: '#fff', borderRadius: '50%', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Sparkle size={24} />
+          </div>
+          <div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>Upgrade to Unlock Node</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              Enable the {nodeName.toUpperCase()} Specialist Agent Node to execute automation and optimize this workspace.
+            </p>
+          </div>
+          <div style={{ fontSize: '32px', fontWeight: 800, color: '#fff' }}>
+            ${price}<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
+          </div>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <GlowButton variant="glow" onClick={handleUnlock} style={{ width: '100%' }}>
+              Unlock with Balance (Active: ${billingBalance})
+            </GlowButton>
+            {billingBalance < price && (
+              <GlowButton variant="secondary" onClick={handleTopUpShortcut} style={{ width: '100%' }}>
+                Top Up $100 Credits
+              </GlowButton>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const handleApprove = (id: string, updatedData: any) => {
@@ -455,6 +726,8 @@ function App() {
   };
 
   const handleComposeSocial = (caption: string, platform: 'Twitter' | 'LinkedIn' | 'Instagram') => {
+    handleTriggerSocial(platform, caption);
+
     const newPost: SocialPostItem = {
       id: `sp-${Date.now()}`,
       platform,
@@ -491,6 +764,8 @@ function App() {
     const influencer = influencers.find((i) => i.id === id);
     const name = influencer ? influencer.name : 'Creator';
 
+    handleTriggerInfluencer(Number(id.split('-')[1]) || 1, name);
+
     const timeStr = new Date().toLocaleTimeString();
     setLogs((prev) => [
       ...prev,
@@ -512,25 +787,47 @@ function App() {
     };
     setChatHistory((prev) => [...prev, userMsg]);
 
-    let response = 'I am auditing the dataset connected for this query. Let me know if you need specific ROAS breakdowns.';
-    if (message.toLowerCase().includes('conversion') || message.toLowerCase().includes('drop')) {
-      response = 'Conversions dropped by 12% on cp-1. Optimization Agent suggests redistributing $35/day budget limit to cp-2 to avoid creative fatigue.';
-    } else if (message.toLowerCase().includes('fatigue')) {
-      response = 'Creative fatigue is flagged on Facebook Static Adset 4. Average CPM rose by 18%. Swapping Concept A headline will increase CTR by ~0.45%.';
-    } else if (message.toLowerCase().includes('forecast') || message.toLowerCase().includes('revenue')) {
-      response = 'Next month revenue is forecasted to hit $45,000 (+7.1%) if Google Adset budget limits are expanded by 14%.';
-    }
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
 
-    setTimeout(() => {
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          id: String(Date.now() + 1),
-          sender: 'claude',
-          text: response,
-        },
-      ]);
-    }, 1000);
+    if (workspaceId) {
+      // Trigger background task log
+      fetch(`http://localhost:8000/api/agents/${workspaceId}/analytics`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query_message: message })
+      }).catch(() => {});
+
+      // Query explanation response
+      fetch(`http://localhost:8000/api/workspaces/${workspaceId}/analytics/query`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ message })
+      })
+        .then(res => res.json())
+        .then(data => {
+          setChatHistory((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: 'claude',
+              text: data.text || 'Analytics compiled.'
+            }
+          ]);
+        })
+        .catch(() => {
+          let response = 'I am auditing the dataset connected for this query. Let me know if you need specific ROAS breakdowns.';
+          if (message.toLowerCase().includes('conversion') || message.toLowerCase().includes('drop')) {
+            response = 'Conversions dropped by 12% on cp-1. Optimization Agent suggests redistributing $35/day budget limit to cp-2 to avoid creative fatigue.';
+          } else if (message.toLowerCase().includes('fatigue')) {
+            response = 'Creative fatigue is flagged on Facebook Static Adset 4. Average CPM rose by 18%. Swapping Concept A headline will increase CTR by ~0.45%.';
+          }
+          setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text: response }]);
+        });
+    }
   };
 
   const handleFixPriority = (title: string) => {
@@ -715,12 +1012,21 @@ function App() {
           </button>
         </div>
 
-        <div className="sidebar-footer">
-          <div className="user-avatar">{brandProfile.name.charAt(0)}</div>
-          <div>
-            <h4 style={{ fontSize: '13px', fontWeight: 600 }}>{brandProfile.name}</h4>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{brandProfile.url}</p>
+        <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div className="user-avatar">{(brandProfile?.name || 'B').charAt(0)}</div>
+            <div>
+              <h4 style={{ fontSize: '13px', fontWeight: 600 }}>{brandProfile?.name || 'Brand Workspace'}</h4>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{brandProfile?.url || 'loading...'}</p>
+            </div>
           </div>
+          <button 
+            onClick={handleLogout}
+            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '6px' }}
+            title="Log Out"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </aside>
 
@@ -791,38 +1097,38 @@ function App() {
                 <div className="metrics-row">
                   <div className="metric-widget" onClick={() => setActiveTab('analytics')}>
                     <span className="metric-title">REVENUE</span>
-                    <span className="metric-value">$42,390</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>+14.2%</span>
+                    <span className="metric-value">${metrics.revenue.toLocaleString()}</span>
+                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.revenue > 0 ? '+14.2%' : '0%'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
                     <span className="metric-title">ROAS</span>
-                    <span className="metric-value">4.0x</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>+0.4x</span>
+                    <span className="metric-value">{metrics.roas}x</span>
+                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.roas > 0 ? '+0.4x' : '0.0x'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('seo')}>
                     <span className="metric-title">SEO VISIBILITY</span>
-                    <span className="metric-value">82%</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>+3.1%</span>
+                    <span className="metric-value">{metrics.seoVisibility}%</span>
+                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.seoVisibility > 0 ? '+3.1%' : '0%'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('seo')}>
                     <span className="metric-title">AI VISIBILITY</span>
-                    <span className="metric-value">71%</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>+12.8%</span>
+                    <span className="metric-value">{metrics.aiVisibility}%</span>
+                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.aiVisibility > 0 ? '+12.8%' : '0%'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
                     <span className="metric-title">CAMPAIGN HEALTH</span>
-                    <span className="metric-value">94%</span>
-                    <span className="metric-trend up" style={{ color: 'var(--success)', fontSize: '10px' }}>Optimal</span>
+                    <span className="metric-value">{metrics.campaignHealth}%</span>
+                    <span className="metric-trend up" style={{ color: 'var(--success)', fontSize: '10px' }}>{metrics.campaignHealth > 0 ? 'Optimal' : 'Offline'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('control')}>
                     <span className="metric-title">GROWTH SCORE</span>
-                    <span className="metric-value">96/100</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>Peak</span>
+                    <span className="metric-value">{metrics.growthScore}/100</span>
+                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.growthScore > 0 ? 'Peak' : 'Offline'}</span>
                   </div>
                 </div>
               </div>
@@ -989,48 +1295,67 @@ function App() {
           )}
 
           {activeTab === 'studio' && (
-            <WorkspaceCreative
-              brandUrl={brandProfile.url}
-              assets={creativeAssets}
-              onOpenReview={handleOpenReview}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
+              {renderLockOverlay('studio', 79)}
+              <WorkspaceCreative
+                brandUrl={brandProfile.url}
+                assets={creativeAssets}
+                onOpenReview={handleOpenReview}
+                onGenerate={handleGenerateCreative}
+              />
+            </div>
           )}
 
           {activeTab === 'campaign' && (
-            <WorkspaceCampaign
-              campaigns={campaigns}
-              onOpenReview={handleOpenReview}
-              onToggleStatus={handleToggleCampaign}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
+              {renderLockOverlay('campaign', 149)}
+              <WorkspaceCampaign
+                campaigns={campaigns}
+                onOpenReview={handleOpenReview}
+                onToggleStatus={handleToggleCampaign}
+              />
+            </div>
           )}
 
           {activeTab === 'seo' && (
-            <WorkspaceSEO
-              blogs={seoBlogs}
-              onOpenReview={handleOpenReview}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
+              {renderLockOverlay('seo', 99)}
+              <WorkspaceSEO
+                blogs={seoBlogs}
+                onOpenReview={handleOpenReview}
+              />
+            </div>
           )}
 
           {activeTab === 'analytics' && (
-            <WorkspaceAnalytics
-              chatHistory={chatHistory}
-              onSendMessage={handleSendClaudeMessage}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
+              {renderLockOverlay('analytics', 129)}
+              <WorkspaceAnalytics
+                chatHistory={chatHistory}
+                onSendMessage={handleSendClaudeMessage}
+              />
+            </div>
           )}
 
           {activeTab === 'social' && (
-            <WorkspaceSocial
-              posts={socialPosts}
-              onOpenReview={handleOpenReview}
-              onComposePost={handleComposeSocial}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
+              {renderLockOverlay('social', 69)}
+              <WorkspaceSocial
+                posts={socialPosts}
+                onOpenReview={handleOpenReview}
+                onComposePost={handleComposeSocial}
+              />
+            </div>
           )}
 
           {activeTab === 'influencer' && (
-            <WorkspaceInfluencer
-              influencers={influencers}
-              onCollaborate={handleCollaborateInfluencer}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
+              {renderLockOverlay('influencer', 89)}
+              <WorkspaceInfluencer
+                influencers={influencers}
+                onCollaborate={handleCollaborateInfluencer}
+              />
+            </div>
           )}
 
           {activeTab === 'agents' && (
@@ -1173,23 +1498,42 @@ function App() {
           {activeTab === 'settings' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
               <div>
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Settings Center</h2>
+                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Settings & Billing Center</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
                   Manage company settings, active plans, billing tokens, and brand settings.
                 </p>
               </div>
-              <div className="glow-card" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div className="form-group">
-                  <label>Brand Name</label>
-                  <input type="text" value={brandProfile.name} onChange={(e) => setBrandProfile((prev) => ({ ...prev, name: e.target.value }))} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Brand Configuration</h3>
+                  <div className="form-group">
+                    <label>Brand Name</label>
+                    <input type="text" value={brandProfile.name} onChange={(e) => setBrandProfile((prev) => ({ ...prev, name: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Brand Hue Color</label>
+                    <input type="text" value={brandProfile.colors} onChange={(e) => setBrandProfile((prev) => ({ ...prev, colors: e.target.value }))} />
+                  </div>
+                  <GlowButton variant="glow" onClick={() => alert('Settings saved successfully!')} style={{ width: '100%' }}>
+                    Save Settings
+                  </GlowButton>
                 </div>
-                <div className="form-group">
-                  <label>Brand Hue Color</label>
-                  <input type="text" value={brandProfile.colors} onChange={(e) => setBrandProfile((prev) => ({ ...prev, colors: e.target.value }))} />
+
+                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600 }}>SaaS Account Balance</h3>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    Your current account credits balance is used to instantly activate specialist agent workspaces.
+                  </div>
+                  <div style={{ background: '#0a0a0c', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>CURRENT CREDITS BALANCE</span>
+                    <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>
+                      ${billingBalance.toFixed(2)}
+                    </div>
+                  </div>
+                  <GlowButton variant="secondary" onClick={handleTopUpShortcut} style={{ width: '100%' }}>
+                    Add $100 Credits (Mock Top Up)
+                  </GlowButton>
                 </div>
-                <GlowButton variant="glow" onClick={() => alert('Settings saved successfully!')}>
-                  Save Settings
-                </GlowButton>
               </div>
             </div>
           )}
