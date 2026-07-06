@@ -18,7 +18,7 @@ export function Login() {
     
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
+      const response = await fetch(`http://localhost:8005${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -26,7 +26,10 @@ export function Login() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        setErrorMsg(errorData.detail || 'Authentication failed.');
+        const msg = typeof errorData.detail === 'string' 
+          ? errorData.detail 
+          : (Array.isArray(errorData.detail) ? errorData.detail[0].msg : 'Authentication failed.');
+        setErrorMsg(msg);
         setIsLoading(false);
         return;
       }
@@ -38,7 +41,7 @@ export function Login() {
         localStorage.setItem('token', data.access_token);
       } else if (!isLogin) {
         // If registered successfully, automatically log them in
-        const loginRes = await fetch(`http://localhost:8000/api/auth/login`, {
+        const loginRes = await fetch(`http://localhost:8005/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
