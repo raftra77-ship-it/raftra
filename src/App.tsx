@@ -75,6 +75,20 @@ function App() {
   const [appState, setAppState] = useState<'landing' | 'onboarding' | 'dashboard'>(() => {
     if (window.location.pathname.startsWith('/dashboard')) return 'dashboard';
     if (window.location.pathname.startsWith('/onboarding')) return 'onboarding';
+    // Auto-restore session: if a valid (non-expired) token exists, go straight to dashboard
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const now = Math.floor(Date.now() / 1000);
+        if (payload.exp && payload.exp > now) {
+          return 'dashboard';
+        } else {
+          // Token expired — clean it up
+          localStorage.removeItem('token');
+        }
+      }
+    } catch { /* invalid token, ignore */ }
     return 'landing';
   });
 
@@ -260,10 +274,22 @@ function App() {
     if (appState !== 'dashboard') return;
     
     const token = localStorage.getItem('token');
-    const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+    if (!token) {
+      setAppState('landing');
+      return;
+    }
+    const headers: HeadersInit = { 'Authorization': `Bearer ${token}` };
 
     fetch('http://localhost:8005/api/workspaces', { headers })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401) {
+          // Token expired or invalid — clear and redirect to login
+          localStorage.removeItem('token');
+          setAppState('landing');
+          return null;
+        }
+        return res.json();
+      })
       .then(data => {
         if (data && data.length > 0) {
           const ws = data[0];
@@ -580,9 +606,14 @@ function App() {
 
   const handleTopUpShortcut = () => {
     const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please log in first to use top-up.');
+      setAppState('landing');
+      return;
+    }
     const headers = {
       'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      'Authorization': `Bearer ${token}`
     };
     fetch('http://localhost:8005/api/auth/billing/topup', {
       method: 'POST',
@@ -590,6 +621,11 @@ function App() {
       body: JSON.stringify({ amount: 100.0 })
     })
       .then(res => {
+        if (res.status === 401) {
+          localStorage.removeItem('token');
+          setAppState('landing');
+          throw new Error("Session expired. Please log in again.");
+        }
         if (!res.ok) throw new Error("Top up failed");
         return res.json();
       })
@@ -613,9 +649,14 @@ function App() {
       }
       
       const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please log in first.');
+        setAppState('landing');
+        return;
+      }
       const headers = {
         'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        'Authorization': `Bearer ${token}`
       };
       
       fetch('http://localhost:8005/api/auth/billing/unlock-node', {

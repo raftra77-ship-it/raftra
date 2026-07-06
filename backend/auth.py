@@ -15,7 +15,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your_super_secret_jwt_key")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days default
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -45,16 +45,7 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)] = None, db: S
         headers={"WWW-Authenticate": "Bearer"},
     )
     if not token:
-        # Fallback to test user or raise exception
-        # For seamless frontend/local dev execution, we can return the first user if none provided
-        first_user = db.query(models.User).first()
-        if not first_user:
-            hashed_password = get_password_hash("default_password")
-            first_user = models.User(email="developer@raftra.ai", hashed_password=hashed_password, is_active=True)
-            db.add(first_user)
-            db.commit()
-            db.refresh(first_user)
-        return first_user
+        raise credentials_exception
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
