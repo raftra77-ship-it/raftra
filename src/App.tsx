@@ -81,6 +81,49 @@ function App() {
   // Dashboard navigation tab
   const [activeTab, setActiveTab] = useState<NavigationTab>('control');
 
+  // User details extracted from JWT
+  const [userName, setUserName] = useState<string>('User');
+
+  // UI Overlays
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
+      }
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+        setIsNotificationsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.first_name) {
+          const capitalized = payload.first_name.charAt(0).toUpperCase() + payload.first_name.slice(1);
+          setUserName(capitalized);
+        } else if (payload.sub) {
+          // Fallback if no first_name
+          const namePart = payload.sub.split('@')[0];
+          const capitalized = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+          setUserName(capitalized);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse token', e);
+    }
+  }, []);
+
   // Brand data submitted from onboarding
   const [brandProfile, setBrandProfile] = useState({
     url: 'aura.com',
@@ -1055,9 +1098,9 @@ function App() {
             <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
           </div>
 
-          <div className="header-actions-group">
+          <div className="header-actions-group" style={{ position: 'relative' }}>
             {/* Search / Command Palette */}
-            <div className="topbar-search-trigger">
+            <div className="topbar-search-trigger" onClick={() => setIsSearchOpen(true)}>
               <Search size={13} />
               <span>Search / Command palette...</span>
               <span style={{ fontSize: '9px', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
@@ -1066,7 +1109,7 @@ function App() {
             </div>
 
             {/* Notifications icon */}
-            <button className="topbar-icon-button">
+            <button className="topbar-icon-button" onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}>
               <Bell size={16} />
               {priorities.length > 0 && <span className="notification-badge-dot" />}
             </button>
@@ -1082,8 +1125,8 @@ function App() {
             </button>
 
             {/* Profile Avatar */}
-            <div className="user-avatar" style={{ width: '28px', height: '28px', fontSize: '11px', cursor: 'pointer' }}>
-              A
+            <div className="user-avatar" style={{ width: '28px', height: '28px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {userName.charAt(0)}
             </div>
           </div>
         </header>
@@ -1095,7 +1138,7 @@ function App() {
               {/* Home Greeting Title */}
               <div>
                 <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                  Good Morning Aryan 👋
+                  Good Morning {userName} 👋
                 </h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                   Your marketing agents are working background operations. Here is today's summary context.
@@ -1552,6 +1595,72 @@ function App() {
           )}
         </div>
       </main>
+
+      {/* Search Command Palette Overlay */}
+      {isSearchOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', justifyContent: 'center', paddingTop: '10vh' }} onClick={() => setIsSearchOpen(false)}>
+          <div style={{ width: '500px', background: '#0a0a0c', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', height: 'fit-content', maxHeight: '60vh' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '16px', borderBottom: '1px solid var(--border)' }}>
+              <Search size={16} style={{ color: 'var(--text-secondary)', marginRight: '12px' }} />
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Type a command or search..."
+                style={{ flex: 1, background: 'transparent', border: 'none', color: 'white', fontSize: '15px', outline: 'none' }}
+              />
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', padding: '2px 6px', background: 'var(--bg-tertiary)', borderRadius: '4px' }}>ESC</span>
+            </div>
+            <div style={{ padding: '8px', overflowY: 'auto' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, padding: '8px', textTransform: 'uppercase' }}>Quick Actions</div>
+              {['Go to Studio', 'View Analytics', 'Check Campaigns', 'System Settings'].filter(item => item.toLowerCase().includes(searchQuery.toLowerCase())).map((item, idx) => (
+                <div key={idx} style={{ padding: '12px 16px', color: 'var(--text-primary)', fontSize: '13px', cursor: 'pointer', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '12px', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} onClick={() => { setIsSearchOpen(false); if (item === 'System Settings') setActiveTab('settings'); if (item === 'Go to Studio') setActiveTab('studio'); if (item === 'View Analytics') setActiveTab('analytics'); if (item === 'Check Campaigns') setActiveTab('campaign'); }}>
+                  <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+                  {item}
+                </div>
+              ))}
+              {searchQuery && (
+                <div style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center' }}>
+                  Press Enter to search all workspaces for "{searchQuery}"
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications Dropdown Overlay */}
+      {isNotificationsOpen && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 900 }} onClick={() => setIsNotificationsOpen(false)} />
+          <div style={{ position: 'absolute', top: '64px', right: '16px', width: '320px', background: '#0a0a0c', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: 901, overflow: 'hidden' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', fontWeight: 600 }}>Notifications</span>
+              {priorities.length > 0 && <span style={{ fontSize: '11px', background: 'var(--accent-glow)', color: 'var(--accent)', padding: '2px 8px', borderRadius: '12px' }}>{priorities.length} New</span>}
+            </div>
+            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              {priorities.length > 0 ? (
+                priorities.map(priority => (
+                  <div key={priority.id} style={{ padding: '16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} onClick={() => setIsNotificationsOpen(false)}>
+                    <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '4px', color: 'white' }}>{priority.title}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{priority.description}</div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <Bell size={24} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                  You're all caught up! No new notifications.
+                </div>
+              )}
+            </div>
+            {priorities.length > 0 && (
+              <div style={{ padding: '12px', background: 'var(--bg-tertiary)', textAlign: 'center', fontSize: '12px', color: 'var(--accent)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setPriorities([])}>
+                Mark all as read
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Review Drawer slide panel overlay */}
       <ReviewDrawer

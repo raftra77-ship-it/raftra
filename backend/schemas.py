@@ -3,6 +3,8 @@ from typing import Optional, List, Any
 from datetime import datetime
 
 class UserCreate(BaseModel):
+    first_name: str
+    last_name: str
     email: EmailStr
     password: str
 
@@ -12,6 +14,8 @@ class UserLogin(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: EmailStr
     is_active: bool
     payment_status: str
