@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/raftra_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@127.0.0.1:5433/raftra_db")
 
 try:
     if "postgresql" in DATABASE_URL:

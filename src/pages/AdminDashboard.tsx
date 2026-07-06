@@ -17,7 +17,7 @@ export function AdminDashboard() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/auth/users');
+        const response = await fetch('http://localhost:8005/api/auth/users');
         if (response.ok) {
           const data = await response.json();
           const formattedUsers = data.map((u: any) => ({
