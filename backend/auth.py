@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
-from typing import Annotated
+from typing import Annotated, Optional
 import os
 
 import database, models, schemas
@@ -20,12 +20,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    # Bcrypt has a strict 72-byte limit. We truncate to 71 bytes to be safe.
+    truncated = password.encode('utf-8')[:71].decode('utf-8', 'ignore')
+    return pwd_context.hash(truncated)
 
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    truncated = plain_password.encode('utf-8')[:71].decode('utf-8', 'ignore')
+    return pwd_context.verify(truncated, hashed_password)
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -71,7 +74,13 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_d
         raise HTTPException(status_code=400, detail="Email already registered")
     
     hashed_password = get_password_hash(user.password)
-    new_user = models.User(email=user.email, hashed_password=hashed_password, is_active=True)
+    new_user = models.User(
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email,
+        hashed_password=hashed_password,
+        is_active=True
+    )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -89,7 +98,7 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(database.get_db)):
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": db_user.email}, expires_delta=access_token_expires
+        data={"sub": db_user.email, "first_name": db_user.first_name, "last_name": db_user.last_name}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
