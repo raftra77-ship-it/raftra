@@ -16,17 +16,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
   const [loadingText, setLoadingText] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
 
-  const scrapingLogs = [
-    'Establishing secure socket to targets...',
-    'Scraping brand metadata and logo symbols...',
-    'Extracting primary colors: HSL(243, 100%, 66%) found.',
-    'Parsing typography: Outfit and Inter detected.',
-    'Analyzing competitor marketing angles on target: ' + (competitorUrl || 'rivals.com'),
-    'Auditing answer engine citations index...',
-    'Structuring brand guidelines schema...',
-    'Writing workspace profile to vector database...',
-    'Raftra AI team fully synchronized. Redirection primed.',
-  ];
 
   const handleNext = () => {
     if (step < 3) {
@@ -38,25 +27,57 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     }
   };
 
-  const runScrapingSimulation = () => {
-    let currentLog = 0;
-    setLoadingText(scrapingLogs[0]);
-
+  const runScrapingSimulation = async () => {
+    setLoadingText('Connecting to Firecrawl & Tavily APIs...');
+    setLoadingProgress(10);
+    
+    // Start a fake progress bar just for UX while we wait for the backend
     const interval = setInterval(() => {
-      currentLog += 1;
-      if (currentLog < scrapingLogs.length) {
-        setLoadingText(scrapingLogs[currentLog]);
-        setLoadingProgress((prev) => prev + 11.1);
-      } else {
-        clearInterval(interval);
+      setLoadingProgress(prev => (prev < 90 ? prev + 5 : prev));
+      setLoadingText('Agents analyzing and extracting brand context...');
+    }, 1000);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8005/api/agents/onboard', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ brand_url: url || 'https://raftra.com' })
+      });
+      
+      const resData = await response.json();
+      clearInterval(interval);
+      setLoadingProgress(100);
+      setLoadingText('Extraction complete! Initializing workspace...');
+      
+      if (resData.status === 'success') {
+        const d = resData.data;
         onComplete({
-          url,
+          url: url || 'https://raftra.com',
+          name: name || 'Raftra Brand',
+          tone: d.tone || tone,
+          colors: d.colors && d.colors.length > 0 ? d.colors[0] : colors
+        });
+      } else {
+        throw new Error("Failed extraction");
+      }
+    } catch (err) {
+      clearInterval(interval);
+      setLoadingProgress(100);
+      setLoadingText('Error during extraction. Falling back to defaults...');
+      // Fallback to user inputs if API fails
+      setTimeout(() => {
+        onComplete({
+          url: url || 'https://example.com',
           name: name || 'Aura Ventures',
           tone,
-          colors,
+          colors
         });
-      }
-    }, 1200);
+      }, 1500);
+    }
   };
 
   return (

@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from celery import Celery
 
 # Initialize Celery app
@@ -20,3 +23,4 @@ celery_app.conf.update(
 # Import tasks here so Celery can discover them
 # import backend.tasks.social_tasks
 # import backend.tasks.crawler_tasks
+import agents.creative_tasks

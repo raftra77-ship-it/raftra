@@ -56,6 +56,20 @@ class Workspace(Base):
     social_posts = relationship("SocialPost", back_populates="workspace", cascade="all, delete-orphan")
     influencers = relationship("Influencer", back_populates="workspace", cascade="all, delete-orphan")
     agent_tasks = relationship("AgentTask", back_populates="workspace", cascade="all, delete-orphan")
+    brand_profile = relationship("BrandProfile", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
+
+class BrandProfile(Base):
+    __tablename__ = "brand_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    typography = Column(JSON, nullable=True)  # e.g., {"primary": "Inter", "headings": "Outfit"}
+    color_palette = Column(JSON, nullable=True) # e.g., ["#FFFFFF", "#030303", "#5A52FF"]
+    brand_guidelines_summary = Column(String, nullable=True) # Summarized context from Scraping
+    target_audience = Column(String, nullable=True)
+    is_onboarded = Column(Boolean, default=False)
+    
+    workspace = relationship("Workspace", back_populates="brand_profile")
 
 class Integration(Base):
     __tablename__ = "integrations"

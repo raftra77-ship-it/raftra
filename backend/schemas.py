@@ -48,6 +48,10 @@ class WorkspaceCreate(BaseModel):
     brand_color: Optional[str] = None
     brand_voice: Optional[str] = None
 
+class ReindexRequest(BaseModel):
+    url: str
+    tone: str
+
 class WorkspaceResponse(BaseModel):
     id: int
     name: str
@@ -85,6 +89,9 @@ class AdAssetCreate(BaseModel):
     body_text: str
     cta: str
     type: str
+    image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    audio_url: Optional[str] = None
 
 class AdAssetResponse(BaseModel):
     id: int

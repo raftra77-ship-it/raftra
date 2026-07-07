@@ -43,6 +43,16 @@ class ConnectionManager:
         }
         await self.broadcast(json.dumps(payload))
 
+    async def broadcast_creative_asset(self, asset: dict):
+        """
+        Broadcasts a finalized creative asset (strategy, copy, image URL) to the frontend.
+        """
+        payload = {
+            "type": "new_creative_asset",
+            "asset": asset
+        }
+        await self.broadcast(json.dumps(payload))
+
     async def broadcast(self, message: str):
         for connection in self.active_connections:
             try:

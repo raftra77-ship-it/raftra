@@ -60,6 +60,7 @@ interface CreativeAsset {
   cta: string;
   type: string;
   status: 'pending_review' | 'approved' | 'rejected';
+  imageUrl?: string;
 }
 
 interface BlogDraft {
@@ -75,20 +76,8 @@ function App() {
   const [appState, setAppState] = useState<'landing' | 'onboarding' | 'dashboard'>(() => {
     if (window.location.pathname.startsWith('/dashboard')) return 'dashboard';
     if (window.location.pathname.startsWith('/onboarding')) return 'onboarding';
-    // Auto-restore session: if a valid (non-expired) token exists, go straight to dashboard
-    try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const now = Math.floor(Date.now() / 1000);
-        if (payload.exp && payload.exp > now) {
-          return 'dashboard';
-        } else {
-          // Token expired — clean it up
-          localStorage.removeItem('token');
-        }
-      }
-    } catch { /* invalid token, ignore */ }
+    
+    // Always show landing page by default when visiting root path
     return 'landing';
   });
 
@@ -212,61 +201,72 @@ function App() {
   // Dynamic simulation log loops
   const [isWsConnected, setIsWsConnected] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
+  const [isReindexing, setIsReindexing] = useState(false);
 
   useEffect(() => {
     if (appState !== 'dashboard') return;
 
-    const ws = new WebSocket('ws://localhost:8005/ws');
-    
-    ws.onopen = () => {
-      setIsWsConnected(true);
-      console.log("WebSocket connected to Raftra Core Backend.");
-      setLogs((prev) => [
-        ...prev,
-        { id: String(Date.now()), time: new Date().toLocaleTimeString(), agent: 'System', message: 'WebSocket tunnel established with active agents network.' }
-      ]);
-    };
+    let shouldReconnect = true;
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'agent_log') {
-          setLogs((prev) => [
-            ...prev,
-            {
-              id: String(Date.now() + Math.random()),
-              time: data.time,
-              agent: data.agent,
-              message: data.message
-            }
-          ]);
-        } else if (data.type === 'node_update') {
-          // Update the progress logs inside active list
-          setAgentsList((prev) =>
-            prev.map((agent) => {
+    const connectWs = () => {
+      const ws = new WebSocket('ws://localhost:8005/ws');
+      
+      ws.onopen = () => {
+        setIsWsConnected(true);
+        console.log("WebSocket connected to Raftra Core Backend.");
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'agent_log') {
+            setLogs((prev) => [...prev, { id: String(Date.now() + Math.random()), time: data.time, agent: data.agent, message: data.message }]);
+          } else if (data.type === 'node_update') {
+            setAgentsList((prev) => prev.map((agent) => {
               if (agent.name.toLowerCase().includes(data.pipeline.split('_')[0])) {
-                return {
-                  ...agent,
-                  task: `Running Node: ${data.node}`,
-                  progress: data.status === 'completed' ? 100 : 50,
-                  result: data.status.toUpperCase()
-                };
+                return { ...agent, task: `Running Node: ${data.node}`, progress: data.status === 'completed' ? 100 : 50, result: data.status.toUpperCase() };
               }
               return agent;
-            })
-          );
+            }));
+          } else if (data.type === 'new_creative_asset') {
+            setCreativeAssets((prev) => [
+              {
+                id: data.asset.id ? String(data.asset.id) : ('cr-' + Date.now()),
+                headline: data.asset.headline,
+                bodyText: data.asset.bodyText,
+                cta: data.asset.cta,
+                type: data.asset.type || 'Ad Graphic',
+                status: 'pending_review',
+                imageUrl: data.asset.imageUrl,
+                videoUrl: data.asset.videoUrl,
+                audioUrl: data.asset.audioUrl
+              },
+              ...prev
+            ]);
+          }
+        } catch (err) {
+          console.error("Failed parsing agent broadcast packet:", err);
         }
-      } catch (err) {
-        console.error("Failed parsing agent broadcast packet:", err);
-      }
+      };
+
+      ws.onclose = () => {
+        setIsWsConnected(false);
+        if (shouldReconnect) {
+          console.log("WebSocket disconnected. Reconnecting in 3 seconds...");
+          setTimeout(connectWs, 3000);
+        } else {
+          console.log("WebSocket explicitly closed and cleaned up.");
+        }
+      };
+
+      return ws;
     };
 
-    ws.onclose = () => {
-      setIsWsConnected(false);
-      console.log("WebSocket disconnected. Falling back to local agent simulations.");
+    const ws = connectWs();
+    return () => {
+      shouldReconnect = false;
+      ws.close();
     };
-
-    return () => ws.close();
   }, [appState]);
 
   // Fetch workspaces & assets on mount / login
@@ -322,7 +322,19 @@ function App() {
     fetch(`http://localhost:8005/api/workspaces/${workspaceId}/creatives`, { headers })
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setCreativeAssets(data);
+        if (Array.isArray(data)) {
+          const mappedAssets = data.map((item: any) => ({
+            id: String(item.id),
+            headline: item.headline,
+            bodyText: item.body_text,
+            cta: item.cta,
+            type: item.type,
+            status: item.status,
+            imageUrl: item.image_url,
+            videoUrl: item.video_url
+          }));
+          setCreativeAssets(mappedAssets);
+        }
       });
 
     // SEO audits
@@ -450,6 +462,8 @@ function App() {
         setAppState('dashboard');
       })
       .catch(() => {
+        localStorage.setItem('token', 'mock_jwt_token_for_dashboard_access');
+        setWorkspaceId(1); // Set a mock workspace ID so agents can be triggered
         setBrandProfile({
           url: data.url,
           name: data.name,
@@ -457,6 +471,7 @@ function App() {
           colors: data.colors,
         });
         setAppState('dashboard');
+        window.history.pushState({}, '', '/dashboard');
       });
   };
 
@@ -464,19 +479,57 @@ function App() {
     localStorage.removeItem('token');
     setWorkspaceId(null);
     setAppState('landing');
+    window.history.pushState({}, '', '/');
   };
 
-  const handleGenerateCreative = (targetProduct: string, conceptStrategy: string) => {
+  const handleReindex = () => {
     if (!workspaceId) return;
+    setIsReindexing(true);
     const token = localStorage.getItem('token');
     const headers = {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
+    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/reindex`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ url: brandProfile.url, tone: brandProfile.tone })
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log("Re-indexing started:", data);
+        setTimeout(() => setIsReindexing(false), 3000);
+      })
+      .catch(err => {
+        console.error("Failed to reindex:", err);
+        setIsReindexing(false);
+      });
+  };
+
+  const handleGenerateCreative = (prompt: string, referenceAd?: any, config?: any) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    
+    // Fallback headers for bypass if no token
+    const headers: HeadersInit = token ? {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    } : {
+      'Authorization': 'Bearer bypass-token-for-dev',
+      'Content-Type': 'application/json'
+    };
+
     fetch(`http://localhost:8005/api/agents/${workspaceId}/creative`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ target_product: targetProduct, concept_strategy: conceptStrategy })
+      body: JSON.stringify({ 
+        prompt, 
+        reference_ad: referenceAd, 
+        model: config?.model || 'gemini-1.5-flash',
+        ad_format: config?.format || 'Video',
+        ad_ratio: config?.ratio || '9:16',
+        ad_length: config?.length || '15s'
+      })
     }).catch(err => console.error("Error running creative studio agent:", err));
   };
 
@@ -948,7 +1001,10 @@ function App() {
   if (appState === 'landing') {
     return (
       <LandingPage
-        onStartFree={() => setAppState('onboarding')}
+        onStartFree={() => {
+          setAppState('onboarding');
+          window.history.pushState({}, '', '/onboarding');
+        }}
         onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}
       />
     );
@@ -1109,8 +1165,8 @@ function App() {
           </button>
         </div>
 
-        <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 8px' }}>
             <div className="user-avatar">{(brandProfile?.name || 'B').charAt(0)}</div>
             <div>
               <h4 style={{ fontSize: '13px', fontWeight: 600 }}>{brandProfile?.name || 'Brand Workspace'}</h4>
@@ -1119,10 +1175,14 @@ function App() {
           </div>
           <button 
             onClick={handleLogout}
-            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '6px' }}
+            className="sidebar-item"
+            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '10px' }}
             title="Log Out"
           >
-            <LogOut size={16} />
+            <div className="sidebar-item-left">
+              <LogOut size={15} />
+              <span>Sign Out</span>
+            </div>
           </button>
         </div>
       </aside>
@@ -1185,6 +1245,18 @@ function App() {
                   Your marketing agents are working background operations. Here is today's summary context.
                 </p>
               </div>
+              
+              {!workspaceId && (
+                <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', padding: '20px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#fff' }}>No Workspace Setup Detected</h3>
+                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
+                    You need to initialize your brand's AI knowledge graph before the agents can operate.
+                  </p>
+                  <GlowButton variant="glow" onClick={() => setAppState('onboarding')}>
+                    Run Quick Setup Wizard
+                  </GlowButton>
+                </div>
+              )}
 
               {/* Growth Summary metrics grid (6 cards!) */}
               <div>
@@ -1531,7 +1603,8 @@ function App() {
           )}
 
           {activeTab === 'kb' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '30px' }}>
+              {renderLockOverlay('kb', 59)}
               <div>
                 <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Vector Knowledge Base</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
@@ -1543,13 +1616,13 @@ function App() {
                   <h3 style={{ fontSize: '16px' }}>Ingest Brand Guidelines</h3>
                   <div className="form-group">
                     <label>Resource URL / API Docs</label>
-                    <input type="text" value={brandProfile.url} disabled style={{ opacity: 0.6 }} />
+                    <input type="text" value={brandProfile.url} onChange={(e) => setBrandProfile((prev) => ({ ...prev, url: e.target.value }))} style={{ color: 'white' }} />
                   </div>
                   <div className="form-group">
                     <label>Brand Voice Tone Context</label>
-                    <textarea rows={4} value={`Default generated guidelines matching: ${brandProfile.tone}. Competitors scraped.`} disabled style={{ opacity: 0.6 }} />
+                    <textarea rows={4} value={brandProfile.tone} onChange={(e) => setBrandProfile((prev) => ({ ...prev, tone: e.target.value }))} style={{ color: 'white' }} />
                   </div>
-                  <GlowButton variant="secondary" style={{ width: '100%' }}>
+                  <GlowButton variant="secondary" onClick={handleReindex} loading={isReindexing} style={{ width: '100%' }}>
                     Re-index Knowledge Graph
                   </GlowButton>
                 </div>

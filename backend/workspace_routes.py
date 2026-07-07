@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
 import database, models, schemas, auth
@@ -24,6 +24,23 @@ def create_workspace(ws: schemas.WorkspaceCreate, db: Session = Depends(database
     db.commit()
     db.refresh(new_ws)
     return new_ws
+
+@router.post("/{workspace_id}/reindex")
+def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+    
+    # Update initial values immediately
+    ws.company_url = req.url
+    ws.brand_voice = req.tone
+    db.commit()
+    
+    # Fire off the onboarding background task to actually scrape and update the knowledge base
+    from agents.creative_nodes.onboarding_graph import run_onboarding_pipeline
+    background_tasks.add_task(run_onboarding_pipeline, workspace_id, req.url)
+    
+    return {"status": "success", "message": "Knowledge Graph re-indexing started."}
 
 # Campaigns
 @router.get("/{workspace_id}/campaigns", response_model=List[schemas.CampaignResponse])
@@ -52,8 +69,44 @@ def get_creatives(workspace_id: int, db: Session = Depends(database.get_db), cur
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
-    assets = db.query(models.AdAsset).filter(models.AdAsset.workspace_id == workspace_id).all()
+    assets = db.query(models.AdAsset).filter(models.AdAsset.workspace_id == workspace_id).order_by(models.AdAsset.id.desc()).all()
     return assets
+
+@router.post("/{workspace_id}/creatives/save", response_model=schemas.AdAssetResponse)
+def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+    
+    new_asset = models.AdAsset(
+        workspace_id=workspace_id,
+        headline=asset.headline,
+        body_text=asset.body_text,
+        cta=asset.cta,
+        type=asset.type,
+        image_url=asset.image_url,
+        video_url=asset.video_url,
+        status="approved"
+    )
+    db.add(new_asset)
+    db.commit()
+    db.refresh(new_asset)
+    return new_asset
+
+@router.delete("/{workspace_id}/creatives/{asset_id}")
+def delete_creative(workspace_id: int, asset_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+        
+    asset = db.query(models.AdAsset).filter(models.AdAsset.id == asset_id, models.AdAsset.workspace_id == workspace_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Ad asset not found")
+        
+    db.delete(asset)
+    db.commit()
+    return {"status": "success", "message": "Ad deleted from library"}
+
 
 # SEO audits
 @router.get("/{workspace_id}/seo", response_model=List[schemas.SEOAuditResponse])

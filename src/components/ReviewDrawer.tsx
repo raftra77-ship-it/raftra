@@ -34,20 +34,22 @@ export const ReviewDrawer: React.FC<ReviewDrawerProps> = ({
   onApprove,
   onReject,
 }) => {
-  if (!item) return null;
-
-  const [headline, setHeadline] = useState(item.data.headline || '');
-  const [bodyText, setBodyText] = useState(item.data.bodyText || '');
-  const [cta, setCta] = useState(item.data.cta || '');
-  const [budget, setBudget] = useState(item.data.budget || 0);
+  const [headline, setHeadline] = useState(item?.data.headline || '');
+  const [bodyText, setBodyText] = useState(item?.data.bodyText || '');
+  const [cta, setCta] = useState(item?.data.cta || '');
+  const [budget, setBudget] = useState(item?.data.budget || 0);
 
   // Update internal inputs when item changes
   React.useEffect(() => {
-    setHeadline(item.data.headline || '');
-    setBodyText(item.data.bodyText || '');
-    setCta(item.data.cta || '');
-    setBudget(item.data.budget || 0);
+    if (item) {
+      setHeadline(item.data.headline || '');
+      setBodyText(item.data.bodyText || '');
+      setCta(item.data.cta || '');
+      setBudget(item.data.budget || 0);
+    }
   }, [item]);
+
+  if (!item) return null;
 
   const handleApproveSubmit = () => {
     onApprove(item.id, {

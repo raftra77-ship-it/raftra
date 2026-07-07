@@ -2,9 +2,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 import database, auth, models
 from pydantic import BaseModel
+from typing import Optional
 
 # Import our workspace pipelines
-from agents.creative_studio import run_creative_pipeline
+from agents.creative_nodes.generation_graph import run_ad_generation_task
+from agents.creative_nodes.onboarding_graph import run_onboarding_pipeline
 from agents.campaign_manager import run_campaign_pipeline
 from agents.seo_geo import run_seo_pipeline
 from agents.analytics import run_analytics_pipeline
@@ -13,9 +15,17 @@ from agents.influencers import run_influencer_pipeline
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
+class OnboardTrigger(BaseModel):
+    brand_url: str
+
 class CreativeTrigger(BaseModel):
-    target_product: str
-    concept_strategy: str
+    prompt: str
+    reference_ad: Optional[dict] = None
+    model: str = "gemini-1.5-flash"
+    ad_format: str = "Video"
+    ad_ratio: str = "9:16"
+    ad_length: str = "15s"
+    engine_mode: str = "Video Ad"
 
 class CampaignTrigger(BaseModel):
     platform: str
@@ -37,16 +47,37 @@ class InfluencerTrigger(BaseModel):
     creator_id: int
     creator_name: str
 
+@router.post("/onboard")
+async def trigger_onboarding(request: OnboardTrigger):
+    try:
+        # Await the execution inline so we can return the exact scraped brand data to the frontend
+        result = await run_onboarding_pipeline(workspace_id=0, brand_url=request.brand_url)
+        return {
+            "status": "success", 
+            "data": {
+                "typography": result.get("typography", {}),
+                "colors": result.get("color_palette", []),
+                "tone": result.get("brand_guidelines_summary", "Professional"),
+                "audience": result.get("target_audience", "")
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/{workspace_id}/creative")
 async def trigger_creative(workspace_id: int, request: CreativeTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
     background_tasks.add_task(
-        run_creative_pipeline,
+        run_ad_generation_task,
         workspace_id=workspace_id,
-        brand_url="aura.com",
-        target_product=request.target_product,
-        concept_strategy=request.concept_strategy
+        prompt=request.prompt,
+        reference_ad=request.reference_ad,
+        model=request.model,
+        ad_format=request.ad_format,
+        ad_ratio=request.ad_ratio,
+        ad_length=request.ad_length,
+        engine_mode=request.engine_mode
     )
-    return {"status": "success", "message": "Creative Studio agent pipeline triggered."}
+    return {"message": "Creative chat workflow triggered", "prompt": request.prompt}
 
 @router.post("/{workspace_id}/campaign")
 async def trigger_campaign(workspace_id: int, request: CampaignTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
