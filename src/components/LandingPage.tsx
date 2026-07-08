@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import { motion } from 'framer-motion';
+import { PricingScreen } from './PricingScreen';
 
 interface LandingPageProps {
   onStartFree: () => void;
@@ -106,11 +107,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     return (
       <div className="app-wrapper">
         <nav className="landing-nav">
-          <div className="logo-container" onClick={() => setCurrentSubView('main')} style={{ cursor: 'pointer' }}>
+          <div className="logo-container" onClick={() => setCurrentSubView('main')} style={{ cursor: 'pointer', flex: 1, justifyContent: 'flex-start', display: 'flex' }}>
             <Cpu className="logo-icon" size={24} />
             <span>RAFTRA AI</span>
           </div>
-          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
             <button className="btn btn-secondary" onClick={() => setCurrentSubView('main')} style={{ padding: '8px 16px', fontSize: '13px' }}>
               <ArrowLeft size={14} /> Back to Home
             </button>
@@ -123,157 +124,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           </div>
         </nav>
 
-        <section className="section-container" style={{ textAlign: 'center', marginTop: '40px' }}>
-          <span className="section-tag">FLEXIBLE LICENSING</span>
-          <h2 className="section-title text-gradient-glow">Modular Pricing for Every Node</h2>
-          <p className="section-desc" style={{ margin: '0 auto 48px' }}>
-            Pay only for the specific growth workspaces your marketing demands, or unlock the entire Growth Suite.
-          </p>
-
-          {/* Pricing Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', maxWidth: '1200px', margin: '0 auto 60px' }}>
-            {/* Feature 1 */}
-            <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', justifyItems: 'space-between', padding: '24px', textAlign: 'left', minHeight: '340px' }}>
-              <div>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '8px' }}>
-                  <Sparkles size={16} style={{ color: 'var(--accent)' }} /> AI Creative Studio
-                </h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  Unlimited concept generation, copy angles copywriting, headlines, and layout suggestions.
-                </p>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                  $79<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 'auto' }}>
-                <GlowButton variant="secondary" onClick={onStartFree} style={{ width: '100%', padding: '10px' }}>
-                  Enable Studio Node
-                </GlowButton>
-              </div>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', justifyItems: 'space-between', padding: '24px', textAlign: 'left', minHeight: '340px' }}>
-              <div>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '8px' }}>
-                  <Megaphone size={16} style={{ color: 'var(--accent)' }} /> Campaign Manager
-                </h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  OAuth platform connections, automated targeting parameters structure, budget auto-optimizations.
-                </p>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                  $149<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 'auto' }}>
-                <GlowButton variant="secondary" onClick={onStartFree} style={{ width: '100%', padding: '10px' }}>
-                  Enable Campaign Node
-                </GlowButton>
-              </div>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', justifyItems: 'space-between', padding: '24px', textAlign: 'left', minHeight: '340px' }}>
-              <div>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '8px' }}>
-                  <Globe size={16} style={{ color: 'var(--accent)' }} /> SEO + GEO/AEO
-                </h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  Traditional index crawl and LLM prompts citations tracking on ChatGPT, Claude, and Gemini.
-                </p>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                  $99<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 'auto' }}>
-                <GlowButton variant="secondary" onClick={onStartFree} style={{ width: '100%', padding: '10px' }}>
-                  Enable SEO Node
-                </GlowButton>
-              </div>
-            </div>
-
-            {/* Feature 4 */}
-            <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', justifyItems: 'space-between', padding: '24px', textAlign: 'left', minHeight: '340px' }}>
-              <div>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '8px' }}>
-                  <BarChart3 size={16} style={{ color: 'var(--accent)' }} /> Analytics + Claude
-                </h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  Narrated performance explanation dashboard logs, Recharts data grids, natural language query.
-                </p>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                  $129<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 'auto' }}>
-                <GlowButton variant="secondary" onClick={onStartFree} style={{ width: '100%', padding: '10px' }}>
-                  Enable Analytics Node
-                </GlowButton>
-              </div>
-            </div>
-
-            {/* Feature 5 */}
-            <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', justifyItems: 'space-between', padding: '24px', textAlign: 'left', minHeight: '340px' }}>
-              <div>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '8px' }}>
-                  <Share2 size={16} style={{ color: 'var(--accent)' }} /> Social Hub AI
-                </h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  Cross-platform calendar publisher, caption generators, comment and DM automation.
-                </p>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                  $69<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 'auto' }}>
-                <GlowButton variant="secondary" onClick={onStartFree} style={{ width: '100%', padding: '10px' }}>
-                  Enable Social Node
-                </GlowButton>
-              </div>
-            </div>
-
-            {/* Feature 6 */}
-            <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', justifyItems: 'space-between', padding: '24px', textAlign: 'left', minHeight: '340px' }}>
-              <div>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '8px' }}>
-                  <Users2 size={16} style={{ color: 'var(--accent)' }} /> Influencer Market
-                </h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  Creator search matrix filter, Audience fit scoring verification, pricing bots.
-                </p>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                  $89<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 'auto' }}>
-                <GlowButton variant="secondary" onClick={onStartFree} style={{ width: '100%', padding: '10px' }}>
-                  Enable Creator Node
-                </GlowButton>
-              </div>
-            </div>
-          </div>
-
-          {/* Bundle plan */}
-          <div className="glow-card" style={{ maxWidth: '800px', margin: '0 auto 80px', background: 'linear-gradient(135deg, rgba(90, 82, 255, 0.1) 0%, rgba(10, 10, 12, 0.8) 100%)', borderColor: 'var(--accent)', padding: '40px', display: 'flex', flexWrap: 'wrap', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center', gap: '24px' }}>
-            <div style={{ textAlign: 'left' }}>
-              <span className="hero-pill-badge" style={{ background: 'var(--success-glow)', color: 'var(--success)', marginBottom: '8px', display: 'inline-block' }}>RECOMMENDED VALUE</span>
-              <h3 style={{ fontSize: '22px', color: '#fff', marginBottom: '6px' }}>Complete Raftra Growth OS Bundle</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Get full access to all 6 specialist workspaces + core multi-agent state network.</p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <div style={{ fontSize: '36px', fontWeight: 800, color: '#fff' }}>
-                $449<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-              </div>
-              <GlowButton variant="glow" onClick={onStartFree}>
-                Activate Full OS
-              </GlowButton>
-            </div>
-          </div>
-        </section>
-
-        <footer style={{ borderTop: '1px solid var(--border-color)', padding: '40px 24px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
-          <p>© {new Date().getFullYear()} Raftra AI. Built for high-growth enterprises.</p>
-        </footer>
+        <div style={{ marginTop: '20px' }}>
+          <PricingScreen onComplete={onStartFree} />
+        </div>
       </div>
     );
   }
@@ -282,17 +135,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     <div className="app-wrapper">
       {/* Navigation */}
       <nav className="landing-nav">
-        <div className="logo-container" onClick={() => setCurrentSubView('main')} style={{ cursor: 'pointer' }}>
+        <div className="logo-container" onClick={() => setCurrentSubView('main')} style={{ cursor: 'pointer', flex: 1, justifyContent: 'flex-start', display: 'flex' }}>
           <Cpu className="logo-icon" size={24} />
           <span>RAFTRA AI</span>
         </div>
-        <div className="nav-links">
+        <div className="nav-links" style={{ display: 'flex', justifyContent: 'center' }}>
           <button className="nav-link" onClick={() => scrollToSection('problem')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>The Friction</button>
           <button className="nav-link" onClick={() => scrollToSection('solution')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>The Solution</button>
           <button className="nav-link" onClick={() => scrollToSection('about')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>About Us</button>
           <button className="nav-link" onClick={() => setCurrentSubView('pricing')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>Pricing</button>
         </div>
-        <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
           <button className="nav-link" onClick={() => setShowCreatorPortal(true)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
             Creator Portal
           </button>

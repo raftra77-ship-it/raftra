@@ -54,12 +54,11 @@ export const WorkspaceInfluencer: React.FC = () => {
     ]);
 
     setTimeout(() => {
-      setChatMessages([
-        { sender: 'system', text: 'NOTIFICATION SENT TO CREATOR. WAITING FOR CONNECTION...' },
-        { sender: 'system', text: 'RAFTRA SECURE CONNECTION ESTABLISHED' },
-        { sender: 'creator', text: "Hey there! I saw you were interested in a collaboration. My base rate is " + creator.expectedPrice + " for " + creator.deliverables.join(' and ') + ". Does that fit your budget?" }
+      setChatMessages(prev => [
+        ...prev,
+        { sender: 'system', text: 'RAFTRA SECURE CONNECTION ESTABLISHED' }
       ]);
-    }, 2500);
+    }, 1500);
   };
 
   const handleSendChat = (e: React.FormEvent) => {
@@ -67,20 +66,7 @@ export const WorkspaceInfluencer: React.FC = () => {
     if (!chatInput.trim()) return;
     
     setChatMessages(prev => [...prev, { sender: 'brand', text: chatInput }]);
-    const input = chatInput.toLowerCase();
     setChatInput('');
-
-    // Mock negotiation AI
-    setTimeout(() => {
-      if (input.includes('deal') || input.includes('agree') || input.includes('yes') || input.includes('ok')) {
-        setChatMessages(prev => [...prev, 
-          { sender: 'creator', text: "Awesome! Let's lock it in. Feel free to use the 'Finalize Deal' button." }
-        ]);
-        setShowFinalize(true);
-      } else {
-        setChatMessages(prev => [...prev, { sender: 'creator', text: "I can be a little flexible if we do a bundle deal. What number were you thinking?" }]);
-      }
-    }, 1000);
   };
 
   const handleLockDeal = (e: React.FormEvent) => {
