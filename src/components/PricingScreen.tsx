@@ -198,6 +198,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 flexDirection: 'column', 
                 minHeight: '420px', 
                 position: 'relative',
+                overflow: 'visible',
                 background: plan.isPopular ? 'linear-gradient(180deg, rgba(90, 82, 255, 0.08) 0%, rgba(10, 10, 12, 0.9) 100%)' : 'rgba(20,20,20,0.4)',
                 border: plan.isPopular ? '1px solid var(--primary)' : '1px solid var(--border)',
                 transform: plan.isPopular ? 'scale(1.02)' : 'scale(1)',
