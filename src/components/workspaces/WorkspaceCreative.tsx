@@ -169,17 +169,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   };
 
   const toolkitModes = [
-    { name: 'Ad Flow', desc: 'Node-based canvas', icon: '•' },
-    { name: 'Avatar Video', desc: 'AI actors from scripts', icon: '•' },
-    { name: 'AI Media Buyer', desc: 'Chat about performance', icon: '•' },
-    { name: 'Video Ad', desc: 'Turn product into video ads', icon: '•' },
-    { name: 'Image Ad', desc: 'Static ad creatives', icon: '•' },
-    { name: 'HTML Interactive Ad', desc: 'Interactive web ads', icon: '•' },
-    { name: 'Ad Clone', desc: 'Recreate winning ads', icon: '•' },
-    { name: 'Create Avatar', desc: 'Branded AI avatar', icon: '•' },
-    { name: 'Video Editor', desc: 'All-in-one editing', icon: '•' },
-    { name: 'Track Competitors', desc: 'See their ads', icon: '•' },
-    { name: 'Launch Ads', desc: 'Meta, TikTok, AppLovin', icon: '•' }
+    { name: 'Asset Generator', desc: 'Create video or image with any AI model', icon: '•' },
+    { name: 'Video Ad', desc: 'Turn product into video ads with AI actors', icon: '•' },
+    { name: 'Image Ad', desc: 'Turn product into static ad creatives', icon: '•' },
+    { name: 'HTML Interactive Ad', desc: 'Generate interactive ads with AI', icon: '•' },
+    { name: 'Ad Clone', desc: 'Recreate winning ads instantly, with your product', icon: '•' },
+    { name: 'Create Your Own Avatar', desc: 'Build a branded AI avatar in seconds', icon: '•' },
+    { name: 'Video Editor', desc: 'All-in-one video editing tool', icon: '•' },
+    { name: 'Track Competitors', desc: 'See what ads they’re running', icon: '•' }
   ];
 
   return (
@@ -445,26 +442,26 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '32px', height: '32px', background: '#1877F2', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>f</div>
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: '500' }}>Meta Ads</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Not Connected</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '36px', height: '36px', background: '#1877F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '18px', paddingBottom: '2px' }}>f</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center' }}>
+                    <div style={{ fontSize: '15px', fontWeight: '600', lineHeight: '1' }}>Meta Ads</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1' }}>Not Connected</div>
                   </div>
                 </div>
-                <button onClick={() => alert('Redirecting to Meta OAuth...')} style={{ padding: '6px 12px', background: 'var(--primary)', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Connect</button>
+                <button className="action-button primary" onClick={() => alert('Redirecting to Meta OAuth...')} style={{ fontSize: '13px', padding: '8px 16px' }}>Connect</button>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '32px', height: '32px', background: '#000', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>♪</div>
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: '500' }}>TikTok Ads</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Not Connected</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '36px', height: '36px', background: '#000', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '16px' }}>♪</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center' }}>
+                    <div style={{ fontSize: '15px', fontWeight: '600', lineHeight: '1' }}>TikTok Ads</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1' }}>Not Connected</div>
                   </div>
                 </div>
-                <button onClick={() => alert('Redirecting to TikTok OAuth...')} style={{ padding: '6px 12px', background: 'var(--primary)', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Connect</button>
+                <button className="action-button primary" onClick={() => alert('Redirecting to TikTok OAuth...')} style={{ fontSize: '13px', padding: '8px 16px' }}>Connect</button>
               </div>
             </div>
             

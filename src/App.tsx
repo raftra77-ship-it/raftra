@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { AuthScreen } from './components/AuthScreen';
+import { PricingScreen } from './components/PricingScreen';
 import { TerminalFeed } from './components/TerminalFeed';
 import type { LogLine } from './components/TerminalFeed';
 import { ReviewDrawer } from './components/ReviewDrawer';
+import { SEOAgencyReportModal } from './components/SEOAgencyReportModal';
 import type { ReviewItem } from './components/ReviewDrawer';
 import { WorkspaceCreative } from './components/workspaces/WorkspaceCreative';
 import { WorkspaceCampaign } from './components/workspaces/WorkspaceCampaign';
@@ -72,10 +75,12 @@ interface BlogDraft {
 }
 
 function App() {
-  // App views: 'landing' | 'onboarding' | 'dashboard'
-  const [appState, setAppState] = useState<'landing' | 'onboarding' | 'dashboard'>(() => {
+  // App views: 'landing' | 'login' | 'pricing' | 'onboarding' | 'dashboard'
+  const [appState, setAppState] = useState<'landing' | 'login' | 'pricing' | 'onboarding' | 'dashboard'>(() => {
     if (window.location.pathname.startsWith('/dashboard')) return 'dashboard';
     if (window.location.pathname.startsWith('/onboarding')) return 'onboarding';
+    if (window.location.pathname.startsWith('/pricing')) return 'pricing';
+    if (window.location.pathname.startsWith('/login')) return 'login';
     
     // Always show landing page by default when visiting root path
     return 'landing';
@@ -196,6 +201,8 @@ function App() {
     { name: 'Voice Agent', task: 'Compiling text-to-speech audio outline', progress: 5, eta: '12 min', result: 'Tonal frequencies set' },
     { name: 'Quality Review Agent', task: 'Awaiting human review queue approvals', progress: 0, eta: 'On Hold', result: 'Ready for verify desk' },
     { name: 'Publishing Agent', task: 'Pulsing connections sync to active channels', progress: 0, eta: 'Blocked', result: 'Awaiting triggers' },
+    { name: 'SEO Agent', task: 'Idle', progress: 0, eta: 'Waiting', result: 'Ready for targets' },
+    { name: 'GEO Agent', task: 'Idle', progress: 0, eta: 'Waiting', result: 'Ready for targets' },
   ]);
 
   // Dynamic simulation log loops
@@ -240,6 +247,28 @@ function App() {
                 imageUrl: data.asset.imageUrl,
                 videoUrl: data.asset.videoUrl,
                 audioUrl: data.asset.audioUrl
+              },
+              ...prev
+            ]);
+          } else if (data.type === 'new_seo_report') {
+            setSeoBlogs((prev) => [
+              {
+                id: 'seo-' + Date.now(),
+                title: data.title,
+                excerpt: data.excerpt,
+                keywords: data.keywords,
+                status: 'pending_review'
+              },
+              ...prev
+            ]);
+          } else if (data.type === 'new_geo_report') {
+            setSeoBlogs((prev) => [
+              {
+                id: 'geo-' + Date.now(),
+                title: data.title,
+                excerpt: data.excerpt,
+                keywords: data.keywords,
+                status: 'pending_review'
               },
               ...prev
             ]);
@@ -493,7 +522,7 @@ function App() {
     fetch(`http://localhost:8005/api/workspaces/${workspaceId}/reindex`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ url: brandProfile.url, tone: brandProfile.tone })
+      body: JSON.stringify({ url: brandProfile?.url || '', tone: brandProfile?.tone || '' })
     })
       .then(res => res.json())
       .then(data => {
@@ -563,6 +592,20 @@ function App() {
     }).catch(err => console.error("Error running SEO agent:", err));
   };
 
+  const handleTriggerGEO = (targetUrl: string) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    fetch(`http://localhost:8005/api/agents/${workspaceId}/geo`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ target_url: targetUrl })
+    }).catch(err => console.error("Error running GEO agent:", err));
+  };
+
   const handleTriggerSocial = (platform: string, captionTopic: string) => {
     if (!workspaceId) return;
     const token = localStorage.getItem('token');
@@ -624,12 +667,13 @@ function App() {
           cta: asset.cta,
         },
       };
-    } else if (itemId.includes('GEO') || itemId.includes('seo-')) {
-      const blog = seoBlogs[0];
+    } else if (itemId.includes('GEO') || itemId.includes('seo-') || itemId.includes('geo-')) {
+      const blog = seoBlogs.find(b => b.id === itemId) || seoBlogs[0];
+      const isGeo = itemId.includes('geo-');
       reviewItem = {
         id: blog.id,
-        type: 'seo',
-        title: 'Citations optimization content review',
+        type: isGeo ? 'geo' : 'seo',
+        title: isGeo ? 'Generative Engine Optimization (GEO) deployment' : 'Citations optimization content review',
         description: 'Entity optimization for Gemini and ChatGPT prompts.',
         data: {
           headline: blog.title,
@@ -817,7 +861,39 @@ function App() {
             : blog
         )
       );
-      setPriorities((prev) => prev.filter((p) => !p.title.toLowerCase().includes('geo') && !p.title.toLowerCase().includes('opportunity')));
+      // Trigger the remaining backend pipeline (Publishing Agent -> Reporting Agent)
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+      fetch(`http://localhost:8005/api/agents/${workspaceId}/seo/publish`, { method: 'POST', headers })
+        .catch(err => console.error("Error triggering SEO publish:", err));
+        
+      // Simulate post-publish reporting and metrics bump locally
+      setMetrics((prev) => ({
+        ...prev,
+        seoVisibility: Math.min(100, prev.seoVisibility + 2),
+      }));
+    } else if (id.startsWith('geo-')) {
+      setSeoBlogs((prev) =>
+        prev.map((blog) =>
+          blog.id === id
+            ? {
+                ...blog,
+                title: updatedData.headline || updatedData.title,
+                excerpt: updatedData.bodyText,
+                status: 'published',
+              }
+            : blog
+        )
+      );
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+      fetch(`http://localhost:8005/api/agents/${workspaceId}/geo/publish`, { method: 'POST', headers })
+        .catch(err => console.error("Error triggering GEO publish:", err));
+        
+      setMetrics((prev) => ({
+        ...prev,
+        aiVisibility: Math.min(100, prev.aiVisibility + 3),
+      }));
     } else if (id.startsWith('sp-')) {
       setSocialPosts((prev) =>
         prev.map((post) =>
@@ -1002,12 +1078,31 @@ function App() {
     return (
       <LandingPage
         onStartFree={() => {
-          setAppState('onboarding');
-          window.history.pushState({}, '', '/onboarding');
+          setAppState('login');
+          window.history.pushState({}, '', '/login');
         }}
         onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}
       />
     );
+  }
+
+  if (appState === 'login') {
+    return <AuthScreen onLoginComplete={(hasWorkspace) => {
+      if (hasWorkspace) {
+        setAppState('dashboard');
+        window.history.pushState({}, '', '/dashboard');
+      } else {
+        setAppState('pricing');
+        window.history.pushState({}, '', '/pricing');
+      }
+    }} />;
+  }
+
+  if (appState === 'pricing') {
+    return <PricingScreen onComplete={() => {
+      setAppState('onboarding');
+      window.history.pushState({}, '', '/onboarding');
+    }} />;
   }
 
   if (appState === 'onboarding') {
@@ -1467,7 +1562,7 @@ function App() {
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
               {renderLockOverlay('studio', 79)}
               <WorkspaceCreative
-                brandUrl={brandProfile.url}
+                brandUrl={brandProfile?.url || ''}
                 assets={creativeAssets}
                 onOpenReview={handleOpenReview}
                 onGenerate={handleGenerateCreative}
@@ -1489,9 +1584,13 @@ function App() {
           {activeTab === 'seo' && (
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
               {renderLockOverlay('seo', 99)}
-              <WorkspaceSEO
-                blogs={seoBlogs}
+              <WorkspaceSEO 
+                blogs={seoBlogs} 
                 onOpenReview={handleOpenReview}
+                seoAgent={agentsList.find(a => a.name === 'SEO Agent')}
+                geoAgent={agentsList.find(a => a.name === 'GEO Agent')}
+                onTriggerSEO={handleTriggerSEO}
+                onTriggerGEO={handleTriggerGEO}
               />
             </div>
           )}
@@ -1616,11 +1715,11 @@ function App() {
                   <h3 style={{ fontSize: '16px' }}>Ingest Brand Guidelines</h3>
                   <div className="form-group">
                     <label>Resource URL / API Docs</label>
-                    <input type="text" value={brandProfile.url} onChange={(e) => setBrandProfile((prev) => ({ ...prev, url: e.target.value }))} style={{ color: 'white' }} />
+                    <input type="text" value={brandProfile?.url || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, url: e.target.value }))} style={{ color: 'white' }} />
                   </div>
                   <div className="form-group">
                     <label>Brand Voice Tone Context</label>
-                    <textarea rows={4} value={brandProfile.tone} onChange={(e) => setBrandProfile((prev) => ({ ...prev, tone: e.target.value }))} style={{ color: 'white' }} />
+                    <textarea rows={4} value={brandProfile?.tone || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, tone: e.target.value }))} style={{ color: 'white' }} />
                   </div>
                   <GlowButton variant="secondary" onClick={handleReindex} loading={isReindexing} style={{ width: '100%' }}>
                     Re-index Knowledge Graph
@@ -1678,11 +1777,11 @@ function App() {
                   <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Brand Configuration</h3>
                   <div className="form-group">
                     <label>Brand Name</label>
-                    <input type="text" value={brandProfile.name} onChange={(e) => setBrandProfile((prev) => ({ ...prev, name: e.target.value }))} />
+                    <input type="text" value={brandProfile?.name || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, name: e.target.value }))} />
                   </div>
                   <div className="form-group">
                     <label>Brand Hue Color</label>
-                    <input type="text" value={brandProfile.colors} onChange={(e) => setBrandProfile((prev) => ({ ...prev, colors: e.target.value }))} />
+                    <input type="text" value={brandProfile?.colors || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, colors: e.target.value }))} />
                   </div>
                   <GlowButton variant="glow" onClick={() => alert('Settings saved successfully!')} style={{ width: '100%' }}>
                     Save Settings
@@ -1777,13 +1876,22 @@ function App() {
       )}
 
       {/* Review Drawer slide panel overlay */}
-      <ReviewDrawer
-        isOpen={isReviewOpen}
-        onClose={() => setIsReviewOpen(false)}
-        item={activeReviewItem}
-        onApprove={handleApprove}
-        onReject={handleReject}
-      />
+      {activeReviewItem?.type === 'seo' || activeReviewItem?.type === 'geo' ? (
+        <SEOAgencyReportModal
+          isOpen={isReviewOpen}
+          onClose={() => setIsReviewOpen(false)}
+          item={activeReviewItem}
+          onApprove={handleApprove}
+        />
+      ) : (
+        <ReviewDrawer
+          isOpen={isReviewOpen}
+          onClose={() => setIsReviewOpen(false)}
+          item={activeReviewItem}
+          onApprove={handleApprove}
+          onReject={handleReject}
+        />
+      )}
     </div>
   );
 }

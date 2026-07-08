@@ -71,6 +71,10 @@ class CampaignCreate(BaseModel):
     objective: str
     budget: float
 
+class CampaignAgentTrigger(BaseModel):
+    prompt: str
+    model: str = "gemini-1.5-flash"
+
 class CampaignResponse(BaseModel):
     id: int
     platform: str

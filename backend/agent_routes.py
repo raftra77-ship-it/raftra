@@ -3,12 +3,13 @@ from sqlalchemy.orm import Session
 import database, auth, models
 from pydantic import BaseModel
 from typing import Optional
+import schemas
 
 # Import our workspace pipelines
 from agents.creative_nodes.generation_graph import run_ad_generation_task
 from agents.creative_nodes.onboarding_graph import run_onboarding_pipeline
 from agents.campaign_manager import run_campaign_pipeline
-from agents.seo_geo import run_seo_pipeline
+from agents.seo_geo import run_seo_pipeline, run_seo_publish_pipeline, run_geo_pipeline, run_geo_publish_pipeline
 from agents.analytics import run_analytics_pipeline
 from agents.social_hub import run_social_pipeline
 from agents.influencers import run_influencer_pipeline
@@ -80,14 +81,13 @@ async def trigger_creative(workspace_id: int, request: CreativeTrigger, backgrou
     return {"message": "Creative chat workflow triggered", "prompt": request.prompt}
 
 @router.post("/{workspace_id}/campaign")
-async def trigger_campaign(workspace_id: int, request: CampaignTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_campaign(workspace_id: int, request: schemas.CampaignAgentTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+    from agents.creative_nodes.campaign_graph import run_campaign_planning_task
     background_tasks.add_task(
-        run_campaign_pipeline,
+        run_campaign_planning_task,
         workspace_id=workspace_id,
-        platform=request.platform,
-        campaign_name=request.campaign_name,
-        objective=request.objective,
-        budget=request.budget
+        prompt=request.prompt,
+        model=request.model
     )
     return {"status": "success", "message": "Campaign Manager agent pipeline triggered."}
 
@@ -99,6 +99,31 @@ async def trigger_seo(workspace_id: int, request: SEOTrigger, background_tasks: 
         target_url=request.target_url
     )
     return {"status": "success", "message": "SEO & GEO agent pipeline triggered."}
+
+@router.post("/{workspace_id}/seo/publish")
+async def trigger_seo_publish(workspace_id: int, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+    background_tasks.add_task(
+        run_seo_publish_pipeline,
+        workspace_id=workspace_id
+    )
+    return {"status": "success", "message": "SEO Publishing sequence triggered."}
+
+@router.post("/{workspace_id}/geo")
+async def trigger_geo(workspace_id: int, request: SEOTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+    background_tasks.add_task(
+        run_geo_pipeline,
+        workspace_id=workspace_id,
+        target_url=request.target_url
+    )
+    return {"status": "success", "message": "GEO agent pipeline triggered."}
+
+@router.post("/{workspace_id}/geo/publish")
+async def trigger_geo_publish(workspace_id: int, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+    background_tasks.add_task(
+        run_geo_publish_pipeline,
+        workspace_id=workspace_id
+    )
+    return {"status": "success", "message": "GEO Publishing sequence triggered."}
 
 @router.post("/{workspace_id}/analytics")
 async def trigger_analytics(workspace_id: int, request: AnalyticsTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):

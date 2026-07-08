@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 
 export interface ReviewItem {
   id: string;
-  type: 'creative' | 'campaign' | 'seo' | 'social';
+  type: 'creative' | 'campaign' | 'seo' | 'geo' | 'social';
   title: string;
   description: string;
   data: {
@@ -168,7 +168,7 @@ export const ReviewDrawer: React.FC<ReviewDrawerProps> = ({
                   </div>
                   <div className="form-group">
                     <label>Optimized Content Article Draft</label>
-                    <textarea rows={8} value={bodyText} onChange={(e) => setBodyText(e.target.value)} />
+                    <textarea rows={20} value={bodyText} onChange={(e) => setBodyText(e.target.value)} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: '1.5' }} />
                   </div>
                 </>
               )}
