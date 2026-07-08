@@ -184,7 +184,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         </div>
 
         {/* Pricing Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px', marginBottom: '80px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px', marginBottom: '80px', alignItems: 'stretch' }}>
           {PRICING_PLANS.map((plan, i) => (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -196,7 +196,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 padding: '32px', 
                 display: 'flex', 
                 flexDirection: 'column', 
-                minHeight: '600px', 
+                minHeight: '420px', 
                 position: 'relative',
                 background: plan.isPopular ? 'linear-gradient(180deg, rgba(90, 82, 255, 0.08) 0%, rgba(10, 10, 12, 0.9) 100%)' : 'rgba(20,20,20,0.4)',
                 border: plan.isPopular ? '1px solid var(--primary)' : '1px solid var(--border)',
