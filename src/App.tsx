@@ -17,7 +17,6 @@ import type { ChatMessage } from './components/workspaces/WorkspaceAnalytics';
 import { WorkspaceSocial } from './components/workspaces/WorkspaceSocial';
 import type { SocialPostItem } from './components/workspaces/WorkspaceSocial';
 import { WorkspaceInfluencer } from './components/workspaces/WorkspaceInfluencer';
-import type { InfluencerItem } from './components/workspaces/WorkspaceInfluencer';
 import { GlowButton } from './components/GlowButton';
 import './App.css';
 
@@ -164,7 +163,7 @@ function App() {
   const [socialPosts, setSocialPosts] = useState<SocialPostItem[]>([]);
 
   // Influencers Match
-  const [influencers, setInfluencers] = useState<InfluencerItem[]>([]);
+  
 
   // Claude conversation logs
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
@@ -392,7 +391,7 @@ function App() {
     fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers`, { headers })
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setInfluencers(data);
+        
       });
 
     // Metrics
@@ -976,34 +975,6 @@ function App() {
     setActiveTab('control');
   };
 
-  const handleCollaborateInfluencer = (id: string) => {
-    setInfluencers((prev) =>
-      prev.map((inf) =>
-        inf.id === id
-          ? {
-              ...inf,
-              status: 'collaborating',
-            }
-          : inf
-      )
-    );
-    const influencer = influencers.find((i) => i.id === id);
-    const name = influencer ? influencer.name : 'Creator';
-
-    handleTriggerInfluencer(Number(id.split('-')[1]) || 1, name);
-
-    const timeStr = new Date().toLocaleTimeString();
-    setLogs((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        time: timeStr,
-        agent: 'Publishing Agent',
-        message: `Proposal contract dispatched to ${name}. Status: active partnership initialized.`,
-      },
-    ]);
-  };
-
   // Claude chat analyzer response simulator
   const handleSendClaudeMessage = (message: string) => {
     const userMsg: ChatMessage = {
@@ -1027,32 +998,40 @@ function App() {
         body: JSON.stringify({ query_message: message })
       }).catch(() => {});
 
-      // Query explanation response
-      fetch(`http://localhost:8005/api/workspaces/${workspaceId}/analytics/query`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ message })
-      })
-        .then(res => res.json())
-        .then(data => {
-          setChatHistory((prev) => [
-            ...prev,
-            {
-              id: String(Date.now() + 1),
-              sender: 'claude',
-              text: data.text || 'Analytics compiled.'
-            }
-          ]);
-        })
-        .catch(() => {
-          let response = 'I am auditing the dataset connected for this query. Let me know if you need specific ROAS breakdowns.';
-          if (message.toLowerCase().includes('conversion') || message.toLowerCase().includes('drop')) {
-            response = 'Conversions dropped by 12% on cp-1. Optimization Agent suggests redistributing $35/day budget limit to cp-2 to avoid creative fatigue.';
-          } else if (message.toLowerCase().includes('fatigue')) {
-            response = 'Creative fatigue is flagged on Facebook Static Adset 4. Average CPM rose by 18%. Swapping Concept A headline will increase CTR by ~0.45%.';
-          }
-          setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text: response }]);
-        });
+      // For demonstration, we'll bypass the backend fetch and mock the responses directly
+      setTimeout(() => {
+        let response = 'I am auditing the dataset connected for this query. Let me know if you need specific breakdowns.';
+        let isVisual = false;
+        let visualType: 'bar' | 'table' | 'pie' | 'line' | 'heatmap' | null = null;
+        
+        if (message.toLowerCase().includes('conversion') || message.toLowerCase().includes('drop')) {
+          response = 'Conversions dropped by 12% on cp-1. The Optimization Agent suggests redistributing the $35/day budget limit to cp-2 to avoid creative fatigue and stabilize CPA.';
+        } else if (message.toLowerCase().includes('fatigue')) {
+          response = 'Creative fatigue is flagged on Facebook Static Adset 4. Average CPM rose by 18% over the last 48 hours. Swapping Concept A headline will likely increase CTR by ~0.45%.';
+        } else if (message.toLowerCase().includes('roas')) {
+          response = 'Here is the platform-by-platform ROAS breakdown from your connected Ad Manager APIs. Meta Ads is currently underperforming the baseline (2.4x), whereas your Influencer campaigns are driving a stellar 4.2x return on ad spend. I recommend reallocating 15% of your Meta budget towards top-performing creators.';
+          isVisual = true;
+          visualType = 'bar';
+        } else if (message.toLowerCase().includes('wasting') || message.toLowerCase().includes('cpa')) {
+          response = 'I have identified specific campaigns that are running at a loss (CPA exceeds LTV margin). The "Retargeting BOF" campaign is currently spending $4,200 at a high CPA of $45.20. Consider pausing this ad set immediately.';
+          isVisual = true;
+          visualType = 'table';
+        } else if (message.toLowerCase().includes('csv') || message.toLowerCase().includes('upload') || message.toLowerCase().includes('heatmap')) {
+          response = 'I have processed the uploaded dataset. The demographic heatmap below visualizes engagement intensity across age groups. You can see a strong concentration of high engagement in the 35-44 demographic, indicating our core audience is slightly older than initial projections.';
+          isVisual = true;
+          visualType = 'heatmap';
+        } else if (message.toLowerCase().includes('pie')) {
+          response = 'Based on the connected APIs, your current budget allocation is heavily skewed towards Meta Ads (40%). However, given recent CPA trends, diversifying further into TikTok and LinkedIn could reduce overall customer acquisition costs by an estimated 12%.';
+          isVisual = true;
+          visualType = 'pie';
+        } else if (message.toLowerCase().includes('line')) {
+          response = 'Here is your CPA trend over the last 7 days. Notice the sharp spike on Thursday ($22) and Friday ($25), which correlates with the weekend bid multiplier adjustments. We should smooth the bid caps to prevent this volatility.';
+          isVisual = true;
+          visualType = 'line';
+        }
+        
+        setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text: response, isVisual, visualType }]);
+      }, 800);
     }
   };
 
@@ -1618,11 +1597,8 @@ function App() {
 
           {activeTab === 'influencer' && (
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
-              {renderLockOverlay('influencer', 89)}
-              <WorkspaceInfluencer
-                influencers={influencers}
-                onCollaborate={handleCollaborateInfluencer}
-              />
+              
+              <WorkspaceInfluencer />
             </div>
           )}
 

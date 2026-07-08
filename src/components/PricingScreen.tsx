@@ -72,26 +72,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </GlowButton>
             </div>
           </div>
-
-          {/* Influencer Market */}
-          <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', padding: '24px', textAlign: 'left', minHeight: '340px' }}>
-            <div>
-              <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '8px' }}>
-                <Users2 size={16} style={{ color: 'var(--accent)' }} /> Influencer Market
-              </h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                Creator search matrix filter, Audience fit scoring verification, pricing bots.
-              </p>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '20px' }}>
-                $89<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
-              </div>
-            </div>
-            <div style={{ marginTop: 'auto' }}>
-              <GlowButton variant="secondary" onClick={onComplete} style={{ width: '100%', padding: '10px' }}>
-                Enable Creator Node
-              </GlowButton>
-            </div>
-          </div>
         </div>
 
         {/* Bundle plan */}
