@@ -16,17 +16,90 @@ export interface InfluencerItemExtended {
   rating: number;
   reviewsCount: number;
   recentWorks: string[];
+  topComments?: { author: string, text: string }[];
 }
 
 const INITIAL_CREATORS: InfluencerItemExtended[] = [
-  { id: '1', name: 'Emma Wilson', handle: '@emmastyles', platform: 'Instagram', niche: 'Fashion & Lifestyle', category: 'Micro', expectedPrice: '$350', deliverables: ['UGC Video', 'Story', 'Static Post'], followers: '45k', fakeFollowerScore: 2, rating: 4.8, reviewsCount: 34, recentWorks: ['Zara', 'H&M Summer Collection'] },
-  { id: '2', name: 'Tech Bro Sam', handle: '@samtech', platform: 'YouTube', niche: 'SaaS Tech', category: 'Macro', expectedPrice: '$1,200', deliverables: ['Dedicated Video', 'Community Post'], followers: '250k', fakeFollowerScore: 4, rating: 4.9, reviewsCount: 120, recentWorks: ['Notion', 'Figma Plugin Review', 'Raycast'] },
-  { id: '3', name: 'Fitness Jess', handle: '@jessfit', platform: 'TikTok', niche: 'Health & Fitness', category: 'Nano', expectedPrice: '$150', deliverables: ['UGC Video'], followers: '8k', fakeFollowerScore: 1, rating: 4.5, reviewsCount: 12, recentWorks: ['Gymshark', 'MyProtein'] },
+  { id: '1', name: 'Emma Wilson', handle: '@emmastyles', platform: 'Instagram', niche: 'Fashion & Lifestyle', category: 'Micro', expectedPrice: '$350', deliverables: ['UGC Video', 'Story', 'Static Post'], followers: '45k', fakeFollowerScore: 2, rating: 4.8, reviewsCount: 34, recentWorks: ['Zara', 'H&M Summer Collection'], topComments: [{author: 'Brand Rep, Zara', text: 'Beautiful aesthetic and perfectly aligned with our brand voice.'}] },
+  { id: '2', name: 'Tech Bro Sam', handle: '@samtech', platform: 'YouTube', niche: 'SaaS Tech', category: 'Macro', expectedPrice: '$1,200', deliverables: ['Dedicated Video', 'Community Post'], followers: '250k', fakeFollowerScore: 4, rating: 4.9, reviewsCount: 120, recentWorks: ['Notion', 'Figma Plugin Review', 'Raycast'], topComments: [{author: 'Growth Lead, Notion', text: 'Extremely clear technical breakdown. The audience loved the tutorial format.'}] },
+  { id: '3', name: 'Fitness Jess', handle: '@jessfit', platform: 'TikTok', niche: 'Health & Fitness', category: 'Nano', expectedPrice: '$150', deliverables: ['UGC Video'], followers: '8k', fakeFollowerScore: 1, rating: 4.5, reviewsCount: 12, recentWorks: ['Gymshark', 'MyProtein'], topComments: [{author: 'Campaign Manager, Gymshark', text: 'Her fitness content is incredibly authentic. Our CPA dropped by 30%.'}] },
 ];
 
-export const WorkspaceInfluencer: React.FC = () => {
-  const [creators, setCreators] = useState<InfluencerItemExtended[]>(INITIAL_CREATORS);
+export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceId}) => {
+  const [creators, setCreators] = useState<InfluencerItemExtended[]>([]);
   const [filterNiche, setFilterNiche] = useState('All');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(r => r.json()).then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setCreators(data.map((inf: any) => {
+          const nicheLower = (inf.niche || '').toLowerCase();
+          let recentWorks = ['Local Brand', 'Startup X'];
+          let topComments = [
+            { author: 'Marketing Director', text: `"${inf.name.split(' ')[0]} was amazing to work with! Delivered the UGC video 2 days early and it converted well."` }
+          ];
+
+          if (nicheLower.includes('fitness') || nicheLower.includes('health') || nicheLower.includes('gym')) {
+            recentWorks = ['Gymshark', 'MyProtein', 'Lululemon'];
+            topComments = [
+              { author: 'Campaign Manager, Gymshark', text: `"${inf.name.split(' ')[0]}'s fitness content is incredibly authentic. Our CPA dropped by 30%."` },
+              { author: 'Founder, FitApp', text: `"Great engagement on the story posts!"` }
+            ];
+          } else if (nicheLower.includes('tech') || nicheLower.includes('saas') || nicheLower.includes('software')) {
+            recentWorks = ['Notion', 'Figma', 'Vercel'];
+            topComments = [
+              { author: 'Growth Lead, Notion', text: `"Extremely clear technical breakdown. The audience loved the tutorial format."` },
+              { author: 'Marketing, Figma', text: `"High quality production and great CTR on the links."` }
+            ];
+          } else if (nicheLower.includes('fashion') || nicheLower.includes('beauty') || nicheLower.includes('style')) {
+            recentWorks = ['Zara', 'Sephora', 'Fenty Beauty'];
+            topComments = [
+              { author: 'PR Manager, Sephora', text: `"The makeup transition reel went viral. Highly recommended for beauty campaigns!"` },
+              { author: 'Brand Rep, Zara', text: `"Beautiful aesthetic and perfectly aligned with our brand voice."` }
+            ];
+          }
+
+          if (inf.custom_review) {
+            topComments = [
+              { author: 'Verified Brand Partner', text: `"${inf.custom_review}"` }
+            ];
+          }
+
+          if (inf.reel_link_1 || inf.reel_link_2) {
+            // We can store URLs in recentWorks or handle them in UI.
+            // For now, let's inject them as recentWorks since UI expects string array.
+            if (inf.reel_link_1) recentWorks = [inf.reel_link_1, ...recentWorks];
+            if (inf.reel_link_2) recentWorks = [inf.reel_link_2, ...recentWorks];
+          }
+
+          return {
+            id: inf.id.toString(), // influencer id for chat
+            name: inf.name,
+            handle: inf.handle,
+            platform: inf.platform,
+            niche: inf.niche,
+            category: 'Micro',
+            expectedPrice: '$350',
+            deliverables: ['UGC Video'],
+            followers: '10k+',
+            fakeFollowerScore: 100 - inf.success_rate,
+            rating: 4.8,
+            reviewsCount: 10,
+            recentWorks,
+            topComments,
+            reel_link_1: inf.reel_link_1,
+            reel_link_2: inf.reel_link_2,
+            custom_review: inf.custom_review
+          };
+        }));
+      } else {
+        setCreators(INITIAL_CREATORS);
+      }
+    }).catch(() => setCreators(INITIAL_CREATORS));
+  }, []);
   
   // Modals state
   const [activeChat, setActiveChat] = useState<InfluencerItemExtended | null>(null);
@@ -47,26 +120,79 @@ export const WorkspaceInfluencer: React.FC = () => {
     ? creators
     : creators.filter(c => c.niche === filterNiche);
 
-  const handleOpenChat = (creator: InfluencerItemExtended) => {
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
+
+  const handleOpenChat = async (creator: InfluencerItemExtended) => {
     setActiveChat(creator);
     setChatMessages([
-      { sender: 'system', text: 'NOTIFICATION SENT TO CREATOR. WAITING FOR CONNECTION...' }
+      { sender: 'system', text: 'CONNECTING TO BACKEND P2P SERVER...' }
     ]);
 
-    setTimeout(() => {
-      setChatMessages(prev => [
-        ...prev,
-        { sender: 'system', text: 'RAFTRA SECURE CONNECTION ESTABLISHED' }
-      ]);
-    }, 1500);
+    try {
+      const token = localStorage.getItem('token');
+      // Fetch chat history
+      const res = await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers/${creator.id}/chat`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const history = await res.json();
+        const formatted = history.map((m: any) => ({
+          sender: m.sender_type,
+          text: m.content
+        }));
+        setChatMessages(formatted.length > 0 ? formatted : [
+          { sender: 'system', text: 'RAFTRA SECURE CONNECTION ESTABLISHED' }
+        ]);
+      } else {
+        setChatMessages([{ sender: 'system', text: 'ERROR CONNECTING TO CHAT (No Token or Auth Failed)' }]);
+      }
+      
+      // Connect to WebSocket for real-time updates
+      if (wsRef.current) wsRef.current.close();
+      const ws = new WebSocket('ws://localhost:8005/ws');
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'chat_message' && Number(data.message.influencer_id) === Number(creator.id)) {
+            setChatMessages(prev => {
+              // Avoid duplicate if optimistic update was done (we won't do optimistic here to ensure real sync)
+              return [...prev, { sender: data.message.sender_type, text: data.message.content }];
+            });
+          }
+        } catch (e) {}
+      };
+      wsRef.current = ws;
+    } catch(e) {
+      console.error(e);
+      setChatMessages([{ sender: 'system', text: 'ERROR CONNECTING TO CHAT' }]);
+    }
   };
 
-  const handleSendChat = (e: React.FormEvent) => {
+  const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim()) return;
-    
-    setChatMessages(prev => [...prev, { sender: 'brand', text: chatInput }]);
+    if (!chatInput.trim() || !activeChat) return;
+    const input = chatInput;
     setChatInput('');
+    
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: input, sender_type: 'brand' })
+      });
+    } catch(e) {
+      console.error(e);
+    }
   };
 
   const handleLockDeal = (e: React.FormEvent) => {
@@ -352,17 +478,23 @@ export const WorkspaceInfluencer: React.FC = () => {
               </div>
             </div>
 
-            {/* Top Review */}
+            {/* Top Reviews */}
             <div>
-              <h4 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>LATEST REVIEW</h4>
-              <div style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', gap: '4px', color: 'var(--warning)', marginBottom: '8px' }}>
-                  <Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" />
-                </div>
-                <p style={{ fontSize: '13px', color: '#fff', lineHeight: 1.5, margin: 0 }}>
-                  "{viewProfile.name.split(' ')[0]} was amazing to work with! Delivered the UGC video 2 days early and it converted at 3.5x ROAS immediately. Highly recommended."
-                </p>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>- Marketing Director, {viewProfile.recentWorks[0] || 'Tech Corp'}</div>
+              <h4 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>LATEST REVIEWS</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {(viewProfile.topComments || [
+                  { author: `Marketing Director, ${viewProfile.recentWorks[0] || 'Tech Corp'}`, text: `"${viewProfile.name.split(' ')[0]} was amazing to work with! Delivered the UGC video 2 days early and it converted at 3.5x ROAS immediately. Highly recommended."` }
+                ]).map((comment, idx) => (
+                  <div key={idx} style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', gap: '4px', color: 'var(--warning)', marginBottom: '8px' }}>
+                      <Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" />
+                    </div>
+                    <p style={{ fontSize: '13px', color: '#fff', lineHeight: 1.5, margin: 0 }}>
+                      {comment.text}
+                    </p>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>- {comment.author}</div>
+                  </div>
+                ))}
               </div>
             </div>
 

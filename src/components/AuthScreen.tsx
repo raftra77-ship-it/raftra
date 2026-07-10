@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Sparkles, ArrowRight, Lock } from 'lucide-react';
 
 interface AuthScreenProps {
-  onLoginComplete: (hasWorkspace: boolean) => void;
+  onLoginComplete: (hasWorkspace: boolean, isCreator?: boolean) => void;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
@@ -11,6 +11,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [isCreator, setIsCreator] = useState(false);
+
+  React.useEffect(() => {
+    const onboardUsername = localStorage.getItem('onboard_username');
+    if (onboardUsername) {
+      setUsername(onboardUsername);
+      setIsCreator(true);
+      setIsSignUp(true);
+      localStorage.removeItem('onboard_username');
+    }
+  }, []);
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,15 +40,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         const res = await fetch('http://localhost:8005/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, first_name: first, last_name: last })
+          body: JSON.stringify({ email, password, username, first_name: first, last_name: last, role: isCreator ? 'creator' : 'brand' })
         });
-        if (!res.ok) throw new Error("Signup failed");
+        if (!res.ok) {
+          const data = await res.json();
+          if (data.detail && data.detail.includes("already registered")) {
+            throw new Error("Email already registered. Please click 'Sign in' below.");
+          }
+          throw new Error(data.detail || "Signup failed");
+        }
       }
 
       const res = await fetch('http://localhost:8005/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ identifier: email, password })
       });
       if (!res.ok) throw new Error("Invalid credentials");
       const data = await res.json();
@@ -53,7 +71,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         }
       } catch (e) {}
 
-      onLoginComplete(hasWorkspace);
+      onLoginComplete(hasWorkspace, data.role === 'creator');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -87,29 +105,60 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
           {error && <p style={{ color: 'var(--accent)', fontSize: '13px', marginTop: '12px' }}>{error}</p>}
         </div>
 
+        {/* Brand vs Creator Toggle */}
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '24px' }}>
+          <button 
+            type="button"
+            onClick={() => setIsCreator(false)}
+            style={{ flex: 1, padding: '8px', border: 'none', background: !isCreator ? 'rgba(90,82,255,0.2)' : 'transparent', color: !isCreator ? '#fff' : 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: !isCreator ? 600 : 400, transition: 'all 0.2s' }}>
+            Brand / Agency
+          </button>
+          <button 
+            type="button"
+            onClick={() => setIsCreator(true)}
+            style={{ flex: 1, padding: '8px', border: 'none', background: isCreator ? 'rgba(90,82,255,0.2)' : 'transparent', color: isCreator ? '#fff' : 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: isCreator ? 600 : 400, transition: 'all 0.2s' }}>
+            Creator
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {isSignUp && (
-            <div className="form-group">
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>Full Name</label>
-              <input 
-                type="text" 
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={{ width: '100%', padding: '14px 16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', outline: 'none', transition: 'border-color 0.2s' }}
-                placeholder="John Doe"
-              />
-            </div>
+            <>
+              <div className="form-group">
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>Username</label>
+                <input 
+                  type="text" 
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  style={{ width: '100%', padding: '14px 16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', outline: 'none', transition: 'border-color 0.2s' }}
+                  placeholder="your_handle"
+                />
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>Full Name</label>
+                <input 
+                  type="text" 
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  style={{ width: '100%', padding: '14px 16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', outline: 'none', transition: 'border-color 0.2s' }}
+                  placeholder="John Doe"
+                />
+              </div>
+            </>
           )}
           <div className="form-group">
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>Email Address</label>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>
+              {isSignUp ? 'Email Address' : 'Email or Username'}
+            </label>
             <input 
-              type="email" 
+              type={isSignUp ? "email" : "text"}
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ width: '100%', padding: '14px 16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', outline: 'none', transition: 'border-color 0.2s' }}
-              placeholder="you@company.com"
+              placeholder={isSignUp ? "you@company.com" : "you@company.com or username"}
             />
           </div>
           <div className="form-group">

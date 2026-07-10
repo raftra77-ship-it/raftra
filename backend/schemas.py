@@ -3,22 +3,26 @@ from typing import Optional, List, Any
 from datetime import datetime
 
 class UserCreate(BaseModel):
+    username: str
     first_name: str
     last_name: str
     email: EmailStr
     password: str
+    role: Optional[str] = "brand"
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    identifier: str
     password: str
 
 class UserResponse(BaseModel):
     id: int
+    username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: EmailStr
     is_active: bool
     payment_status: str
+    role: str
 
     class Config:
         from_attributes = True
@@ -26,6 +30,7 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    role: Optional[str] = None
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -152,6 +157,17 @@ class InfluencerResponse(BaseModel):
     success_rate: int
     niche: str
     status: str
+    reel_link_1: Optional[str] = None
+    reel_link_2: Optional[str] = None
+    custom_review: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class InfluencerProfileUpdate(BaseModel):
+    reel_link_1: Optional[str] = None
+    reel_link_2: Optional[str] = None
+    custom_review: Optional[str] = None
 
     class Config:
         from_attributes = True

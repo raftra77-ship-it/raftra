@@ -7,11 +7,13 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=True)
     email = Column(String, unique=True, index=True)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
+    role = Column(String, default="brand") # 'brand', 'creator'
     
     # Subscriptions / Payments
     payment_status = Column(String, default="pending")  # pending, paid, cancelled
@@ -87,10 +89,7 @@ class Campaign(Base):
     __tablename__ = "campaigns"
 
     id = Column(Integer, primary_key=True, index=True)
-    platform = Column(String)  # META, GOOGLE
-    name = Column(String)
-    objective = Column(String)
-    budget = Column(Float)
+    platform = Column(String)
     status = Column(String)  # DRAFT, PENDING_REVIEW, ACTIVE, PAUSED
     roas = Column(Float, default=0.0)
     metrics = Column(JSON, nullable=True)
@@ -150,8 +149,13 @@ class Influencer(Base):
     success_rate = Column(Integer)
     niche = Column(String)
     status = Column(String, default="available")  # available, proposed, collaborating
+    
+    reel_link_1 = Column(String, nullable=True)
+    reel_link_2 = Column(String, nullable=True)
+    custom_review = Column(String, nullable=True)
 
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     workspace = relationship("Workspace", back_populates="influencers")
 
 class AgentTask(Base):
@@ -165,3 +169,17 @@ class AgentTask(Base):
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     workspace = relationship("Workspace", back_populates="agent_tasks")
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sender_type = Column(String)  # 'brand', 'influencer', 'system'
+    content = Column(String)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"))
+    influencer_id = Column(Integer, ForeignKey("influencers.id"))
+    
+    workspace = relationship("Workspace")
+    influencer = relationship("Influencer")

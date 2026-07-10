@@ -10,6 +10,11 @@ def get_workspaces(db: Session = Depends(database.get_db), current_user: models.
     workspaces = db.query(models.Workspace).filter(models.Workspace.user_id == current_user.id).all()
     return workspaces
 
+@router.get("/discover")
+def discover_brands(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    workspaces = db.query(models.Workspace).all()
+    return [{"id": w.id, "name": w.name} for w in workspaces]
+
 @router.post("", response_model=schemas.WorkspaceResponse)
 def create_workspace(ws: schemas.WorkspaceCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     new_ws = models.Workspace(
@@ -132,8 +137,119 @@ def get_influencers(workspace_id: int, db: Session = Depends(database.get_db), c
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
-    influencers = db.query(models.Influencer).filter(models.Influencer.workspace_id == workspace_id).all()
+    # For marketplace, return all influencers globally so brands can discover them
+    influencers = db.query(models.Influencer).all()
     return influencers
+
+@router.get("/{workspace_id}/influencers/{influencer_id}/chat")
+def get_chat_history(workspace_id: int, influencer_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+    messages = db.query(models.ChatMessage).filter(models.ChatMessage.workspace_id == workspace_id, models.ChatMessage.influencer_id == influencer_id).order_by(models.ChatMessage.created_at.asc()).all()
+    return messages
+
+from pydantic import BaseModel
+class ChatMessageCreate(BaseModel):
+    content: str
+    sender_type: str
+
+@router.post("/{workspace_id}/influencers/{influencer_id}/chat")
+async def send_chat_message(workspace_id: int, influencer_id: int, msg: ChatMessageCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+    
+    new_msg = models.ChatMessage(
+        workspace_id=workspace_id,
+        influencer_id=influencer_id,
+        sender_type=msg.sender_type,
+        content=msg.content
+    )
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
+    
+    from core.websocket import manager
+    await manager.broadcast_chat_message({
+        "workspace_id": workspace_id,
+        "workspace_name": ws.name,
+        "influencer_id": influencer_id,
+        "sender_type": new_msg.sender_type,
+        "content": new_msg.content,
+        "created_at": new_msg.created_at.isoformat()
+    })
+    return new_msg
+
+@router.get("/influencer/me", response_model=schemas.InfluencerResponse)
+def get_my_influencer(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
+    if not inf:
+        raise HTTPException(status_code=404, detail="Influencer profile not found")
+    return inf
+
+@router.post("/influencer/me/profile", response_model=schemas.InfluencerResponse)
+def update_my_influencer_profile(data: schemas.InfluencerProfileUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
+    if not inf:
+        raise HTTPException(status_code=404, detail="Influencer profile not found")
+    
+    if data.reel_link_1 is not None:
+        inf.reel_link_1 = data.reel_link_1
+    if data.reel_link_2 is not None:
+        inf.reel_link_2 = data.reel_link_2
+    if data.custom_review is not None:
+        inf.custom_review = data.custom_review
+        
+    db.commit()
+    db.refresh(inf)
+    return inf
+
+@router.get("/influencer/me/chats")
+def get_my_chats(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
+    if not inf:
+        return []
+    messages = db.query(models.ChatMessage).filter(models.ChatMessage.influencer_id == inf.id).order_by(models.ChatMessage.created_at.asc()).all()
+    return [{
+        "id": msg.id,
+        "workspace_id": msg.workspace_id,
+        "workspace_name": msg.workspace.name if msg.workspace else "Brand",
+        "influencer_id": msg.influencer_id,
+        "sender_type": msg.sender_type,
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat()
+    } for msg in messages]
+
+@router.post("/influencer/me/chats/{workspace_id}")
+async def send_my_chat(workspace_id: int, msg: ChatMessageCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
+    if not inf:
+        raise HTTPException(status_code=404, detail="Influencer profile not found")
+    
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+    ws_name = ws.name if ws else "Brand"
+
+    new_msg = models.ChatMessage(
+        workspace_id=workspace_id,
+        influencer_id=inf.id,
+        sender_type="influencer",
+        content=msg.content
+    )
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
+    
+    from core.websocket import manager
+    await manager.broadcast_chat_message({
+        "workspace_id": workspace_id,
+        "workspace_name": ws_name,
+        "influencer_id": inf.id,
+        "sender_type": new_msg.sender_type,
+        "content": new_msg.content,
+        "created_at": new_msg.created_at.isoformat()
+    })
+    return new_msg
 
 # Metrics endpoint
 @router.get("/{workspace_id}/metrics")

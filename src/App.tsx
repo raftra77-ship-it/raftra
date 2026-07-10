@@ -17,6 +17,7 @@ import type { ChatMessage } from './components/workspaces/WorkspaceAnalytics';
 import { WorkspaceSocial } from './components/workspaces/WorkspaceSocial';
 import type { SocialPostItem } from './components/workspaces/WorkspaceSocial';
 import { WorkspaceInfluencer } from './components/workspaces/WorkspaceInfluencer';
+import { CreatorPortal } from './components/CreatorPortal';
 import { GlowButton } from './components/GlowButton';
 import './App.css';
 
@@ -73,9 +74,11 @@ interface BlogDraft {
   status: 'pending_review' | 'published';
 }
 
+type AppState = 'landing' | 'login' | 'pricing' | 'onboarding' | 'dashboard' | 'creator_portal';
+
 function App() {
-  // App views: 'landing' | 'login' | 'pricing' | 'onboarding' | 'dashboard'
-  const [appState, setAppState] = useState<'landing' | 'login' | 'pricing' | 'onboarding' | 'dashboard'>(() => {
+  // App views
+  const [appState, setAppState] = useState<AppState>(() => {
     if (window.location.pathname.startsWith('/dashboard')) return 'dashboard';
     if (window.location.pathname.startsWith('/onboarding')) return 'onboarding';
     if (window.location.pathname.startsWith('/pricing')) return 'pricing';
@@ -700,7 +703,7 @@ function App() {
     }
   };
 
-  const handleTopUpShortcut = () => {
+  const handleTopUpShortcut = (amountUSD: number) => {
     const token = localStorage.getItem('token');
     if (!token) {
       alert('Please log in first to use top-up.');
@@ -714,7 +717,7 @@ function App() {
     fetch('http://localhost:8005/api/auth/billing/topup', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ amount: 100.0 })
+      body: JSON.stringify({ amount: amountUSD })
     })
       .then(res => {
         if (res.status === 401) {
@@ -728,18 +731,24 @@ function App() {
       .then(data => {
         if (data.balance !== undefined) {
           setBillingBalance(data.balance);
-          alert("Top-up successful! Active Credits: $" + data.balance);
+          const curr = localStorage.getItem('currency') || 'USD';
+          alert(`Top-up successful! Active Credits: ${curr === 'USD' ? '$' + data.balance : '₹' + Math.round(data.balance * 83).toLocaleString()}`);
         }
       })
       .catch(err => console.error(err));
   };
 
-  const renderLockOverlay = (nodeName: string, price: number) => {
+  const renderLockOverlay = (nodeName: string, priceUSD: number) => {
     const isUnlocked = unlockedNodes.includes(nodeName);
     if (isUnlocked) return null;
 
+    const currency = localStorage.getItem('currency') || 'USD';
+    const priceDisplay = currency === 'USD' ? `$${priceUSD}` : `₹${(priceUSD * 83).toLocaleString()}`;
+    const balanceDisplay = currency === 'USD' ? `$${billingBalance}` : `₹${(billingBalance * 83).toLocaleString()}`;
+    const topUpAmount = currency === 'USD' ? '$100' : '₹8,300';
+
     const handleUnlock = () => {
-      if (billingBalance < price) {
+      if (billingBalance < priceUSD) {
         alert("Insufficient balance. Please top up your billing account first.");
         return;
       }
@@ -758,7 +767,7 @@ function App() {
       fetch('http://localhost:8005/api/auth/billing/unlock-node', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ node_name: nodeName, price })
+        body: JSON.stringify({ node_name: nodeName, price: priceUSD })
       })
         .then(res => {
           if (!res.ok) throw new Error("Unlock failed");
@@ -801,16 +810,30 @@ function App() {
             </p>
           </div>
           <div style={{ fontSize: '32px', fontWeight: 800, color: '#fff' }}>
-            ${price}<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
+            {priceDisplay}<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
           </div>
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <GlowButton variant="glow" onClick={handleUnlock} style={{ width: '100%' }}>
-              Unlock with Balance (Active: ${billingBalance})
+              Unlock with Balance (Active: {balanceDisplay})
             </GlowButton>
-            {billingBalance < price && (
-              <GlowButton variant="secondary" onClick={handleTopUpShortcut} style={{ width: '100%' }}>
-                Top Up $100 Credits
-              </GlowButton>
+            {billingBalance < priceUSD && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Quick Top Up:</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(currency === 'USD' ? 1 : 100/83)} style={{ width: '100%', fontSize: '12px', padding: '6px' }}>
+                    {currency === 'USD' ? '$1' : '₹100'}
+                  </GlowButton>
+                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(currency === 'USD' ? 5 : 500/83)} style={{ width: '100%', fontSize: '12px', padding: '6px' }}>
+                    {currency === 'USD' ? '$5' : '₹500'}
+                  </GlowButton>
+                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(currency === 'USD' ? 10 : 1000/83)} style={{ width: '100%', fontSize: '12px', padding: '6px' }}>
+                    {currency === 'USD' ? '$10' : '₹1000'}
+                  </GlowButton>
+                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(currency === 'USD' ? 50 : 5000/83)} style={{ width: '100%', fontSize: '12px', padding: '6px' }}>
+                    {currency === 'USD' ? '$50' : '₹5000'}
+                  </GlowButton>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -1066,14 +1089,25 @@ function App() {
   }
 
   if (appState === 'login') {
-    return <AuthScreen onLoginComplete={(hasWorkspace) => {
-      if (hasWorkspace) {
+    return <AuthScreen onLoginComplete={(hasWorkspace, isCreator) => {
+      if (isCreator) {
+        setAppState('creator_portal');
+        window.history.pushState({}, '', '/creator-portal');
+      } else if (hasWorkspace) {
         setAppState('dashboard');
         window.history.pushState({}, '', '/dashboard');
       } else {
         setAppState('pricing');
         window.history.pushState({}, '', '/pricing');
       }
+    }} />;
+  }
+
+  if (appState === 'creator_portal') {
+    return <CreatorPortal onLogout={() => {
+      localStorage.removeItem('token');
+      setAppState('landing');
+      window.history.pushState({}, '', '/');
     }} />;
   }
 
@@ -1586,7 +1620,7 @@ function App() {
 
           {activeTab === 'social' && (
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
-              {renderLockOverlay('social', 69)}
+
               <WorkspaceSocial
                 posts={socialPosts}
                 onOpenReview={handleOpenReview}
@@ -1595,10 +1629,10 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'influencer' && (
+          {activeTab === 'influencer' && workspaceId && (
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
-              
-              <WorkspaceInfluencer />
+
+              <WorkspaceInfluencer workspaceId={workspaceId} />
             </div>
           )}
 

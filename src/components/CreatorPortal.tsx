@@ -1,0 +1,383 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { GlowButton } from './GlowButton';
+
+interface CreatorPortalProps {
+  onLogout: () => void;
+}
+
+export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inbox' | 'settings'>('dashboard');
+  const [chatMessages, setChatMessages] = useState<{sender: string, text: string}[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const wsRef = useRef<WebSocket | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [myInfluencerId, setMyInfluencerId] = useState<number | null>(null);
+  const [me, setMe] = useState<any>(null);
+  const [chatWorkspaceId, setChatWorkspaceId] = useState<number>(1);
+  const [profileForm, setProfileForm] = useState({ reel_link_1: '', reel_link_2: '', custom_review: '' });
+  const [allBrands, setAllBrands] = useState<{id: number, name: string}[]>([]);
+  const [showDiscover, setShowDiscover] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('http://localhost:8005/api/auth/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(r => r.json()).then(data => {
+      setMe(data);
+    });
+    fetch('http://localhost:8005/api/workspaces/influencer/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(r => r.json()).then(data => {
+      if(data && data.id) {
+        setMyInfluencerId(data.id);
+        setProfileForm({
+          reel_link_1: data.reel_link_1 || '',
+          reel_link_2: data.reel_link_2 || '',
+          custom_review: data.custom_review || ''
+        });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (activeTab === 'inbox' && myInfluencerId) {
+      const token = localStorage.getItem('token');
+      
+      fetch(`http://localhost:8005/api/workspaces/influencer/me/chats`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(res => res.json()).then(data => {
+        if (Array.isArray(data)) {
+          setChatMessages(data);
+          if (data.length > 0 && chatWorkspaceId === 1) {
+            setChatWorkspaceId(data[data.length - 1].workspace_id);
+          }
+        }
+      }).catch(console.error);
+
+      fetch(`http://localhost:8005/api/workspaces/discover`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(res => res.json()).then(data => {
+        if (Array.isArray(data)) setAllBrands(data);
+      }).catch(console.error);
+
+      const ws = new WebSocket('ws://localhost:8005/ws');
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'chat_message' && Number(data.message.influencer_id) === myInfluencerId) {
+            setChatMessages(prev => [...prev, data.message]);
+            if (chatWorkspaceId === 1 && data.message.workspace_id) {
+              setChatWorkspaceId(data.message.workspace_id);
+            }
+          }
+        } catch (e) {}
+      };
+      wsRef.current = ws;
+
+      return () => {
+        if (wsRef.current) wsRef.current.close();
+      };
+    }
+  }, [activeTab, myInfluencerId]);
+
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !myInfluencerId) return;
+    const input = chatInput;
+    setChatInput('');
+    
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`http://localhost:8005/api/workspaces/influencer/me/chats/${chatWorkspaceId}`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: input, sender_type: 'influencer' }) 
+      });
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    try {
+      await fetch('http://localhost:8005/api/workspaces/influencer/me/profile', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileForm)
+      });
+      alert('Profile updated successfully!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to update profile');
+    }
+  };
+
+  const groupedChats = chatMessages.reduce((acc, msg) => {
+    const wid = msg.workspace_id;
+    if (!acc[wid]) {
+      acc[wid] = { name: msg.workspace_name || 'Brand', messages: [] };
+    }
+    acc[wid].messages.push(msg);
+    return acc;
+  }, {} as Record<number, { name: string, messages: any[] }>);
+  
+  const activeChats = Object.keys(groupedChats).map(k => ({ id: Number(k), ...groupedChats[Number(k)] }));
+  const currentChatMessages = groupedChats[chatWorkspaceId]?.messages || [];
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: '#fff', display: 'flex', fontFamily: 'var(--font-sans)' }}>
+      {/* Sidebar */}
+      <div style={{ width: '250px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '48px' }}>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #5A52FF 0%, #B252FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+            C
+          </div>
+          <span style={{ fontSize: '18px', fontWeight: 600, fontFamily: 'var(--font-heading)' }}>Creator Portal</span>
+        </div>
+
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'inbox', label: 'Inbox', icon: MessageCircle },
+            { id: 'settings', label: 'Settings', icon: Settings },
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '8px',
+                background: activeTab === item.id ? 'rgba(90,82,255,0.1)' : 'transparent',
+                color: activeTab === item.id ? 'var(--primary)' : 'var(--text-secondary)',
+                border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: activeTab === item.id ? 600 : 400,
+                textAlign: 'left'
+              }}
+            >
+              <item.icon size={18} /> {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <button onClick={onLogout} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }}>
+          Log Out
+        </button>
+      </div>
+
+      {/* Main Content */}
+      <div style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
+        {activeTab === 'dashboard' && (
+          <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+            <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', marginBottom: '24px' }}>Welcome back{me?.first_name ? `, ${me.first_name}` : ''}!</h1>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', marginBottom: '40px' }}>
+              <div className="glow-card" style={{ padding: '24px' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>Total Escrowed Funds</div>
+                <div style={{ fontSize: '32px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <DollarSign color="var(--success)" size={28}/> 1,250.00
+                </div>
+              </div>
+              <div className="glow-card" style={{ padding: '24px' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>Active Deals</div>
+                <div style={{ fontSize: '32px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle2 color="var(--primary)" size={28}/> 3
+                </div>
+              </div>
+              <div className="glow-card" style={{ padding: '24px' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>Profile Views (30d)</div>
+                <div style={{ fontSize: '32px', fontWeight: 700 }}>842</div>
+              </div>
+            </div>
+
+            <div className="glow-card" style={{ padding: '24px' }}>
+              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>Recent Deal Requests</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>Raftra AI Demo Brand</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>UGC Video • Requested 2 hours ago</div>
+                </div>
+                <GlowButton variant="glow" onClick={() => setActiveTab('inbox')}>View Message</GlowButton>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'inbox' && (
+          <div style={{ maxWidth: '1000px', margin: '0 auto', height: 'calc(100vh - 80px)', display: 'flex', gap: '20px', padding: '20px' }}>
+            {/* Left Pane - Chat List */}
+            <div style={{ width: '300px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 600 }}>Active Messages</div>
+                <button 
+                  onClick={() => setShowDiscover(true)} 
+                  style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }}>
+                  + New
+                </button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {activeChats.length === 0 ? (
+                  <div style={{ padding: '20px', color: 'var(--text-secondary)', fontSize: '14px', textAlign: 'center' }}>No messages yet. Click "+ New" to find brands!</div>
+                ) : (
+                  activeChats.map(chat => (
+                    <div 
+                      key={chat.id} 
+                      onClick={() => { setChatWorkspaceId(chat.id); setShowDiscover(false); }}
+                      style={{ 
+                        padding: '16px 20px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid var(--border)',
+                        background: chatWorkspaceId === chat.id && !showDiscover ? 'rgba(255,255,255,0.05)' : 'transparent'
+                      }}
+                    >
+                      <div style={{ fontWeight: 500 }}>{chat.name}</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {chat.messages[chat.messages.length - 1].content}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Right Pane - Chat Window or Discover */}
+            <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {showDiscover ? (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <div style={{ padding: '20px', borderBottom: '1px solid var(--border)' }}>
+                    <h2 style={{ fontSize: '18px', margin: 0 }}>Discover Brands</h2>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Select a brand to initiate a conversation.</p>
+                  </div>
+                  <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {allBrands.length === 0 && <div style={{ color: 'var(--text-secondary)' }}>No brands found.</div>}
+                    {allBrands.map(brand => (
+                      <div key={brand.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                        <div style={{ fontWeight: 600 }}>{brand.name}</div>
+                        <GlowButton variant="glow" onClick={() => { setChatWorkspaceId(brand.id); setShowDiscover(false); }}>Message</GlowButton>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : activeChats.length === 0 && chatWorkspaceId === 1 && groupedChats[1] === undefined ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                  Select a conversation to start chatting
+                </div>
+              ) : (
+                <>
+                  <div style={{ padding: '20px', borderBottom: '1px solid var(--border)' }}>
+                    <h2 style={{ fontSize: '18px', margin: 0 }}>Conversation with {groupedChats[chatWorkspaceId]?.name || 'Brand'}</h2>
+                  </div>
+                  
+                  <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {currentChatMessages.map((msg, i) => {
+                      if (msg.sender_type === 'system') {
+                        return (
+                          <div key={i} style={{ textAlign: 'center', margin: '8px 0' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: '12px' }}>
+                              {msg.content}
+                            </span>
+                          </div>
+                        );
+                      }
+                      const isMe = msg.sender_type === 'influencer';
+                      return (
+                        <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
+                            {isMe ? 'You' : (groupedChats[chatWorkspaceId]?.name || 'Brand')}
+                          </div>
+                          <div style={{ 
+                            background: isMe ? 'rgba(90, 82, 255, 0.15)' : 'rgba(255,255,255,0.05)', 
+                            border: '1px solid', borderColor: isMe ? 'rgba(90, 82, 255, 0.3)' : 'var(--border)',
+                            padding: '12px 16px', 
+                            borderRadius: isMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
+                            fontSize: '14px', lineHeight: 1.5
+                          }}>
+                            {msg.content}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  <div style={{ padding: '20px', borderTop: '1px solid var(--border)' }}>
+                    <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '12px' }}>
+                      <input
+                        type="text"
+                        placeholder="Reply to the brand..."
+                        value={chatInput}
+                        onChange={e => setChatInput(e.target.value)}
+                        style={{ flex: 1, padding: '14px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', outline: 'none' }}
+                      />
+                      <GlowButton variant="glow" type="submit" style={{ padding: '0 24px' }}>
+                        <Send size={18} />
+                      </GlowButton>
+                    </form>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', marginBottom: '32px' }}>Profile & Payout Settings</h1>
+            
+            <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '18px', marginBottom: '24px' }}>Payout Methods</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+                <div style={{ width: '48px', height: '48px', background: '#635BFF', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DollarSign color="#fff" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: '16px', marginBottom: '4px' }}>Stripe Connect</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Receive 90% payouts securely to your bank account.</div>
+                </div>
+                <button style={{ padding: '10px 20px', background: '#fff', color: '#000', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+                  Connect Stripe
+                </button>
+              </div>
+            </div>
+
+            <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '18px', marginBottom: '24px' }}>Edit Public Portfolio</h3>
+              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="form-group">
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Reel Link 1</label>
+                  <input type="text" placeholder="https://instagram.com/reel/..." value={profileForm.reel_link_1} onChange={e => setProfileForm({...profileForm, reel_link_1: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%' }} />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Reel Link 2</label>
+                  <input type="text" placeholder="https://instagram.com/reel/..." value={profileForm.reel_link_2} onChange={e => setProfileForm({...profileForm, reel_link_2: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%' }} />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Custom Highlighted Review</label>
+                  <textarea placeholder="e.g. They were amazing to work with!" value={profileForm.custom_review} onChange={e => setProfileForm({...profileForm, custom_review: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%', minHeight: '80px', fontFamily: 'inherit' }} />
+                </div>
+                <GlowButton variant="glow" type="submit" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>Save Changes</GlowButton>
+              </form>
+            </div>
+
+            <div className="glow-card" style={{ padding: '32px' }}>
+              <h3 style={{ fontSize: '18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldAlert size={18} color="var(--warning)" /> Platform Policy
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>
+                Raftra AI operates a strict 90/10 revenue split. The brand's payment is held in escrow upon deal finalization. Once you submit the deliverables, 90% of the funds are automatically routed to your Stripe account. Attempts to circumvent the platform for direct payment may result in account termination.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

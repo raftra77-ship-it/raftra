@@ -53,6 +53,16 @@ class ConnectionManager:
         }
         await self.broadcast(json.dumps(payload))
 
+    async def broadcast_chat_message(self, message: dict):
+        """
+        Broadcasts a P2P chat message to the frontend.
+        """
+        payload = {
+            "type": "chat_message",
+            "message": message
+        }
+        await self.broadcast(json.dumps(payload))
+
     async def broadcast(self, message: str):
         for connection in self.active_connections:
             try:

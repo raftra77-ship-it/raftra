@@ -117,19 +117,29 @@ const CREDIT_COSTS = [
 
 export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
+  const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'USD');
 
-  const getPrice = (basePrice: number) => {
-    if (basePrice === 0) return '₹0';
-    if (basePrice === -1) return '₹75,000+';
+  const handleCurrencyChange = (curr: 'INR' | 'USD') => {
+    setCurrency(curr);
+    localStorage.setItem('currency', curr);
+  };
 
-    let discountedPrice = basePrice;
+  const getPrice = (basePriceINR: number) => {
+    if (basePriceINR === 0) return currency === 'INR' ? '₹0' : '$0';
+    if (basePriceINR === -1) return currency === 'INR' ? '₹75,000+' : '$999+';
+
+    let discountedPriceINR = basePriceINR;
     if (billingCycle === 'quarterly') {
-      discountedPrice = Math.floor(basePrice * 0.9);
+      discountedPriceINR = Math.floor(basePriceINR * 0.9);
     } else if (billingCycle === 'yearly') {
-      discountedPrice = Math.floor(basePrice * 0.8);
+      discountedPriceINR = Math.floor(basePriceINR * 0.8);
     }
 
-    return '₹' + discountedPrice.toLocaleString('en-IN');
+    if (currency === 'USD') {
+      const priceUSD = Math.round(discountedPriceINR / 83);
+      return '$' + priceUSD.toLocaleString();
+    }
+    return '₹' + discountedPriceINR.toLocaleString('en-IN');
   };
 
   const getBillingText = () => {
@@ -158,6 +168,24 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             Stop counting tokens. Focus on how many ads, videos, and campaigns you can generate. Choose the tier that matches your ambition.
           </p>
         </motion.div>
+
+        {/* Currency Toggle */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '100px', display: 'flex', alignItems: 'center', border: '1px solid var(--border)' }}>
+            <button 
+              onClick={() => handleCurrencyChange('USD')}
+              style={{ background: currency === 'USD' ? 'var(--primary)' : 'transparent', color: currency === 'USD' ? '#fff' : 'var(--text-secondary)', border: 'none', padding: '6px 16px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+            >
+              USD ($)
+            </button>
+            <button 
+              onClick={() => handleCurrencyChange('INR')}
+              style={{ background: currency === 'INR' ? 'var(--primary)' : 'transparent', color: currency === 'INR' ? '#fff' : 'var(--text-secondary)', border: 'none', padding: '6px 16px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+            >
+              INR (₹)
+            </button>
+          </div>
+        </div>
 
         {/* Billing Toggle */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '60px' }}>

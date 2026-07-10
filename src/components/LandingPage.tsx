@@ -29,7 +29,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
   
   // Creator Portal State
   const [showCreatorPortal, setShowCreatorPortal] = useState(false);
-  const [creatorPortalState, setCreatorPortalState] = useState<'form' | 'scanning' | 'success' | 'removing' | 'removed'>('form');
+  const [creatorPortalState, setCreatorPortalState] = useState<'form' | 'scanning' | 'success' | 'removing' | 'removed' | 'error'>('form');
   const [creatorForm, setCreatorForm] = useState({ handle: '', niche: '', price: '' });
 
   const handleCreatorSubmit = (e: React.FormEvent, action: 'add' | 'remove') => {
@@ -38,9 +38,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     
     if (action === 'add') {
       setCreatorPortalState('scanning');
-      setTimeout(() => {
-        setCreatorPortalState('success');
-      }, 2500);
+      fetch(`http://localhost:8005/api/auth/verify-instagram?handle=${creatorForm.handle}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.exists) {
+            setCreatorPortalState('success');
+          } else {
+            setCreatorPortalState('error');
+          }
+        })
+        .catch(() => setCreatorPortalState('error'));
     } else {
       setCreatorPortalState('removing');
       setTimeout(() => {
@@ -581,7 +588,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                 <CheckCircle2 size={48} color="var(--success)" />
                 <h4 style={{ color: '#fff', fontSize: '16px' }}>Verification Passed!</h4>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Your profile has been listed on the Influencer Marketplace. Brands can now send you direct match requests.</p>
-                <GlowButton variant="glow" onClick={() => {setShowCreatorPortal(false); setCreatorPortalState('form');}} style={{ marginTop: '16px' }}>Done</GlowButton>
+                <GlowButton variant="glow" onClick={() => {
+                  localStorage.setItem('onboard_username', creatorForm.handle.replace('@', ''));
+                  setShowCreatorPortal(false); 
+                  setCreatorPortalState('form');
+                  onStartFree();
+                }} style={{ marginTop: '16px' }}>Sign Up to Continue</GlowButton>
+              </div>
+            )}
+
+            {creatorPortalState === 'error' && (
+              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                <ShieldAlert size={48} color="var(--warning)" />
+                <h4 style={{ color: '#fff', fontSize: '16px' }}>Verification Failed</h4>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Profile not found on Instagram. Please check your handle and try again.</p>
+                <GlowButton variant="glow" onClick={() => setCreatorPortalState('form')} style={{ marginTop: '16px' }}>Try Again</GlowButton>
               </div>
             )}
 

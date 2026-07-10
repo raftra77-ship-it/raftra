@@ -1,9 +1,13 @@
-import sys
-sys.path.append('.')
-from auth import get_password_hash, verify_password
-
-password = "password123"
-h = get_password_hash(password)
-print(f"Hash: {h}")
-v = verify_password(password, h)
-print(f"Verified: {v}")
+import requests
+try:
+    res = requests.post('http://localhost:8005/api/auth/register', json={
+        'email': 'test78@example.com',
+        'password': 'pass',
+        'first_name': 'Test',
+        'last_name': '78',
+        'role': 'creator'
+    })
+    print("Register Status:", res.status_code)
+    print("Register Response:", res.text)
+except Exception as e:
+    print(e)
