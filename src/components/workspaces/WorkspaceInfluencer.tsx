@@ -17,6 +17,7 @@ export interface InfluencerItemExtended {
   reviewsCount: number;
   recentWorks: string[];
   topComments?: { author: string, text: string }[];
+  recentPosts?: {url: string, type: string}[];
 }
 
 const INITIAL_CREATORS: InfluencerItemExtended[] = [
@@ -62,17 +63,12 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             ];
           }
 
-          if (inf.custom_review) {
-            topComments = [
-              { author: 'Verified Brand Partner', text: `"${inf.custom_review}"` }
-            ];
+          if (inf.recent_collabs && inf.recent_collabs.length > 0) {
+            recentWorks = inf.recent_collabs;
           }
 
-          if (inf.reel_link_1 || inf.reel_link_2) {
-            // We can store URLs in recentWorks or handle them in UI.
-            // For now, let's inject them as recentWorks since UI expects string array.
-            if (inf.reel_link_1) recentWorks = [inf.reel_link_1, ...recentWorks];
-            if (inf.reel_link_2) recentWorks = [inf.reel_link_2, ...recentWorks];
+          if (inf.recent_reviews && inf.recent_reviews.length > 0) {
+            topComments = inf.recent_reviews;
           }
 
           return {
@@ -90,9 +86,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             reviewsCount: 10,
             recentWorks,
             topComments,
-            reel_link_1: inf.reel_link_1,
-            reel_link_2: inf.reel_link_2,
-            custom_review: inf.custom_review
+            recentPosts: inf.recent_posts || []
           };
         }));
       } else {
@@ -466,16 +460,26 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               </div>
             </div>
 
-            {/* Recent Posts (Mock) */}
+            {/* Recent Posts */}
             <div style={{ marginBottom: '30px' }}>
               <h4 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>RECENT POSTS</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                {[1, 2, 3].map(i => (
-                  <div key={i} style={{ aspectRatio: '1', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
-                    <ImageIcon size={24} color="var(--text-muted)" />
-                  </div>
-                ))}
-              </div>
+              {viewProfile.recentPosts && viewProfile.recentPosts.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                  {viewProfile.recentPosts.map((post, i) => (
+                    <div key={i} style={{ aspectRatio: '1', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                      {post.url ? (
+                        <div style={{ width: '100%', height: '100%', padding: '8px', wordBreak: 'break-all', fontSize: '10px', color: 'var(--primary)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <a href={post.url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>View Link</a>
+                        </div>
+                      ) : (
+                        <ImageIcon size={24} color="var(--text-muted)" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '12px' }}>No recent posts uploaded.</div>
+              )}
             </div>
 
             {/* Top Reviews */}

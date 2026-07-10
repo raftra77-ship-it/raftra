@@ -16,7 +16,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const [myInfluencerId, setMyInfluencerId] = useState<number | null>(null);
   const [me, setMe] = useState<any>(null);
   const [chatWorkspaceId, setChatWorkspaceId] = useState<number>(1);
-  const [profileForm, setProfileForm] = useState({ reel_link_1: '', reel_link_2: '', custom_review: '' });
+  const [profileForm, setProfileForm] = useState({ 
+    recent_posts: [] as {url: string, type: string}[], 
+    recent_collabs: [] as string[], 
+    recent_reviews: [] as {author: string, text: string}[] 
+  });
   const [allBrands, setAllBrands] = useState<{id: number, name: string}[]>([]);
   const [showDiscover, setShowDiscover] = useState(false);
 
@@ -33,9 +37,9 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       if(data && data.id) {
         setMyInfluencerId(data.id);
         setProfileForm({
-          reel_link_1: data.reel_link_1 || '',
-          reel_link_2: data.reel_link_2 || '',
-          custom_review: data.custom_review || ''
+          recent_posts: data.recent_posts || [],
+          recent_collabs: data.recent_collabs || [],
+          recent_reviews: data.recent_reviews || []
         });
       }
     });
@@ -350,18 +354,60 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
             <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '18px', marginBottom: '24px' }}>Edit Public Portfolio</h3>
-              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div className="form-group">
-                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Reel Link 1</label>
-                  <input type="text" placeholder="https://instagram.com/reel/..." value={profileForm.reel_link_1} onChange={e => setProfileForm({...profileForm, reel_link_1: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%' }} />
+              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Recent Posts</label>
+                    <button type="button" onClick={() => setProfileForm({...profileForm, recent_posts: [...profileForm.recent_posts, {url: '', type: 'link'}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Post</button>
+                  </div>
+                  {profileForm.recent_posts.map((post, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                      <input type="text" placeholder="Image/Reel URL" value={post.url} onChange={e => {
+                        const newPosts = [...profileForm.recent_posts];
+                        newPosts[idx].url = e.target.value;
+                        setProfileForm({...profileForm, recent_posts: newPosts});
+                      }} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
+                      <button type="button" onClick={() => {
+                        const newPosts = [...profileForm.recent_posts];
+                        newPosts.splice(idx, 1);
+                        setProfileForm({...profileForm, recent_posts: newPosts});
+                      }} style={{ padding: '0 12px', background: 'rgba(255,0,0,0.1)', color: '#ff4444', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>✕</button>
+                    </div>
+                  ))}
                 </div>
-                <div className="form-group">
-                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Reel Link 2</label>
-                  <input type="text" placeholder="https://instagram.com/reel/..." value={profileForm.reel_link_2} onChange={e => setProfileForm({...profileForm, reel_link_2: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%' }} />
+
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Recent Brand Collaborations (Comma separated)</label>
+                  <input type="text" placeholder="e.g. Nike, Zara, Gymshark" value={profileForm.recent_collabs.join(', ')} onChange={e => {
+                    const val = e.target.value;
+                    setProfileForm({...profileForm, recent_collabs: val.split(',').map(s => s.trim()).filter(Boolean)});
+                  }} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
                 </div>
-                <div className="form-group">
-                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Custom Highlighted Review</label>
-                  <textarea placeholder="e.g. They were amazing to work with!" value={profileForm.custom_review} onChange={e => setProfileForm({...profileForm, custom_review: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%', minHeight: '80px', fontFamily: 'inherit' }} />
+
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Top Reviews</label>
+                    <button type="button" onClick={() => setProfileForm({...profileForm, recent_reviews: [...profileForm.recent_reviews, {author: '', text: ''}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Review</button>
+                  </div>
+                  {profileForm.recent_reviews.map((rev, idx) => (
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px', padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '8px', position: 'relative' }}>
+                      <button type="button" onClick={() => {
+                        const newRevs = [...profileForm.recent_reviews];
+                        newRevs.splice(idx, 1);
+                        setProfileForm({...profileForm, recent_reviews: newRevs});
+                      }} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer' }}>✕</button>
+                      <input type="text" placeholder="Author (e.g. Marketing Director, Nike)" value={rev.author} onChange={e => {
+                        const newRevs = [...profileForm.recent_reviews];
+                        newRevs[idx].author = e.target.value;
+                        setProfileForm({...profileForm, recent_reviews: newRevs});
+                      }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '90%' }} />
+                      <textarea placeholder="Review text" value={rev.text} onChange={e => {
+                        const newRevs = [...profileForm.recent_reviews];
+                        newRevs[idx].text = e.target.value;
+                        setProfileForm({...profileForm, recent_reviews: newRevs});
+                      }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%', minHeight: '60px', fontFamily: 'inherit' }} />
+                    </div>
+                  ))}
                 </div>
                 <GlowButton variant="glow" type="submit" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>Save Changes</GlowButton>
               </form>

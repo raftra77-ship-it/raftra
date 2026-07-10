@@ -105,9 +105,8 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_d
             fit_score=95,
             success_rate=98,
             niche="Lifestyle & Tech",
-            reel_link_1=reel_1,
-            reel_link_2=reel_2,
-            custom_review=custom_review
+            recent_posts=[{"url": reel_1, "type": "link"}, {"url": reel_2, "type": "link"}],
+            recent_reviews=[{"author": "Verified Brand", "text": custom_review}] if custom_review else []
         )
         db.add(new_influencer)
         db.commit()

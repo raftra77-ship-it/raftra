@@ -213,12 +213,12 @@ def update_my_influencer_profile(data: schemas.InfluencerProfileUpdate, db: Sess
     if not inf:
         raise HTTPException(status_code=404, detail="Influencer profile not found")
     
-    if data.reel_link_1 is not None:
-        inf.reel_link_1 = data.reel_link_1
-    if data.reel_link_2 is not None:
-        inf.reel_link_2 = data.reel_link_2
-    if data.custom_review is not None:
-        inf.custom_review = data.custom_review
+    if data.recent_posts is not None:
+        inf.recent_posts = data.recent_posts
+    if data.recent_collabs is not None:
+        inf.recent_collabs = data.recent_collabs
+    if data.recent_reviews is not None:
+        inf.recent_reviews = data.recent_reviews
         
     db.commit()
     db.refresh(inf)

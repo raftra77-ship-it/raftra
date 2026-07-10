@@ -157,17 +157,17 @@ class InfluencerResponse(BaseModel):
     success_rate: int
     niche: str
     status: str
-    reel_link_1: Optional[str] = None
-    reel_link_2: Optional[str] = None
-    custom_review: Optional[str] = None
+    recent_posts: Optional[Any] = None
+    recent_collabs: Optional[Any] = None
+    recent_reviews: Optional[Any] = None
 
     class Config:
         from_attributes = True
 
 class InfluencerProfileUpdate(BaseModel):
-    reel_link_1: Optional[str] = None
-    reel_link_2: Optional[str] = None
-    custom_review: Optional[str] = None
+    recent_posts: Optional[Any] = None
+    recent_collabs: Optional[Any] = None
+    recent_reviews: Optional[Any] = None
 
     class Config:
         from_attributes = True

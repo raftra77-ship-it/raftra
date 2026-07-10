@@ -150,9 +150,9 @@ class Influencer(Base):
     niche = Column(String)
     status = Column(String, default="available")  # available, proposed, collaborating
     
-    reel_link_1 = Column(String, nullable=True)
-    reel_link_2 = Column(String, nullable=True)
-    custom_review = Column(String, nullable=True)
+    recent_posts = Column(JSON, nullable=True) # list of {url, type}
+    recent_collabs = Column(JSON, nullable=True) # list of brand names
+    recent_reviews = Column(JSON, nullable=True) # list of {author, text}
 
     user_id = Column(Integer, ForeignKey("users.id"))
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
