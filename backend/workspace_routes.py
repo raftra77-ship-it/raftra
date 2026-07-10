@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
 import database, models, schemas, auth
+import os
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
@@ -97,6 +98,24 @@ def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session =
     db.commit()
     db.refresh(new_asset)
     return new_asset
+
+@router.post("/{workspace_id}/upload")
+async def upload_asset(workspace_id: int, file: UploadFile = File(...), db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+    
+    # In production, upload to S3/GCS. For now, we simulate an upload by saving it locally in a temp dir or just returning success.
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file.filename)
+    
+    with open(file_path, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+        
+    # Return a simulated public URL (could be local static route in real app)
+    return {"status": "success", "url": f"/uploads/{file.filename}", "filename": file.filename}
 
 @router.delete("/{workspace_id}/creatives/{asset_id}")
 def delete_creative(workspace_id: int, asset_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):

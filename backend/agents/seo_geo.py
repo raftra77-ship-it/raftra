@@ -1,7 +1,9 @@
 import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
+import os
 from core.websocket import manager
+from core.providers.llm_providers import GeminiProvider
 
 class SEOState(TypedDict):
     workspace_id: int
@@ -82,42 +84,30 @@ async def backlink_agent_node(state: SEOState) -> SEOState:
 
 async def schema_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "Schema Agent"
-    msg = "Generating precise JSON-LD Schema markup (Article, FAQ, Breadcrumb, Author)..."
+    msg = "Generating comprehensive SEO & AEO Strategy Report using LLM..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Schema Agent", "running")
-    await asyncio.sleep(1.5)
-    await manager.broadcast_node_update("seo_geo", "Schema Agent", "completed")
+    
+    try:
+        with open("prompts/seo-specialist.md", "r", encoding="utf-8") as f:
+            system_prompt = f.read()
+    except Exception:
+        system_prompt = "You are an expert SEO Specialist."
+
+    prompt = f"Target URL / Query: {state['target_url']}\nPlease run a comprehensive SEO Strategy audit and provide a detailed markdown report."
+    
+    try:
+        llm = GeminiProvider()
+        response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
+        mock_report = response.strip()
+    except Exception as e:
+        print(f"LLM Error in seo_geo: {e}")
+        mock_report = f"# Comprehensive SEO & AEO Strategy Report\nTarget: {state['target_url']}\n[LLM Generation Failed]"
     
     state["audit_score"] = 92
     state["status"] = "pending_approval"
-    
-    # Broadcast a mock final SEO report deliverable for human review
-    mock_report = """# Comprehensive SEO & AEO Strategy Report
-Target: {target_url}
-
-## 1. Technical SEO Audit
-- **Core Web Vitals**: LCP is 3.2s (Needs Improvement). CLS is 0.04 (Good).
-- **Indexability**: Found 4 orphaned pages. robots.txt is missing sitemap directive.
-- **Architecture**: Crawl depth is optimal (max 3 clicks from homepage).
-
-## 2. Keyword & Cannibalization Audit
-- **Cannibalization Detected**: 
-  - `/features/ai-agents` and `/blog/what-are-ai-agents` are competing for "Enterprise AI Agents".
-  - **Resolution**: Merge and 301 redirect the blog post to the features page. Update internal links.
-- **Intent Mapping**: Missing BOFU (Bottom of Funnel) content for "AI CRM Integration".
-
-## 3. AEO (Answer Engine Optimization) & Schema
-- **LLM Citation Gaps**: Claude and Perplexity lack explicit documentation links.
-- **Generated Schema**: Injected JSON-LD FAQ Schema and SoftwareApplication markup.
-- **Entity Optimization**: Mapped 15 semantic NLP entities to boost Gemini relevancy score by 22%.
-
-## 4. Backlink Strategy
-- **Digital PR**: Drafted outreach pitches targeting 5 high-DR tech publishers.
-- **Toxic Links**: Disavow file generated for 12 spam domains.
-
-**Action Required**: Review the above changes. Upon approval, the Publishing Agent will deploy schema, metadata updates, and 301 redirects directly to the CMS via API.
-"""
+    state["report"] = mock_report
     import json
     await manager.broadcast(json.dumps({
         "type": "new_seo_report",

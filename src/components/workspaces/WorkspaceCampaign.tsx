@@ -14,12 +14,14 @@ export interface CampaignItem {
 
 interface WorkspaceCampaignProps {
   campaigns: CampaignItem[];
+  creativeAssets?: any[];
   onOpenReview: (itemId: string) => void;
   onToggleStatus: (id: string) => void;
 }
 
 export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
   campaigns,
+  creativeAssets = [],
   onOpenReview,
   onToggleStatus,
 }) => {
@@ -378,13 +380,18 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
               Select Ad from Library
               <button onClick={() => setIsLibraryOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>✕</button>
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              {[101, 102, 103, 104].map(id => (
-                <div key={id} onClick={() => { setSelectedAds(prev => [...new Set([...prev, id.toString()])]); setIsLibraryOpen(false); }} style={{ padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', cursor: 'pointer', border: '1px solid var(--border)', textAlign: 'center', transition: 'all 0.2s ease' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--primary)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>🖼️</div>
-                  <div style={{ fontSize: '13px', color: '#fff' }}>AI Creative #{id}</div>
-                </div>
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
+              {creativeAssets.length === 0 ? (
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', gridColumn: '1 / -1', textAlign: 'center', padding: '20px' }}>No ads found in your library. Save some from the Creative Studio first!</div>
+              ) : (
+                creativeAssets.map(asset => (
+                  <div key={asset.id} onClick={() => { setSelectedAds(prev => [...new Set([...prev, String(asset.id)])]); setIsLibraryOpen(false); }} style={{ padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', cursor: 'pointer', border: '1px solid var(--border)', textAlign: 'center', transition: 'all 0.2s ease' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--primary)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}>
+                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>🖼️</div>
+                    <div style={{ fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{asset.headline || `Ad #${asset.id}`}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{asset.type}</div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

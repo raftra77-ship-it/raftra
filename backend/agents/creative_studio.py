@@ -1,7 +1,9 @@
 import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
+import os
 from core.websocket import manager
+from core.providers.llm_providers import GeminiProvider
 
 class CreativeState(TypedDict):
     workspace_id: int
@@ -54,16 +56,44 @@ async def creative_strategy_node(state: CreativeState) -> CreativeState:
 
 async def asset_generation_node(state: CreativeState) -> CreativeState:
     state["current_node"] = "Asset Generation"
-    msg = "Drafting high-converting copy headlines and CTA suggestions..."
+    msg = "Drafting high-converting copy headlines and CTA suggestions using LLM..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Creative Agent", msg, "running")
     await manager.broadcast_node_update("creative_studio", "Asset Generation", "running")
-    await asyncio.sleep(1.2)
     
-    # Production stubs to update copy parameters
-    state["generated_headline"] = f"Unleash {state['target_product']} instantly."
-    state["generated_body"] = f"Scale your acquisition loop with coordinated brand voice parameters."
-    state["generated_cta"] = "Activate Trial Now"
+    try:
+        with open("prompts/content-creator.md", "r", encoding="utf-8") as f:
+            system_prompt = f.read()
+    except Exception:
+        system_prompt = "You are an expert digital marketing content creator."
+
+    prompt = f"Target product/service: {state['target_product']}\nCreative Strategy: {state['concept_strategy']}\nPlease write an ad headline, a body text, and a CTA."
+    prompt += "\nFormat exactly as:\nHeadline: [your headline]\nBody: [your body text]\nCTA: [your call to action]"
+    
+    try:
+        llm = GeminiProvider()
+        response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
+        
+        headline, body, cta = state.get("generated_headline", "Unleash potential."), state.get("generated_body", "Scale acquisition loop."), state.get("generated_cta", "Start Trial")
+        
+        for line in response.split("\n"):
+            line = line.strip()
+            if line.lower().startswith("headline:"):
+                headline = line[9:].strip().replace("**", "").replace('"', '')
+            elif line.lower().startswith("body:"):
+                body = line[5:].strip().replace("**", "")
+            elif line.lower().startswith("cta:"):
+                cta = line[4:].strip().replace("**", "").replace('"', '')
+                
+        state["generated_headline"] = headline
+        state["generated_body"] = body
+        state["generated_cta"] = cta
+    except Exception as e:
+        print(f"LLM Error in creative_studio: {e}")
+        state["generated_headline"] = f"Unleash {state['target_product']} instantly."
+        state["generated_body"] = f"Scale your acquisition loop with coordinated brand voice parameters."
+        state["generated_cta"] = "Activate Trial Now"
+        
     return state
 
 async def quality_review_node(state: CreativeState) -> CreativeState:

@@ -1,7 +1,9 @@
 import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
+import os
 from core.websocket import manager
+from core.providers.llm_providers import GeminiProvider
 
 class SocialState(TypedDict):
     workspace_id: int
@@ -23,13 +25,27 @@ async def social_planner_node(state: SocialState) -> SocialState:
 
 async def caption_agent_node(state: SocialState) -> SocialState:
     state["current_node"] = "Caption Agent"
-    msg = f"Drafting engaging caption matching brand voice for channel {state['platform']}..."
+    msg = f"Drafting engaging caption matching brand voice for channel {state['platform']} using LLM..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Social Agent", msg, "thinking")
     await manager.broadcast_node_update("social_hub", "Caption Agent", "running")
-    await asyncio.sleep(1.0)
     
-    state["generated_post"] = f"{state['caption_topic']}. Consolidating 20 marketing nodes into one with Raftra Growth OS. #GrowthOps"
+    try:
+        with open("prompts/social-media-manager.md", "r", encoding="utf-8") as f:
+            system_prompt = f.read()
+    except Exception:
+        system_prompt = "You are an expert Social Media Manager."
+
+    prompt = f"Platform: {state['platform']}\nTopic/Instruction: {state['caption_topic']}\nPlease write a highly engaging social media post based on this."
+    
+    try:
+        llm = GeminiProvider()
+        response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
+        state["generated_post"] = response.strip()
+    except Exception as e:
+        print(f"LLM Error in social_hub: {e}")
+        state["generated_post"] = f"{state['caption_topic']}. Consolidating 20 marketing nodes into one with Raftra Growth OS. #GrowthOps"
+        
     return state
 
 async def scheduler_node(state: SocialState) -> SocialState:

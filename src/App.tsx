@@ -156,6 +156,10 @@ function App() {
   // Creative Studio Assets
   const [creativeAssets, setCreativeAssets] = useState<CreativeAsset[]>([]);
 
+  const handleAssetSaved = (newAsset: CreativeAsset) => {
+    setCreativeAssets((prev) => [newAsset, ...prev]);
+  };
+
   // Campaign items
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
 
@@ -1579,6 +1583,7 @@ function App() {
                 assets={creativeAssets}
                 onOpenReview={handleOpenReview}
                 onGenerate={handleGenerateCreative}
+                onAssetSaved={handleAssetSaved}
               />
             </div>
           )}
@@ -1588,6 +1593,7 @@ function App() {
               {renderLockOverlay('campaign', 149)}
               <WorkspaceCampaign
                 campaigns={campaigns}
+                creativeAssets={creativeAssets}
                 onOpenReview={handleOpenReview}
                 onToggleStatus={handleToggleCampaign}
               />

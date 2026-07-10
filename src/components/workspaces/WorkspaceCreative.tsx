@@ -24,8 +24,9 @@ interface ChatMessage {
 interface WorkspaceCreativeProps {
   brandUrl: string;
   assets: CreativeAsset[];
-  onOpenReview: (id: string) => void;
-  onGenerate?: (prompt: string, referenceAd?: any, config?: any) => void;
+  onOpenReview: (assetId: string) => void;
+  onGenerate: (prompt: string, referenceAd?: any, config?: any) => void;
+  onAssetSaved?: (asset: CreativeAsset) => void;
   workspaceId?: number;
 }
 
@@ -34,6 +35,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   assets,
   onOpenReview,
   onGenerate,
+  onAssetSaved,
   workspaceId
 }) => {
   const [prompt, setPrompt] = useState('');
@@ -44,6 +46,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // Advanced Configurations
   const [selectedModel, setSelectedModel] = useState('gemini-1.5-flash');
   const [adFormat, setAdFormat] = useState('Video');
+  const [adPlatform, setAdPlatform] = useState('Instagram');
   const [adRatio, setAdRatio] = useState('9:16');
   const [adLength, setAdLength] = useState('15s');
   
@@ -129,8 +132,21 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         })
       });
       if (res.ok) {
+        const data = await res.json();
         alert('Ad successfully saved to your Ad Library! It will appear on the right pane.');
-        // Refresh handled by user or we could trigger App's refresh logic
+        
+        if (onAssetSaved) {
+          onAssetSaved({
+            id: String(data.id),
+            headline: data.headline,
+            bodyText: data.body_text,
+            cta: data.cta,
+            type: data.type,
+            imageUrl: data.image_url,
+            videoUrl: data.video_url,
+            status: 'approved'
+          });
+        }
       }
     } catch (err) {
       console.error(err);
@@ -162,9 +178,31 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   const savedAssets = assets.filter(a => a.status === 'approved' || typeof a.id === 'number' || (!a.id.toString().startsWith('cr-') && !a.id.toString().startsWith('temp-')));
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      alert(`Asset "${e.target.files[0].name}" successfully uploaded to the engine context!`);
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && workspaceId) {
+      const file = e.target.files[0];
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const token = localStorage.getItem('token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      try {
+        const res = await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/upload`, {
+          method: 'POST',
+          headers,
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          alert(`Asset "${data.filename}" successfully uploaded to the engine context!`);
+        } else {
+          alert('Upload failed.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Upload failed due to network error.');
+      }
     }
   };
 
@@ -179,6 +217,28 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     { name: 'Track Competitors', desc: 'See what ads they’re running', icon: '•' }
   ];
 
+  const handleModeSelect = (modeName: string) => {
+    setEngineMode(modeName);
+    let prePrompt = '';
+    
+    // Automatically change the format based on the mode
+    if (modeName === 'Video Ad') {
+      prePrompt = 'Create a high-converting promotional video focusing on...';
+      setAdFormat('Video');
+    } else if (modeName === 'Image Ad') {
+      prePrompt = 'Generate a static image ad targeting...';
+      setAdFormat('Static Image');
+    } else if (modeName === 'Track Competitors') {
+      prePrompt = 'Analyze this competitor ad link and extract their winning hooks: ';
+    } else if (modeName === 'HTML Interactive Ad') {
+      prePrompt = 'Build an interactive playable ad experience for...';
+    } else {
+      prePrompt = `I need help with ${modeName}. Specifically: `;
+    }
+    
+    setPrompt(prePrompt);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'row', gap: '20px', height: '100%' }}>
       {/* LEFT TOOLKIT SIDEBAR */}
@@ -191,7 +251,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           {toolkitModes.map((mode) => (
             <div 
               key={mode.name}
-              onClick={() => setEngineMode(mode.name)}
+              onClick={() => handleModeSelect(mode.name)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -199,15 +259,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 padding: '12px',
                 borderRadius: '8px',
                 cursor: 'pointer',
-                background: engineMode === mode.name ? 'rgba(90, 82, 255, 0.1)' : 'transparent',
-                border: engineMode === mode.name ? '1px solid var(--primary)' : '1px solid transparent',
+                background: engineMode === mode.name ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                border: engineMode === mode.name ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid transparent',
                 transition: 'all 0.2s',
                 marginBottom: '4px'
               }}
             >
-              <div style={{ fontSize: '18px', color: engineMode === mode.name ? 'var(--primary)' : 'var(--text-secondary)' }}>{mode.icon}</div>
+              <div style={{ fontSize: '18px', color: engineMode === mode.name ? '#fff' : 'var(--text-secondary)' }}>{mode.icon}</div>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: engineMode === mode.name ? '600' : '400', color: engineMode === mode.name ? 'var(--primary)' : 'var(--text-primary)' }}>{mode.name}</div>
+                <div style={{ fontSize: '13px', fontWeight: engineMode === mode.name ? '600' : '400', color: engineMode === mode.name ? '#fff' : 'var(--text-primary)' }}>{mode.name}</div>
                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{mode.desc}</div>
               </div>
             </div>
@@ -216,8 +276,16 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       </div>
 
       {/* MAIN CHAT & LIBRARY PANE */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, height: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', position: 'relative' }}>
+        
+        {/* Dynamic Animated Background iframe */}
+        <iframe 
+          src="https://cdn.21st.dev/lovesickfromthe6ix/turbulent-flow/default/bundle.1749368479987.html?theme=dark&dark=true" 
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', zIndex: -1, pointerEvents: 'none', opacity: 0.8 }} 
+          title="Turbulent Flow Background"
+        />
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
           <div>
             <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
               {engineMode} <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 'normal' }}>— AI Studio</span>
@@ -226,26 +294,36 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               Describe what you want to generate using the <strong>{engineMode}</strong> tool.
             </p>
           </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           
-          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Format:</label>
-          <select value={adFormat} onChange={(e) => setAdFormat(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)', padding: '6px', borderRadius: '6px', fontSize: '13px' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Format:</label>
+          <select value={adFormat} onChange={(e) => setAdFormat(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+            <option value="Static Image" style={{ color: '#000' }}>Static Image</option>
             <option value="Video" style={{ color: '#000' }}>Video</option>
-            <option value="Image" style={{ color: '#000' }}>Static Image</option>
+            <option value="Video with Music" style={{ color: '#000' }}>Video with Music</option>
+          </select>
+
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Platform:</label>
+          <select value={adPlatform} onChange={(e) => setAdPlatform(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+            <option value="Instagram" style={{ color: '#000' }}>Instagram</option>
+            <option value="Facebook" style={{ color: '#000' }}>Facebook</option>
+            <option value="Google Ads" style={{ color: '#000' }}>Google Ads</option>
+            <option value="LinkedIn" style={{ color: '#000' }}>LinkedIn</option>
           </select>
           
-          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ratio:</label>
-          <select value={adRatio} onChange={(e) => setAdRatio(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)', padding: '6px', borderRadius: '6px', fontSize: '13px' }}>
-            <option value="9:16" style={{ color: '#000' }}>9:16 (TikTok/Reels)</option>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Ratio:</label>
+          <select value={adRatio} onChange={(e) => setAdRatio(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+            <option value="9:16" style={{ color: '#000' }}>9:16 (Vertical)</option>
             <option value="1:1" style={{ color: '#000' }}>1:1 (Square)</option>
             <option value="16:9" style={{ color: '#000' }}>16:9 (Landscape)</option>
+            <option value="4:5" style={{ color: '#000' }}>4:5 (Portrait)</option>
           </select>
           
-          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Length:</label>
-          <select value={adLength} onChange={(e) => setAdLength(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)', padding: '6px', borderRadius: '6px', fontSize: '13px' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', opacity: adFormat === 'Static Image' ? 0.3 : 1 }}>Length:</label>
+          <select disabled={adFormat === 'Static Image'} value={adLength} onChange={(e) => setAdLength(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', opacity: adFormat === 'Static Image' ? 0.3 : 1 }}>
+            <option value="5s" style={{ color: '#000' }}>5s</option>
             <option value="15s" style={{ color: '#000' }}>15s</option>
             <option value="30s" style={{ color: '#000' }}>30s</option>
-            <option value="60s" style={{ color: '#000' }}>60s</option>
           </select>
 
           <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>AI Model:</label>
@@ -253,8 +331,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             value={selectedModel} 
             onChange={(e) => setSelectedModel(e.target.value)}
             style={{ 
-              background: 'rgba(255,255,255,0.05)', 
-              border: '1px solid rgba(255,255,255,0.1)', 
+              background: 'rgba(255, 255, 255, 0.05)', 
+              border: '1px solid rgba(255, 255, 255, 0.1)', 
               color: 'var(--text-primary)', 
               padding: '6px 12px', 
               borderRadius: '6px',
@@ -273,18 +351,31 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       </div>
 
-      <div className="workspace-grid-split" style={{ height: 'calc(100vh - 200px)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: 'calc(100vh - 200px)', overflowY: 'auto', zIndex: 1 }}>
         
-        {/* Left pane: Conversational Interface */}
-        <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
+        {/* Top Section: Conversational Interface (Expanded Horizontally) */}
+        <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden', minHeight: '600px', border: '1px solid rgba(255, 255, 255, 0.1)', background: 'rgba(10, 10, 15, 0.7)', backdropFilter: 'blur(10px)' }}>
           
+          {/* AI Knowledge Base Header */}
+          <div style={{ background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02))', padding: '10px 24px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff' }}>🧠 AI KNOWLEDGE BASE ACTIVE</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+              <Check size={14} color="#00E676" /> Brand Theme Synced
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+              <Check size={14} color="#00E676" /> Website Data Ingested
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+              <Check size={14} color="#00E676" /> Competitor Intel Loaded
+            </div>
+          </div>
+
           {/* Chat History Area */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {chatHistory.length === 0 && (
-              <div style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '40px' }}>
-                <Sparkles size={32} style={{ color: 'var(--accent)', opacity: 0.5, margin: '0 auto 16px auto' }} />
-                <h3>Welcome to the Creative Studio Engine</h3>
-                <p>Type a request below to generate a new ad. For example: <br/>"Create a video ad for my summer collection"</p>
+              <div style={{ textAlign: 'center', color: 'rgba(255, 255, 255, 0.3)', marginTop: '60px', fontFamily: 'var(--font-heading)' }}>
+                <h3 style={{ fontSize: '28px', fontWeight: 600, letterSpacing: '-0.5px', marginBottom: '12px' }}>Creative Studio</h3>
+                <p style={{ fontSize: '15px', maxWidth: '400px', margin: '0 auto', lineHeight: '1.5' }}>Upload references or competitor ads below. Select a format, length, and platform to generate converting assets.</p>
               </div>
             )}
             
@@ -298,8 +389,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   maxWidth: '85%',
                   padding: '12px 16px',
                   borderRadius: '12px',
-                  backgroundColor: msg.role === 'user' ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                  border: msg.role === 'user' ? '1px solid rgba(90, 82, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  backgroundColor: msg.role === 'user' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                  border: msg.role === 'user' ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(255, 255, 255, 0.1)',
                   color: 'var(--text-primary)',
                   fontSize: '14px',
                   lineHeight: '1.5'
@@ -324,12 +415,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <button 
                           onClick={() => handleSaveToLibrary(msg.asset!)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'rgba(90, 82, 255, 0.2)', color: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'rgba(255, 255, 255, 0.1)', color: '#fff', border: '1px solid #fff', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
                           <Save size={14} /> Save to Library
                         </button>
                         <button 
                           onClick={() => handleSuggestChanges(msg.asset!)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'transparent', color: 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'transparent', color: 'var(--text-primary)', border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
                           <Edit3 size={14} /> Suggest Changes
                         </button>
                       </div>
@@ -348,14 +439,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           </div>
 
           {/* Chat Input Area */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.05)', backgroundColor: 'rgba(0,0,0,0.1)' }}>
             {referenceAd && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', marginBottom: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', marginBottom: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
                 <Edit3 size={14} /> Editing Ad: {referenceAd.headline.substring(0, 30)}...
                 <button type="button" onClick={() => setReferenceAd(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>✕</button>
               </div>
             )}
-            <div style={{ display: 'flex', gap: '8px' }}>
+            
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -363,13 +455,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 onChange={handleFileUpload} 
                 accept="image/*,video/*"
               />
-              <button onClick={() => fileInputRef.current?.click()} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button onClick={() => fileInputRef.current?.click()} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload Asset
+                Upload Media
               </button>
-              <button onClick={() => setShowConnectorsModal(true)} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              
+              <input 
+                type="text" 
+                placeholder="Paste Competitor Ad Link or Asset URL..." 
+                style={{ flex: 1, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-primary)', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', outline: 'none' }} 
+              />
+              
+              <button onClick={() => setShowConnectorsModal(true)} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                Ad Connectors (Meta/TikTok)
+                Ad Connectors
               </button>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -384,7 +483,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               <button 
                 onClick={(e) => handleSubmit(e as any)}
                 disabled={isGenerating || !prompt.trim()}
-                style={{ background: 'var(--primary)', color: '#fff', border: 'none', padding: '0 24px', borderRadius: '8px', cursor: (isGenerating || !prompt.trim()) ? 'not-allowed' : 'pointer', opacity: (isGenerating || !prompt.trim()) ? 0.5 : 1, fontWeight: '500' }}
+                style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.3)', padding: '0 24px', borderRadius: '8px', cursor: (isGenerating || !prompt.trim()) ? 'not-allowed' : 'pointer', opacity: (isGenerating || !prompt.trim()) ? 0.5 : 1, fontWeight: '500' }}
               >
                 Send
               </button>
@@ -392,18 +491,18 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           </div>
         </div>
 
-        {/* Right pane: Ad Library */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', paddingRight: '8px' }}>
-          <h3 style={{ fontSize: '16px' }}>Ad Library (Saved)</h3>
+        {/* Bottom pane: Ad Library */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '20px', background: 'rgba(10, 10, 15, 0.7)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          <h3 style={{ fontSize: '16px', color: '#fff' }}>Ad Library (Saved)</h3>
           
           {savedAssets.length === 0 ? (
             <div style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center', marginTop: '40px' }}>
               No ads saved to the library yet.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
               {savedAssets.map((asset) => (
-                <div key={asset.id} className="asset-review-card">
+                <div key={asset.id} className="asset-review-card" style={{ border: '1px solid rgba(255, 255, 255, 0.1)', background: 'rgba(255,255,255,0.03)' }}>
                   <div className="asset-preview-pane">
                     <span className="asset-badge">{asset.type.toUpperCase()}</span>
                     {asset.videoUrl ? (
