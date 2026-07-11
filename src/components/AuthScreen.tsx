@@ -37,7 +37,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         const parts = name.split(' ');
         const first = parts[0] || 'User';
         const last = parts.slice(1).join(' ') || 'Name';
-        const res = await fetch('http://localhost:8005/api/auth/register', {
+        const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, username, first_name: first, last_name: last, role: isCreator ? 'creator' : 'brand' })
@@ -51,7 +51,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         }
       }
 
-      const res = await fetch('http://localhost:8005/api/auth/login', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: email, password })
@@ -62,7 +62,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
       
       let hasWorkspace = false;
       try {
-        const wsRes = await fetch('http://localhost:8005/api/workspaces', {
+        const wsRes = await fetch('/api/workspaces', {
           headers: { 'Authorization': `Bearer ${data.access_token}` }
         });
         if (wsRes.ok) {

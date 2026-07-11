@@ -38,7 +38,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     
     if (action === 'add') {
       setCreatorPortalState('scanning');
-      fetch(`http://localhost:8005/api/auth/verify-instagram?handle=${creatorForm.handle}`)
+      fetch(`/api/auth/verify-instagram?handle=${creatorForm.handle}`)
         .then(res => res.json())
         .then(data => {
           if (data.exists) {

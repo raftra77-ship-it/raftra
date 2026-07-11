@@ -39,7 +39,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8005/api/agents/onboard', {
+      const response = await fetch('/api/agents/onboard', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

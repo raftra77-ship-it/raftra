@@ -119,7 +119,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     };
 
     try {
-      const res = await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/creatives/save`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/creatives/save`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -159,7 +159,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     const headers = { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
 
     try {
-      const res = await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/creatives/${assetId}`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/creatives/${assetId}`, {
         method: 'DELETE',
         headers
       });
@@ -188,7 +188,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       
       try {
-        const res = await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/upload`, {
+        const res = await fetch(`/api/workspaces/${workspaceId}/upload`, {
           method: 'POST',
           headers,
           body: formData

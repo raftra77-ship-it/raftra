@@ -24,7 +24,7 @@ export function Login() {
         ? { email, password }
         : { email, password, first_name: firstName, last_name: lastName };
 
-      const response = await fetch(`http://localhost:8005${endpoint}`, {
+      const response = await fetch(`${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyPayload),
@@ -47,7 +47,7 @@ export function Login() {
         localStorage.setItem('token', data.access_token);
       } else if (!isLogin) {
         // If registered successfully, automatically log them in
-        const loginRes = await fetch(`http://localhost:8005/api/auth/login`, {
+        const loginRes = await fetch(`/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),

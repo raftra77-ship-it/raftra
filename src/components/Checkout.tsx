@@ -9,7 +9,7 @@ export function Checkout() {
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`http://localhost:8005/api/payments/create-checkout-session?email=${email}`, {
+      const response = await fetch(`/api/payments/create-checkout-session?email=${email}`, {
         method: 'POST',
       });
       const data = await response.json();

@@ -315,7 +315,7 @@ function App() {
     }
     const headers: HeadersInit = { 'Authorization': `Bearer ${token}` };
 
-    fetch('http://localhost:8005/api/workspaces', { headers })
+    fetch('/api/workspaces', { headers })
       .then(res => {
         if (res.status === 401) {
           // Token expired or invalid — clear and redirect to login
@@ -347,14 +347,14 @@ function App() {
     const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
 
     // Campaigns
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/campaigns`, { headers })
+    fetch(`/api/workspaces/${workspaceId}/campaigns`, { headers })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setCampaigns(data);
       });
 
     // Creative Assets
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/creatives`, { headers })
+    fetch(`/api/workspaces/${workspaceId}/creatives`, { headers })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -373,7 +373,7 @@ function App() {
       });
 
     // SEO audits
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/seo`, { headers })
+    fetch(`/api/workspaces/${workspaceId}/seo`, { headers })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -388,28 +388,28 @@ function App() {
       });
 
     // Social Posts
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/social`, { headers })
+    fetch(`/api/workspaces/${workspaceId}/social`, { headers })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setSocialPosts(data);
       });
 
     // Influencers
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers`, { headers })
+    fetch(`/api/workspaces/${workspaceId}/influencers`, { headers })
       .then(res => res.json())
       .then(data => {
         
       });
 
     // Metrics
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/metrics`, { headers })
+    fetch(`/api/workspaces/${workspaceId}/metrics`, { headers })
       .then(res => res.json())
       .then(data => {
         if (data && typeof data === 'object') setMetrics(data);
       });
 
     // Billing Info
-    fetch('http://localhost:8005/api/auth/billing', { headers })
+    fetch('/api/auth/billing', { headers })
       .then(res => {
         if (!res.ok) throw new Error("Failed to load billing info");
         return res.json();
@@ -475,7 +475,7 @@ function App() {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch('http://localhost:8005/api/workspaces', {
+    fetch('/api/workspaces', {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -525,7 +525,7 @@ function App() {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/reindex`, {
+    fetch(`/api/workspaces/${workspaceId}/reindex`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ url: brandProfile?.url || '', tone: brandProfile?.tone || '' })
@@ -554,7 +554,7 @@ function App() {
       'Content-Type': 'application/json'
     };
 
-    fetch(`http://localhost:8005/api/agents/${workspaceId}/creative`, {
+    fetch(`/api/agents/${workspaceId}/creative`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ 
@@ -576,7 +576,7 @@ function App() {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch(`http://localhost:8005/api/agents/${workspaceId}/campaign`, {
+    fetch(`/api/agents/${workspaceId}/campaign`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ platform, campaign_name: campaignName, objective, budget })
@@ -591,7 +591,7 @@ function App() {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch(`http://localhost:8005/api/agents/${workspaceId}/seo`, {
+    fetch(`/api/agents/${workspaceId}/seo`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ target_url: targetUrl })
@@ -605,7 +605,7 @@ function App() {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch(`http://localhost:8005/api/agents/${workspaceId}/geo`, {
+    fetch(`/api/agents/${workspaceId}/geo`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ target_url: targetUrl })
@@ -619,7 +619,7 @@ function App() {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch(`http://localhost:8005/api/agents/${workspaceId}/social`, {
+    fetch(`/api/agents/${workspaceId}/social`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ platform, caption_topic: captionTopic })
@@ -633,7 +633,7 @@ function App() {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch(`http://localhost:8005/api/agents/${workspaceId}/influencer`, {
+    fetch(`/api/agents/${workspaceId}/influencer`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ creator_id: creatorId, creator_name: creatorName })
@@ -718,7 +718,7 @@ function App() {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     };
-    fetch('http://localhost:8005/api/auth/billing/topup', {
+    fetch('/api/auth/billing/topup', {
       method: 'POST',
       headers,
       body: JSON.stringify({ amount: amountUSD })
@@ -768,7 +768,7 @@ function App() {
         'Authorization': `Bearer ${token}`
       };
       
-      fetch('http://localhost:8005/api/auth/billing/unlock-node', {
+      fetch('/api/auth/billing/unlock-node', {
         method: 'POST',
         headers,
         body: JSON.stringify({ node_name: nodeName, price: priceUSD })
@@ -890,7 +890,7 @@ function App() {
       // Trigger the remaining backend pipeline (Publishing Agent -> Reporting Agent)
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-      fetch(`http://localhost:8005/api/agents/${workspaceId}/seo/publish`, { method: 'POST', headers })
+      fetch(`/api/agents/${workspaceId}/seo/publish`, { method: 'POST', headers })
         .catch(err => console.error("Error triggering SEO publish:", err));
         
       // Simulate post-publish reporting and metrics bump locally
@@ -913,7 +913,7 @@ function App() {
       );
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-      fetch(`http://localhost:8005/api/agents/${workspaceId}/geo/publish`, { method: 'POST', headers })
+      fetch(`/api/agents/${workspaceId}/geo/publish`, { method: 'POST', headers })
         .catch(err => console.error("Error triggering GEO publish:", err));
         
       setMetrics((prev) => ({
@@ -1019,7 +1019,7 @@ function App() {
 
     if (workspaceId) {
       // Trigger background task log
-      fetch(`http://localhost:8005/api/agents/${workspaceId}/analytics`, {
+      fetch(`/api/agents/${workspaceId}/analytics`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ query_message: message })

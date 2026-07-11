@@ -32,7 +32,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers`, {
+    fetch(`/api/workspaces/${workspaceId}/influencers`, {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       if (Array.isArray(data) && data.length > 0) {
@@ -131,7 +131,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     try {
       const token = localStorage.getItem('token');
       // Fetch chat history
-      const res = await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers/${creator.id}/chat`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/influencers/${creator.id}/chat`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -176,7 +176,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     
     try {
       const token = localStorage.getItem('token');
-      await fetch(`http://localhost:8005/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
+      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,

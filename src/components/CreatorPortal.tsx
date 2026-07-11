@@ -26,12 +26,12 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    fetch('http://localhost:8005/api/auth/me', {
+    fetch('/api/auth/me', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       setMe(data);
     });
-    fetch('http://localhost:8005/api/workspaces/influencer/me', {
+    fetch('/api/workspaces/influencer/me', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       if(data && data.id) {
@@ -53,7 +53,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     if (activeTab === 'inbox' && myInfluencerId) {
       const token = localStorage.getItem('token');
       
-      fetch(`http://localhost:8005/api/workspaces/influencer/me/chats`, {
+      fetch(`/api/workspaces/influencer/me/chats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       }).then(res => res.json()).then(data => {
         if (Array.isArray(data)) {
@@ -64,7 +64,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         }
       }).catch(console.error);
 
-      fetch(`http://localhost:8005/api/workspaces/discover`, {
+      fetch(`/api/workspaces/discover`, {
         headers: { 'Authorization': `Bearer ${token}` }
       }).then(res => res.json()).then(data => {
         if (Array.isArray(data)) setAllBrands(data);
@@ -98,7 +98,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     
     try {
       const token = localStorage.getItem('token');
-      await fetch(`http://localhost:8005/api/workspaces/influencer/me/chats/${chatWorkspaceId}`, {
+      await fetch(`/api/workspaces/influencer/me/chats/${chatWorkspaceId}`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -115,7 +115,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
     try {
-      await fetch('http://localhost:8005/api/workspaces/influencer/me/profile', {
+      await fetch('/api/workspaces/influencer/me/profile', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(profileForm)
