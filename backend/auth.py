@@ -1,252 +1,113 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
-from passlib.context import CryptContext
-from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
-from typing import Annotated, Optional
 import os
+import jwt
+from jwt import PyJWKClient
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
 
 import database, models, schemas
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback_secret_key_for_raftra_dev")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your_super_secret_jwt_key")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days default
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password):
-    # Bcrypt has a strict 72-byte limit. We truncate to 71 bytes to be safe.
-    truncated = password.encode('utf-8')[:71].decode('utf-8', 'ignore')
-    return pwd_context.hash(truncated)
+    return pwd_context.hash(password)
 
-def verify_password(plain_password, hashed_password):
-    truncated = plain_password.encode('utf-8')[:71].decode('utf-8', 'ignore')
-    return pwd_context.verify(truncated, hashed_password)
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def get_current_user(token: Annotated[str, Depends(oauth2_scheme)] = None, db: Session = Depends(database.get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+def create_refresh_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=7) # 7 days refresh
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
     if not token:
-        raise credentials_exception
-    
-    # Auto-bypass for frontend mock token
-    if token == "mock_jwt_token_for_dashboard_access":
-        user = db.query(models.User).first()
-        if not user:
-            # Create a dummy user if db is empty
-            user = models.User(email="demo@aura.com", hashed_password="pwd", first_name="Demo", last_name="User")
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        return user
-        
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if user is None:
-        raise credentials_exception
-    return user
-
-@router.post("/register", response_model=schemas.UserResponse)
-def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
-    if db.query(models.User).filter(models.User.email == user.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered")
-    if db.query(models.User).filter(models.User.username == user.username).first():
-        raise HTTPException(status_code=400, detail="Username already taken")
-    
-    hashed_password = get_password_hash(user.password)
-    new_user = models.User(
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        email=user.email,
-        hashed_password=hashed_password,
-        is_active=True,
-        role=user.role
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    if user.role == 'creator':
-        # Simulated scraped data from Instagram
-        reel_1 = f"{user.username.capitalize()} x Nike Summer Campaign"
-        reel_2 = f"{user.username.capitalize()} x TechStyle Review"
-        custom_review = f"Working with {user.username.capitalize()} was incredible! Delivered the UGC video 2 days early and it converted at 3.5x ROAS. Highly recommended."
-        
-        new_influencer = models.Influencer(
-            user_id=new_user.id,
-            name=f"{new_user.first_name} {new_user.last_name}",
-            handle=f"@{new_user.username}",
-            platform="Instagram",
-            fit_score=95,
-            success_rate=98,
-            niche="Lifestyle & Tech",
-            recent_posts=[{"url": reel_1, "type": "link"}, {"url": reel_2, "type": "link"}],
-            recent_reviews=[{"author": "Verified Brand", "text": custom_review}] if custom_review else []
-        )
-        db.add(new_influencer)
-        db.commit()
-
-    return new_user
-
-@router.post("/login", response_model=schemas.Token)
-def login_user(user: schemas.UserLogin, db: Session = Depends(database.get_db)):
-    from sqlalchemy import or_
-    db_user = db.query(models.User).filter(or_(models.User.email == user.identifier, models.User.username == user.identifier)).first()
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": db_user.email, "first_name": db_user.first_name, "last_name": db_user.last_name}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer", "role": db_user.role}
 
-@router.get("/users", response_model=list[schemas.UserResponse])
-def get_users(db: Session = Depends(database.get_db)):
-    users = db.query(models.User).all()
-    return users
-
-@router.post("/forgot-password")
-def forgot_password(request: schemas.ForgotPasswordRequest, db: Session = Depends(database.get_db)):
-    user = db.query(models.User).filter(models.User.email == request.email).first()
-    if not user:
-        return {"message": "If this email exists, a password reset link has been sent."}
-    
-    reset_token = jwt.encode(
-        {"sub": user.email, "type": "reset", "exp": datetime.utcnow() + timedelta(hours=1)},
-        SECRET_KEY,
-        algorithm=ALGORITHM
-    )
-    print(f"Password reset requested for {user.email}. Token: {reset_token}")
-    return {"message": "Password reset email sent successfully.", "token": reset_token}
-
-@router.post("/reset-password")
-def reset_password(request: schemas.ResetPasswordRequest, db: Session = Depends(database.get_db)):
-    try:
-        payload = jwt.decode(request.token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        token_type = payload.get("type")
-        if not email or token_type != "reset":
-            raise HTTPException(status_code=400, detail="Invalid token")
-    except JWTError:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
-        
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    user.hashed_password = get_password_hash(request.new_password)
-    db.commit()
-    return {"message": "Password updated successfully."}
-
-@router.get("/verify-instagram")
-def verify_instagram(handle: str):
-    handle = handle.lstrip("@").strip()
-    # Bypass aggressive IG scraping blocks by mimicking successful validation for valid formats
-    if len(handle) < 2 or " " in handle or handle.lower() in ["fake", "test", "null", "undefined"]:
-        return {"exists": False}
-    
-    return {"exists": True, "name": handle.capitalize()}
-
-@router.post("/refresh-token", response_model=schemas.Token)
-def refresh_token(request: schemas.RefreshTokenRequest):
-    try:
-        payload = jwt.decode(request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        if not email:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
-        
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": email}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@router.post("/verify-email")
-def verify_email(token: str, db: Session = Depends(database.get_db)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        token_type = payload.get("type")
-        if not email or token_type != "verify":
-            raise HTTPException(status_code=400, detail="Invalid token")
-    except JWTError:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
-        
-    user = db.query(models.User).filter(models.User.email == email).first()
+        user_id: int = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid authentication credentials: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+@router.post("/register")
+def register(user_in: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    # Check if user exists
+    existing_user = db.query(models.User).filter(models.User.email == user_in.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
         
-    user.is_active = True
+    hashed_pwd = get_password_hash(user_in.password)
+    user = models.User(
+        email=user_in.email,
+        username=user_in.username,
+        first_name=user_in.first_name,
+        last_name=user_in.last_name,
+        hashed_password=hashed_pwd,
+        is_active=True,
+        # clerk_id can be left blank or used as a random string since we removed clerk
+        clerk_id=f"custom_{user_in.email}" 
+    )
+    db.add(user)
     db.commit()
-    return {"message": "Email verified successfully."}
+    db.refresh(user)
+    
+    if user_in.role == "creator":
+        from celery_app import process_creator_profile
+        process_creator_profile.delay(user.id, user_in.category, user_in.price)
+    
+    access_token = create_access_token(data={"sub": str(user.id), "role": user_in.role})
+    return {"access_token": access_token, "token_type": "bearer", "user": {"id": user.id, "email": user.email}}
 
-@router.post("/oauth/google", response_model=schemas.Token)
-def oauth_google(request: schemas.OAuthRequest, db: Session = Depends(database.get_db)):
-    mock_email = f"google_{request.code[:6]}@gmail.com"
-    user = db.query(models.User).filter(models.User.email == mock_email).first()
-    if not user:
-        hashed_password = get_password_hash(os.urandom(16).hex())
-        user = models.User(email=mock_email, hashed_password=hashed_password, is_active=True)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+@router.post("/login")
+def login(user_in: schemas.UserLogin, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(
+        (models.User.email == user_in.identifier) | (models.User.username == user_in.identifier)
+    ).first()
+    if not user or not user.hashed_password:
+        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
+    
+    if not verify_password(user_in.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
         
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user": {"id": user.id, "email": user.email}}
 
-@router.post("/oauth/github", response_model=schemas.Token)
-def oauth_github(request: schemas.OAuthRequest, db: Session = Depends(database.get_db)):
-    mock_email = f"github_{request.code[:6]}@github.com"
-    user = db.query(models.User).filter(models.User.email == mock_email).first()
-    if not user:
-        hashed_password = get_password_hash(os.urandom(16).hex())
-        user = models.User(email=mock_email, hashed_password=hashed_password, is_active=True)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-from pydantic import BaseModel
+# Keep the billing endpoints from original auth.py
 class TopUpRequest(BaseModel):
     amount: float
 
@@ -287,7 +148,6 @@ def unlock_node(request: UnlockNodeRequest, db: Session = Depends(database.get_d
         "balance": current_user.billing_balance,
         "unlocked_nodes": nodes
     }
-
 
 @router.get("/me", response_model=schemas.UserResponse)
 def get_me(current_user: models.User = Depends(get_current_user)):

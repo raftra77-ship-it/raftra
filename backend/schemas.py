@@ -9,6 +9,8 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     role: Optional[str] = "brand"
+    category: Optional[str] = None
+    price: Optional[float] = None
 
 class UserLogin(BaseModel):
     identifier: str
@@ -151,12 +153,13 @@ class SocialPostResponse(BaseModel):
 class InfluencerResponse(BaseModel):
     id: int
     name: str
-    handle: str
+    handle: Optional[str] = None
     platform: str
-    fit_score: int
-    success_rate: int
-    niche: str
-    status: str
+    fit_score: Optional[int] = 0
+    success_rate: Optional[int] = 0
+    niche: Optional[str] = None
+    status: Optional[str] = "available"
+    base_rate: Optional[float] = 0.0
     recent_posts: Optional[Any] = None
     recent_collabs: Optional[Any] = None
     recent_reviews: Optional[Any] = None
@@ -165,6 +168,7 @@ class InfluencerResponse(BaseModel):
         from_attributes = True
 
 class InfluencerProfileUpdate(BaseModel):
+    base_rate: Optional[float] = None
     recent_posts: Optional[Any] = None
     recent_collabs: Optional[Any] = None
     recent_reviews: Optional[Any] = None

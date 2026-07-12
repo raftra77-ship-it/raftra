@@ -8,7 +8,8 @@ def run_test():
     res = requests.post(f"{BASE_URL}/auth/register", json={
         "first_name": "Test",
         "last_name": "User",
-        "email": "test2@example.com",
+        "email": "test3@example.com",
+        "username": "testuser3",
         "password": "password"
     })
     
@@ -21,7 +22,7 @@ def run_test():
     # Login
     print("Logging in...")
     res = requests.post(f"{BASE_URL}/auth/login", json={
-        "email": "test2@example.com",
+        "identifier": "test3@example.com",
         "password": "password"
     })
     if res.status_code != 200:

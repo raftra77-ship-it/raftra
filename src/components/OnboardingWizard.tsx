@@ -68,11 +68,22 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
       clearInterval(interval);
       setLoadingProgress(100);
       setLoadingText('Error during extraction. Falling back to defaults...');
-      // Fallback to user inputs if API fails
+      // Fallback to user inputs if API fails, simulating real data extraction
       setTimeout(() => {
+        let extractedName = name;
+        if (!extractedName && url) {
+          try {
+            const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+            const domainParts = urlObj.hostname.replace('www.', '').split('.');
+            if (domainParts.length > 0) {
+              extractedName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
+            }
+          } catch(e) {}
+        }
+        
         onComplete({
           url: url || 'https://example.com',
-          name: name || 'Aura Ventures',
+          name: extractedName || 'Aura Ventures',
           tone,
           colors
         });

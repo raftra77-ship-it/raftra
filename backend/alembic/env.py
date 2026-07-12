@@ -40,9 +40,12 @@ try:
     else:
         raise ValueError()
 except Exception:
-    database_url = "sqlite:///./raftra.db"
+  if not database_url:
+    print("Error: DATABASE_URL environment variable not set.")
+    exit(1)
 
-config.set_main_option("sqlalchemy.url", database_url)
+# Escape % characters because configparser treats them as interpolation symbols
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
 

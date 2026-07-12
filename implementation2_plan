@@ -1,0 +1,66 @@
+# Goal Description
+
+We are preparing the ultimate, production-ready, cloud-native architecture. 
+
+We will migrate:
+1. **Authentication:** Local JWT → **Clerk**
+2. **Databases & Vector Storage:** Local SQLite & Qdrant → **Supabase** (PostgreSQL + `pgvector`)
+3. **Background Tasks (Celery):** Local Redis → **Upstash** (Serverless Redis)
+4. **Payments:** Stripe → **Razorpay** (Best for Indian/Global unified payments)
+5. **Third-Party Integrations:** Manual OAuth → **Composio** (The ultimate toolset for AI agents to interact with 100+ apps securely).
+
+## User Review Required
+
+Because we are utilizing multiple premium APIs, you will need to create accounts for them and provide the keys. If you want me to write the code *before* you fetch the keys, just say **"Proceed"**.
+
+## Open Questions
+
+To bring this stack to life, you will need to add the following variables to your `backend/.env` and frontend `.env` when you're ready:
+
+**1. Clerk (Auth):** `VITE_CLERK_PUBLISHABLE_KEY` & `CLERK_SECRET_KEY`
+**2. Supabase (Database):** `DATABASE_URL` (Postgres connection string)
+**3. Upstash (Redis):** `REDIS_URL`
+**4. Razorpay (Payments):** `RAZORPAY_KEY_ID` & `RAZORPAY_KEY_SECRET`
+**5. Composio (Integrations):** `COMPOSIO_API_KEY`
+
+*Again, if you don't have these yet, I can still implement the code structure now. Just hit Proceed!*
+
+## Proposed Changes
+
+### 1. Clerk Authentication
+- **Frontend:** Install `@clerk/clerk-react`, wrap app in `<ClerkProvider>`, and use `<SignIn />` / `<SignUp />`.
+- **Backend:** Replace `/login` and `/register` with Clerk JWT verification in `auth.py`. Auto-sync Clerk users to Supabase.
+
+### 2. Supabase & Upstash Databases
+- **SQL & Vectors:** Connect SQLAlchemy to Supabase. Update `models.py` to use `pgvector` for agent memories instead of Qdrant.
+- **Redis:** Update `celery_app.py` to securely connect to Upstash using `rediss://`.
+
+### 3. Razorpay Payments
+#### [MODIFY] backend/payments.py
+- Remove the `stripe` package and import `razorpay`.
+- Create `/create-order` endpoint to generate Razorpay orders instead of Stripe Checkout sessions.
+- Replace Stripe Webhook logic with Razorpay Webhook signature verification (`razorpay_signature`).
+
+#### [MODIFY] backend/models.py
+- Rename `stripe_customer_id` and `stripe_charge_id` to `razorpay_customer_id`, `razorpay_order_id`, and `razorpay_payment_id` in `User` and `Transaction` models.
+
+#### [MODIFY] src/components/Checkout.tsx (Frontend)
+- Integrate Razorpay Checkout UI instead of Stripe redirect logic.
+
+### 4. Composio Integrations
+#### [MODIFY] backend/models.py
+- Update the `Integration` model. Instead of storing manual `access_token`s, we will store a `composio_entity_id`.
+
+#### [MODIFY] backend/agents/agent_handler.py & Node Graphs
+- Install `composio-core` and its specific agent plugins (e.g. `composio-langchain` or `composio-openai`).
+- Bind Composio tools to the agents natively, so they can autonomously interact with platforms (like Meta, Twitter, LinkedIn) via the Composio platform without manual API routing.
+
+## Verification Plan
+
+### Automated Tests
+- None required for this setup phase.
+
+### Manual Verification
+1. Run Supabase migrations (`alembic` or `metadata.create_all`).
+2. Boot up the backend and frontend.
+3. Test Clerk Login -> Test Razorpay Test Payment -> Test connecting a demo app via Composio.

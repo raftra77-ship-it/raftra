@@ -5,10 +5,15 @@ load_dotenv()
 from celery import Celery
 
 # Initialize Celery app
+# For Upstash Redis, the REDIS_URL will start with 'rediss://'
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 celery_app = Celery(
     "raftra_worker",
-    broker=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-    backend=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+    broker=redis_url,
+    backend=redis_url,
+    broker_use_ssl={"ssl_cert_reqs": "CERT_NONE"} if "rediss://" in redis_url else None,
+    redis_backend_use_ssl={"ssl_cert_reqs": "CERT_NONE"} if "rediss://" in redis_url else None
 )
 
 # Optional configuration, see the application user guide.

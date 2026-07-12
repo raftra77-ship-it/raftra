@@ -48,6 +48,79 @@ def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background
     
     return {"status": "success", "message": "Knowledge Graph re-indexing started."}
 
+@router.get("/{workspace_id}/dashboard/metrics")
+def get_dashboard_metrics(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+        
+    # Calculate real data from db
+    from sqlalchemy.sql import func
+    
+    # Ad Spend & ROAS
+    campaigns = db.query(models.Campaign).filter(models.Campaign.workspace_id == workspace_id).all()
+    total_spend = sum(c.budget for c in campaigns if c.status != 'DRAFT')
+    avg_roas = sum(c.roas for c in campaigns if c.status != 'DRAFT') / (len([c for c in campaigns if c.status != 'DRAFT']) or 1)
+    
+    # SEO/GEO Score
+    audits = db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id).order_by(models.SEOAudit.created_at.desc()).all()
+    seo_score = audits[0].score if audits else 0
+    geo_visibility = seo_score * 0.9 if seo_score else 0 # Mock calculation for GEO based on SEO
+
+    # Active Agents
+    agents = db.query(models.AgentTask).filter(models.AgentTask.workspace_id == workspace_id, models.AgentTask.status == "RUNNING").count()
+
+    return {
+        "recent_quarter_spend": total_spend,
+        "roas": round(avg_roas, 2),
+        "seo_score": seo_score,
+        "geo_visibility_score": round(geo_visibility, 1),
+        "active_ai_agents": agents,
+    }
+
+@router.get("/{workspace_id}/dashboard/organic")
+async def get_organic_dashboard(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws: raise HTTPException(status_code=403, detail="Workspace access denied")
+    
+    # In production, query GA4, GSC, Firecrawl data from Qdrant/PostgreSQL
+    data = {
+        "seo_traffic": 15400,
+        "keyword_growth": "+24%",
+        "geo_visibility": 88,
+        "citation_count": 142,
+        "entity_authority": 92
+    }
+    
+    from core.providers.llm_providers import OpenRouterProvider
+    llm = OpenRouterProvider()
+    claude_prompt = f"Analyze this organic growth data and provide a 2 sentence recommendation for SEO:\n{data}"
+    claude_response = await llm.generate_text(claude_prompt)
+    
+    data["claude_recommendation"] = claude_response
+    return data
+
+@router.get("/{workspace_id}/dashboard/paid")
+async def get_paid_dashboard(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws: raise HTTPException(status_code=403, detail="Workspace access denied")
+    
+    data = {
+        "ad_spend": 4500.00,
+        "roas": 3.4,
+        "ctr": 2.1,
+        "conversions": 340,
+        "influencer_performance": "High"
+    }
+    
+    from core.providers.llm_providers import OpenRouterProvider
+    llm = OpenRouterProvider()
+    claude_prompt = f"Analyze this paid growth data and provide a 2 sentence recommendation for ad optimization and budget:\n{data}"
+    claude_response = await llm.generate_text(claude_prompt)
+    
+    data["claude_recommendation"] = claude_response
+    return data
+
 # Campaigns
 @router.get("/{workspace_id}/campaigns", response_model=List[schemas.CampaignResponse])
 def get_campaigns(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -173,6 +246,59 @@ class ChatMessageCreate(BaseModel):
     content: str
     sender_type: str
 
+class VerifyCreatorRequest(BaseModel):
+    username: str
+    niche: str
+    base_rate: float
+
+@router.post("/influencer/me/verify")
+async def verify_creator_profile(req: VerifyCreatorRequest, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
+    if not inf:
+        # Create a new influencer profile automatically if none exists
+        inf = models.Influencer(
+            user_id=current_user.id,
+            name=f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email.split('@')[0],
+            niche=req.niche,
+            platform="instagram",
+            handle=req.username,
+            fit_score=95,
+            success_rate=90
+        )
+        db.add(inf)
+        db.commit()
+        db.refresh(inf)
+        
+    from agents.influencers import verify_instagram_profile
+    result = await verify_instagram_profile(req.username, req.niche)
+    
+    if result.get("verification_status") == "verified":
+        inf.handle = req.username
+        inf.niche = req.niche
+        inf.base_rate = req.base_rate
+        inf.recent_collabs = result.get("recent_collabs", [])
+        inf.recent_posts = result.get("recent_posts", [])
+        inf.recent_reviews = result.get("recent_reviews", [])
+        db.commit()
+        db.refresh(inf)
+        
+    return {
+        "status": "success",
+        "data": result,
+        "influencer": {
+            "id": inf.id,
+            "name": inf.name,
+            "handle": inf.handle,
+            "niche": inf.niche,
+            "platform": inf.platform,
+            "base_rate": inf.base_rate,
+            "recent_posts": inf.recent_posts or [],
+            "recent_collabs": inf.recent_collabs or [],
+            "recent_reviews": inf.recent_reviews or []
+        }
+    }
+
+
 @router.post("/{workspace_id}/influencers/{influencer_id}/chat")
 async def send_chat_message(workspace_id: int, influencer_id: int, msg: ChatMessageCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
@@ -204,7 +330,18 @@ async def send_chat_message(workspace_id: int, influencer_id: int, msg: ChatMess
 def get_my_influencer(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
     if not inf:
-        raise HTTPException(status_code=404, detail="Influencer profile not found")
+        inf = models.Influencer(
+            user_id=current_user.id,
+            name=f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email.split('@')[0],
+            niche="",
+            platform="instagram",
+            handle="",
+            follower_count=0,
+            engagement_rate=0.0
+        )
+        db.add(inf)
+        db.commit()
+        db.refresh(inf)
     return inf
 
 @router.post("/influencer/me/profile", response_model=schemas.InfluencerResponse)
@@ -219,6 +356,8 @@ def update_my_influencer_profile(data: schemas.InfluencerProfileUpdate, db: Sess
         inf.recent_collabs = data.recent_collabs
     if data.recent_reviews is not None:
         inf.recent_reviews = data.recent_reviews
+    if data.base_rate is not None:
+        inf.base_rate = data.base_rate
         
     db.commit()
     db.refresh(inf)

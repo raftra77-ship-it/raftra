@@ -8,7 +8,7 @@ interface CreatorPortalProps {
 
 export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'inbox' | 'settings'>('dashboard');
-  const [chatMessages, setChatMessages] = useState<{sender: string, text: string}[]>([]);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -21,6 +21,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     recent_collabs: [] as string[], 
     recent_reviews: [] as {author: string, text: string}[] 
   });
+  
+  const [verifyForm, setVerifyForm] = useState({ username: '', niche: '', base_rate: 0 });
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<'unverified' | 'verified' | 'rejected'>('unverified');
+
   const [allBrands, setAllBrands] = useState<{id: number, name: string}[]>([]);
   const [showDiscover, setShowDiscover] = useState(false);
 
@@ -36,6 +41,9 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     }).then(r => r.json()).then(data => {
       if(data && data.id) {
         setMyInfluencerId(data.id);
+        if (data.handle) {
+          setVerificationStatus('verified');
+        }
         setProfileForm({
           recent_posts: data.recent_posts || [],
           recent_collabs: data.recent_collabs || [],
@@ -111,6 +119,57 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     }
   };
 
+  const handleAcceptProposal = async (amount: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const payload = JSON.stringify({ type: 'proposal_accepted', amount });
+      await fetch(`/api/workspaces/influencer/me/chats/${chatWorkspaceId}`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: payload, sender_type: 'influencer' }) 
+      });
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const handleVerifyProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifyForm.username || !verifyForm.niche || !verifyForm.base_rate) return;
+    
+    setIsVerifying(true);
+    setVerificationStatus('unverified');
+    const token = localStorage.getItem('token');
+    
+    try {
+      const res = await fetch('/api/workspaces/influencer/me/verify', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(verifyForm)
+      });
+      const data = await res.json();
+      if (data.status === 'success' && data.data.verification_status === 'verified') {
+        setVerificationStatus('verified');
+        setProfileForm({
+          recent_posts: data.influencer.recent_posts || [],
+          recent_collabs: data.influencer.recent_collabs || [],
+          recent_reviews: data.influencer.recent_reviews || []
+        });
+      } else {
+        setVerificationStatus('rejected');
+        alert("Verification failed: Fake followers detected or account private.");
+      }
+    } catch (e) {
+      console.error(e);
+      setVerificationStatus('rejected');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
@@ -147,7 +206,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #5A52FF 0%, #B252FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
             C
           </div>
-          <span style={{ fontSize: '18px', fontWeight: 600, fontFamily: 'var(--font-heading)' }}>Creator Portal</span>
+          <span style={{ fontSize: '18px', fontWeight: 600, fontFamily: 'var(--font-heading)' }}>Creator Dashboard</span>
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
@@ -280,8 +339,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                     <h2 style={{ fontSize: '18px', margin: 0 }}>Conversation with {groupedChats[chatWorkspaceId]?.name || 'Brand'}</h2>
                   </div>
                   
-                  <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {currentChatMessages.map((msg, i) => {
+                  <div className="chat-messages" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {currentChatMessages.map((msg: any, i: number) => {
                       if (msg.sender_type === 'system') {
                         return (
                           <div key={i} style={{ textAlign: 'center', margin: '8px 0' }}>
@@ -291,6 +350,53 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                           </div>
                         );
                       }
+                      let parsedContent = null;
+                      try {
+                        if (msg.content.trim().startsWith('{')) {
+                          parsedContent = JSON.parse(msg.content);
+                        }
+                      } catch (e) {}
+
+                      if (parsedContent && parsedContent.type === 'proposal') {
+                        return (
+                          <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
+                            <div style={{ background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.3)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
+                              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', color: '#fff' }}>Brand Proposed a Deal</h3>
+                              <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--success)', marginBottom: '16px' }}>
+                                ₹{parsedContent.amount.toLocaleString()}
+                              </div>
+                              <GlowButton variant="glow" onClick={() => handleAcceptProposal(parsedContent.amount)}>
+                                Accept Deal
+                              </GlowButton>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (parsedContent && parsedContent.type === 'proposal_accepted') {
+                        return (
+                          <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
+                            <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: 'var(--success)' }}>
+                              <CheckCircle2 size={24} style={{ marginBottom: '8px' }} />
+                              <div style={{ fontWeight: 'bold' }}>Deal Accepted for ₹{parsedContent.amount.toLocaleString()}</div>
+                              <div style={{ fontSize: '13px', marginTop: '4px' }}>Waiting for brand to complete payment...</div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (parsedContent && parsedContent.type === 'payment_complete') {
+                        return (
+                          <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
+                            <div style={{ background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: '#ffd700' }}>
+                              <DollarSign size={24} style={{ marginBottom: '8px' }} />
+                              <div style={{ fontWeight: 'bold' }}>Payment Received!</div>
+                              <div style={{ fontSize: '13px', marginTop: '4px' }}>₹{(parsedContent.amount * 0.9).toLocaleString()} added to your Escrowed Funds (90% cut).</div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       const isMe = msg.sender_type === 'influencer';
                       return (
                         <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
@@ -353,65 +459,126 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
             </div>
 
             <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '24px' }}>Edit Public Portfolio</h3>
-              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Recent Posts</label>
-                    <button type="button" onClick={() => setProfileForm({...profileForm, recent_posts: [...profileForm.recent_posts, {url: '', type: 'link'}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Post</button>
-                  </div>
-                  {profileForm.recent_posts.map((post, idx) => (
-                    <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                      <input type="text" placeholder="Image/Reel URL" value={post.url} onChange={e => {
-                        const newPosts = [...profileForm.recent_posts];
-                        newPosts[idx].url = e.target.value;
-                        setProfileForm({...profileForm, recent_posts: newPosts});
-                      }} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                      <button type="button" onClick={() => {
-                        const newPosts = [...profileForm.recent_posts];
-                        newPosts.splice(idx, 1);
-                        setProfileForm({...profileForm, recent_posts: newPosts});
-                      }} style={{ padding: '0 12px', background: 'rgba(255,0,0,0.1)', color: '#ff4444', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>✕</button>
+              <h3 style={{ fontSize: '18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 color="var(--primary)" size={18} /> Social Account Verification
+              </h3>
+              
+              {verificationStatus === 'verified' ? (
+                <div style={{ padding: '16px', background: 'rgba(0, 255, 128, 0.1)', border: '1px solid var(--success)', borderRadius: '8px', color: 'var(--success)' }}>
+                  ✅ Your account is verified and active! Your portfolio has been auto-generated via AI scraping.
+                </div>
+              ) : (
+                <form onSubmit={handleVerifyProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                    Connect your Instagram to generate your portfolio. Our AI will scan your profile, calculate real engagement, and extract recent collaborations.
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#888', marginBottom: '8px' }}>Instagram Username</label>
+                      <input 
+                        type="text" 
+                        style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} 
+                        placeholder="@username"
+                        value={verifyForm.username}
+                        onChange={e => setVerifyForm({...verifyForm, username: e.target.value})}
+                      />
                     </div>
-                  ))}
-                </div>
-
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Recent Brand Collaborations (Comma separated)</label>
-                  <input type="text" placeholder="e.g. Nike, Zara, Gymshark" value={profileForm.recent_collabs.join(', ')} onChange={e => {
-                    const val = e.target.value;
-                    setProfileForm({...profileForm, recent_collabs: val.split(',').map(s => s.trim()).filter(Boolean)});
-                  }} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                </div>
-
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Top Reviews</label>
-                    <button type="button" onClick={() => setProfileForm({...profileForm, recent_reviews: [...profileForm.recent_reviews, {author: '', text: ''}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Review</button>
-                  </div>
-                  {profileForm.recent_reviews.map((rev, idx) => (
-                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px', padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '8px', position: 'relative' }}>
-                      <button type="button" onClick={() => {
-                        const newRevs = [...profileForm.recent_reviews];
-                        newRevs.splice(idx, 1);
-                        setProfileForm({...profileForm, recent_reviews: newRevs});
-                      }} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer' }}>✕</button>
-                      <input type="text" placeholder="Author (e.g. Marketing Director, Nike)" value={rev.author} onChange={e => {
-                        const newRevs = [...profileForm.recent_reviews];
-                        newRevs[idx].author = e.target.value;
-                        setProfileForm({...profileForm, recent_reviews: newRevs});
-                      }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '90%' }} />
-                      <textarea placeholder="Review text" value={rev.text} onChange={e => {
-                        const newRevs = [...profileForm.recent_reviews];
-                        newRevs[idx].text = e.target.value;
-                        setProfileForm({...profileForm, recent_reviews: newRevs});
-                      }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%', minHeight: '60px', fontFamily: 'inherit' }} />
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#888', marginBottom: '8px' }}>Primary Category / Niche</label>
+                      <input 
+                        type="text" 
+                        style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} 
+                        placeholder="e.g. Tech, Beauty, Gaming"
+                        value={verifyForm.niche}
+                        onChange={e => setVerifyForm({...verifyForm, niche: e.target.value})}
+                      />
                     </div>
-                  ))}
-                </div>
-                <GlowButton variant="glow" type="submit" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>Save Changes</GlowButton>
-              </form>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#888', marginBottom: '8px' }}>Base Rate per Post (INR)</label>
+                      <input 
+                        type="number" 
+                        style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} 
+                        placeholder="e.g. 5000"
+                        value={verifyForm.base_rate || ''}
+                        onChange={e => setVerifyForm({...verifyForm, base_rate: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                  </div>
+                  {verificationStatus === 'rejected' && (
+                    <div style={{ color: 'var(--warning)', fontSize: '13px' }}>Verification failed. Please ensure your profile is public and authentic.</div>
+                  )}
+                  <GlowButton variant="glow" type="submit" disabled={isVerifying} style={{ alignSelf: 'flex-start', marginTop: '8px' }}>
+                    {isVerifying ? 'Scanning Profile...' : 'Verify Profile'}
+                  </GlowButton>
+                </form>
+              )}
             </div>
+
+            {verificationStatus === 'verified' && (
+              <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Edit Portfolio Details</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px' }}>
+                  Your profile was generated by AI. You can manually adjust your recent posts, collaborations, and reviews below.
+                </p>
+                <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Recent Posts</label>
+                      <button type="button" onClick={() => setProfileForm({...profileForm, recent_posts: [...profileForm.recent_posts, {url: '', type: 'link'}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Post</button>
+                    </div>
+                    {profileForm.recent_posts.map((post, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                        <input type="text" placeholder="Image/Reel URL" value={post.url} onChange={e => {
+                          const newPosts = [...profileForm.recent_posts];
+                          newPosts[idx].url = e.target.value;
+                          setProfileForm({...profileForm, recent_posts: newPosts});
+                        }} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
+                        <button type="button" onClick={() => {
+                          const newPosts = [...profileForm.recent_posts];
+                          newPosts.splice(idx, 1);
+                          setProfileForm({...profileForm, recent_posts: newPosts});
+                        }} style={{ padding: '0 12px', background: 'rgba(255,0,0,0.1)', color: '#ff4444', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Recent Brand Collaborations (Comma separated)</label>
+                    <input type="text" placeholder="e.g. Nike, Zara, Gymshark" value={profileForm.recent_collabs.join(', ')} onChange={e => {
+                      const val = e.target.value;
+                      setProfileForm({...profileForm, recent_collabs: val.split(',').map(s => s.trim()).filter(Boolean)});
+                    }} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Top Reviews</label>
+                      <button type="button" onClick={() => setProfileForm({...profileForm, recent_reviews: [...profileForm.recent_reviews, {author: '', text: ''}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Review</button>
+                    </div>
+                    {profileForm.recent_reviews.map((rev, idx) => (
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px', padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '8px', position: 'relative' }}>
+                        <button type="button" onClick={() => {
+                          const newRevs = [...profileForm.recent_reviews];
+                          newRevs.splice(idx, 1);
+                          setProfileForm({...profileForm, recent_reviews: newRevs});
+                        }} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer' }}>✕</button>
+                        <input type="text" placeholder="Author (e.g. Marketing Director, Nike)" value={rev.author} onChange={e => {
+                          const newRevs = [...profileForm.recent_reviews];
+                          newRevs[idx].author = e.target.value;
+                          setProfileForm({...profileForm, recent_reviews: newRevs});
+                        }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '90%' }} />
+                        <textarea placeholder="Review text" value={rev.text} onChange={e => {
+                          const newRevs = [...profileForm.recent_reviews];
+                          newRevs[idx].text = e.target.value;
+                          setProfileForm({...profileForm, recent_reviews: newRevs});
+                        }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%', minHeight: '60px', fontFamily: 'inherit' }} />
+                      </div>
+                    ))}
+                  </div>
+                  <GlowButton variant="glow" type="submit" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>Save Changes</GlowButton>
+                </form>
+              </div>
+            )}
 
             <div className="glow-card" style={{ padding: '32px' }}>
               <h3 style={{ fontSize: '18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>

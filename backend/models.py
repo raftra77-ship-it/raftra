@@ -1,7 +1,20 @@
 from sqlalchemy import Boolean, Column, Integer, String, Float, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 import datetime
+from pgvector.sqlalchemy import Vector
 from database import Base
+
+class AgentMemory(Base):
+    __tablename__ = "agent_memories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_type = Column(String) # CREATIVE, SEO, etc
+    content = Column(String)
+    embedding = Column(Vector(1536)) # OpenAI embedding dimension
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"))
+    workspace = relationship("Workspace")
 
 class User(Base):
     __tablename__ = "users"
@@ -14,10 +27,11 @@ class User(Base):
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
     role = Column(String, default="brand") # 'brand', 'creator'
+    clerk_id = Column(String, unique=True, index=True, nullable=True) # Added for Clerk Auth
     
     # Subscriptions / Payments
     payment_status = Column(String, default="pending")  # pending, paid, cancelled
-    stripe_customer_id = Column(String, unique=True, nullable=True)
+    razorpay_customer_id = Column(String, unique=True, nullable=True)
     billing_balance = Column(Float, default=0.0)
     unlocked_nodes = Column(String, default="")  # Comma separated list of active/purchased nodes: "studio,campaign,seo,analytics,social,influencer"
 
@@ -29,9 +43,10 @@ class Transaction(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     amount = Column(Float)
-    currency = Column(String, default="usd")
-    stripe_charge_id = Column(String, unique=True)
-    status = Column(String)  # succeeded, failed
+    currency = Column(String, default="inr") # Razorpay default INR
+    razorpay_order_id = Column(String, unique=True, nullable=True)
+    razorpay_payment_id = Column(String, unique=True, nullable=True)
+    status = Column(String)  # created, paid, failed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     owner_id = Column(Integer, ForeignKey("users.id"))
@@ -59,6 +74,31 @@ class Workspace(Base):
     influencers = relationship("Influencer", back_populates="workspace", cascade="all, delete-orphan")
     agent_tasks = relationship("AgentTask", back_populates="workspace", cascade="all, delete-orphan")
     brand_profile = relationship("BrandProfile", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
+    subscription = relationship("Subscription", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
+
+class Plan(Base):
+    __tablename__ = "plans"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True) # Free, Starter, Growth, Agency
+    price_inr = Column(Float)
+    features = Column(JSON) # e.g. {"max_campaigns": 5, "ai_generation": true}
+    
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    plan_id = Column(Integer, ForeignKey("plans.id"))
+    razorpay_subscription_id = Column(String, nullable=True)
+    status = Column(String, default="active") # active, past_due, canceled
+    current_period_end = Column(DateTime, nullable=True)
+    
+    usage_campaigns = Column(Integer, default=0)
+    usage_ai_generations = Column(Integer, default=0)
+    
+    workspace = relationship("Workspace", back_populates="subscription")
+    plan = relationship("Plan")
 
 class BrandProfile(Base):
     __tablename__ = "brand_profiles"
@@ -78,8 +118,7 @@ class Integration(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     platform = Column(String)  # META, GOOGLE, TIKTOK, LINKEDIN
-    access_token = Column(String, nullable=True)
-    account_id = Column(String, nullable=True)
+    composio_entity_id = Column(String, nullable=True) # Composio Entity identifier
     status = Column(String, default="ACTIVE")  # ACTIVE, DISCONNECTED
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
@@ -107,7 +146,10 @@ class AdAsset(Base):
     type = Column(String)  # Facebook Static, LinkedIn Text, etc.
     image_url = Column(String, nullable=True)
     video_url = Column(String, nullable=True)
+    audio_url = Column(String, nullable=True)
     status = Column(String)  # pending_review, approved, rejected
+    parent_id = Column(Integer, ForeignKey("ad_assets.id"), nullable=True)
+    suggested_edits = Column(JSON, nullable=True)
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     workspace = relationship("Workspace", back_populates="ad_assets")
@@ -148,6 +190,7 @@ class Influencer(Base):
     fit_score = Column(Integer)
     success_rate = Column(Integer)
     niche = Column(String)
+    base_rate = Column(Float, default=0.0)
     status = Column(String, default="available")  # available, proposed, collaborating
     
     recent_posts = Column(JSON, nullable=True) # list of {url, type}
@@ -177,9 +220,26 @@ class ChatMessage(Base):
     sender_type = Column(String)  # 'brand', 'influencer', 'system'
     content = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    delivered_at = Column(DateTime, nullable=True)
+    read_at = Column(DateTime, nullable=True)
+    file_url = Column(String, nullable=True)
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     influencer_id = Column(Integer, ForeignKey("influencers.id"))
     
     workspace = relationship("Workspace")
     influencer = relationship("Influencer")
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    title = Column(String)
+    message = Column(String)
+    type = Column(String) # 'chat', 'system', 'payment', 'agent'
+    read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    action_url = Column(String, nullable=True)
+
+    user = relationship("User")

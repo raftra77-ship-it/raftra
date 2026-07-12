@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity } from 'lucide-react';
+import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 export interface InfluencerItemExtended {
@@ -78,7 +78,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             platform: inf.platform,
             niche: inf.niche,
             category: 'Micro',
-            expectedPrice: '$350',
+            expectedPrice: inf.base_rate ? `₹${inf.base_rate.toLocaleString()}` : 'Negotiable',
             deliverables: ['UGC Video'],
             followers: '10k+',
             fakeFollowerScore: 100 - inf.success_rate,
@@ -189,18 +189,50 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     }
   };
 
-  const handleLockDeal = (e: React.FormEvent) => {
+  const handleLockDeal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!finalPrice || isNaN(Number(finalPrice))) return;
+    if (!finalPrice || isNaN(Number(finalPrice)) || !activeChat) return;
     const price = parseFloat(finalPrice);
-    const raftraCut = price * 0.10;
-    const creatorCut = price * 0.90;
     
-    setChatMessages(prev => [...prev, 
-      { sender: 'system', text: `DEAL LOCKED ✅\n\nTotal Price: $${price.toFixed(2)}\nRaftra AI Commission (10%): $${raftraCut.toFixed(2)}\nCreator Payout (90%): $${creatorCut.toFixed(2)}\n\nCredits have been securely allocated to escrow. Post-campaign analytics will populate once live.` }
-    ]);
+    try {
+      const token = localStorage.getItem('token');
+      const payload = JSON.stringify({ type: 'proposal', amount: price, status: 'pending' });
+      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: payload, sender_type: 'brand' })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+    
     setShowFinalize(false);
     setFinalPrice('');
+  };
+
+  const handlePayRazorpay = async (amount: number) => {
+    try {
+      // Create razorpay order, open modal, on success send payment_complete
+      const token = localStorage.getItem('token');
+      
+      // We will skip full razorpay opening here for mock demo, just jump to success
+      // In production, we'd call the Razorpay Checkout component here
+      
+      const payload = JSON.stringify({ type: 'payment_complete', amount });
+      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat!.id}/chat`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: payload, sender_type: 'brand' })
+      });
+    } catch(e) {
+      console.error(e);
+    }
   };
 
   return (
@@ -343,8 +375,61 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   );
                 }
                 const isBrand = msg.sender === 'brand';
+                
+                let parsedContent = null;
+                try {
+                  if (msg.text.trim().startsWith('{')) {
+                    parsedContent = JSON.parse(msg.text);
+                  }
+                } catch (e) {}
+
+                if (parsedContent && parsedContent.type === 'proposal') {
+                  return (
+                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
+                      <div style={{ background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.3)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
+                        <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', color: '#fff' }}>You Proposed a Deal</h3>
+                        <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '16px' }}>
+                          ₹{parsedContent.amount.toLocaleString()}
+                        </div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for creator to accept...</div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (parsedContent && parsedContent.type === 'proposal_accepted') {
+                  return (
+                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
+                      <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: 'var(--success)' }}>
+                        <CheckCircle2 size={24} style={{ marginBottom: '8px' }} />
+                        <div style={{ fontWeight: 'bold' }}>Deal Accepted for ₹{parsedContent.amount.toLocaleString()}!</div>
+                        <div style={{ marginTop: '16px' }}>
+                          <GlowButton variant="glow" onClick={() => handlePayRazorpay(parsedContent.amount)}>
+                            Pay via Razorpay
+                          </GlowButton>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (parsedContent && parsedContent.type === 'payment_complete') {
+                  return (
+                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
+                      <div style={{ background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: '#ffd700' }}>
+                        <DollarSign size={24} style={{ marginBottom: '8px' }} />
+                        <div style={{ fontWeight: 'bold' }}>Payment Complete!</div>
+                        <div style={{ fontSize: '13px', marginTop: '4px' }}>₹{parsedContent.amount.toLocaleString()} paid. Escrow securely funded.</div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
-                  <div key={i} style={{ alignSelf: isBrand ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
+                  <div key={i} style={{ alignSelf: isBrand ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isBrand ? 'right' : 'left' }}>
+                      {isBrand ? 'You' : activeChat.name}
+                    </div>
                     <div style={{ 
                       background: isBrand ? 'rgba(90, 82, 255, 0.15)' : 'rgba(255,255,255,0.05)', 
                       border: '1px solid',

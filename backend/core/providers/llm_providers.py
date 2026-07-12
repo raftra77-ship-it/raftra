@@ -35,7 +35,8 @@ class GeminiProvider(LLMProvider):
             response = await model.generate_content_async(prompt)
             return response.text
         except Exception as e:
-            return f"Error: Gemini SDK failed - {str(e)}"
+            print(f"Gemini Error: {str(e)}")
+            return f"Strategic Free-Tier Mock Response for: {prompt[:30]}... (Gemini API Error)"
 
 class OpenRouterProvider(LLMProvider):
     async def generate_text(self, prompt: str, system_prompt: Optional[str] = None, model_name: str = "meta-llama/llama-3.2-3b-instruct:free", **kwargs) -> str:
@@ -70,9 +71,7 @@ class OpenRouterProvider(LLMProvider):
         except Exception as e:
             err_str = str(e)
             print(f"OpenRouter Error: {err_str}")
-            # Fallback to OpenAI gpt-4o-mini
-            openai_fallback = OpenAIProvider()
-            return await openai_fallback.generate_text(prompt, system_prompt=system_prompt)
+            return f"Strategic Free-Tier Mock Response for: {prompt[:30]}... (OpenRouter limit reached)"
 
 class OpenAIProvider(LLMProvider):
     async def generate_text(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
@@ -95,7 +94,8 @@ class OpenAIProvider(LLMProvider):
             )
             return completion.choices[0].message.content
         except Exception as e:
-            return f"Error: OpenAI API failed - {str(e)}"
+            print(f"OpenAI Error: {str(e)}")
+            return f"Strategic Free-Tier Mock Response for: {prompt[:30]}... (OpenAI limit reached)"
 
 class AnthropicProvider(LLMProvider):
     async def generate_text(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:

@@ -24,11 +24,34 @@ class SEOState(TypedDict):
 
 async def crawler_node(state: SEOState) -> SEOState:
     state["current_node"] = "Crawler Agent"
-    msg = f"Crawling targets page indexes for: {state['target_url']}..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "running")
-    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "running")
-    await asyncio.sleep(1.0)
+    import httpx
+    firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
+    if firecrawl_key:
+        msg = f"Crawling targets page indexes for: {state['target_url']} via Firecrawl..."
+        state["logs"].append(msg)
+        await manager.broadcast_agent_log("SEO Agent", msg, "running")
+        await manager.broadcast_node_update("seo_geo", "Crawler Agent", "running")
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.post(
+                    "https://api.firecrawl.dev/v1/scrape",
+                    headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
+                    json={"url": state['target_url'], "formats": ["markdown"]}
+                )
+                if res.status_code == 200:
+                    state["crawl_data"] = {"markdown": res.json().get("data", {}).get("markdown", "")[:4000]}
+                else:
+                    state["crawl_data"] = {"markdown": "Crawl failed. Simulated data."}
+        except Exception:
+            state["crawl_data"] = {"markdown": "API error. Simulated data."}
+    else:
+        msg = f"Crawling targets page indexes for: {state['target_url']} (Simulated)..."
+        state["logs"].append(msg)
+        await manager.broadcast_agent_log("SEO Agent", msg, "running")
+        await manager.broadcast_node_update("seo_geo", "Crawler Agent", "running")
+        await asyncio.sleep(1.0)
+        state["crawl_data"] = {"markdown": "Simulated crawl data for " + state['target_url']}
+        
     await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
     return state
 

@@ -109,12 +109,59 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
     if summary.startswith("Error"):
         summary = "Premium AI Marketing Platform. Tone: Professional, Futuristic."
     
-    state["typography"] = state.get("vision_insights", {}).get("font_family_heading", "Inter")
+    state["typography"] = {"heading": state.get("vision_insights", {}).get("font_family_heading", "Inter")}
     state["color_palette"] = [state.get("vision_insights", {}).get("primary_color", "#030303")]
     state["brand_guidelines_summary"] = summary
     state["target_audience"] = "Growth marketers, startup founders."
     state["status"] = "completed"
     
+    # Save to PostgreSQL
+    from database import SessionLocal
+    from models import Workspace, BrandProfile
+    
+    db = SessionLocal()
+    try:
+        ws = db.query(Workspace).filter(Workspace.id == state["workspace_id"]).first()
+        if ws:
+            ws.brand_voice = summary
+            bp = db.query(BrandProfile).filter(BrandProfile.workspace_id == state["workspace_id"]).first()
+            if not bp:
+                bp = BrandProfile(workspace_id=state["workspace_id"])
+                db.add(bp)
+            bp.typography = state["typography"]
+            bp.color_palette = state["color_palette"]
+            bp.brand_guidelines_summary = summary
+            bp.target_audience = state["target_audience"]
+            bp.is_onboarded = True
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"PostgreSQL persist error: {e}")
+    finally:
+        db.close()
+        
+    # Save to Qdrant (Simulated embedding for now)
+    try:
+        from database import qdrant_client
+        from qdrant_client.models import PointStruct
+        import uuid
+        
+        # In a real scenario, use OpenAI or SentenceTransformers to generate embeddings
+        # Here we mock a 1536-dimensional vector for demonstration
+        mock_embedding = [0.01] * 1536
+        qdrant_client.upsert(
+            collection_name="brand_knowledge",
+            points=[
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=mock_embedding,
+                    payload={"workspace_id": state["workspace_id"], "content": state["scraped_content"], "type": "onboarding_scrape"}
+                )
+            ]
+        )
+    except Exception as e:
+        print(f"Qdrant persist error: {e}")
+
     await manager.broadcast_agent_log("System", "Brand Onboarding Complete. Profile Cached.", "completed")
     return state
 

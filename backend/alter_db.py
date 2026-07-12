@@ -4,12 +4,11 @@ import database, models
 from sqlalchemy import text
 
 statements = [
-    "ALTER TABLE influencers ADD COLUMN recent_posts JSON",
-    "ALTER TABLE influencers ADD COLUMN recent_collabs JSON",
-    "ALTER TABLE influencers ADD COLUMN recent_reviews JSON",
-    "ALTER TABLE influencers DROP COLUMN reel_link_1",
-    "ALTER TABLE influencers DROP COLUMN reel_link_2",
-    "ALTER TABLE influencers DROP COLUMN custom_review"
+    "ALTER TABLE ad_assets ADD COLUMN audio_url VARCHAR",
+    "ALTER TABLE ad_assets ADD COLUMN parent_id INTEGER REFERENCES ad_assets(id)",
+    "ALTER TABLE ad_assets ADD COLUMN suggested_edits JSON",
+    "ALTER TABLE users ADD COLUMN category VARCHAR",
+    "ALTER TABLE users ADD COLUMN price FLOAT"
 ]
 
 with database.engine.begin() as conn:

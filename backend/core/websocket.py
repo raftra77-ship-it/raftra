@@ -62,6 +62,16 @@ class ConnectionManager:
             "message": message
         }
         await self.broadcast(json.dumps(payload))
+        
+    async def broadcast_notification(self, notification: dict):
+        """
+        Broadcasts an in-app notification to the frontend.
+        """
+        payload = {
+            "type": "notification",
+            "notification": notification
+        }
+        await self.broadcast(json.dumps(payload))
 
     async def broadcast(self, message: str):
         for connection in self.active_connections:

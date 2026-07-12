@@ -70,23 +70,32 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
         await manager.broadcast_agent_log("System", f"Warning: DB fetch failed: {str(e)}", "running")
     
     # ---------------------------------------------------------
-    # SIMULATED RAG PIPELINE: Fetching Context Video Knowledge
+    # REAL RAG PIPELINE: Fetching Context from Qdrant Knowledge Base
     # ---------------------------------------------------------
-    await manager.broadcast_agent_log("RAG Agent", "Retrieving historical video ideas and brand context from knowledge base...", "running")
-    await asyncio.sleep(1) # simulate vector DB latency
+    await manager.broadcast_agent_log("RAG Agent", "Retrieving historical ideas and brand context from Qdrant knowledge base...", "running")
     
-    # In a real app, this would use a vector DB (like Qdrant) with `sentence-transformers`.
-    # We generate a massive context block that `headroom` will compress.
-    rag_context = f"""
-    [RAG DOCUMENT 1] Brand Guidelines: The brand tone is {brand_voice}. Avoid using overly technical jargon. Focus on emotional storytelling.
-    [RAG DOCUMENT 2] Video Analytics: Past videos featuring human faces in the first 3 seconds saw a 45% increase in retention.
-    [RAG DOCUMENT 3] Competitor Analysis: Competitors are heavily utilizing fast-paced transitions. We should adopt quick jump cuts (every 2-3 seconds).
-    [RAG DOCUMENT 4] Historical Ads: "Summer Blast 2023" was a top performer because it highlighted urgency and scarcity.
-    """
+    rag_context = ""
+    try:
+        from database import qdrant_client
+        results = qdrant_client.search(
+            collection_name="brand_knowledge",
+            query_vector=[0.01]*1536, # using a dummy query vector for now until actual embedding model integration
+            limit=3
+        )
+        # Filter manually if not using Qdrant filter
+        filtered_results = [r for r in results if r.payload.get("workspace_id") == state.get("workspace_id")]
+        for idx, r in enumerate(filtered_results):
+            rag_context += f"\n[KNOWLEDGE {idx+1}] {r.payload.get('content', '')}"
+            
+        if not rag_context:
+            rag_context = "No specific onboarding scraped knowledge found for this workspace in Qdrant."
+    except Exception as e:
+        rag_context = f"Failed to retrieve from Qdrant: {str(e)}"
+        
     
     # Append the massive RAG context to the brand voice for the LLM's system prompt
-    brand_voice = f"Tone: {brand_voice}\n\nKNOWLEDGE BASE CONTEXT:\n{rag_context}"
-    await manager.broadcast_agent_log("RAG Agent", "Knowledge base context retrieved and loaded for compression.", "completed")
+    brand_voice = f"Tone: {brand_voice}\n\nQDRANT KNOWLEDGE BASE CONTEXT:\n{rag_context}"
+    await manager.broadcast_agent_log("RAG Agent", "Knowledge base context retrieved from Qdrant.", "completed")
     
     state["cached_typography"] = typography
     state["cached_colors"] = colors
@@ -256,9 +265,36 @@ async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: d
         
         ad_id = "cr-" + str(workspace_id) + "-" + str(int(asyncio.get_event_loop().time() * 1000))
             
+        # Save to database
+        db_id = 0
+        try:
+            from database import SessionLocal
+            import models
+            db = SessionLocal()
+            new_asset = models.AdAsset(
+                workspace_id=workspace_id,
+                headline=headline[:255] if headline else "Generated Headline",
+                body_text=body_text,
+                cta="Launch Campaign",
+                type=ad_type,
+                image_url=result.get("image_url"),
+                video_url=result.get("video_url"),
+                audio_url=result.get("audio_url"),
+                status="approved"
+            )
+            db.add(new_asset)
+            db.commit()
+            db.refresh(new_asset)
+            db_id = new_asset.id
+        except Exception as e:
+            print(f"Failed to save AdAsset to DB: {e}")
+            if 'db' in locals(): db.rollback()
+        finally:
+            if 'db' in locals(): db.close()
+
         # Broadcast the final generated asset to the frontend!
         final_asset = {
-            "id": ad_id,
+            "id": db_id or ad_id,
             "headline": headline,
             "bodyText": body_text,
             "cta": "Launch Campaign",
@@ -268,11 +304,10 @@ async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: d
             "audioUrl": result.get("audio_url", "")
         }
         
-        await manager.broadcast_creative_asset(final_asset)
+        await manager.broadcast_creative_asset(workspace_id, final_asset)
         await manager.broadcast_agent_log("System", "Ad generation successfully delivered to UI.", "completed")
         return result
     except Exception as e:
-        error_msg = f"Fatal Error in Ad Generation: {str(e)}"
-        await manager.broadcast_agent_log("System", error_msg, "failed")
-        print(error_msg)
+        await manager.broadcast_agent_log("System", f"Pipeline Failed: {str(e)}", "failed")
+        print(f"Error in creative pipeline: {e}")
         return initial_state

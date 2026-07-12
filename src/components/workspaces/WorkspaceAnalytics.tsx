@@ -30,13 +30,15 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   }, [chatHistory]);
 
   const growthData = [
+    { name: 'Oct', MetaSpend: 3100, GoogleSpend: 2100, Revenue: 18000 },
+    { name: 'Nov', MetaSpend: 3800, GoogleSpend: 2900, Revenue: 24000 },
+    { name: 'Dec', MetaSpend: 4200, GoogleSpend: 3500, Revenue: 29000 },
     { name: 'Jan', MetaSpend: 4000, GoogleSpend: 2400, Revenue: 21000 },
     { name: 'Feb', MetaSpend: 3000, GoogleSpend: 1398, Revenue: 18000 },
     { name: 'Mar', MetaSpend: 2000, GoogleSpend: 9800, Revenue: 35000 },
     { name: 'Apr', MetaSpend: 2780, GoogleSpend: 3908, Revenue: 29000 },
     { name: 'May', MetaSpend: 1890, GoogleSpend: 4800, Revenue: 28000 },
     { name: 'Jun', MetaSpend: 2390, GoogleSpend: 3800, Revenue: 34000 },
-    { name: 'Jul', MetaSpend: 3490, GoogleSpend: 4300, Revenue: 42000 },
   ];
 
   const seoGeoData = [

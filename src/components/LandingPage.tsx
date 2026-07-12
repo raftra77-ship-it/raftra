@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   AlertTriangle,
@@ -18,6 +19,8 @@ import {
 import { GlowButton } from './GlowButton';
 import { motion } from 'framer-motion';
 import { PricingScreen } from './PricingScreen';
+import { Navbar } from './Navbar';
+import { Footer } from './Footer';
 
 interface LandingPageProps {
   onStartFree: () => void;
@@ -26,28 +29,78 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDemo }) => {
   const [currentSubView, setCurrentSubView] = useState<'main' | 'pricing'>('main');
+  const navigate = useNavigate();
   
   // Creator Portal State
   const [showCreatorPortal, setShowCreatorPortal] = useState(false);
   const [creatorPortalState, setCreatorPortalState] = useState<'form' | 'scanning' | 'success' | 'removing' | 'removed' | 'error'>('form');
-  const [creatorForm, setCreatorForm] = useState({ handle: '', niche: '', price: '' });
+  const [creatorForm, setCreatorForm] = useState({ handle: '', niche: '', price: '', email: '', password: '' });
 
-  const handleCreatorSubmit = (e: React.FormEvent, action: 'add' | 'remove') => {
+  const handleCreatorSubmit = async (e: React.FormEvent, action: 'add' | 'remove') => {
     e.preventDefault();
-    if (!creatorForm.handle) return;
+    if (!creatorForm.handle || (action === 'add' && (!creatorForm.email || !creatorForm.password))) return;
     
     if (action === 'add') {
       setCreatorPortalState('scanning');
-      fetch(`/api/auth/verify-instagram?handle=${creatorForm.handle}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.exists) {
-            setCreatorPortalState('success');
-          } else {
-            setCreatorPortalState('error');
-          }
-        })
-        .catch(() => setCreatorPortalState('error'));
+      try {
+        let authData;
+        const regRes = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: creatorForm.email,
+            username: creatorForm.handle,
+            password: creatorForm.password,
+            first_name: creatorForm.handle,
+            last_name: '',
+            role: 'creator'
+          })
+        });
+        
+        if (!regRes.ok) {
+           // Fallback to login if already registered
+           const loginRes = await fetch('/api/auth/login', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ identifier: creatorForm.email, password: creatorForm.password })
+           });
+           if (!loginRes.ok) {
+             setCreatorPortalState('error');
+             return;
+           }
+           authData = await loginRes.json();
+        } else {
+           authData = await regRes.json();
+        }
+        
+        const verifyRes = await fetch('/api/workspaces/influencer/me/verify', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authData.access_token}`
+          },
+          body: JSON.stringify({
+            username: creatorForm.handle,
+            niche: creatorForm.niche,
+            base_rate: parseFloat(creatorForm.price) || 0
+          })
+        });
+
+        const data = await verifyRes.json();
+        if (data.status === 'success' && data.data.verification_status === 'verified') {
+           localStorage.setItem('token', authData.access_token);
+           setCreatorPortalState('success');
+           setTimeout(() => {
+             setShowCreatorPortal(false);
+             setCreatorPortalState('form');
+             navigate('/creator-dashboard');
+           }, 2000);
+        } else {
+           setCreatorPortalState('error');
+        }
+      } catch (err) {
+        setCreatorPortalState('error');
+      }
     } else {
       setCreatorPortalState('removing');
       setTimeout(() => {
@@ -113,25 +166,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
   if (currentSubView === 'pricing') {
     return (
       <div className="app-wrapper">
-        <nav className="landing-nav">
-          <div className="logo-container" onClick={() => setCurrentSubView('main')} style={{ cursor: 'pointer', flex: 1, justifyContent: 'flex-start', display: 'flex' }}>
-            <Cpu className="logo-icon" size={24} />
-            <span>RAFTRA AI</span>
-          </div>
-          <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
-            <button className="btn btn-secondary" onClick={() => setCurrentSubView('main')} style={{ padding: '8px 16px', fontSize: '13px' }}>
-              <ArrowLeft size={14} /> Back to Home
-            </button>
-            <button className="nav-link" onClick={() => setShowCreatorPortal(true)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
-              Creator Portal
-            </button>
-            <GlowButton variant="glow" onClick={onStartFree}>
-              Start Free
-            </GlowButton>
-          </div>
-        </nav>
+        <Navbar />
 
-        <div style={{ marginTop: '20px' }}>
+        <div style={{ marginTop: '100px' }}>
           <PricingScreen onComplete={onStartFree} />
         </div>
       </div>
@@ -140,33 +177,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
 
   return (
     <div className="app-wrapper">
-      {/* Navigation */}
-      <nav className="landing-nav">
-        <div className="logo-container" onClick={() => setCurrentSubView('main')} style={{ cursor: 'pointer', flex: 1, justifyContent: 'flex-start', display: 'flex' }}>
-          <Cpu className="logo-icon" size={24} />
-          <span>RAFTRA AI</span>
-        </div>
-        <div className="nav-links" style={{ display: 'flex', justifyContent: 'center' }}>
-          <button className="nav-link" onClick={() => scrollToSection('problem')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>The Friction</button>
-          <button className="nav-link" onClick={() => scrollToSection('solution')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>The Solution</button>
-          <button className="nav-link" onClick={() => scrollToSection('about')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>About Us</button>
-          <button className="nav-link" onClick={() => setCurrentSubView('pricing')} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>Pricing</button>
-        </div>
-        <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
-          <button className="nav-link" onClick={() => setShowCreatorPortal(true)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
-            Creator Portal
-          </button>
-          <button className="nav-link" onClick={() => window.location.href = '/admin'} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
-            Admin Panel
-          </button>
-          <button className="nav-link" onClick={onStartFree} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
-            Log In
-          </button>
-          <GlowButton variant="glow" onClick={onStartFree}>
-            Start Free
-          </GlowButton>
-        </div>
-      </nav>
+      <Navbar onOpenCreatorPortal={() => setShowCreatorPortal(true)} />
 
       {/* Hero Section */}
       <section className="hero-section">
@@ -207,8 +218,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           <GlowButton variant="glow" onClick={onStartFree} icon={<ArrowRight size={16} />}>
             Start Free
           </GlowButton>
-          <GlowButton variant="secondary" onClick={onBookDemo}>
-            Book Demo
+          <GlowButton variant="secondary" onClick={() => scrollToSection('problem')}>
+            Explore Platform
           </GlowButton>
         </motion.div>
 
@@ -424,7 +435,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
 
         <div className="solutions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
           {/* Card 1 */}
-          <div className="solution-card">
+          <div className="solution-card" onClick={() => navigate('/features/creative')} style={{ cursor: 'pointer' }}>
             <div className="solution-icon-wrapper">
               <Sparkles size={24} />
             </div>
@@ -435,7 +446,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           </div>
 
           {/* Card 2 */}
-          <div className="solution-card">
+          <div className="solution-card" onClick={() => navigate('/features/campaign')} style={{ cursor: 'pointer' }}>
             <div className="solution-icon-wrapper" style={{ background: 'rgba(90, 82, 255, 0.08)', color: 'var(--accent)' }}>
               <Megaphone size={24} />
             </div>
@@ -446,7 +457,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           </div>
 
           {/* Card 3 */}
-          <div className="solution-card">
+          <div className="solution-card" onClick={() => navigate('/features/seo')} style={{ cursor: 'pointer' }}>
             <div className="solution-icon-wrapper" style={{ background: 'rgba(0, 255, 157, 0.08)', color: 'var(--success)' }}>
               <Globe size={24} />
             </div>
@@ -457,18 +468,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           </div>
 
           {/* Card 4 */}
-          <div className="solution-card">
+          <div className="solution-card" onClick={() => navigate('/features/review')} style={{ cursor: 'pointer' }}>
             <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 174, 0, 0.08)', color: 'var(--warning)' }}>
               <BarChart3 size={24} />
             </div>
-            <h3>Analytics + Claude Intel</h3>
+            <h3>Analytics + Brand Review</h3>
             <p style={{ fontSize: '13.5px', marginTop: '8px' }}>
-              Transform numbers into narrative decisions. Connect Meta, Google Search, and source systems. Let Claude analyze data points and answer why conversions move.
+              Transform numbers into narrative decisions. Connect Meta, Google Search, and source systems. Review and approve everything in one workspace.
             </p>
           </div>
 
           {/* Card 5 */}
-          <div className="solution-card">
+          <div className="solution-card" onClick={() => navigate('/features/social-manager')} style={{ cursor: 'pointer' }}>
             <div className="solution-icon-wrapper" style={{ background: 'rgba(238, 130, 238, 0.08)', color: 'violet' }}>
               <Share2 size={24} />
             </div>
@@ -479,7 +490,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           </div>
 
           {/* Card 6 */}
-          <div className="solution-card">
+          <div className="solution-card" onClick={() => navigate('/features/influencer')} style={{ cursor: 'pointer' }}>
             <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 71, 87, 0.08)', color: 'var(--danger)' }}>
               <Users2 size={24} />
             </div>
@@ -556,13 +567,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                   <label>Social Handle</label>
                   <input type="text" placeholder="@username" value={creatorForm.handle} onChange={e => setCreatorForm({...creatorForm, handle: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
                 </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>Email</label>
+                    <input type="email" placeholder="Email" value={creatorForm.email} onChange={e => setCreatorForm({...creatorForm, email: e.target.value})} required style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }} />
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>Password</label>
+                    <input type="password" placeholder="Password" value={creatorForm.password} onChange={e => setCreatorForm({...creatorForm, password: e.target.value})} required style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
                 <div className="form-group">
                   <label>Niche / Category</label>
-                  <input type="text" placeholder="e.g. Finance, Tech, Fashion" value={creatorForm.niche} onChange={e => setCreatorForm({...creatorForm, niche: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
+                  <input type="text" placeholder="e.g. Finance, Tech, Fashion" value={creatorForm.niche} onChange={e => setCreatorForm({...creatorForm, niche: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
                 </div>
                 <div className="form-group">
                   <label>Expected Price (per post)</label>
-                  <input type="text" placeholder="e.g. $200" value={creatorForm.price} onChange={e => setCreatorForm({...creatorForm, price: e.target.value})} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
+                  <input type="text" placeholder="e.g. 5000" value={creatorForm.price} onChange={e => setCreatorForm({...creatorForm, price: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
                 </div>
                 <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                   <GlowButton onClick={(e) => handleCreatorSubmit(e, 'add')} variant="glow" style={{ flex: 1, padding: '14px' }}>
@@ -589,11 +610,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                 <h4 style={{ color: '#fff', fontSize: '16px' }}>Verification Passed!</h4>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Your profile has been listed on the Influencer Marketplace. Brands can now send you direct match requests.</p>
                 <GlowButton variant="glow" onClick={() => {
-                  localStorage.setItem('onboard_username', creatorForm.handle.replace('@', ''));
                   setShowCreatorPortal(false); 
                   setCreatorPortalState('form');
-                  onStartFree();
-                }} style={{ marginTop: '16px' }}>Sign Up to Continue</GlowButton>
+                  navigate('/login');
+                }} style={{ marginTop: '16px' }}>Go to Login</GlowButton>
               </div>
             )}
 
@@ -629,6 +649,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}} />
+      <Footer />
     </div>
   );
 };
