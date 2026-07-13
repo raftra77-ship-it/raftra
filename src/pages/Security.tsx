@@ -6,7 +6,7 @@ import { Footer } from '../components/Footer';
 
 export const Security = () => {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: '#fff', paddingTop: '100px', paddingBottom: '100px', fontFamily: 'var(--font-sans)' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', paddingTop: '100px', paddingBottom: '100px', fontFamily: 'var(--font-sans)' }}>
       <Navbar />
       
       {/* Background decorations */}

@@ -51,7 +51,7 @@ export function AdminDashboard() {
   };
 
   return (
-    <div className="dashboard-container" style={{ background: 'var(--bg-primary)', minHeight: '100vh', color: 'white', display: 'flex', flexDirection: 'column' }}>
+    <div className="dashboard-container" style={{ background: 'transparent', minHeight: '100vh', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <header className="dashboard-header" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Cpu className="logo-icon" size={20} />

@@ -6,7 +6,7 @@ import { Footer } from '../components/Footer';
 
 export const AboutUs = () => {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: '#fff', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-sans)' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-sans)' }}>
       <Navbar />
       
       <div style={{ flex: 1, paddingTop: '100px', paddingBottom: '100px', position: 'relative', overflow: 'hidden' }}>

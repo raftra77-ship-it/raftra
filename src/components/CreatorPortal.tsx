@@ -199,7 +199,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const currentChatMessages = groupedChats[chatWorkspaceId]?.messages || [];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: '#fff', display: 'flex', fontFamily: 'var(--font-sans)' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', display: 'flex', fontFamily: 'var(--font-sans)' }}>
       {/* Sidebar */}
       <div style={{ width: '250px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', padding: '24px', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '48px' }}>

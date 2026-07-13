@@ -39,7 +39,7 @@ export const FeaturePage = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', color: '#fff', paddingTop: '100px', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', paddingTop: '100px', display: 'flex', flexDirection: 'column' }}>
       <Navbar />
       
       {/* Background decorations */}

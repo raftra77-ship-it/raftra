@@ -149,7 +149,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '60px 20px', overflowY: 'auto', fontFamily: 'var(--font-sans)' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', padding: '60px 20px', overflowY: 'auto', fontFamily: 'var(--font-sans)' }}>
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         
         <motion.div

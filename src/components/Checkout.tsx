@@ -114,7 +114,7 @@ export function Checkout({ onComplete }: CheckoutProps) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Billing Email" 
-          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'white', marginBottom: '12px', outline: 'none' }}
+          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'white', marginBottom: '12px', outline: 'none' }}
         />
         
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>

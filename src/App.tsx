@@ -11,6 +11,8 @@ import { AboutUs } from './pages/AboutUs';
 import { FeaturePage } from './pages/FeaturePage';
 import './App.css';
 
+import { FlowyBackground } from './components/FlowyBackground';
+
 export default function App() {
   const navigate = useNavigate();
 
@@ -30,47 +32,50 @@ export default function App() {
   };
 
   return (
-    <Routes>
-      <Route path="/" element={
-        <LandingPage 
-          onStartFree={() => navigate('/login')}
-          onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}
-        />
-      } />
-      
-      <Route path="/security" element={<Security />} />
-      <Route path="/about" element={<AboutUs />} />
-      <Route path="/features/:featureId" element={<FeaturePage />} />
-      
-      <Route path="/login" element={
-        <AuthScreen onLoginComplete={handleLoginComplete} />
-      } />
-      
-      <Route path="/pricing" element={
-        <PricingScreen onComplete={() => navigate('/checkout')} />
-      } />
-      
-      <Route path="/checkout" element={
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-          <Checkout onComplete={() => navigate('/onboarding')} />
-        </div>
-      } />
-      
-      <Route path="/onboarding" element={
-        <OnboardingWizard onComplete={handleOnboardingComplete} />
-      } />
-      
-      <Route path="/dashboard/*" element={
-        <BrandDashboard />
-      } />
-      
-      <Route path="/creator-dashboard/*" element={
-        <CreatorPortal onLogout={() => {
-          localStorage.removeItem('token');
-          navigate('/');
-        }} />
-      } />
-      <Route path="*" element={<LandingPage onStartFree={() => navigate('/login')} onBookDemo={() => {}} />} />
-    </Routes>
+    <>
+      <FlowyBackground />
+      <Routes>
+        <Route path="/" element={
+          <LandingPage 
+            onStartFree={() => navigate('/login')}
+            onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}
+          />
+        } />
+        
+        <Route path="/security" element={<Security />} />
+        <Route path="/about" element={<AboutUs />} />
+        <Route path="/features/:featureId" element={<FeaturePage />} />
+        
+        <Route path="/login" element={
+          <AuthScreen onLoginComplete={handleLoginComplete} />
+        } />
+        
+        <Route path="/pricing" element={
+          <PricingScreen onComplete={() => navigate('/checkout')} />
+        } />
+        
+        <Route path="/checkout" element={
+          <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
+            <Checkout onComplete={() => navigate('/onboarding')} />
+          </div>
+        } />
+        
+        <Route path="/onboarding" element={
+          <OnboardingWizard onComplete={handleOnboardingComplete} />
+        } />
+        
+        <Route path="/dashboard/*" element={
+          <BrandDashboard />
+        } />
+        
+        <Route path="/creator-dashboard/*" element={
+          <CreatorPortal onLogout={() => {
+            localStorage.removeItem('token');
+            navigate('/');
+          }} />
+        } />
+        <Route path="*" element={<LandingPage onStartFree={() => navigate('/login')} onBookDemo={() => {}} />} />
+      </Routes>
+    </>
   );
 }
