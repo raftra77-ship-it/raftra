@@ -23,3 +23,11 @@ cryptography
 email-validator
 
 firecrawl-py
+
+# Vector DB, graph orchestration, storage & misc (imported in code, previously missing)
+qdrant-client
+langgraph
+supabase
+google-generativeai
+requests
+websockets

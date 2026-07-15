@@ -1,0 +1,6 @@
+# SPA history fallback: serve index.html for every route so client-side routes
+# (e.g. /reset-password, /forgot-password, /auth/callback) work on a direct hit
+# or page refresh. Without this a static host returns 404 for deep links such as
+# the password-reset link opened from an email.
+# Recognized by Netlify, Cloudflare Pages, and Render static sites.
+/*    /index.html   200

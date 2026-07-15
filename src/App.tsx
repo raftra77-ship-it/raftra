@@ -1,6 +1,9 @@
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { LandingPage } from './components/LandingPage';
 import { AuthScreen } from './components/AuthScreen';
+import { AuthCallback } from './components/AuthCallback';
+import { ForgotPassword } from './components/ForgotPassword';
+import { ResetPassword } from './components/ResetPassword';
 import { PricingScreen } from './components/PricingScreen';
 import { Checkout } from './components/Checkout';
 import { OnboardingWizard } from './components/OnboardingWizard';
@@ -22,7 +25,7 @@ export default function App() {
     } else if (hasWorkspace) {
       navigate('/dashboard');
     } else {
-      navigate('/pricing');
+      navigate('/');
     }
   };
 
@@ -49,7 +52,14 @@ export default function App() {
         <Route path="/login" element={
           <AuthScreen onLoginComplete={handleLoginComplete} />
         } />
-        
+
+        <Route path="/auth/callback" element={
+          <AuthCallback onLoginComplete={handleLoginComplete} />
+        } />
+
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
         <Route path="/pricing" element={
           <PricingScreen onComplete={() => navigate('/checkout')} />
         } />

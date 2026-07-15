@@ -7,10 +7,15 @@ load_dotenv()
 
 app = FastAPI(title="Raftra Engine API", description="Backend for Raftra Platform")
 
-# CORS middleware for React frontend
+# CORS middleware for React frontend.
+# Allowed browser origins are configurable via the CORS_ORIGINS env var (comma-separated).
+# Defaults to the local dev frontend; in production set CORS_ORIGINS to your real domain(s).
+_cors_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

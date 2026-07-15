@@ -28,6 +28,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     role = Column(String, default="brand") # 'brand', 'creator'
     clerk_id = Column(String, unique=True, index=True, nullable=True) # Added for Clerk Auth
+    auth_provider = Column(String, nullable=True) # 'google', 'github', None for email/password
+    reset_token_hash = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
     
     # Subscriptions / Payments
     payment_status = Column(String, default="pending")  # pending, paid, cancelled
@@ -241,5 +244,20 @@ class Notification(Base):
     read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     action_url = Column(String, nullable=True)
+
+    user = relationship("User")
+
+class AuthEvent(Base):
+    """Activity/audit log for account security events so admins can see when a
+    user registered, logged in, or changed their password."""
+    __tablename__ = "auth_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    email = Column(String, nullable=True, index=True)      # stored for readability even if the user is later deleted
+    event_type = Column(String, index=True)                # register | login | login_failed | password_reset_requested | password_reset
+    detail = Column(String, nullable=True)                 # e.g. "role=brand", "invalid password"
+    ip_address = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
     user = relationship("User")

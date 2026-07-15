@@ -1,13 +1,48 @@
-import React, { useState } from 'react';
-import { Cpu, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Cpu, ChevronDown, LogOut } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GlowButton } from './GlowButton';
 import { motion, AnimatePresence } from 'framer-motion';
+
+interface AuthUser {
+  id: number;
+  email: string;
+  first_name?: string | null;
+  role: string;
+}
 
 export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCreatorPortal}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [hoverFeature, setHoverFeature] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  // Reflect logged-in state: validate the stored token against the backend.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setUser(null);
+      return;
+    }
+    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
+      .then((data: AuthUser) => setUser(data))
+      .catch(() => {
+        // Token missing/expired/invalid — clear it so the UI shows "Login".
+        localStorage.removeItem('token');
+        setUser(null);
+      });
+  }, [location.pathname]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+    navigate('/');
+  };
+
+  const goToDashboard = () => {
+    navigate(user?.role === 'creator' ? '/creator-dashboard' : '/dashboard');
+  };
 
   const features = [
     { name: 'Social Media Manager', path: '/features/social-manager' },
@@ -146,21 +181,41 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
 
       {/* Extreme Right Buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <button 
-          onClick={() => {
-            if (onOpenCreatorPortal) {
-              onOpenCreatorPortal();
-            } else {
-              navigate('/'); // fallback if not on landing page
-            }
-          }}
-          style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
-        >
-          Creator Portal
-        </button>
-        <GlowButton variant="glow" onClick={() => navigate('/login')}>
-          Login
-        </GlowButton>
+        {user ? (
+          <>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+              Hi, <span style={{ color: '#fff', fontWeight: 600 }}>{user.first_name || user.email.split('@')[0]}</span>
+            </span>
+            <GlowButton variant="glow" onClick={goToDashboard}>
+              Dashboard
+            </GlowButton>
+            <button
+              onClick={handleLogout}
+              title="Log out"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: 'pointer', padding: '8px 14px', borderRadius: '8px' }}
+            >
+              <LogOut size={16} /> Log out
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => {
+                if (onOpenCreatorPortal) {
+                  onOpenCreatorPortal();
+                } else {
+                  navigate('/'); // fallback if not on landing page
+                }
+              }}
+              style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
+            >
+              Creator Portal
+            </button>
+            <GlowButton variant="glow" onClick={() => navigate('/login')}>
+              Login
+            </GlowButton>
+          </>
+        )}
       </div>
       
       <style>{`

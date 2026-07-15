@@ -47,7 +47,7 @@ export const Security = () => {
             <h3 style={{ fontSize: '24px', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>Secure Authentication</h3>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', color: '#ccc', fontSize: '15px' }}>
               <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} /> JWT-based access tokens with refresh token rotation</li>
-              <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} /> Google & GitHub OAuth support</li>
+              <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} /> Google OAuth support</li>
               <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} /> Role-based access control (RBAC)</li>
               <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} /> Workspace and organization-level permissions</li>
               <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} /> Session expiration and device revocation</li>
