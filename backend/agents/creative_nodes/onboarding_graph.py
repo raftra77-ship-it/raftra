@@ -146,16 +146,25 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
         from qdrant_client.models import PointStruct
         import uuid
         
-        # In a real scenario, use OpenAI or SentenceTransformers to generate embeddings
-        # Here we mock a 1536-dimensional vector for demonstration
-        mock_embedding = [0.01] * 1536
+        from sentence_transformers import SentenceTransformer
+        
+        # Load the BGE model to generate real embeddings
+        model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+        
+        content_to_embed = state.get("scraped_content", "")
+        # Fallback to empty string if no content is scraped to avoid crash
+        if not content_to_embed:
+            content_to_embed = "Empty workspace context"
+            
+        embedding = model.encode(content_to_embed).tolist()
+
         qdrant_client.upsert(
             collection_name="brand_knowledge",
             points=[
                 PointStruct(
                     id=str(uuid.uuid4()),
-                    vector=mock_embedding,
-                    payload={"workspace_id": state["workspace_id"], "content": state["scraped_content"], "type": "onboarding_scrape"}
+                    vector=embedding,
+                    payload={"workspace_id": state["workspace_id"], "content": content_to_embed, "type": "onboarding_scrape"}
                 )
             ]
         )
