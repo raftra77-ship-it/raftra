@@ -77,9 +77,16 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
     rag_context = ""
     try:
         from database import qdrant_client
+        from sentence_transformers import SentenceTransformer
+        
+        # Initialize embedding model (should ideally be cached globally in a real app)
+        model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+        query_text = f"{state.get('prompt', '')} {state.get('strategy', '')}"
+        query_vector = model.encode(query_text).tolist()
+        
         results = qdrant_client.search(
             collection_name="brand_knowledge",
-            query_vector=[0.01]*1536, # using a dummy query vector for now until actual embedding model integration
+            query_vector=query_vector,
             limit=3
         )
         # Filter manually if not using Qdrant filter
@@ -107,7 +114,7 @@ async def strategy_and_router_node(state: GenerationState) -> GenerationState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Creative Director", msg, "thinking")
     
-    llm_model = state.get("model", "gemini-1.5-flash")
+    llm_model = state.get("model", "gemini-2.0-flash")
     if "gemini" in llm_model.lower():
         from core.providers.llm_providers import GeminiProvider
         llm = GeminiProvider()
@@ -141,7 +148,7 @@ async def copywriting_node(state: GenerationState) -> GenerationState:
     msg = f"Writing ad copy in brand voice..."
     await manager.broadcast_agent_log("Copywriter", msg, "thinking")
     
-    llm_model = state.get("model", "gemini-1.5-flash")
+    llm_model = state.get("model", "gemini-2.0-flash")
     if "gemini" in llm_model.lower():
         from core.providers.llm_providers import GeminiProvider
         llm = GeminiProvider()
@@ -226,7 +233,7 @@ workflow.add_edge("media_generation", END)
 
 generation_graph = workflow.compile()
 
-async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: dict = None, model: str = "gemini-1.5-flash", ad_format: str = "Video", ad_ratio: str = "9:16", ad_length: str = "15s", engine_mode: str = "Video Ad"):
+async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: dict = None, model: str = "gemini-2.0-flash", ad_format: str = "Video", ad_ratio: str = "9:16", ad_length: str = "15s", engine_mode: str = "Video Ad"):
     """
     Wrapper to execute the generation_graph and push final asset to WebSocket clients.
     """
