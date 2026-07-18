@@ -80,7 +80,7 @@ class CampaignCreate(BaseModel):
 
 class CampaignAgentTrigger(BaseModel):
     prompt: str
-    model: str = "gemini-1.5-flash"
+    model: str = "gemini-2.5-flash"
 
 class CampaignResponse(BaseModel):
     id: int

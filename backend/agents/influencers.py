@@ -86,7 +86,7 @@ async def verify_instagram_profile(username: str, niche: str):
         markdown_content = scrape_result.get('markdown', '')
         
         genai.configure(api_key=gemini_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         prompt = f"You are an Influencer Verification Agent. Analyze the following scraped markdown from an Instagram profile for '{username}'. Your goal is to detect if this is a real profile, find any recent collaborations, and extract posts. Niche specified: {niche}. If the markdown looks like a login wall or is empty, simulate a realistic verification result based on the username '{username}' and niche '{niche}'. Otherwise, extract real data. Look for fake follower flags. Return ONLY a raw JSON object (no markdown fences) with this exact schema: {{\"verification_status\": \"verified\" or \"rejected_fake_followers\", \"recent_collabs\": [\"Brand1\"], \"recent_posts\": [{{\"url\": \"https://instagram.com/p/...\", \"type\": \"image\"}}], \"recent_reviews\": [{{\"author\": \"Brand Name\", \"text\": \"Review text\"}}]}} Scraped Markdown: {markdown_content[:2000]}"
         

@@ -44,7 +44,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [referenceAd, setReferenceAd] = useState<CreativeAsset | null>(null);
   
   // Advanced Configurations
-  const [selectedModel, setSelectedModel] = useState('gemini-1.5-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
   const [adFormat, setAdFormat] = useState('Video');
   const [adPlatform, setAdPlatform] = useState('Instagram');
   const [adRatio, setAdRatio] = useState('9:16');
@@ -341,8 +341,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               cursor: 'pointer'
             }}
           >
-            <option value="gemini-1.5-flash" style={{ color: '#000' }}>Gemini 1.5 Flash (Default)</option>
-            <option value="gemini-1.5-pro" style={{ color: '#000' }}>Gemini 1.5 Pro</option>
+            <option value="gemini-2.5-flash" style={{ color: '#000' }}>Gemini 2.5 Flash (Default)</option>
+            <option value="gemini-2.5-pro" style={{ color: '#000' }}>Gemini 2.5 Pro</option>
             <option value="gpt-4o" style={{ color: '#000' }}>GPT-4o</option>
             <option value="seedance-v1" style={{ color: '#000' }}>Seedance Video Model</option>
             <option value="nano-banana-chat" style={{ color: '#000' }}>Nano Banana Engine</option>

@@ -1,5 +1,6 @@
 import httpx
 import os
+import random
 from .base import ImageProvider
 
 class FluxSchnellProvider(ImageProvider):
@@ -10,9 +11,13 @@ class FluxSchnellProvider(ImageProvider):
         encoded_prompt = urllib.parse.quote(prompt)
         width = 1024
         height = 576 if aspect_ratio == "16:9" else 1024
-        
-        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true"
-        
+
+        # Pollinations is deterministic on the URL - the same prompt returns the exact
+        # same image every time. A random seed makes each generation visually distinct,
+        # even when the user regenerates from an identical prompt.
+        seed = random.randint(1, 1_000_000_000)
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true&seed={seed}"
+
         # Pollinations returns the image directly, so we just return the URL!
         return url
 

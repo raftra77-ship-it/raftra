@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { LogLine } from '../components/TerminalFeed';
 import { ReviewDrawer } from '../components/ReviewDrawer';
@@ -190,6 +190,34 @@ export function BrandDashboard() {
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [isReindexing, setIsReindexing] = useState(false);
 
+  // Real agent activity + recent actions from the backend (not hardcoded).
+  const [realAgents, setRealAgents] = useState<any[]>([]);
+  const [recentActions, setRecentActions] = useState<any[]>([]);
+  // Ref so the (mount-only) WebSocket handler can read the current workspace id.
+  const workspaceIdRef = useRef<number | null>(null);
+  useEffect(() => { workspaceIdRef.current = workspaceId; }, [workspaceId]);
+
+  // Re-fetch real agent status + recent actions (called on load and on WS completion).
+  function refreshDashboardActivity() {
+    const wsId = workspaceIdRef.current;
+    if (!wsId) return;
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+    fetch(`/api/workspaces/${wsId}/agents`, { headers })
+      .then(r => r.json()).then(d => { if (d && Array.isArray(d.agents)) setRealAgents(d.agents); }).catch(() => {});
+    fetch(`/api/workspaces/${wsId}/recent-actions`, { headers })
+      .then(r => r.json()).then(d => { if (d && Array.isArray(d.actions)) setRecentActions(d.actions); }).catch(() => {});
+  }
+
+  // Map real agent status -> the card fields the panel renders.
+  const displayAgents = realAgents.map((a) => ({
+    name: a.name,
+    task: a.summary || (a.status === 'RUNNING' ? 'Working…' : a.status === 'IDLE' ? 'No runs yet' : a.status),
+    progress: a.status === 'COMPLETED' ? 100 : a.status === 'RUNNING' ? 50 : 0,
+    eta: a.status === 'RUNNING' ? 'Running' : a.status === 'COMPLETED' ? 'Done' : a.status === 'FAILED' ? 'Failed' : 'Idle',
+    result: a.status === 'FAILED' ? (a.summary || 'Failed') : a.status === 'COMPLETED' ? 'Completed' : a.status === 'RUNNING' ? 'In progress' : 'Ready',
+  }));
+
   useEffect(() => {
     let shouldReconnect = true;
 
@@ -206,6 +234,10 @@ export function BrandDashboard() {
           const data = JSON.parse(event.data);
           if (data.type === 'agent_log') {
             setLogs((prev) => [...prev, { id: String(Date.now() + Math.random()), time: data.time, agent: data.agent, message: data.message }]);
+            // When a pipeline reports completion/failure, refresh the real agent panel + recent actions.
+            if (data.status === 'completed' || data.status === 'failed') {
+              refreshDashboardActivity();
+            }
           } else if (data.type === 'node_update') {
             setAgentsList((prev) => prev.map((agent) => {
               if (agent.name.toLowerCase().includes(data.pipeline.split('_')[0])) {
@@ -378,6 +410,16 @@ export function BrandDashboard() {
         if (data && typeof data === 'object') setMetrics(data);
       });
 
+    // Real agent activity + recent actions
+    fetch(`/api/workspaces/${workspaceId}/agents`, { headers })
+      .then(res => res.json())
+      .then(data => { if (data && Array.isArray(data.agents)) setRealAgents(data.agents); })
+      .catch(() => {});
+    fetch(`/api/workspaces/${workspaceId}/recent-actions`, { headers })
+      .then(res => res.json())
+      .then(data => { if (data && Array.isArray(data.actions)) setRecentActions(data.actions); })
+      .catch(() => {});
+
     // Billing Info
     fetch('/api/auth/billing', { headers })
       .then(res => {
@@ -528,7 +570,7 @@ export function BrandDashboard() {
       body: JSON.stringify({ 
         prompt, 
         reference_ad: referenceAd, 
-        model: config?.model || 'gemini-1.5-flash',
+        model: config?.model || 'gemini-2.5-flash',
         ad_format: config?.format || 'Video',
         ad_ratio: config?.ratio || '9:16',
         ad_length: config?.length || '15s'
@@ -1339,7 +1381,12 @@ export function BrandDashboard() {
                   AI AGENTS WORKING NOW
                 </h3>
                 <div className="agent-cards-grid">
-                  {agentsList.map((agent) => (
+                  {displayAgents.length === 0 && (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px' }}>
+                      No agent activity yet — run a workflow (generate an ad, run an SEO audit, etc.) and it will appear here.
+                    </div>
+                  )}
+                  {displayAgents.map((agent) => (
                     <div key={agent.name} className="agent-status-card">
                       <div className="agent-status-card-header">
                         <div className="agent-name-row">
@@ -1443,48 +1490,20 @@ export function BrandDashboard() {
                     RECENT AI ACTIONS
                   </h3>
                   <div className="timeline-list">
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Brand Analysis Completed</h4>
-                        <span>Study targets extracted & logo schemas cached</span>
+                    {recentActions.length === 0 && (
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px' }}>
+                        No actions yet. Generate an ad, run an SEO audit or a social post, and it will show up here.
                       </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Generated 15 Creatives</h4>
-                        <span>Static concepts uploaded to reviewing drafts</span>
+                    )}
+                    {recentActions.map((action, idx) => (
+                      <div className="timeline-item" key={idx}>
+                        <span className="timeline-bullet" />
+                        <div className="timeline-item-body">
+                          <h4>{action.title}</h4>
+                          <span>{action.detail || ''}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Published Meta Campaign</h4>
-                        <span>Campaign limits pushed to target FB adset sandbox</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Updated SEO</h4>
-                        <span>Canonical rules & metadata schemas injected</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Generated Blog</h4>
-                        <span>AEO keywords articles drafting completed</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Found 8 Influencers</h4>
-                        <span>Audience indexes crawled & contract templates dished</span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1497,6 +1516,7 @@ export function BrandDashboard() {
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
 
               <WorkspaceCreative
+                workspaceId={workspaceId}
                 brandUrl={brandProfile?.url || ''}
                 assets={creativeAssets}
                 onOpenReview={handleOpenReview}

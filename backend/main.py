@@ -21,6 +21,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting on /api/* (protects login, forgot-password, etc. from brute force / abuse).
+# Uses Redis; if REDIS_URL is unset or Redis is down, the middleware fails open (lets
+# requests through) so it can never take the app down.
+from middleware import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
+
 from fastapi.responses import JSONResponse
 from fastapi.requests import Request
 import traceback
@@ -42,6 +48,19 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/")
 def read_root():
     return {"status": "Raftra Engine Backend Running"}
+
+@app.on_event("startup")
+async def preload_embedding_model():
+    """
+    Loads the RAG embedding model (bge-small-en-v1.5) once at boot.
+    Without this, loading it takes ~2 minutes the first time it's needed - and that
+    delay landed on whichever user's request happened to trigger it first, making
+    that one generation look like it had hung.
+    """
+    from core.embeddings import get_embedding_model
+    print("Pre-loading embedding model (bge-small-en-v1.5)...")
+    get_embedding_model()
+    print("Embedding model ready.")
 
 # WebSocket streaming endpoint
 from core.websocket import manager

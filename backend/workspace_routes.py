@@ -48,6 +48,62 @@ def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background
     
     return {"status": "success", "message": "Knowledge Graph re-indexing started."}
 
+@router.get("/{workspace_id}/agents")
+def list_agent_tasks(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Real agent activity for this workspace, from the agent_tasks table (populated by
+    pipelines as they run). Powers the dashboard's 'AI Agents' panel with live data."""
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+
+    from core.agent_status import AGENT_LABELS
+    tasks = db.query(models.AgentTask).filter(models.AgentTask.workspace_id == workspace_id).all()
+    by_type = {t.agent_type: t for t in tasks}
+
+    agents = []
+    for agent_type, label in AGENT_LABELS.items():
+        t = by_type.get(agent_type)
+        if t:
+            logs = t.logs or {}
+            agents.append({
+                "type": agent_type,
+                "name": label,
+                "status": t.status,                       # RUNNING | COMPLETED | FAILED
+                "summary": logs.get("summary", ""),
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+            })
+        else:
+            # Agent that has never run yet in this workspace.
+            agents.append({"type": agent_type, "name": label, "status": "IDLE", "summary": "", "updated_at": None})
+    return {"agents": agents}
+
+
+@router.get("/{workspace_id}/recent-actions")
+def recent_actions(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Recent REAL outputs the agents produced (generated ads, SEO audits, social posts,
+    campaigns) - replaces the dashboard's hardcoded 'Recent AI Actions' list."""
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+
+    actions = []
+    # Generated ad creatives (no created_at column, so id is the recency proxy)
+    for a in db.query(models.AdAsset).filter(models.AdAsset.workspace_id == workspace_id).order_by(models.AdAsset.id.desc()).limit(5).all():
+        actions.append({"sort": a.id, "type": "creative", "title": "Generated Ad Creative", "detail": (a.headline or "")[:90]})
+    # SEO audits (has created_at)
+    for s in db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id).order_by(models.SEOAudit.created_at.desc()).limit(3).all():
+        actions.append({"sort": int(s.created_at.timestamp()) if s.created_at else s.id, "type": "seo", "title": f"SEO Audit (score {s.score})", "detail": (s.recommendation or "")[:90]})
+    # Social posts
+    for p in db.query(models.SocialPost).filter(models.SocialPost.workspace_id == workspace_id).order_by(models.SocialPost.id.desc()).limit(3).all():
+        actions.append({"sort": p.id, "type": "social", "title": f"{p.platform} Post Drafted", "detail": (p.caption or "")[:90]})
+    # Campaigns
+    for c in db.query(models.Campaign).filter(models.Campaign.workspace_id == workspace_id).order_by(models.Campaign.id.desc()).limit(3).all():
+        actions.append({"sort": c.id, "type": "campaign", "title": f"Campaign ({c.platform})", "detail": f"Status: {c.status}"})
+
+    actions.sort(key=lambda x: x["sort"], reverse=True)
+    return {"actions": [{k: v for k, v in a.items() if k != "sort"} for a in actions[:8]]}
+
+
 @router.get("/{workspace_id}/dashboard/metrics")
 def get_dashboard_metrics(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()

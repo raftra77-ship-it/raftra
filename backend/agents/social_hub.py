@@ -36,7 +36,14 @@ async def caption_agent_node(state: SocialState) -> SocialState:
     except Exception:
         system_prompt = "You are an expert Social Media Manager."
 
-    prompt = f"Platform: {state['platform']}\nTopic/Instruction: {state['caption_topic']}\nPlease write a highly engaging social media post based on this."
+    # Ground the post in this company's real brand voice + knowledge base.
+    from core.brand_context import get_brand_context
+    brand = get_brand_context(state["workspace_id"], query=state['caption_topic'])
+    prompt = (
+        f"Platform: {state['platform']}\nTopic/Instruction: {state['caption_topic']}\n\n"
+        f"COMPANY BRAND CONTEXT (match this voice, audience and messaging):\n{brand}\n\n"
+        f"Please write a highly engaging social media post that fits this brand."
+    )
     
     try:
         llm = GeminiProvider()
@@ -81,5 +88,12 @@ async def run_social_pipeline(workspace_id: int, platform: str, caption_topic: s
         "generated_post": ""
     }
     await manager.broadcast_agent_log("Social Agent", "Initializing Social Hub pipeline...", "queued")
-    result = await social_graph.ainvoke(initial_state)
+    from core.agent_status import record_agent_task
+    record_agent_task(workspace_id, "SOCIAL", "RUNNING", f"{platform}: {caption_topic[:70]}")
+    try:
+        result = await social_graph.ainvoke(initial_state)
+        record_agent_task(workspace_id, "SOCIAL", "COMPLETED", f"{platform} post generated")
+    except Exception as e:
+        record_agent_task(workspace_id, "SOCIAL", "FAILED", str(e)[:120])
+        raise
     return result

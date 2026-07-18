@@ -22,7 +22,7 @@ class OnboardTrigger(BaseModel):
 class CreativeTrigger(BaseModel):
     prompt: str
     reference_ad: Optional[dict] = None
-    model: str = "gemini-1.5-flash"
+    model: str = "gemini-2.5-flash"
     ad_format: str = "Video"
     ad_ratio: str = "9:16"
     ad_length: str = "15s"

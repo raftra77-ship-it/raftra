@@ -118,7 +118,14 @@ async def schema_agent_node(state: SEOState) -> SEOState:
     except Exception:
         system_prompt = "You are an expert SEO Specialist."
 
-    prompt = f"Target URL / Query: {state['target_url']}\nPlease run a comprehensive SEO Strategy audit and provide a detailed markdown report."
+    # Ground the audit in this company's real brand profile + knowledge base.
+    from core.brand_context import get_brand_context
+    brand = get_brand_context(state["workspace_id"], query=f"SEO and content strategy for {state['target_url']}")
+    prompt = (
+        f"Target URL / Query: {state['target_url']}\n\n"
+        f"COMPANY CONTEXT (use this to tailor the audit to the brand, its audience and offerings):\n{brand}\n\n"
+        f"Please run a comprehensive SEO Strategy audit and provide a detailed markdown report tailored to this company."
+    )
     
     try:
         llm = GeminiProvider()
@@ -214,8 +221,15 @@ async def run_seo_pipeline(workspace_id: int, target_url: str):
         "report": ""
     }
     await manager.broadcast_agent_log("SEO Agent", "Initializing Marketing SEO Specialist pipeline...", "queued")
-    result = await seo_graph.ainvoke(initial_state)
-    
+    from core.agent_status import record_agent_task
+    record_agent_task(workspace_id, "SEO", "RUNNING", f"Auditing {target_url}")
+    try:
+        result = await seo_graph.ainvoke(initial_state)
+        record_agent_task(workspace_id, "SEO", "COMPLETED", f"SEO audit complete for {target_url}")
+    except Exception as e:
+        record_agent_task(workspace_id, "SEO", "FAILED", str(e)[:120])
+        raise
+
     await manager.broadcast_node_update("seo_geo", "Awaiting Approval", "completed")
     return result
 

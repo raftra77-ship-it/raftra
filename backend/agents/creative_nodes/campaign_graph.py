@@ -24,15 +24,9 @@ async def fetch_campaign_context(state: CampaignState) -> CampaignState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("System", msg, "running")
     
-    brand_context = "General Ecommerce."
-    try:
-        with SessionLocal() as db:
-            profile = db.query(models.BrandProfile).filter(models.BrandProfile.workspace_id == state['workspace_id']).first()
-            if profile:
-                brand_context = f"Target Audience: {profile.target_audience}. Guidelines: {profile.brand_guidelines_summary}"
-    except Exception as e:
-        print("DB error in campaign context:", e)
-        
+    # Full brand context: profile + Qdrant knowledge base (was profile-only before).
+    from core.brand_context import get_brand_context
+    brand_context = get_brand_context(state['workspace_id'], query="advertising campaign objective and audience")
     state["cached_context"] = brand_context
     await manager.broadcast_agent_log("System", "Brand context loaded into Campaign RAG.", "completed")
     return state
@@ -107,7 +101,7 @@ workflow.add_edge("supervisor", END)
 
 campaign_graph = workflow.compile()
 
-async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-1.5-flash"):
+async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-2.5-flash"):
     initial_state = {
         "workspace_id": workspace_id,
         "prompt": prompt,
@@ -122,12 +116,17 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
     }
     
     await manager.broadcast_agent_log("System", "Initializing AI Campaign Manager Workflow...", "queued")
-    
+
+    from core.agent_status import record_agent_task
+    record_agent_task(workspace_id, "CAMPAIGN", "RUNNING", prompt[:80])
+
     try:
         result = await campaign_graph.ainvoke(initial_state)
         await manager.send_personal_message(workspace_id, {
             "type": "campaign_spec_generated",
             "spec": result["campaign_spec"]
         })
+        record_agent_task(workspace_id, "CAMPAIGN", "COMPLETED", "Campaign plan generated")
     except Exception as e:
         await manager.broadcast_agent_log("System", f"Fatal Error in Campaign Generation: {str(e)}", "error")
+        record_agent_task(workspace_id, "CAMPAIGN", "FAILED", str(e)[:120])

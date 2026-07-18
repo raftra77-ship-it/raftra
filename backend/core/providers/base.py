@@ -1,6 +1,21 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
+
+class LLMProviderError(RuntimeError):
+    """
+    Raised when an LLM call cannot be completed (missing key, API error, dead model).
+
+    Providers must raise this rather than returning the error text as a string:
+    a returned string is indistinguishable from real generated content, so failures
+    silently become "results" and end up shown to users.
+    """
+
+
+class VideoProviderError(RuntimeError):
+    """Raised when a video provider cannot produce a clip (missing key, API error, no match)."""
+
+
 class LLMProvider(ABC):
     """Abstract Base Class for all LLM providers."""
     

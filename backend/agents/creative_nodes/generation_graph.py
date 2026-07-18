@@ -1,9 +1,11 @@
 import asyncio
+import os
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from core.websocket import manager
 from .router import router_decision_engine
-from core.providers.llm_providers import OpenRouterProvider
+from core.providers.llm_providers import OpenRouterProvider, GeminiProvider
+from core.providers.base import LLMProviderError
 from core.providers.image_providers import FluxSchnellProvider, GPTImageProvider
 from database import SessionLocal
 import models
@@ -77,27 +79,33 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
     rag_context = ""
     try:
         from database import qdrant_client
-        from sentence_transformers import SentenceTransformer
-        
-        # Initialize embedding model (should ideally be cached globally in a real app)
-        model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+        from core.embeddings import embed_query, ensure_collection, COLLECTION_NAME
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        ensure_collection(qdrant_client)
         query_text = f"{state.get('prompt', '')} {state.get('strategy', '')}"
-        query_vector = model.encode(query_text).tolist()
-        
-        results = qdrant_client.search(
-            collection_name="brand_knowledge",
-            query_vector=query_vector,
-            limit=3
+
+        # query_points (not the removed .search) and filter by workspace server-side, so
+        # the limit applies to this workspace's points rather than the global top matches.
+        response = qdrant_client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=embed_query(query_text),
+            query_filter=Filter(must=[
+                FieldCondition(key="workspace_id", match=MatchValue(value=state.get("workspace_id")))
+            ]),
+            limit=3,
         )
-        # Filter manually if not using Qdrant filter
-        filtered_results = [r for r in results if r.payload.get("workspace_id") == state.get("workspace_id")]
-        for idx, r in enumerate(filtered_results):
+        for idx, r in enumerate(response.points):
             rag_context += f"\n[KNOWLEDGE {idx+1}] {r.payload.get('content', '')}"
-            
+
         if not rag_context:
             rag_context = "No specific onboarding scraped knowledge found for this workspace in Qdrant."
     except Exception as e:
-        rag_context = f"Failed to retrieve from Qdrant: {str(e)}"
+        # Never put the error text into rag_context: it gets pasted into the LLM prompt
+        # as if it were brand knowledge. Log it and continue with no context instead.
+        print(f"Qdrant retrieval failed: {e}")
+        await manager.broadcast_agent_log("RAG Agent", f"Knowledge base unavailable, continuing without brand context: {e}", "failed")
+        rag_context = "No brand knowledge available (retrieval failed)."
         
     
     # Append the massive RAG context to the brand voice for the LLM's system prompt
@@ -127,12 +135,22 @@ async def strategy_and_router_node(state: GenerationState) -> GenerationState:
     else:
         prompt = f"User Request: {state['prompt']}\nMode Selected: {state.get('engine_mode', 'Video Ad')}\nUse NLP to parse the user's intent according to the selected mode. If the mode is 'AI Media Buyer', answer as a data analyst. If 'Avatar Video', output a script. Otherwise, create an ad strategy drawing inspiration from the brand knowledge base.\nRequirements: {state.get('ad_format', 'Video')}, Ratio {state.get('ad_ratio', '16:9')}, Length {state.get('ad_length', '15s')}."
         
-    strategy_response = await llm.generate_text(prompt, system_prompt=f"You are a brilliant AI assistant specializing in the '{state.get('engine_mode', 'Video Ad')}' tool.\n{state['cached_brand_voice']}", model_name=llm_model)
-    
-    if strategy_response.startswith("Error"):
-        await manager.broadcast_agent_log("System", f"API Error Detected: {strategy_response}. Falling back to default strategy...", "running")
-        strategy_response = f"Focus on highlighting the premium quality based on the request: {state['prompt']}."
-        
+    try:
+        # max_output_tokens bounds worst-case latency; the brevity instruction keeps the
+        # model from padding out a "strategy" into an essay in the first place (an earlier
+        # unconstrained call returned 8,500 characters for what should be a short brief).
+        strategy_response = await llm.generate_text(
+            prompt,
+            system_prompt=f"You are a brilliant AI assistant specializing in the '{state.get('engine_mode', 'Video Ad')}' tool.\n{state['cached_brand_voice']}\nRespond in at most 3 concise sentences (under 80 words total). No preamble.",
+            model_name=llm_model,
+            max_output_tokens=300,
+        )
+    except LLMProviderError as e:
+        # Surface the failure instead of substituting invented copy: a fabricated
+        # "strategy" is indistinguishable from a real one and hides outages.
+        await manager.broadcast_agent_log("System", f"Generation failed: {e}", "failed")
+        raise
+
     state["strategy"] = strategy_response
     
     msg_router = "Routing tasks to designated AI generation agents..."
@@ -161,11 +179,22 @@ async def copywriting_node(state: GenerationState) -> GenerationState:
     else:
         prompt = f"Write a short, punchy ad copy (1 headline, 1 body) based on this strategy:\n{state['strategy']}\nMake sure to incorporate the specific video ideas from the Knowledge Base."
         
-    copy_response = await llm.generate_text(prompt, system_prompt=f"You are an expert copywriter.\n{state['cached_brand_voice']}", model_name=llm_model)
-    
-    if copy_response.startswith("Error"):
-        copy_response = f"Transform your approach today! Engineered for excellence."
-        
+    try:
+        # Same reasoning as the strategy call above: an earlier run returned 6,544
+        # characters for "1 headline, 1 body" - the cap plus explicit format keeps
+        # this to something that is actually usable as ad copy.
+        copy_response = await llm.generate_text(
+            prompt,
+            system_prompt=f"You are an expert copywriter.\n{state['cached_brand_voice']}\nRespond with exactly one headline (under 12 words) then one body sentence (under 35 words). No labels, no extra commentary.",
+            model_name=llm_model,
+            max_output_tokens=150,
+        )
+    except LLMProviderError as e:
+        # Don't substitute invented ad copy - the user would have no way to tell it
+        # apart from generated output.
+        await manager.broadcast_agent_log("Copywriter", f"Copy generation failed: {e}", "failed")
+        raise
+
     state["copy"] = copy_response
     
     await manager.broadcast_agent_log("Copywriting Agent", "Persuasive ad copy successfully written.", "completed")
@@ -184,10 +213,32 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
         # Default to FluxSchnellProvider (Pollinations free API) for all others in demo
         img_provider = FluxSchnellProvider()
         
-    image_prompt = f"A high quality advertisement image for: {state['prompt']} - Strategy: {state['strategy']}"
-    
+    # Build a FOCUSED visual prompt. Previously the full marketing strategy (prose) was
+    # appended here - an image model can't use prose, it latches onto scattered words, so
+    # the picture looked unrelated to the request. Use a short "art director" LLM call to
+    # turn the request into a clean visual scene description instead.
+    llm_model = state.get("model", "gemini-2.0-flash")
+    art_llm = GeminiProvider() if "gemini" in llm_model.lower() else OpenRouterProvider()
+    brand_colors = state.get("cached_colors") or []
+    color_hint = f" Incorporate brand colors {', '.join(brand_colors[:3])}." if brand_colors else ""
     try:
-        image_url = await img_provider.generate_image(image_prompt)
+        image_prompt = await art_llm.generate_text(
+            f"Ad request: {state['prompt']}\n"
+            f"Write ONE concise image-generation prompt (under 40 words) describing the visual "
+            f"scene for this ad's creative: subject, setting, and style only.{color_hint}",
+            system_prompt="You are an art director writing prompts for an image model. Output only the image prompt itself - no labels, no marketing copy, no text-overlay instructions.",
+            model_name=llm_model,
+            max_output_tokens=100,
+        )
+        image_prompt = image_prompt.strip().strip('"')
+    except LLMProviderError:
+        # Fall back to the raw request (still the subject) rather than the strategy essay.
+        image_prompt = state.get("prompt", "advertisement")
+    # Style/safety suffix so results look like ad creative and avoid garbled text overlays.
+    image_prompt = f"{image_prompt}. Commercial advertising photography, high detail, sharp focus, no text."
+
+    try:
+        image_url = await img_provider.generate_image(image_prompt, aspect_ratio=state.get("ad_ratio", "16:9"))
     except Exception as e:
         await manager.broadcast_agent_log("System", f"Warning: Image generation failed: {str(e)}", "running")
         image_url = "https://images.unsplash.com/photo-1542744173-8e7e53415bb0"
@@ -200,14 +251,35 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
     is_audio = "audio" in ad_format or is_video
     
     if is_video:
-        await manager.broadcast_agent_log("Video Agent", "Structuring dynamic UGC video storyboard based on generated copy...", "running")
-        await asyncio.sleep(2)
-        state["video_url"] = "https://cdn.pixabay.com/video/2020/05/26/40149-425126838_tiny.mp4"
-        await manager.broadcast_agent_log("Video Agent", "Mock UGC Video generated (Pixabay).", "completed")
-        
+        # Real per-prompt video needs an external service. We use Pexels (free API) to
+        # fetch a relevant, DIFFERENT stock clip per ad. Never fall back to a single
+        # hardcoded clip: it's identical every run and, since the UI renders <video>
+        # over <img>, it hides the unique generated image - the "same video" bug.
+        from core.providers.video_providers import PixabayVideoProvider, PexelsVideoProvider, SampleVideoProvider
+        from core.providers.base import VideoProviderError
+        # Try whichever stock-video key is configured for a RELEVANT clip: Pixabay first
+        # (instant free key), then Pexels. If neither key is set, fall back to a random
+        # working sample clip so a (different) video always shows - never a single fixed one.
+        state["video_url"] = ""
+        await manager.broadcast_agent_log("Video Agent", "Sourcing a video clip for the ad...", "running")
+        for provider in (PixabayVideoProvider(), PexelsVideoProvider()):
+            try:
+                state["video_url"] = await provider.generate_video(
+                    image_url=state["image_url"],
+                    prompt=state["prompt"],
+                    ad_ratio=state.get("ad_ratio", "9:16"),
+                )
+                await manager.broadcast_agent_log("Video Agent", "Relevant video clip sourced (stock b-roll).", "completed")
+                break
+            except VideoProviderError:
+                continue
+        if not state["video_url"]:
+            # No stock-video key configured: use a rotating keyless sample clip.
+            state["video_url"] = await SampleVideoProvider().generate_video(image_url=state["image_url"], prompt=state["prompt"])
+            await manager.broadcast_agent_log("Video Agent", "Using a sample video clip (add PIXABAY_API_KEY for content-matched footage).", "completed")
+
     if is_audio:
         await manager.broadcast_agent_log("Voice Agent", "Compiling text-to-speech audio outline...", "running")
-        await asyncio.sleep(1)
         state["audio_url"] = "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
         await manager.broadcast_agent_log("Voice Agent", "Mock Audio generated.", "completed")
         
@@ -261,7 +333,10 @@ async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: d
     }
     
     await manager.broadcast_agent_log("System", "Initializing Ad Generation Workflow...", "queued")
-    
+
+    from core.agent_status import record_agent_task
+    record_agent_task(workspace_id, "CREATIVE", "RUNNING", f"Generating: {prompt[:80]}")
+
     try:
         # Run the graph
         result = await generation_graph.ainvoke(initial_state)
@@ -302,6 +377,7 @@ async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: d
         # Broadcast the final generated asset to the frontend!
         final_asset = {
             "id": db_id or ad_id,
+            "workspace_id": workspace_id,
             "headline": headline,
             "bodyText": body_text,
             "cta": "Launch Campaign",
@@ -310,11 +386,16 @@ async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: d
             "videoUrl": result.get("video_url", ""),
             "audioUrl": result.get("audio_url", "")
         }
-        
-        await manager.broadcast_creative_asset(workspace_id, final_asset)
+
+        # broadcast_creative_asset takes only `asset` - passing workspace_id positionally
+        # here raised a TypeError on every run, after all the real generation work had
+        # already completed, so the finished ad never reached the frontend.
+        await manager.broadcast_creative_asset(final_asset)
         await manager.broadcast_agent_log("System", "Ad generation successfully delivered to UI.", "completed")
+        record_agent_task(workspace_id, "CREATIVE", "COMPLETED", f"Generated ad: {(headline or '')[:80]}")
         return result
     except Exception as e:
         await manager.broadcast_agent_log("System", f"Pipeline Failed: {str(e)}", "failed")
         print(f"Error in creative pipeline: {e}")
+        record_agent_task(workspace_id, "CREATIVE", "FAILED", str(e)[:120])
         return initial_state

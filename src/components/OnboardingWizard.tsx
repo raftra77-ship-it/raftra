@@ -16,6 +16,41 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
   const [loadingText, setLoadingText] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
 
+  // Onboarding is the only place a workspace gets created — without this the user
+  // lands on a dashboard with no workspace and nothing works.
+  const ensureWorkspace = async (brand: { url: string; name: string; tone: string; colors: string }) => {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    try {
+      // Don't create a second workspace if this account already has one.
+      const existing = await fetch('/api/workspaces', { headers });
+      if (existing.ok) {
+        const list = await existing.json();
+        if (Array.isArray(list) && list.length > 0) return true;
+      }
+      const res = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          name: brand.name,
+          company_url: brand.url,
+          brand_color: brand.colors,
+          brand_voice: brand.tone
+        })
+      });
+      if (!res.ok) {
+        console.error('Workspace creation failed:', res.status, await res.text());
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Workspace creation failed:', err);
+      return false;
+    }
+  };
 
   const handleNext = () => {
     if (step < 3) {
@@ -55,12 +90,15 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
       
       if (resData.status === 'success') {
         const d = resData.data;
-        onComplete({
+        const brand = {
           url: url || 'https://raftra.com',
           name: name || 'Raftra Brand',
           tone: d.tone || tone,
           colors: d.colors && d.colors.length > 0 ? d.colors[0] : colors
-        });
+        };
+        const created = await ensureWorkspace(brand);
+        if (!created) setLoadingText('Could not create your workspace — please try again.');
+        onComplete(brand);
       } else {
         throw new Error("Failed extraction");
       }
@@ -69,7 +107,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
       setLoadingProgress(100);
       setLoadingText('Error during extraction. Falling back to defaults...');
       // Fallback to user inputs if API fails, simulating real data extraction
-      setTimeout(() => {
+      setTimeout(async () => {
         let extractedName = name;
         if (!extractedName && url) {
           try {
@@ -80,13 +118,17 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
             }
           } catch(e) {}
         }
-        
-        onComplete({
+
+        const brand = {
           url: url || 'https://example.com',
           name: extractedName || 'Aura Ventures',
           tone,
           colors
-        });
+        };
+        // Still create the workspace even when the scrape failed, otherwise the
+        // user lands on an unusable dashboard.
+        await ensureWorkspace(brand);
+        onComplete(brand);
       }, 1500);
     }
   };

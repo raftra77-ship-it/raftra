@@ -44,7 +44,14 @@ async def claude_recommendation_node(state: AnalyticsState) -> AnalyticsState:
     except Exception:
         system_prompt = "You are a senior Marketing Data Scientist."
 
-    prompt = f"User Query: {state['query_message']}\nPlease provide a detailed analysis and actionable recommendations based on this query."
+    # Ground recommendations in this company's real brand profile + knowledge base.
+    from core.brand_context import get_brand_context
+    brand = get_brand_context(state["workspace_id"], query=state['query_message'])
+    prompt = (
+        f"User Query: {state['query_message']}\n\n"
+        f"COMPANY CONTEXT (tailor the analysis to this brand, audience and offerings):\n{brand}\n\n"
+        f"Please provide a detailed analysis and actionable recommendations grounded in this company's context."
+    )
     
     try:
         llm = GeminiProvider()
@@ -96,5 +103,12 @@ async def run_analytics_pipeline(workspace_id: int, query_message: str):
         "explanation": ""
     }
     await manager.broadcast_agent_log("Data Analyst", "Initializing Analytics pipeline...", "queued")
-    result = await analytics_graph.ainvoke(initial_state)
+    from core.agent_status import record_agent_task
+    record_agent_task(workspace_id, "ANALYST", "RUNNING", query_message[:80])
+    try:
+        result = await analytics_graph.ainvoke(initial_state)
+        record_agent_task(workspace_id, "ANALYST", "COMPLETED", "Analytics recommendation ready")
+    except Exception as e:
+        record_agent_task(workspace_id, "ANALYST", "FAILED", str(e)[:120])
+        raise
     return result

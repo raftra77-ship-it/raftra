@@ -6,7 +6,8 @@ from langgraph.graph import StateGraph, END
 from core.websocket import manager
 import os
 import httpx
-from core.providers.llm_providers import OpenRouterProvider
+from core.providers.llm_providers import GeminiProvider
+from core.providers.base import LLMProviderError
 
 # --- Schema Definitions ---
 
@@ -28,15 +29,28 @@ class OnboardingState(TypedDict):
 
 # --- Node Definitions ---
 
+def _html_to_text(html: str) -> str:
+    """Crude but dependency-free HTML -> text: drop scripts/styles/tags, collapse whitespace."""
+    import re
+    html = re.sub(r"(?is)<(script|style|noscript|svg|head)[^>]*>.*?</\1>", " ", html)
+    html = re.sub(r"(?s)<[^>]+>", " ", html)
+    # Decode the handful of entities that matter for prose
+    for ent, ch in [("&amp;", "&"), ("&nbsp;", " "), ("&quot;", '"'), ("&#39;", "'"), ("&lt;", "<"), ("&gt;", ">")]:
+        html = html.replace(ent, ch)
+    return re.sub(r"\s+", " ", html).strip()
+
+
 async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
     """
-    Scrapes the brand URL using Firecrawl/Crawl4AI.
+    Scrapes the brand URL. Prefers Firecrawl (clean markdown) when a key is set,
+    otherwise falls back to fetching the page directly and extracting its text —
+    so onboarding produces real brand content even with no external API keys.
     """
     msg = f"Initiating Brand Intelligence Agent for {state['brand_url']}..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Brand Intelligence", msg, "running")
-    
-    scraped_text = "No content extracted."
+
+    scraped_text = ""
     firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
     tavily_key = os.getenv("TAVILY_API_KEY")
 
@@ -54,7 +68,28 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
                     data = res.json()
                     scraped_text = data.get("data", {}).get("markdown", "")[:4000] # Limit size
         except Exception as e:
-            scraped_text = f"Scraping failed: {e}"
+            # Never store the error text as content - it would be embedded into the
+            # knowledge base as if it were brand information. Fall through instead.
+            print(f"Firecrawl scrape failed: {e}")
+
+    if not scraped_text and state['brand_url']:
+        # Fallback: fetch the page directly and extract its text.
+        msg = f"Fetching {state['brand_url']} directly (no Firecrawl key or Firecrawl failed)..."
+        await manager.broadcast_agent_log("Brand Intelligence", msg, "thinking")
+        try:
+            url = state['brand_url']
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
+                res = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; RaftraBot/1.0)"})
+                if res.status_code == 200:
+                    scraped_text = _html_to_text(res.text)[:4000]
+        except Exception as e:
+            print(f"Direct fetch failed: {e}")
+
+    if not scraped_text:
+        await manager.broadcast_agent_log("Brand Intelligence", "Could not extract any content from the brand URL - the knowledge base will be limited for this workspace.", "failed")
+        scraped_text = "No content extracted."
 
     if tavily_key:
         msg = f"Searching for brand and competitors using Tavily..."
@@ -102,13 +137,17 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
     state["logs"].append(msg)
     await manager.broadcast_agent_log("System", msg, "running")
     
-    llm = OpenRouterProvider()
+    # Gemini: the only provider with a configured key (OPENROUTER_API_KEY is empty).
+    llm = GeminiProvider()
     prompt = f"Analyze the following scraped content and summarize the brand's tone, audience, and key value propositions in 3 sentences:\n\n{state['scraped_content']}"
-    summary = await llm.generate_text(prompt, system_prompt="You are a brand strategist.")
-    
-    if summary.startswith("Error"):
-        summary = "Premium AI Marketing Platform. Tone: Professional, Futuristic."
-    
+    try:
+        summary = await llm.generate_text(prompt, system_prompt="You are a brand strategist.")
+    except LLMProviderError as e:
+        # A fabricated brand summary would be embedded into the knowledge base and
+        # silently poison every downstream agent, so fail instead.
+        await manager.broadcast_agent_log("Brand Strategist", f"Brand analysis failed: {e}", "failed")
+        raise
+
     state["typography"] = {"heading": state.get("vision_insights", {}).get("font_family_heading", "Inter")}
     state["color_palette"] = [state.get("vision_insights", {}).get("primary_color", "#030303")]
     state["brand_guidelines_summary"] = summary
@@ -140,36 +179,47 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
     finally:
         db.close()
         
-    # Save to Qdrant (Simulated embedding for now)
+    # Persist the brand context to the knowledge base so generation can retrieve it.
     try:
         from database import qdrant_client
         from qdrant_client.models import PointStruct
+        from core.embeddings import embed_passage, ensure_collection, COLLECTION_NAME
         import uuid
-        
-        from sentence_transformers import SentenceTransformer
-        
-        # Load the BGE model to generate real embeddings
-        model = SentenceTransformer("BAAI/bge-small-en-v1.5")
-        
+
+        ensure_collection(qdrant_client)
+
         content_to_embed = state.get("scraped_content", "")
         # Fallback to empty string if no content is scraped to avoid crash
         if not content_to_embed:
             content_to_embed = "Empty workspace context"
-            
-        embedding = model.encode(content_to_embed).tolist()
+
+        # Re-indexing should REPLACE this workspace's knowledge, not pile new points on
+        # top of stale ones (otherwise old "No content extracted" placeholders linger).
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        try:
+            qdrant_client.delete(
+                collection_name=COLLECTION_NAME,
+                points_selector=Filter(must=[FieldCondition(key="workspace_id", match=MatchValue(value=state["workspace_id"]))]),
+            )
+        except Exception as del_err:
+            print(f"Qdrant cleanup (non-fatal): {del_err}")
 
         qdrant_client.upsert(
-            collection_name="brand_knowledge",
+            collection_name=COLLECTION_NAME,
             points=[
                 PointStruct(
                     id=str(uuid.uuid4()),
-                    vector=embedding,
+                    vector=embed_passage(content_to_embed),
                     payload={"workspace_id": state["workspace_id"], "content": content_to_embed, "type": "onboarding_scrape"}
                 )
             ]
         )
     except Exception as e:
+        # Previously this only printed, so onboarding reported success while the
+        # knowledge base stayed empty - and every later generation had no context.
         print(f"Qdrant persist error: {e}")
+        await manager.broadcast_agent_log("System", f"Brand onboarding failed: could not save knowledge base ({e})", "failed")
+        raise
 
     await manager.broadcast_agent_log("System", "Brand Onboarding Complete. Profile Cached.", "completed")
     return state
@@ -204,5 +254,12 @@ async def run_onboarding_pipeline(workspace_id: int, brand_url: str, brand_logo:
         "logs": [],
         "status": "queued"
     }
-    result = await onboarding_graph.ainvoke(initial_state)
-    return result
+    from core.agent_status import record_agent_task
+    record_agent_task(workspace_id, "ONBOARDING", "RUNNING", f"Analyzing {brand_url}")
+    try:
+        result = await onboarding_graph.ainvoke(initial_state)
+        record_agent_task(workspace_id, "ONBOARDING", "COMPLETED", "Brand profile & knowledge base built")
+        return result
+    except Exception as e:
+        record_agent_task(workspace_id, "ONBOARDING", "FAILED", str(e)[:120])
+        raise
