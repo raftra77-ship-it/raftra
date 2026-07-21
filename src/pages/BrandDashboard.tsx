@@ -1502,6 +1502,7 @@ export function BrandDashboard() {
                 onOpenReview={handleOpenReview}
                 onGenerate={handleGenerateCreative}
                 onAssetSaved={handleAssetSaved}
+                onNavigateTab={setActiveTab}
               />
             </div>
           )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Eye, Check, Send, Trash, Edit3, Save } from 'lucide-react';
+import { Sparkles, Eye, Check, Send, Trash, Edit3, Save, Users2, Video } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 interface CreativeAsset {
@@ -28,6 +28,7 @@ interface WorkspaceCreativeProps {
   onGenerate: (prompt: string, referenceAd?: any, config?: any) => void;
   onAssetSaved?: (asset: CreativeAsset) => void;
   workspaceId?: number;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
@@ -36,7 +37,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onOpenReview,
   onGenerate,
   onAssetSaved,
-  workspaceId
+  workspaceId,
+  onNavigateTab
 }) => {
   const [prompt, setPrompt] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -210,6 +212,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     { name: 'Asset Generator', desc: 'Create video or image with any AI model', icon: '•' },
     { name: 'Video Ad', desc: 'Turn product into video ads with AI actors', icon: '•' },
     { name: 'Image Ad', desc: 'Turn product into static ad creatives', icon: '•' },
+    { name: 'Carousel Ads', desc: 'Multi-slide swipeable ad sequences', icon: '•' },
+    { name: 'AI UGC Creator', desc: 'Generate authentic UGC-style content with AI', icon: '•' },
     { name: 'HTML Interactive Ad', desc: 'Generate interactive ads with AI', icon: '•' },
     { name: 'Ad Clone', desc: 'Recreate winning ads instantly, with your product', icon: '•' },
     { name: 'Create Your Own Avatar', desc: 'Build a branded AI avatar in seconds', icon: '•' },
@@ -228,6 +232,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     } else if (modeName === 'Image Ad') {
       prePrompt = 'Generate a static image ad targeting...';
       setAdFormat('Static Image');
+    } else if (modeName === 'Carousel Ads') {
+      prePrompt = 'Create a multi-slide carousel ad sequence showcasing...';
+      setAdFormat('Static Image');
+    } else if (modeName === 'AI UGC Creator') {
+      prePrompt = 'Generate an authentic UGC-style video featuring a realistic AI presenter promoting...';
+      setAdFormat('Video');
     } else if (modeName === 'Track Competitors') {
       prePrompt = 'Analyze this competitor ad link and extract their winning hooks: ';
     } else if (modeName === 'HTML Interactive Ad') {
@@ -242,12 +252,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'row', gap: '20px', height: '100%' }}>
       {/* LEFT TOOLKIT SIDEBAR */}
-      <div style={{ width: '280px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-        <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
-          <h3 style={{ fontSize: '16px', fontFamily: 'var(--font-heading)' }}>Engine Capabilities</h3>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Select an AI mode</p>
+      <div style={{ width: '320px', flexShrink: 0, background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+          <h3 style={{ fontSize: '18px', fontFamily: 'var(--font-heading)', marginBottom: '2px' }}>Engine Capabilities</h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>Select an AI mode</p>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', padding: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', padding: '12px' }}>
           {toolkitModes.map((mode) => (
             <div 
               key={mode.name}
@@ -255,101 +265,127 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '12px',
-                padding: '12px',
-                borderRadius: '8px',
+                gap: '14px',
+                padding: '14px 16px',
+                borderRadius: '10px',
                 cursor: 'pointer',
-                background: engineMode === mode.name ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                border: engineMode === mode.name ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid transparent',
+                background: engineMode === mode.name ? 'rgba(90, 82, 255, 0.12)' : 'transparent',
+                border: engineMode === mode.name ? '1px solid rgba(90, 82, 255, 0.4)' : '1px solid transparent',
                 transition: 'all 0.2s',
                 marginBottom: '4px'
               }}
             >
-              <div style={{ fontSize: '18px', color: engineMode === mode.name ? '#fff' : 'var(--text-secondary)' }}>{mode.icon}</div>
+              <div style={{ fontSize: '20px', color: engineMode === mode.name ? 'var(--primary)' : 'var(--text-secondary)' }}>{mode.icon}</div>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: engineMode === mode.name ? '600' : '400', color: engineMode === mode.name ? '#fff' : 'var(--text-primary)' }}>{mode.name}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{mode.desc}</div>
+                <div style={{ fontSize: '14px', fontWeight: engineMode === mode.name ? '600' : '400', color: engineMode === mode.name ? '#fff' : 'var(--text-primary)' }}>{mode.name}</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{mode.desc}</div>
               </div>
             </div>
           ))}
         </div>
+
+        {/* UGC ACTION BUTTONS */}
+        <div style={{ padding: '12px', borderTop: '1px solid var(--border)', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <button
+            onClick={() => { handleModeSelect('AI UGC Creator'); }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+              padding: '12px 16px', borderRadius: '10px', border: '1px solid rgba(90,82,255,0.4)',
+              background: 'linear-gradient(135deg, rgba(90,82,255,0.15), rgba(140,82,255,0.08))',
+              color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(90,82,255,0.3), rgba(140,82,255,0.15))'}
+            onMouseOut={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(90,82,255,0.15), rgba(140,82,255,0.08))'}
+          >
+            <Video size={16} /> Make AI UGC
+          </button>
+          <button
+            onClick={() => onNavigateTab?.('influencer')}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+              padding: '12px 16px', borderRadius: '10px', border: '1px solid rgba(0,230,118,0.3)',
+              background: 'linear-gradient(135deg, rgba(0,230,118,0.1), rgba(0,200,100,0.05))',
+              color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0,230,118,0.2), rgba(0,200,100,0.1))'}
+            onMouseOut={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0,230,118,0.1), rgba(0,200,100,0.05))'}
+          >
+            <Users2 size={16} /> Hire UGC Creator
+          </button>
+        </div>
       </div>
 
       {/* MAIN CHAT & LIBRARY PANE */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', position: 'relative' }}>
-        
-        {/* Dynamic Animated Background iframe */}
-        <iframe 
-          src="https://cdn.21st.dev/lovesickfromthe6ix/turbulent-flow/default/bundle.1749368479987.html?theme=dark&dark=true" 
-          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', zIndex: -1, pointerEvents: 'none', opacity: 0.8 }} 
-          title="Turbulent Flow Background"
-        />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', position: 'relative', minWidth: 0 }}>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
-          <div>
-            <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
-              {engineMode} <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 'normal' }}>— AI Studio</span>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', zIndex: 1, gap: '24px' }}>
+          <div style={{ flexShrink: 0 }}>
+            <h2 style={{ fontSize: '26px', fontFamily: 'var(--font-heading)', marginBottom: '6px' }}>
+              {engineMode} <span style={{ fontSize: '15px', color: 'var(--text-secondary)', fontWeight: 'normal' }}>— AI Studio</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
               Describe what you want to generate using the <strong>{engineMode}</strong> tool.
             </p>
           </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', justifyContent: 'flex-end', background: 'rgba(255,255,255,0.03)', padding: '12px 18px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
           
-          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Format:</label>
-          <select value={adFormat} onChange={(e) => setAdFormat(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-            <option value="Static Image" style={{ color: '#000' }}>Static Image</option>
-            <option value="Video" style={{ color: '#000' }}>Video</option>
-            <option value="Video with Music" style={{ color: '#000' }}>Video with Music</option>
-          </select>
+            <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>Format:</label>
+            <select value={adFormat} onChange={(e) => setAdFormat(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', color: 'var(--text-primary)', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
+              <option value="Static Image" style={{ color: '#000' }}>Static Image</option>
+              <option value="Video" style={{ color: '#000' }}>Video</option>
+              <option value="Video with Music" style={{ color: '#000' }}>Video with Music</option>
+            </select>
 
-          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Platform:</label>
-          <select value={adPlatform} onChange={(e) => setAdPlatform(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-            <option value="Instagram" style={{ color: '#000' }}>Instagram</option>
-            <option value="Facebook" style={{ color: '#000' }}>Facebook</option>
-            <option value="Google Ads" style={{ color: '#000' }}>Google Ads</option>
-            <option value="LinkedIn" style={{ color: '#000' }}>LinkedIn</option>
-          </select>
+            <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>Platform:</label>
+            <select value={adPlatform} onChange={(e) => setAdPlatform(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', color: 'var(--text-primary)', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
+              <option value="Instagram" style={{ color: '#000' }}>Instagram</option>
+              <option value="Facebook" style={{ color: '#000' }}>Facebook</option>
+              <option value="Google Ads" style={{ color: '#000' }}>Google Ads</option>
+              <option value="LinkedIn" style={{ color: '#000' }}>LinkedIn</option>
+            </select>
           
-          <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Ratio:</label>
-          <select value={adRatio} onChange={(e) => setAdRatio(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-            <option value="9:16" style={{ color: '#000' }}>9:16 (Vertical)</option>
-            <option value="1:1" style={{ color: '#000' }}>1:1 (Square)</option>
-            <option value="16:9" style={{ color: '#000' }}>16:9 (Landscape)</option>
-            <option value="4:5" style={{ color: '#000' }}>4:5 (Portrait)</option>
-          </select>
+            <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>Ratio:</label>
+            <select value={adRatio} onChange={(e) => setAdRatio(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', color: 'var(--text-primary)', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
+              <option value="9:16" style={{ color: '#000' }}>9:16 (Vertical)</option>
+              <option value="1:1" style={{ color: '#000' }}>1:1 (Square)</option>
+              <option value="16:9" style={{ color: '#000' }}>16:9 (Landscape)</option>
+              <option value="4:5" style={{ color: '#000' }}>4:5 (Portrait)</option>
+            </select>
           
-          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', opacity: adFormat === 'Static Image' ? 0.3 : 1 }}>Length:</label>
-          <select disabled={adFormat === 'Static Image'} value={adLength} onChange={(e) => setAdLength(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', opacity: adFormat === 'Static Image' ? 0.3 : 1 }}>
-            <option value="5s" style={{ color: '#000' }}>5s</option>
-            <option value="15s" style={{ color: '#000' }}>15s</option>
-            <option value="30s" style={{ color: '#000' }}>30s</option>
-          </select>
+            <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, opacity: adFormat === 'Static Image' ? 0.3 : 1 }}>Length:</label>
+            <select disabled={adFormat === 'Static Image'} value={adLength} onChange={(e) => setAdLength(e.target.value)} className="config-dropdown" style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', color: 'var(--text-primary)', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', outline: 'none', cursor: 'pointer', opacity: adFormat === 'Static Image' ? 0.3 : 1 }}>
+              <option value="5s" style={{ color: '#000' }}>5s</option>
+              <option value="15s" style={{ color: '#000' }}>15s</option>
+              <option value="30s" style={{ color: '#000' }}>30s</option>
+            </select>
 
-          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>AI Model:</label>
-          <select 
-            value={selectedModel} 
-            onChange={(e) => setSelectedModel(e.target.value)}
-            style={{ 
-              background: 'rgba(255, 255, 255, 0.05)', 
-              border: '1px solid rgba(255, 255, 255, 0.1)', 
-              color: 'var(--text-primary)', 
-              padding: '6px 12px', 
-              borderRadius: '6px',
-              fontSize: '13px',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="gemini-1.5-flash" style={{ color: '#000' }}>Gemini 1.5 Flash (Default)</option>
-            <option value="gemini-1.5-pro" style={{ color: '#000' }}>Gemini 1.5 Pro</option>
-            <option value="gpt-4o" style={{ color: '#000' }}>GPT-4o</option>
-            <option value="seedance-v1" style={{ color: '#000' }}>Seedance Video Model</option>
-            <option value="nano-banana-chat" style={{ color: '#000' }}>Nano Banana Engine</option>
-            <option value="meta-llama/llama-3.2-3b-instruct:free" style={{ color: '#000' }}>LLaMA 3.2 (OpenRouter)</option>
-          </select>
+            <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>AI Model:</label>
+            <select 
+              value={selectedModel} 
+              onChange={(e) => setSelectedModel(e.target.value)}
+              style={{ 
+                background: 'rgba(255, 255, 255, 0.06)', 
+                border: '1px solid rgba(255, 255, 255, 0.12)', 
+                color: 'var(--text-primary)', 
+                padding: '8px 14px', 
+                borderRadius: '8px',
+                fontSize: '13px',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="gemini-1.5-flash" style={{ color: '#000' }}>Gemini 1.5 Flash (Default)</option>
+              <option value="gemini-1.5-pro" style={{ color: '#000' }}>Gemini 1.5 Pro</option>
+              <option value="gpt-4o" style={{ color: '#000' }}>GPT-4o</option>
+              <option value="seedance-v1" style={{ color: '#000' }}>Seedance Video Model</option>
+              <option value="nano-banana-chat" style={{ color: '#000' }}>Nano Banana Engine</option>
+              <option value="meta-llama/llama-3.2-3b-instruct:free" style={{ color: '#000' }}>LLaMA 3.2 (OpenRouter)</option>
+            </select>
+          </div>
         </div>
-      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: 'calc(100vh - 200px)', overflowY: 'auto', zIndex: 1 }}>
         
