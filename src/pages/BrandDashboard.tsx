@@ -168,7 +168,7 @@ export function BrandDashboard() {
     growthScore: 0
   });
   const [billingBalance, setBillingBalance] = useState<number>(0);
-  const [unlockedNodes, setUnlockedNodes] = useState<string[]>([]);
+  const [unlockedNodes, setUnlockedNodes] = useState<string[]>(['campaign', 'seo', 'analytics']);
 
   // AI Agents Working Now
   const [agentsList, setAgentsList] = useState([

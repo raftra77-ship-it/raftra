@@ -9,7 +9,7 @@ except ImportError:
     compress = None  # Fallback if headroom is not fully installed yet
 
 class GeminiProvider(LLMProvider):
-    async def generate_text(self, prompt: str, system_prompt: Optional[str] = None, model_name: str = "gemini-1.5-flash", **kwargs) -> str:
+    async def generate_text(self, prompt: str, system_prompt: Optional[str] = None, model_name: str = "gemini-2.0-flash", **kwargs) -> str:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return "Error: GEMINI_API_KEY is not set."

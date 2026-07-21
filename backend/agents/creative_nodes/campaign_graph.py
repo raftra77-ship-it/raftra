@@ -107,7 +107,7 @@ workflow.add_edge("supervisor", END)
 
 campaign_graph = workflow.compile()
 
-async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-1.5-flash"):
+async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-2.0-flash"):
     initial_state = {
         "workspace_id": workspace_id,
         "prompt": prompt,
