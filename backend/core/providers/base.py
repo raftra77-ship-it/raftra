@@ -16,6 +16,14 @@ class VideoProviderError(RuntimeError):
     """Raised when a video provider cannot produce a clip (missing key, API error, no match)."""
 
 
+class ImageProviderError(RuntimeError):
+    """Raised when an image provider cannot produce an image (missing key, API error).
+
+    Like LLMProviderError, providers must raise this rather than returning the error
+    text as the image URL - otherwise "Error: ..." gets saved as an ad's image_url.
+    """
+
+
 class LLMProvider(ABC):
     """Abstract Base Class for all LLM providers."""
     

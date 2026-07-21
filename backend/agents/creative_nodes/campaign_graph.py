@@ -3,7 +3,7 @@ import json
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from core.providers.llm_providers import GeminiProvider, OpenRouterProvider
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 from database import SessionLocal
 import models
 
@@ -102,6 +102,7 @@ workflow.add_edge("supervisor", END)
 campaign_graph = workflow.compile()
 
 async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-2.5-flash"):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "prompt": prompt,

@@ -14,9 +14,11 @@ AGENT_LABELS = {
     "CREATIVE": "Creative Studio Agent",
     "ONBOARDING": "Brand Intelligence Agent",
     "SEO": "SEO Agent",
+    "GEO": "GEO Agent",
     "SOCIAL": "Social Media Agent",
     "ANALYST": "Analytics Agent",
     "CAMPAIGN": "Campaign Manager Agent",
+    "CONTENT": "Content Agent",
     "INFLUENCER": "Influencer Agent",
 }
 

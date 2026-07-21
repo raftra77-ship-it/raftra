@@ -2,7 +2,7 @@ import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 import os
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 from core.providers.llm_providers import GeminiProvider
 
 class CreativeState(TypedDict):
@@ -70,30 +70,25 @@ async def asset_generation_node(state: CreativeState) -> CreativeState:
     prompt = f"Target product/service: {state['target_product']}\nCreative Strategy: {state['concept_strategy']}\nPlease write an ad headline, a body text, and a CTA."
     prompt += "\nFormat exactly as:\nHeadline: [your headline]\nBody: [your body text]\nCTA: [your call to action]"
     
-    try:
-        llm = GeminiProvider()
-        response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
-        
-        headline, body, cta = state.get("generated_headline", "Unleash potential."), state.get("generated_body", "Scale acquisition loop."), state.get("generated_cta", "Start Trial")
-        
-        for line in response.split("\n"):
-            line = line.strip()
-            if line.lower().startswith("headline:"):
-                headline = line[9:].strip().replace("**", "").replace('"', '')
-            elif line.lower().startswith("body:"):
-                body = line[5:].strip().replace("**", "")
-            elif line.lower().startswith("cta:"):
-                cta = line[4:].strip().replace("**", "").replace('"', '')
-                
-        state["generated_headline"] = headline
-        state["generated_body"] = body
-        state["generated_cta"] = cta
-    except Exception as e:
-        print(f"LLM Error in creative_studio: {e}")
-        state["generated_headline"] = f"Unleash {state['target_product']} instantly."
-        state["generated_body"] = f"Scale your acquisition loop with coordinated brand voice parameters."
-        state["generated_cta"] = "Activate Trial Now"
-        
+    # Don't fabricate ad copy on failure - the user can't tell invented copy from
+    # generated copy. Let the exception propagate so the run is marked failed.
+    llm = GeminiProvider()
+    response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
+
+    headline, body, cta = state.get("generated_headline", ""), state.get("generated_body", ""), state.get("generated_cta", "")
+
+    for line in response.split("\n"):
+        line = line.strip()
+        if line.lower().startswith("headline:"):
+            headline = line[9:].strip().replace("**", "").replace('"', '')
+        elif line.lower().startswith("body:"):
+            body = line[5:].strip().replace("**", "")
+        elif line.lower().startswith("cta:"):
+            cta = line[4:].strip().replace("**", "").replace('"', '')
+
+    state["generated_headline"] = headline
+    state["generated_body"] = body
+    state["generated_cta"] = cta
     return state
 
 async def quality_review_node(state: CreativeState) -> CreativeState:
@@ -126,6 +121,7 @@ workflow.add_edge("quality_review", END)
 creative_graph = workflow.compile()
 
 async def run_creative_pipeline(workspace_id: int, brand_url: str, target_product: str, concept_strategy: str):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "brand_url": brand_url,

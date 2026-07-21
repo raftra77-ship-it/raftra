@@ -150,6 +150,10 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       // Connect to WebSocket for real-time updates
       if (wsRef.current) wsRef.current.close();
       const ws = new WebSocket('ws://localhost:8005/ws');
+      ws.onopen = () => {
+        // Authenticate the socket (server requires an auth frame first).
+        ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('token') || '' }));
+      };
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

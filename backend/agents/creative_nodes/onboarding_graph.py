@@ -3,7 +3,7 @@ from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 
 # Assuming `manager` from core.websocket is used to broadcast logs
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 import os
 import httpx
 from core.providers.llm_providers import GeminiProvider
@@ -240,6 +240,7 @@ workflow.add_edge("synthesis_and_persistence", END)
 onboarding_graph = workflow.compile()
 
 async def run_onboarding_pipeline(workspace_id: int, brand_url: str, brand_logo: str = None):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "brand_url": brand_url,

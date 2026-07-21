@@ -1,7 +1,7 @@
 import httpx
 import os
 import random
-from .base import ImageProvider
+from .base import ImageProvider, ImageProviderError
 
 class FluxSchnellProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
@@ -21,32 +21,30 @@ class FluxSchnellProvider(ImageProvider):
         # Pollinations returns the image directly, so we just return the URL!
         return url
 
+# These providers are not implemented yet. They raise rather than return a fake
+# "https://mock.url/..." string, which would otherwise be saved as a real ad image_url.
 class FluxProProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
-        # TODO: Implement API call to FLUX Pro
-        return "https://mock.url/flux_pro_image.jpg"
+        raise ImageProviderError("FLUX Pro provider is not implemented.")
 
 class IdeogramProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
-        # TODO: Implement API call to Ideogram (good for typography)
-        return "https://mock.url/ideogram_image.jpg"
+        raise ImageProviderError("Ideogram provider is not implemented.")
 
 class RecraftProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
-        # TODO: Implement API call to Recraft (good for illustrations)
-        return "https://mock.url/recraft_image.jpg"
+        raise ImageProviderError("Recraft provider is not implemented.")
 
 class ImagenProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
-        # TODO: Implement API call to Google Imagen
-        return "https://mock.url/imagen_image.jpg"
+        raise ImageProviderError("Google Imagen provider is not implemented.")
 
 class GPTImageProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            return "Error: OPENAI_API_KEY is not set."
-            
+            raise ImageProviderError("OPENAI_API_KEY is not set.")
+
         url = "https://api.openai.com/v1/images/generations"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -65,4 +63,4 @@ class GPTImageProvider(ImageProvider):
                 data = response.json()
                 return data["data"][0]["url"]
             else:
-                return f"Error: OpenAI API returned status {response.status_code} - {response.text}"
+                raise ImageProviderError(f"OpenAI API returned status {response.status_code} - {response.text}")

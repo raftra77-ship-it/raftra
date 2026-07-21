@@ -67,8 +67,17 @@ async def send_message(workspace_id: int, msg: ChatMessageCreate, db: Session = 
     db.add(chat_msg)
     db.commit()
     db.refresh(chat_msg)
-    
-    # Broadcast via websocket
+
+    # Deliver only to the two participants: the workspace's owning brand user and
+    # the creator who owns this influencer. Never broadcast a private chat to all.
+    participant_ids = set()
+    ws_owner = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+    if ws_owner:
+        participant_ids.add(ws_owner.user_id)
+    inf = db.query(models.Influencer).filter(models.Influencer.id == msg.influencer_id).first()
+    if inf and inf.user_id:
+        participant_ids.add(inf.user_id)
+
     await manager.broadcast_chat_message({
         "id": chat_msg.id,
         "workspace_id": workspace_id,
@@ -77,8 +86,8 @@ async def send_message(workspace_id: int, msg: ChatMessageCreate, db: Session = 
         "content": chat_msg.content,
         "file_url": chat_msg.file_url,
         "created_at": chat_msg.created_at.isoformat()
-    })
-    
+    }, user_ids=participant_ids)
+
     return chat_msg
 
 @router.post("/read/{message_id}")

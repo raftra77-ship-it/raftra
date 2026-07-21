@@ -1,0 +1,61 @@
+{
+  "word_count": 2352,
+  "h1_count": 2,
+  "h2_count": 4,
+  "h3plus_count": 38,
+  "internal_links": 49,
+  "external_links": 14,
+  "image_count": 52,
+  "images_missing_alt": 47,
+  "top_keywords": [
+    {
+      "term": "stripe",
+      "count": 57
+    },
+    {
+      "term": "payments",
+      "count": 36
+    },
+    {
+      "term": "read",
+      "count": 28
+    },
+    {
+      "term": "story",
+      "count": 19
+    },
+    {
+      "term": "business",
+      "count": 16
+    },
+    {
+      "term": "payment",
+      "count": 15
+    },
+    {
+      "term": "succeeded",
+      "count": 14
+    },
+    {
+      "term": "total",
+      "count": 12
+    },
+    {
+      "term": "yoga",
+      "count": 12
+    },
+    {
+      "term": "create",
+      "count": 10
+    },
+    {
+      "term": "financial",
+      "count": 9
+    },
+    {
+      "term": "tools",
+      "count": 9
+    }
+  ],
+  "thin_content": false
+}

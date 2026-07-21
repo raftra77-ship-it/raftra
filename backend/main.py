@@ -62,12 +62,53 @@ async def preload_embedding_model():
     get_embedding_model()
     print("Embedding model ready.")
 
+
+@app.on_event("startup")
+async def start_monthly_scheduler():
+    """Start the in-process monthly SEO/GEO audit scheduler (no Redis needed)."""
+    try:
+        from core.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        print(f"Failed to start monthly scheduler: {e}")
+
 # WebSocket streaming endpoint
 from core.websocket import manager
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    # Authenticate the socket with the same JWT used for HTTP. Browsers can't set
+    # headers on a WebSocket, and we avoid putting the token in the URL (it can leak
+    # into access logs), so the client sends {"type":"auth","token":"..."} as its
+    # first frame. Without this, any anonymous client could connect and receive
+    # every tenant's agent logs and generated content.
+    import jwt as _jwt
+    import json as _json
+    from auth import SECRET_KEY, ALGORITHM
+    import database, models
+
+    await websocket.accept()
+    try:
+        raw = await websocket.receive_text()
+        msg = _json.loads(raw)
+        token = msg.get("token")
+        payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload.get("sub"))
+    except Exception:
+        await websocket.close(code=1008)  # policy violation
+        return
+
+    # Bind this connection to exactly the workspaces this user owns. Broadcasts are
+    # filtered against this set, so a client only ever receives its own tenant's data.
+    db = database.SessionLocal()
+    try:
+        workspace_ids = {
+            w.id for w in db.query(models.Workspace).filter(models.Workspace.user_id == user_id).all()
+        }
+    finally:
+        db.close()
+
+    manager.register(websocket, user_id, workspace_ids)
     try:
         while True:
             # Wait/listen for client messages (heartbeats, etc.)

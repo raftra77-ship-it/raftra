@@ -2,7 +2,7 @@ import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 import os
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 from core.providers.llm_providers import GeminiProvider
 
 class SocialState(TypedDict):
@@ -45,19 +45,37 @@ async def caption_agent_node(state: SocialState) -> SocialState:
         f"Please write a highly engaging social media post that fits this brand."
     )
     
-    try:
-        llm = GeminiProvider()
-        response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
-        state["generated_post"] = response.strip()
-    except Exception as e:
-        print(f"LLM Error in social_hub: {e}")
-        state["generated_post"] = f"{state['caption_topic']}. Consolidating 20 marketing nodes into one with Raftra Growth OS. #GrowthOps"
-        
+    # Don't substitute a canned post on failure - it would be posted as if the AI
+    # wrote it for this brand. Let the failure propagate so the run is marked failed.
+    llm = GeminiProvider()
+    response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
+    state["generated_post"] = response.strip()
     return state
 
 async def scheduler_node(state: SocialState) -> SocialState:
     state["current_node"] = "Scheduler"
-    msg = "Setting publish schedules to active queue buffers..."
+    # Persist the generated post as a draft instead of discarding it. It was
+    # previously generated and thrown away; now it's saved for human review.
+    # No social account is connected yet, so we save as 'draft', not 'published'.
+    saved = False
+    try:
+        from database import SessionLocal
+        import models
+        with SessionLocal() as db:
+            post = models.SocialPost(
+                platform=(state.get("platform") or "").upper(),
+                caption=state.get("generated_post", ""),
+                status="draft",
+                workspace_id=state["workspace_id"],
+            )
+            db.add(post)
+            db.commit()
+            saved = True
+    except Exception as e:
+        print(f"Failed to save SocialPost: {e}")
+
+    msg = ("Post saved as a draft for review. Connect a social account to schedule or publish it."
+           if saved else "Post generated (could not be saved as a draft).")
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Social Agent", msg, "completed")
     await manager.broadcast_node_update("social_hub", "Scheduler", "completed")
@@ -78,6 +96,7 @@ workflow.add_edge("scheduler", END)
 social_graph = workflow.compile()
 
 async def run_social_pipeline(workspace_id: int, platform: str, caption_topic: str):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "platform": platform,
@@ -94,6 +113,7 @@ async def run_social_pipeline(workspace_id: int, platform: str, caption_topic: s
         result = await social_graph.ainvoke(initial_state)
         record_agent_task(workspace_id, "SOCIAL", "COMPLETED", f"{platform} post generated")
     except Exception as e:
+        await manager.broadcast_agent_log("Social Agent", f"Social post generation failed: {e}", "failed")
         record_agent_task(workspace_id, "SOCIAL", "FAILED", str(e)[:120])
         raise
     return result

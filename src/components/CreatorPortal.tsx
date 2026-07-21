@@ -79,6 +79,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       }).catch(console.error);
 
       const ws = new WebSocket('ws://localhost:8005/ws');
+      ws.onopen = () => {
+        // Authenticate the socket (server requires an auth frame first).
+        ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('token') || '' }));
+      };
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

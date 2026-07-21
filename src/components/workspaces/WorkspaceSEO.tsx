@@ -1,6 +1,77 @@
-import React, { useState } from 'react';
-import { Globe, Check, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Globe, Check, ExternalLink, TrendingUp } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
+import { Markdown } from '../Markdown';
+
+// Month-over-month comparison card — reads the /seo/comparison endpoint and shows the deltas
+// between the two most recent runs (the "monthly analysis" view).
+const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    setLoading(true);
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/seo/comparison?pipeline=SEO`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setData(d))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [workspaceId]);
+
+  if (!workspaceId) return null;
+
+  const arrow = (dir?: string) =>
+    dir === 'improved' ? { s: '▲', c: '#00ff9d' } :
+    dir === 'worsened' ? { s: '▼', c: '#ff5c5c' } : { s: '–', c: 'var(--text-muted)' };
+  const disp = (v: any) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : (v ?? '—'));
+
+  return (
+    <div className="glow-card">
+      <h3 style={{ fontSize: '16px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Month-over-Month Change (SEO)
+      </h3>
+      {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>}
+      {!loading && (!data || data.runs_available === 0) && (
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+          No runs yet — run the SEO pipeline to start building history.
+        </p>
+      )}
+      {!loading && data && data.runs_available === 1 && (
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+          First run recorded. The comparison appears automatically after the next run.
+        </p>
+      )}
+      {!loading && data && data.runs_available > 1 && (
+        <>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            {new Date(data.previous_run.date).toLocaleDateString()} → {new Date(data.current_run.date).toLocaleDateString()}
+            {'  ·  Score '}{data.previous_run.score} → <b style={{ color: '#fff' }}>{data.current_run.score}</b>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {data.changes.map((c: any) => {
+              const a = arrow(c.direction);
+              return (
+                <div key={c.metric} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{c.metric}</span>
+                  <span style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{disp(c.previous)} → {disp(c.current)}</span>
+                    <span style={{ color: a.c, fontWeight: 600, minWidth: '48px', textAlign: 'right' }}>
+                      {a.s}{typeof c.delta === 'number' ? ` ${c.delta > 0 ? '+' : ''}${c.delta}` : ''}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 interface BlogDraft {
   id: string;
@@ -17,9 +88,10 @@ interface WorkspaceSEOProps {
   geoAgent?: any;
   onTriggerSEO: (url: string) => void;
   onTriggerGEO: (url: string) => void;
+  workspaceId?: number | null;
 }
 
-export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview, seoAgent, geoAgent, onTriggerSEO, onTriggerGEO }) => {
+export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview, seoAgent, geoAgent, onTriggerSEO, onTriggerGEO, workspaceId }) => {
   const [targetUrl, setTargetUrl] = useState('https://example.com');
   const [rankings] = useState([
     { engine: 'Google Search index', score: 82, trend: '+4%' },
@@ -150,11 +222,17 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
       <div className="workspace-grid-split">
         {/* Left Side: SEO Crawl & AEO Citation Indexes */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <SeoComparisonCard workspaceId={workspaceId} />
+
           <div className="glow-card">
             <h3 style={{ fontSize: '16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Globe size={16} style={{ color: '#00ff9d' }} />
               Answer Engine Citation (AEO) Index
+              <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px', color: '#ffae00', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '6px', padding: '2px 6px' }}>SAMPLE</span>
             </h3>
+            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '-8px', marginBottom: '14px' }}>
+              Illustrative figures. Run a GEO audit for a real, measured answer-engine recall probe.
+            </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {rankings.map((rank) => (
@@ -170,13 +248,16 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
           </div>
 
           <div className="glow-card">
-            <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>AEO Recommendation Engine</h3>
+            <h3 style={{ fontSize: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              AEO Recommendation Engine
+              <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px', color: '#ffae00', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '6px', padding: '2px 6px' }}>SAMPLE</span>
+            </h3>
             <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px' }}>
               <h4 style={{ fontSize: '13px', color: '#ffae00', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                Schema & Entity Gap Detected
+                Example recommendation
               </h4>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                Claude AI mentions your product, but lacks structured links to your API documentation page. Add Schema Graph headers to boost entity-level citation confidence by 18%.
+                This is an illustrative example of the entity/schema gaps a GEO audit surfaces. Run a GEO audit above to get real, brand-specific recommendations for your site.
               </p>
             </div>
           </div>
@@ -215,7 +296,9 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
                   <h4 style={{ fontSize: '15px', marginTop: '8px', color: '#fff' }}>{blog.title}</h4>
                 </div>
 
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{blog.excerpt}</p>
+                <div style={{ fontSize: '13px', maxHeight: '420px', overflowY: 'auto', paddingRight: '8px' }}>
+                  <Markdown text={blog.excerpt} />
+                </div>
 
                 <div
                   style={{

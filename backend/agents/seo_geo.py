@@ -2,7 +2,7 @@ import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 import os
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 from core.providers.llm_providers import GeminiProvider
 
 class SEOState(TypedDict):
@@ -12,7 +12,8 @@ class SEOState(TypedDict):
     current_node: str
     status: str
     audit_score: int
-    
+    crawl_error: str
+
     # Placeholder fields for future LLM integration
     crawl_data: dict
     keyword_clusters: dict
@@ -21,57 +22,149 @@ class SEOState(TypedDict):
     backlink_strategy: dict
     schema_markup: dict
     report: str
+    content_metrics: dict
+
+
+import re as _re
+from urllib.parse import urlparse as _urlparse
+
+# Common words to ignore in keyword frequency analysis.
+_SEO_STOP = set("""the a an and or but of to in on for with as at by from is are was were be been being this that these those it its
+your you we our their his her they them he she i me my mine will would can could should may might must have has had do does did not
+no yes if then than so such into over under about more most some any all each other which who whom whose what when where why how""".split())
+
+
+def analyze_markdown(md: str, target_url: str) -> dict:
+    """Compute REAL on-page SEO metrics from the crawled markdown (no LLM, no guessing)."""
+    md = md or ""
+
+    # Headings (markdown '#'..'######')
+    h1 = len(_re.findall(r"(?m)^#\s+\S", md))
+    h2 = len(_re.findall(r"(?m)^##\s+\S", md))
+    h3plus = len(_re.findall(r"(?m)^#{3,}\s+\S", md))
+
+    # Links: [text](href)   Images: ![alt](src)
+    links = _re.findall(r"(?<!!)\[[^\]]*\]\(([^)]+)\)", md)
+    images = _re.findall(r"!\[([^\]]*)\]\(([^)]+)\)", md)
+
+    # For word/keyword analysis, keep only visible prose: drop image syntax, replace
+    # [text](url) with just its anchor text, and strip bare URLs - so link targets like
+    # 'https', 'onrender' don't pollute the keyword frequencies.
+    text_only = _re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", md)
+    text_only = _re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text_only)
+    text_only = _re.sub(r"https?://\S+", " ", text_only)
+    words = _re.findall(r"[a-zA-Z][a-zA-Z'-]{1,}", text_only)
+    word_count = len(words)
+    host = (_urlparse(target_url).netloc or "").lower().replace("www.", "")
+    internal = [l for l in links if host and host in l.lower()] + [l for l in links if l.startswith("/") or l.startswith("#")]
+    external = [l for l in links if l.startswith("http") and (not host or host not in l.lower())]
+    images_missing_alt = sum(1 for alt, _src in images if not alt.strip())
+
+    # Top keywords by frequency (excluding stop words)
+    freq = {}
+    for w in words:
+        lw = w.lower()
+        if len(lw) > 3 and lw not in _SEO_STOP:
+            freq[lw] = freq.get(lw, 0) + 1
+    top_keywords = sorted(freq.items(), key=lambda kv: kv[1], reverse=True)[:12]
+
+    return {
+        "word_count": word_count,
+        "h1_count": h1,
+        "h2_count": h2,
+        "h3plus_count": h3plus,
+        "internal_links": len(internal),
+        "external_links": len(external),
+        "image_count": len(images),
+        "images_missing_alt": images_missing_alt,
+        "top_keywords": [{"term": t, "count": c} for t, c in top_keywords],
+        "thin_content": word_count < 300,
+    }
 
 async def crawler_node(state: SEOState) -> SEOState:
     state["current_node"] = "Crawler Agent"
     import httpx
-    firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
-    if firecrawl_key:
-        msg = f"Crawling targets page indexes for: {state['target_url']} via Firecrawl..."
+    firecrawl_key = (os.getenv("FIRECRAWL_API_KEY") or "").strip()
+
+    # No key configured: this is an explicit dev/simulation mode. Flag it clearly so a
+    # simulated run can never be mistaken for a real audit.
+    if not firecrawl_key:
+        msg = f"No FIRECRAWL_API_KEY configured — SIMULATION only (no real crawl of {state['target_url']})."
         state["logs"].append(msg)
+        state["crawl_error"] = "no_api_key"
         await manager.broadcast_agent_log("SEO Agent", msg, "running")
-        await manager.broadcast_node_update("seo_geo", "Crawler Agent", "running")
+        await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
+        state["crawl_data"] = {"markdown": "", "simulated": True}
+        return state
+
+    msg = f"Crawling {state['target_url']} via Firecrawl..."
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("SEO Agent", msg, "running")
+    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "running")
+
+    # Retry once — the API occasionally hiccups; a single retry makes it reliable while
+    # still surfacing a genuine failure instead of silently substituting fake content.
+    last_err = None
+    for attempt in range(2):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 res = await client.post(
                     "https://api.firecrawl.dev/v1/scrape",
                     headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
-                    json={"url": state['target_url'], "formats": ["markdown"]}
+                    json={"url": state['target_url'], "formats": ["markdown"]},
                 )
-                if res.status_code == 200:
-                    state["crawl_data"] = {"markdown": res.json().get("data", {}).get("markdown", "")[:4000]}
-                else:
-                    state["crawl_data"] = {"markdown": "Crawl failed. Simulated data."}
-        except Exception:
-            state["crawl_data"] = {"markdown": "API error. Simulated data."}
-    else:
-        msg = f"Crawling targets page indexes for: {state['target_url']} (Simulated)..."
-        state["logs"].append(msg)
-        await manager.broadcast_agent_log("SEO Agent", msg, "running")
-        await manager.broadcast_node_update("seo_geo", "Crawler Agent", "running")
-        await asyncio.sleep(1.0)
-        state["crawl_data"] = {"markdown": "Simulated crawl data for " + state['target_url']}
-        
-    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
-    return state
+            if res.status_code == 200:
+                markdown = (res.json().get("data", {}).get("markdown", "") or "")
+                if markdown.strip():
+                    # Keep the FULL page. (Previously truncated to 4000 chars, which crippled
+                    # the analysis and falsely flagged large pages as "thin content".)
+                    state["crawl_data"] = {"markdown": markdown, "full_length": len(markdown)}
+                    ok = f"Crawled {len(markdown):,} characters from {state['target_url']}."
+                    state["logs"].append(ok)
+                    await manager.broadcast_agent_log("SEO Agent", ok, "running")
+                    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
+                    return state
+                last_err = "empty content returned"
+            else:
+                last_err = f"HTTP {res.status_code}: {res.text[:150]}"
+        except Exception as e:
+            last_err = f"{type(e).__name__}: {e}"
+        if attempt == 0:
+            await asyncio.sleep(2.0)  # brief backoff before the retry
+
+    # Both attempts failed — surface it honestly, do NOT fabricate content.
+    state["crawl_error"] = last_err
+    err = f"Crawl failed for {state['target_url']} (after retry): {last_err}"
+    state["logs"].append(err)
+    await manager.broadcast_agent_log("SEO Agent", err, "failed")
+    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "failed")
+    raise RuntimeError(err)
 
 async def technical_seo_node(state: SEOState) -> SEOState:
     state["current_node"] = "Technical SEO Agent"
-    msg = "Analyzing Core Web Vitals, site architecture, and mobile friendliness..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "thinking")
     await manager.broadcast_node_update("seo_geo", "Technical SEO Agent", "running")
-    await asyncio.sleep(1.5)
+    # REAL analysis: compute on-page metrics from the crawled content.
+    metrics = analyze_markdown(state.get("crawl_data", {}).get("markdown", ""), state["target_url"])
+    state["content_metrics"] = metrics
+    msg = (f"Technical audit: {metrics['word_count']} words, {metrics['h1_count']} H1 / {metrics['h2_count']} H2, "
+           f"{metrics['image_count']} images ({metrics['images_missing_alt']} missing alt)"
+           + (", THIN CONTENT (<300 words)" if metrics["thin_content"] else ""))
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Technical SEO Agent", "completed")
     return state
 
 async def keyword_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "Keyword Agent"
-    msg = "Conducting search intent mapping and running Cannibalization Audit..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Keyword Agent", "running")
-    await asyncio.sleep(1.5)
+    # REAL analysis: top keywords by frequency from the crawled content.
+    metrics = state.get("content_metrics") or {}
+    top = metrics.get("top_keywords", [])
+    state["keyword_clusters"] = {"top_keywords": top}
+    preview = ", ".join(f"{k['term']}({k['count']})" for k in top[:6]) or "no content to analyze"
+    msg = f"Keyword frequency analysis - top terms: {preview}"
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Keyword Agent", "completed")
     return state
 
@@ -87,11 +180,13 @@ async def content_strategy_node(state: SEOState) -> SEOState:
 
 async def internal_linking_node(state: SEOState) -> SEOState:
     state["current_node"] = "Internal Linking Agent"
-    msg = "Designing pillar-to-satellite link distribution and identifying orphan pages..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "thinking")
     await manager.broadcast_node_update("seo_geo", "Internal Linking Agent", "running")
-    await asyncio.sleep(1.5)
+    # REAL analysis: link counts from the crawled content.
+    metrics = state.get("content_metrics") or {}
+    il, el = metrics.get("internal_links", 0), metrics.get("external_links", 0)
+    msg = f"Link audit: {il} internal, {el} external" + (" - very few internal links (weak site structure)" if il < 3 else "")
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Internal Linking Agent", "completed")
     return state
 
@@ -118,13 +213,32 @@ async def schema_agent_node(state: SEOState) -> SEOState:
     except Exception:
         system_prompt = "You are an expert SEO Specialist."
 
+    # The prompt file is written as an AGENT spec (tools:, maxTurns, a "Tools & Scripts"
+    # section listing .py scripts). Fed to a plain one-shot LLM, the model role-plays running
+    # those tools and leaks fake terminal output (<execute_bash>, WebFetch(...), print(...)) into
+    # the customer-facing report. Neutralize that framing here.
+    system_prompt += (
+        "\n\n---\nCRITICAL OUTPUT RULES (these override everything above):\n"
+        "You are a one-shot report writer with NO tools, NO shell, NO web access, and NO ability "
+        "to run scripts or commands. Ignore every reference above to tools, .py scripts, MCP "
+        "integrations, WebFetch, or Bash. Do NOT emit anything that looks like running a command "
+        "(no <execute_bash>, no WebFetch(...), no <tool_code>, no print(...)), and do NOT fabricate "
+        "tool or command output. Base all findings ONLY on the metrics and context provided in the "
+        "user message, and reply with ONLY the final, clean Markdown strategy report."
+    )
+
     # Ground the audit in this company's real brand profile + knowledge base.
     from core.brand_context import get_brand_context
+    import json as _json
     brand = get_brand_context(state["workspace_id"], query=f"SEO and content strategy for {state['target_url']}")
+    metrics = state.get("content_metrics") or {}
     prompt = (
         f"Target URL / Query: {state['target_url']}\n\n"
         f"COMPANY CONTEXT (use this to tailor the audit to the brand, its audience and offerings):\n{brand}\n\n"
-        f"Please run a comprehensive SEO Strategy audit and provide a detailed markdown report tailored to this company."
+        f"MEASURED ON-PAGE METRICS from crawling the site (base your technical findings on these REAL numbers, "
+        f"do not invent different ones):\n{_json.dumps(metrics, indent=2)}\n\n"
+        f"Please run a comprehensive SEO Strategy audit and provide a detailed markdown report tailored to this company, "
+        f"referencing the measured metrics above where relevant."
     )
     
     try:
@@ -150,12 +264,13 @@ async def schema_agent_node(state: SEOState) -> SEOState:
 
 async def publishing_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "Publishing Agent"
-    msg = "Synthesizing the exact actions required to deploy the strategy onto the target site..."
+    msg = "Preparing the schema, metadata, and redirect changes as a ready-to-apply plan..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Publishing Agent", "running")
-    await asyncio.sleep(2.0)
-    msg = "SEO schema, metadata, and redirects successfully deployed to production via API."
+    # No site connector is wired up yet, so we must NOT claim we deployed anything.
+    # Auto-apply happens once a website connector (GitHub/WordPress/Shopify) is added.
+    msg = "Deployment plan ready. Connect your site (GitHub/WordPress/Shopify) to auto-apply these changes — nothing was published automatically."
     await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Publishing Agent", "completed")
     return state
@@ -204,7 +319,30 @@ publish_workflow.add_edge("publishing_agent", "reporting_agent")
 publish_workflow.add_edge("reporting_agent", END)
 seo_publish_graph = publish_workflow.compile()
 
+def _persist_audit(workspace_id: int, pipeline: str, target_url: str, result: dict):
+    """Save a snapshot of this run (metrics + report + timestamp) so month-over-month
+    history accumulates and monthly comparison reports become possible."""
+    if not workspace_id:
+        return
+    try:
+        from database import SessionLocal
+        import models
+        metrics = result.get("content_metrics") or {}
+        db = SessionLocal()
+        db.add(models.SEOAudit(
+            workspace_id=workspace_id,
+            score=result.get("audit_score", 0) or 0,
+            keywords_data={"pipeline": pipeline, "target_url": target_url, "metrics": metrics},
+            recommendation=(result.get("report") or "")[:20000],
+            status="COMPLETED",
+        ))
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f"Failed to persist {pipeline} audit for ws {workspace_id}: {e}")
+
 async def run_seo_pipeline(workspace_id: int, target_url: str):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "target_url": target_url,
@@ -225,6 +363,7 @@ async def run_seo_pipeline(workspace_id: int, target_url: str):
     record_agent_task(workspace_id, "SEO", "RUNNING", f"Auditing {target_url}")
     try:
         result = await seo_graph.ainvoke(initial_state)
+        _persist_audit(workspace_id, "SEO", target_url, result)
         record_agent_task(workspace_id, "SEO", "COMPLETED", f"SEO audit complete for {target_url}")
     except Exception as e:
         record_agent_task(workspace_id, "SEO", "FAILED", str(e)[:120])
@@ -234,6 +373,7 @@ async def run_seo_pipeline(workspace_id: int, target_url: str):
     return result
 
 async def run_seo_publish_pipeline(workspace_id: int):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     # Retrieve state from DB or memory in a real app. We mock it here.
     initial_state = {
         "workspace_id": workspace_id,
@@ -291,11 +431,27 @@ async def geo_prompt_visibility_agent_node(state: SEOState) -> SEOState:
 
 async def geo_llm_ranking_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "LLM Ranking Agent"
-    msg = "Calculating empirical brand recall rates across Claude 3.5 and Gemini Pro..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("GEO Agent", msg, "thinking")
     await manager.broadcast_node_update("geo_pipeline", "LLM Ranking Agent", "running")
-    await asyncio.sleep(1.0)
+    # REAL recall probe: actually ask the model what it knows about the brand. This is a
+    # genuine GEO signal (does an answer engine recognise / recall this brand?).
+    url = state["target_url"]
+    try:
+        llm = GeminiProvider()
+        probe = await llm.generate_text(
+            prompt=f"What do you know about the brand/company at {url}? "
+                   f"If you don't recognise it, say exactly 'NO RECALL'. Otherwise summarise what you know in 2 sentences.",
+            system_prompt="You are an AI answer engine. Answer only from your own training knowledge - do not guess or fabricate.",
+            max_output_tokens=200,
+        )
+        probe = (probe or "").strip()
+    except Exception as e:
+        probe = f"(recall probe failed: {e})"
+    recalled = "NO RECALL" not in probe.upper() and "recall probe failed" not in probe
+    state["content_metrics"] = {**(state.get("content_metrics") or {}), "llm_recall": probe, "brand_recognised": recalled}
+    msg = ("LLM recall probe: model recognises the brand." if recalled
+           else "LLM recall probe: model does NOT recall this brand (zero unprompted visibility).")
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "LLM Ranking Agent", "completed")
     return state
 
@@ -337,30 +493,43 @@ async def geo_reporting_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("geo_pipeline", "Reporting", "running")
     await asyncio.sleep(1.0)
     await manager.broadcast_node_update("geo_pipeline", "Reporting", "completed")
-    
+
     state["status"] = "pending_approval"
-    
-    mock_geo_report = """# Comprehensive GEO / AEO Strategy Report
-Target: {target_url}
 
-## 1. LLM Recall & Visibility Audit
-- **Gemini 1.5 Pro**: Brand unprompted recall is currently 14%. 
-- **Claude 3.5 Sonnet**: Fails to cite {target_url} for query "Top AI Marketing Solutions".
-- **Perplexity**: Cites competitor domains 3x more frequently due to missing Reddit footprint.
-
-## 2. Entity Disambiguation
-- **Knowledge Graph Conflict**: Google Knowledge Graph confuses the brand with a legacy software tool.
-- **Resolution**: Deploy strict `Organization` and `SoftwareApplication` JSON-LD schema with `sameAs` links pointing to official Crunchbase and Wikipedia stubs.
-
-## 3. Answer Engine Prompt Optimization
-- **Keyword Shift**: Traditional keywords are failing. Must transition to "Question-Answer" (FAQ) formats.
-- **Content Injection**: Proposed 5 new long-form guides directly answering the top 50 LLM prompts in the sector.
-
-## 4. Citation & Authority Growth
-- **Data Licensing Targets**: Target partnerships or PR drops on sites known to be in OpenAI's training corpus (e.g., TechCrunch, StackOverflow, Medium).
-
-**Action Required**: Review the GEO deployment strategy above. Upon approval, the Publishing Agent will push Schema changes via API and queue content briefs.
-"""
+    # Generate a REAL, brand-grounded GEO report via the LLM (was a hardcoded mock).
+    from core.brand_context import get_brand_context
+    brand = get_brand_context(state["workspace_id"], query=f"generative engine optimization and AI visibility for {state['target_url']}")
+    geo_system = (
+        "You are a Generative Engine Optimization (GEO/AEO) specialist. You improve how a brand "
+        "is represented and cited by AI answer engines (ChatGPT, Gemini, Perplexity, Claude). "
+        "Produce a concise, actionable markdown report with these sections: "
+        "1) LLM Recall & Visibility Audit, 2) Entity Disambiguation (JSON-LD schema), "
+        "3) Answer Engine Prompt Optimization (FAQ/Q&A), 4) Citation & Authority Growth. "
+        "Base it on the company context; do not invent specific metrics you cannot know - "
+        "frame findings and recommendations qualitatively."
+    )
+    _m = state.get("content_metrics") or {}
+    recall_line = ""
+    if "llm_recall" in _m:
+        recall_line = (
+            f"MEASURED LLM RECALL (we actually queried an AI model about this brand):\n"
+            f"- Brand recognised by the model: {_m.get('brand_recognised')}\n"
+            f"- Model's response: {_m.get('llm_recall')}\n\n"
+        )
+    geo_prompt = (
+        f"Target URL / Brand: {state['target_url']}\n\n"
+        f"COMPANY CONTEXT (tailor the GEO strategy to this brand, audience and offerings):\n{brand}\n\n"
+        f"{recall_line}"
+        f"Write the GEO / AEO strategy report for this company, using the measured recall finding above "
+        f"as the starting point of the Visibility Audit section."
+    )
+    try:
+        llm = GeminiProvider()
+        mock_geo_report = (await llm.generate_text(prompt=geo_prompt, system_prompt=geo_system)).strip()
+    except Exception as e:
+        print(f"LLM Error in GEO reporting: {e}")
+        mock_geo_report = f"# GEO / AEO Strategy Report\nTarget: {state['target_url']}\n\n[Report generation failed: {e}]"
+    state["report"] = mock_geo_report
     import json
     await manager.broadcast(json.dumps({
         "type": "new_geo_report",
@@ -373,12 +542,12 @@ Target: {target_url}
 
 async def geo_publishing_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "Publishing Agent"
-    msg = "Executing Knowledge Graph schema injections and pushing FAQ architectures..."
+    msg = "Preparing Knowledge Graph schema and FAQ structured data as a ready-to-apply plan..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("GEO Agent", msg, "running")
     await manager.broadcast_node_update("geo_pipeline", "Publishing Agent", "running")
-    await asyncio.sleep(2.0)
-    await manager.broadcast_agent_log("GEO Agent", "GEO structured data successfully deployed to CMS.", "completed")
+    # No CMS connector yet - don't claim a deploy that didn't happen.
+    await manager.broadcast_agent_log("GEO Agent", "GEO structured data plan ready. Connect your site to auto-apply it — nothing was pushed to a CMS automatically.", "completed")
     await manager.broadcast_node_update("geo_pipeline", "Publishing Agent", "completed")
     return state
 
@@ -422,6 +591,7 @@ geo_publish_workflow.add_edge("geo_reporting_final_agent", END)
 geo_publish_graph = geo_publish_workflow.compile()
 
 async def run_geo_pipeline(workspace_id: int, target_url: str):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "target_url": target_url,
@@ -438,11 +608,20 @@ async def run_geo_pipeline(workspace_id: int, target_url: str):
         "report": ""
     }
     await manager.broadcast_agent_log("GEO Agent", "Initializing Generative Engine Optimization pipeline...", "queued")
-    result = await geo_graph.ainvoke(initial_state)
+    from core.agent_status import record_agent_task
+    record_agent_task(workspace_id, "GEO", "RUNNING", f"GEO audit for {target_url}")
+    try:
+        result = await geo_graph.ainvoke(initial_state)
+        _persist_audit(workspace_id, "GEO", target_url, result)
+        record_agent_task(workspace_id, "GEO", "COMPLETED", f"GEO audit complete for {target_url}")
+    except Exception as e:
+        record_agent_task(workspace_id, "GEO", "FAILED", str(e)[:120])
+        raise
     await manager.broadcast_node_update("geo_pipeline", "Awaiting Approval", "completed")
     return result
 
 async def run_geo_publish_pipeline(workspace_id: int):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "target_url": "approved_url",

@@ -134,17 +134,16 @@ class PexelsVideoProvider(VideoProvider):
         return pick["link"]
 
 
+# Not implemented yet - raise rather than return a fake "https://mock.url/..." string
+# that would be saved as a real ad video_url.
 class SeedanceProvider(VideoProvider):
     async def generate_video(self, image_url: str, prompt: str, duration: int = 5, **kwargs) -> str:
-        # TODO: Implement API call to Seedance
-        return "https://mock.url/seedance_video.mp4"
+        raise VideoProviderError("Seedance provider is not implemented.")
 
 class KlingProvider(VideoProvider):
     async def generate_video(self, image_url: str, prompt: str, duration: int = 5, **kwargs) -> str:
-        # TODO: Implement API call to Kling
-        return "https://mock.url/kling_video.mp4"
+        raise VideoProviderError("Kling provider is not implemented.")
 
 class VeoProvider(VideoProvider):
     async def generate_video(self, image_url: str, prompt: str, duration: int = 5, **kwargs) -> str:
-        # TODO: Implement API call to Google Veo
-        return "https://mock.url/veo_video.mp4"
+        raise VideoProviderError("Google Veo provider is not implemented.")

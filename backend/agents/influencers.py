@@ -1,7 +1,7 @@
 import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 
 class InfluencerState(TypedDict):
     workspace_id: int
@@ -54,6 +54,7 @@ workflow.add_edge("negotiation", END)
 influencer_graph = workflow.compile()
 
 async def run_influencer_pipeline(workspace_id: int, creator_id: int, creator_name: str):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "creator_id": creator_id,

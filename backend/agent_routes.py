@@ -153,3 +153,13 @@ async def trigger_influencer(workspace_id: int, request: InfluencerTrigger, back
         creator_name=request.creator_name
     )
     return {"status": "success", "message": "Influencer Marketplace agent pipeline triggered."}
+
+
+@router.post("/run-monthly-audits")
+async def trigger_monthly_audits(background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+    """Manually run the same job the monthly scheduler runs (SEO + GEO for every
+    workspace with a site URL). Lets the founder test the automation without
+    waiting for the 1st of the month."""
+    from core.scheduler import run_monthly_audits
+    background_tasks.add_task(run_monthly_audits)
+    return {"status": "success", "message": "Monthly SEO/GEO audit run triggered for all workspaces."}

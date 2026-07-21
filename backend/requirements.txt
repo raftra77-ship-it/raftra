@@ -31,3 +31,5 @@ supabase
 google-generativeai
 requests
 websockets
+
+apscheduler>=3.10,<4

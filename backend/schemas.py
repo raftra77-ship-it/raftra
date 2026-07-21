@@ -47,6 +47,13 @@ class RefreshTokenRequest(BaseModel):
 class OAuthRequest(BaseModel):
     code: str
 
+class ContentGenerateRequest(BaseModel):
+    topic: str
+    content_type: Optional[str] = "blog"
+
+class ContentReviewRequest(BaseModel):
+    action: str  # approve | reject | publish
+
 # Workspace & Agent schemas
 class WorkspaceCreate(BaseModel):
     name: str

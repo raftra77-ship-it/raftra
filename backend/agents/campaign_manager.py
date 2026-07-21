@@ -1,7 +1,7 @@
 import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 
 class CampaignState(TypedDict):
     workspace_id: int
@@ -87,6 +87,7 @@ workflow.add_edge("human_approval", END)
 campaign_graph = workflow.compile()
 
 async def run_campaign_pipeline(workspace_id: int, platform: str, campaign_name: str, objective: str, budget: float):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "platform": platform,

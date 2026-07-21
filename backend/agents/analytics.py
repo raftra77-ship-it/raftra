@@ -2,7 +2,7 @@ import asyncio
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 import os
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 from core.providers.llm_providers import GeminiProvider
 
 class AnalyticsState(TypedDict):
@@ -53,20 +53,12 @@ async def claude_recommendation_node(state: AnalyticsState) -> AnalyticsState:
         f"Please provide a detailed analysis and actionable recommendations grounded in this company's context."
     )
     
-    try:
-        llm = GeminiProvider()
-        response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
-        state["explanation"] = response.strip()
-    except Exception as e:
-        print(f"LLM Error in analytics: {e}")
-        query = state["query_message"].lower()
-        if "conversion" in query or "drop" in query:
-            state["explanation"] = "Conversions dropped 12% on Meta Campaign cp-1. Analysis: CPA rose to $28.40 due to static creative fatigue. Suggestion: Transfer 15% budget to Google Search Ads immediately."
-        elif "fatigue" in query:
-            state["explanation"] = "Creative fatigue is active on Facebook Static Adset 4. Analysis: Average frequency reached 4.8x. Suggestion: Swap Concept A headline with variant B."
-        else:
-            state["explanation"] = "Analytics summary compiled. Analysis: Core channels indicate high target conversions. ROAS sits strong at 4.0x. Suggestion: Scale Google Ads limits by 14%."
-        
+    # On failure we must NOT invent numbers. The old fallback fabricated hard figures
+    # ("CPA rose to $28.40", "ROAS 4.0x") that were indistinguishable from a real
+    # analysis - a founder could act on made-up data. Fail the node instead.
+    llm = GeminiProvider()
+    response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
+    state["explanation"] = response.strip()
     return state
 
 async def finalize_analytics_node(state: AnalyticsState) -> AnalyticsState:
@@ -94,6 +86,7 @@ workflow.add_edge("finalize_analytics", END)
 analytics_graph = workflow.compile()
 
 async def run_analytics_pipeline(workspace_id: int, query_message: str):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "query_message": query_message,
@@ -109,6 +102,7 @@ async def run_analytics_pipeline(workspace_id: int, query_message: str):
         result = await analytics_graph.ainvoke(initial_state)
         record_agent_task(workspace_id, "ANALYST", "COMPLETED", "Analytics recommendation ready")
     except Exception as e:
+        await manager.broadcast_agent_log("Data Analyst", f"Analytics failed: {e}", "failed")
         record_agent_task(workspace_id, "ANALYST", "FAILED", str(e)[:120])
         raise
     return result

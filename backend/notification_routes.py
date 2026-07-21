@@ -62,7 +62,7 @@ async def create_and_dispatch_notification(db: Session, user_id: int, title: str
     db.commit()
     db.refresh(new_notif)
     
-    # Broadcast via websocket
+    # Deliver only to the user the notification belongs to.
     await manager.broadcast_notification({
         "id": new_notif.id,
         "title": new_notif.title,
@@ -70,5 +70,5 @@ async def create_and_dispatch_notification(db: Session, user_id: int, title: str
         "type": new_notif.type,
         "created_at": new_notif.created_at.isoformat(),
         "action_url": new_notif.action_url
-    })
+    }, user_id=user_id)
     return new_notif

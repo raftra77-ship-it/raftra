@@ -8,6 +8,7 @@ import { WorkspaceCreative } from '../components/workspaces/WorkspaceCreative';
 import { WorkspaceCampaign } from '../components/workspaces/WorkspaceCampaign';
 import type { CampaignItem } from '../components/workspaces/WorkspaceCampaign';
 import { WorkspaceSEO } from '../components/workspaces/WorkspaceSEO';
+import { WorkspaceContent } from '../components/workspaces/WorkspaceContent';
 import { WorkspaceAnalytics } from '../components/workspaces/WorkspaceAnalytics';
 import type { ChatMessage } from '../components/workspaces/WorkspaceAnalytics';
 import { WorkspaceSocial } from '../components/workspaces/WorkspaceSocial';
@@ -223,8 +224,11 @@ export function BrandDashboard() {
 
     const connectWs = () => {
       const ws = new WebSocket('ws://localhost:8005/ws');
-      
+
       ws.onopen = () => {
+        // Authenticate the socket: the server closes it unless the first frame
+        // carries a valid token. Without this the connection receives nothing.
+        ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('token') || '' }));
         setIsWsConnected(true);
         console.log("WebSocket connected to Raftra Core Backend.");
       };
@@ -1539,16 +1543,21 @@ export function BrandDashboard() {
           )}
 
           {activeTab === 'seo' && (
-            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
-              {renderLockOverlay('seo', 99)}
-              <WorkspaceSEO 
-                blogs={seoBlogs} 
-                onOpenReview={handleOpenReview}
-                seoAgent={agentsList.find(a => a.name === 'SEO Agent')}
-                geoAgent={agentsList.find(a => a.name === 'GEO Agent')}
-                onTriggerSEO={handleTriggerSEO}
-                onTriggerGEO={handleTriggerGEO}
-              />
+            <div style={{ width: '100%', height: '100%', minHeight: '500px' }}>
+              <div style={{ position: 'relative', minHeight: '400px' }}>
+                {renderLockOverlay('seo', 99)}
+                <WorkspaceSEO
+                  blogs={seoBlogs}
+                  onOpenReview={handleOpenReview}
+                  seoAgent={agentsList.find(a => a.name === 'SEO Agent')}
+                  geoAgent={agentsList.find(a => a.name === 'GEO Agent')}
+                  onTriggerSEO={handleTriggerSEO}
+                  onTriggerGEO={handleTriggerGEO}
+                  workspaceId={workspaceId}
+                />
+              </div>
+              {/* Content Studio is not paywalled behind the SEO node */}
+              <WorkspaceContent workspaceId={workspaceId} />
             </div>
           )}
 

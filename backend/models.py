@@ -247,6 +247,20 @@ class Notification(Base):
 
     user = relationship("User")
 
+class ContentDraft(Base):
+    __tablename__ = "content_drafts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"))
+    title = Column(String)
+    body = Column(String)            # full generated article (markdown)
+    content_type = Column(String, default="blog")  # blog, landing_page, faq, etc.
+    target_keyword = Column(String, nullable=True)
+    status = Column(String, default="pending_review")  # pending_review, approved, rejected, published
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    workspace = relationship("Workspace")
+
 class AuthEvent(Base):
     """Activity/audit log for account security events so admins can see when a
     user registered, logged in, or changed their password."""

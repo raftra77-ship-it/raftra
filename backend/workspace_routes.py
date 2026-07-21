@@ -48,6 +48,51 @@ def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background
     
     return {"status": "success", "message": "Knowledge Graph re-indexing started."}
 
+def _require_workspace(workspace_id: int, db: Session, current_user: models.User):
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+    return ws
+
+
+@router.post("/{workspace_id}/content/generate")
+async def generate_content(workspace_id: int, req: schemas.ContentGenerateRequest, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Kick off content generation. Produces a ContentDraft (pending_review) grounded in the brand KB."""
+    _require_workspace(workspace_id, db, current_user)
+    from agents.content_studio import run_content_generation
+    background_tasks.add_task(run_content_generation, workspace_id, req.topic, req.content_type or "blog")
+    return {"status": "success", "message": "Content generation started. It will appear in the review queue when ready."}
+
+
+@router.get("/{workspace_id}/content")
+def list_content(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """List content drafts for the human-review queue."""
+    _require_workspace(workspace_id, db, current_user)
+    drafts = db.query(models.ContentDraft).filter(models.ContentDraft.workspace_id == workspace_id).order_by(models.ContentDraft.id.desc()).all()
+    return {"drafts": [
+        {"id": d.id, "title": d.title, "body": d.body, "content_type": d.content_type,
+         "target_keyword": d.target_keyword, "status": d.status,
+         "created_at": d.created_at.isoformat() if d.created_at else None}
+        for d in drafts
+    ]}
+
+
+@router.post("/{workspace_id}/content/{draft_id}/review")
+def review_content(workspace_id: int, draft_id: int, req: schemas.ContentReviewRequest, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Human review action: approve, reject, or publish a content draft."""
+    _require_workspace(workspace_id, db, current_user)
+    draft = db.query(models.ContentDraft).filter(models.ContentDraft.id == draft_id, models.ContentDraft.workspace_id == workspace_id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    action = (req.action or "").lower()
+    mapping = {"approve": "approved", "reject": "rejected", "publish": "published"}
+    if action not in mapping:
+        raise HTTPException(status_code=400, detail="action must be approve, reject or publish")
+    draft.status = mapping[action]
+    db.commit()
+    return {"status": "success", "draft_id": draft_id, "new_status": draft.status}
+
+
 @router.get("/{workspace_id}/agents")
 def list_agent_tasks(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     """Real agent activity for this workspace, from the agent_tasks table (populated by
@@ -99,6 +144,9 @@ def recent_actions(workspace_id: int, db: Session = Depends(database.get_db), cu
     # Campaigns
     for c in db.query(models.Campaign).filter(models.Campaign.workspace_id == workspace_id).order_by(models.Campaign.id.desc()).limit(3).all():
         actions.append({"sort": c.id, "type": "campaign", "title": f"Campaign ({c.platform})", "detail": f"Status: {c.status}"})
+    # Content drafts
+    for d in db.query(models.ContentDraft).filter(models.ContentDraft.workspace_id == workspace_id).order_by(models.ContentDraft.id.desc()).limit(3).all():
+        actions.append({"sort": int(d.created_at.timestamp()) if d.created_at else d.id, "type": "content", "title": f"Content: {d.title[:50]}", "detail": f"{d.content_type} - {d.status}"})
 
     actions.sort(key=lambda x: x["sort"], reverse=True)
     return {"actions": [{k: v for k, v in a.items() if k != "sort"} for a in actions[:8]]}
@@ -270,6 +318,72 @@ def get_seo_audits(workspace_id: int, db: Session = Depends(database.get_db), cu
     audits = db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id).all()
     return audits
 
+
+@router.get("/{workspace_id}/seo/comparison")
+def seo_comparison(workspace_id: int, pipeline: str = "SEO",
+                   db: Session = Depends(database.get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    """Month-over-month comparison: deltas between the two most recent stored runs
+    (SEO on-page metrics, or GEO AI-visibility). This is what powers the monthly report."""
+    _require_workspace(workspace_id, db, current_user)
+    audits = (db.query(models.SEOAudit)
+                .filter(models.SEOAudit.workspace_id == workspace_id)
+                .order_by(models.SEOAudit.created_at.desc()).all())
+    runs = [a for a in audits if (a.keywords_data or {}).get("pipeline", "SEO") == pipeline]
+
+    if not runs:
+        return {"pipeline": pipeline, "runs_available": 0,
+                "message": "No runs recorded yet — run the pipeline to start tracking."}
+
+    current = runs[0]
+    previous = runs[1] if len(runs) > 1 else None
+    cur_m = (current.keywords_data or {}).get("metrics", {}) or {}
+    prev_m = ((previous.keywords_data or {}).get("metrics", {}) or {}) if previous else {}
+
+    # (metric key, human label, which direction is an improvement)
+    fields = [
+        ("word_count", "Word count", "higher"),
+        ("images_missing_alt", "Images missing alt-text", "lower"),
+        ("internal_links", "Internal links", "higher"),
+        ("external_links", "External links", "higher"),
+        ("h1_count", "H1 tags", "neutral"),
+        ("thin_content", "Thin content", "flag"),
+    ]
+    changes = []
+    for key, label, better in fields:
+        cv = cur_m.get(key)
+        if cv is None:
+            continue
+        pv = prev_m.get(key) if previous else None
+        entry = {"metric": label, "current": cv, "previous": pv, "better_when": better}
+        if isinstance(cv, (int, float)) and isinstance(pv, (int, float)) and not isinstance(cv, bool):
+            delta = cv - pv
+            entry["delta"] = delta
+            improved = (delta > 0 and better == "higher") or (delta < 0 and better == "lower")
+            worsened = (delta > 0 and better == "lower") or (delta < 0 and better == "higher")
+            entry["direction"] = "improved" if improved else ("worsened" if worsened else "same")
+        changes.append(entry)
+
+    ai_visibility = None
+    if pipeline == "GEO":
+        ai_visibility = {
+            "current_recognised": cur_m.get("brand_recognised"),
+            "previous_recognised": prev_m.get("brand_recognised") if previous else None,
+            "current_recall": cur_m.get("llm_recall"),
+        }
+
+    return {
+        "pipeline": pipeline,
+        "target_url": (current.keywords_data or {}).get("target_url"),
+        "runs_available": len(runs),
+        "current_run": {"date": current.created_at, "score": current.score},
+        "previous_run": {"date": previous.created_at, "score": previous.score} if previous else None,
+        "changes": changes,
+        "ai_visibility": ai_visibility,
+        "note": None if previous else "Only one run so far — the comparison fills in on the next run.",
+    }
+
+
 # Social posts
 @router.get("/{workspace_id}/social", response_model=List[schemas.SocialPostResponse])
 def get_social_posts(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -372,6 +486,11 @@ async def send_chat_message(workspace_id: int, influencer_id: int, msg: ChatMess
     db.refresh(new_msg)
     
     from core.websocket import manager
+    # Deliver only to the two participants: the workspace owner and this influencer's user.
+    participant_ids = {ws.user_id}
+    inf = db.query(models.Influencer).filter(models.Influencer.id == influencer_id).first()
+    if inf and inf.user_id:
+        participant_ids.add(inf.user_id)
     await manager.broadcast_chat_message({
         "workspace_id": workspace_id,
         "workspace_name": ws.name,
@@ -379,7 +498,7 @@ async def send_chat_message(workspace_id: int, influencer_id: int, msg: ChatMess
         "sender_type": new_msg.sender_type,
         "content": new_msg.content,
         "created_at": new_msg.created_at.isoformat()
-    })
+    }, user_ids=participant_ids)
     return new_msg
 
 @router.get("/influencer/me", response_model=schemas.InfluencerResponse)
@@ -455,6 +574,10 @@ async def send_my_chat(workspace_id: int, msg: ChatMessageCreate, db: Session = 
     db.refresh(new_msg)
     
     from core.websocket import manager
+    # Deliver only to the two participants: this influencer's user and the workspace owner.
+    participant_ids = {current_user.id}
+    if ws and ws.user_id:
+        participant_ids.add(ws.user_id)
     await manager.broadcast_chat_message({
         "workspace_id": workspace_id,
         "workspace_name": ws_name,
@@ -462,7 +585,7 @@ async def send_my_chat(workspace_id: int, msg: ChatMessageCreate, db: Session = 
         "sender_type": new_msg.sender_type,
         "content": new_msg.content,
         "created_at": new_msg.created_at.isoformat()
-    })
+    }, user_ids=participant_ids)
     return new_msg
 
 # Metrics endpoint

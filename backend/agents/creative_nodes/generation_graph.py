@@ -2,7 +2,7 @@ import asyncio
 import os
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
-from core.websocket import manager
+from core.websocket import manager, current_workspace_id
 from .router import router_decision_engine
 from core.providers.llm_providers import OpenRouterProvider, GeminiProvider
 from core.providers.base import LLMProviderError
@@ -309,6 +309,7 @@ async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: d
     """
     Wrapper to execute the generation_graph and push final asset to WebSocket clients.
     """
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
         "prompt": prompt,
