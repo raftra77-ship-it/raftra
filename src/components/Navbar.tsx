@@ -46,12 +46,24 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
 
   return (
     <nav style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '20px 48px',
-      background: 'rgba(10, 10, 10, 0.8)',
+      position: 'fixed',
+      top: '16px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      width: 'calc(100% - 48px)',
+      maxWidth: '1240px',
+      display: 'flex',
+      alignItems: 'center',
+      justify: 'space-between',
+      padding: '12px 32px',
+      background: 'rgba(14, 14, 24, 0.78)',
       backdropFilter: 'blur(20px)',
-      borderBottom: '1px solid rgba(255,255,255,0.05)',
-      zIndex: 1000
+      WebkitBackdropFilter: 'blur(20px)',
+      borderRadius: '100px',
+      border: '1px solid rgba(255, 255, 255, 0.14)',
+      boxShadow: '0 10px 35px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+      zIndex: 1000,
+      transition: 'all 0.3s ease'
     }}>
       {/* Logo Extreme Left */}
       <div 
