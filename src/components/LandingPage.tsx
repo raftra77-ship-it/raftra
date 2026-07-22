@@ -18,7 +18,8 @@ import {
   Rocket,
   Lightbulb,
   Zap,
-  AlertCircle
+  AlertCircle,
+  TrendingDown
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import { motion } from 'framer-motion';
@@ -429,109 +430,160 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         </motion.div>
       </section>
 
-      {/* Problem Section */}
+      {/* Problem Section (Bento Grid Redesign) */}
       <section id="problem" className="section-container" style={{ scrollMarginTop: '100px' }}>
-        <span className="section-tag">THE FRICTION</span>
-        <h2 className="section-title">Businesses waste time switching between dozens of marketing tools.</h2>
-        <p className="section-desc">Disconnected creatives, ignored SEO indexing, and fatiguing ads burn budgets daily. Raftra replaces this chaos.</p>
+        <span className="section-tag">THE PROBLEM</span>
+        <h2 className="section-title">Fragmented Tools Are Killing Your Growth</h2>
+        <p className="section-desc">Managing separate tools for ads, SEO, social media, and analytics wastes thousands of dollars and breaks your brand consistency.</p>
 
-        <div className="problems-grid">
-          <div className="problem-card">
-            <div className="problem-icon-wrapper">
-              <AlertTriangle size={24} />
+        <div className="bento-grid" style={{ marginTop: '40px' }}>
+          {/* Bento Hero Problem Card (Span 7) */}
+          <div className="bento-card-hero bento-col-7" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--danger)', background: 'rgba(255,71,87,0.12)', padding: '6px 14px', borderRadius: '100px', border: '1px solid rgba(255,71,87,0.3)' }}>
+                  CRITICAL BOTTLENECK
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#ff6b6b' }}>-$24,000 / yr Wasted</span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '14px', lineHeight: 1.3 }}>
+                The $2,000/mo Fragmented Marketing Tool Trap
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>
+                Brands spend over $2,000 every month juggling 6 separate single-purpose platforms: one for static graphic design, another for ad campaign deployment, a third for SEO monitoring, plus separate tools for influencer outreach and social scheduling. Data never syncs, and context gets lost in transition.
+              </p>
             </div>
-            <h3>Fragmented Copy & Creative Decline</h3>
-            <p>Switching between design tools means campaigns become inconsistent, creative quality drops, and winning angles are rarely replicated.</p>
+
+            <div style={{ marginTop: '24px', padding: '16px 20px', background: 'rgba(0,0,0,4)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <AlertTriangle size={18} color="var(--danger)" />
+                <span style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>Fragmented Stack Cost: 6 Apps ($2,150/mo)</span>
+              </div>
+              <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>Raftra Growth OS: 1 Workspace ($0/mo sandbox)</span>
+            </div>
           </div>
 
-          <div className="problem-card">
-            <div className="problem-icon-wrapper">
-              <AlertTriangle size={24} />
+          {/* Side Bento Column (Span 5 - 3 Compact Bento Pills) */}
+          <div className="bento-col-5" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="bento-pill" style={{ textAlign: 'left' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,71,87,0.12)', border: '1px solid rgba(255,71,87,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <TrendingDown size={20} color="var(--danger)" />
+              </div>
+              <div>
+                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Rising Ad CPA & Wasted Spend</h4>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Ad fatigue kills ROAS when static creatives aren't dynamically generated or auto-paused.</p>
+              </div>
             </div>
-            <h3>Ignored AI Engine Visibility</h3>
-            <p>Traditional SEO overlooks how customers search today. If ChatGPT, Claude, and Gemini aren't recommending your product, you are invisible.</p>
-          </div>
 
-          <div className="problem-card">
-            <div className="problem-icon-wrapper">
-              <AlertTriangle size={24} />
+            <div className="bento-pill" style={{ textAlign: 'left' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Globe size={20} color="var(--success)" />
+              </div>
+              <div>
+                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Ignored AI Search Visibility</h4>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>If ChatGPT, Claude & Perplexity lack JSON-LD entity schema, your brand is invisible to AI search.</p>
+              </div>
             </div>
-            <h3>Overwhelming, Static Analytics</h3>
-            <p>Dashboards give you charts, not solutions. No one knows which campaigns are wasting money or which creatives have fatiguing CTRs.</p>
+
+            <div className="bento-pill" style={{ textAlign: 'left' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <BarChart3 size={20} color="var(--warning)" />
+              </div>
+              <div>
+                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Overwhelming Static Dashboards</h4>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Raw graphs without actionable AI insights leave marketing managers guessing next steps.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Solution Section (6 Workspaces/Features clearly explained) */}
+      {/* Solution Section (Asymmetric Bento Grid Redesign) */}
       <section id="solution" className="section-container" style={{ scrollMarginTop: '100px' }}>
         <span className="section-tag">THE SOLUTIONS</span>
         <h2 className="section-title">Meet Raftra AI. The Unified Growth Suite.</h2>
         <p className="section-desc">Six specialized AI workspaces operating as a coordinated growth network to replace your entire marketing stack.</p>
 
-        <div className="solutions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-          {/* Card 1 */}
-          <div className="solution-card" onClick={() => navigate('/features/creative')} style={{ cursor: 'pointer' }}>
-            <div className="solution-icon-wrapper">
-              <Sparkles size={24} />
+        <div className="bento-grid" style={{ marginTop: '40px' }}>
+          {/* Bento Hero Showcase Card (Span 8) */}
+          <div className="bento-card-hero bento-col-8" onClick={() => navigate('/features/creative')} style={{ cursor: 'pointer', textAlign: 'left' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="solution-icon-wrapper" style={{ margin: 0 }}>
+                  <Sparkles size={20} />
+                </div>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em' }}>FLAGSHIP WORKSPACE</span>
+              </div>
+              <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                Explore Studio & Campaigns →
+              </span>
             </div>
-            <h3>AI Creative Studio</h3>
-            <p style={{ fontSize: '13.5px', marginTop: '8px' }}>
-              Turn your business website URL, logo, and brand directives into high-converting static creatives, hooks, headlines, and video prompts. Retransmit brand voice continuously.
+            <h3 style={{ fontSize: '26px', color: '#fff', marginBottom: '10px' }}>
+              AI Creative Studio & Campaign Manager
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', marginBottom: '24px', maxWidth: '650px' }}>
+              Instantly generate high-converting Carousel Ads, AI UGC video clips, and ad copy. Automatically launch campaigns across Meta & Google Ads with budget redistribution safety.
+            </p>
+
+            {/* Interactive Showcase Pill Bar inside Bento Hero */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', background: 'rgba(0,0,0,0.4)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
+                <Zap size={14} color="#00E676" /> Carousel Ads Generator
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
+                <Sparkles size={14} color="var(--primary)" /> AI UGC Creator Clips
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
+                <Megaphone size={14} color="#FFBD2E" /> Meta/Google Auto-Deployer
+              </div>
+            </div>
+          </div>
+
+          {/* Bento Secondary Card (Span 4) — Influencer Marketplace */}
+          <div className="glow-card bento-col-4" onClick={() => navigate('/features/influencer')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 71, 87, 0.08)', color: 'var(--danger)', marginBottom: '16px' }}>
+                <Users2 size={22} />
+              </div>
+              <h3 style={{ fontSize: '20px', color: '#fff', marginBottom: '8px' }}>Influencer Marketplace</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Filter out fake followers, evaluate creator authenticity, and lock campaign deals with escrow safety.
+              </p>
+            </div>
+            <div style={{ marginTop: '20px', padding: '10px 14px', background: 'rgba(0,230,118,0.1)', borderRadius: '10px', border: '1px solid rgba(0,230,118,0.25)', fontSize: '11px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>✓ 98% Authenticity Passed</span>
+              <span>Escrow Protected</span>
+            </div>
+          </div>
+
+          {/* Bottom Bento Row: 3 Equal Bento Cards (Span 4 each) */}
+          <div className="glow-card bento-col-4" onClick={() => navigate('/features/seo')} style={{ cursor: 'pointer', textAlign: 'left' }}>
+            <div className="solution-icon-wrapper" style={{ background: 'rgba(0, 255, 157, 0.08)', color: 'var(--success)', marginBottom: '16px' }}>
+              <Globe size={22} />
+            </div>
+            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>SEO + GEO/AEO Dominance</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Maximize citations on ChatGPT & Perplexity while ranking on Google Search with auto-repaired JSON-LD schemas.
             </p>
           </div>
 
-          {/* Card 2 */}
-          <div className="solution-card" onClick={() => navigate('/features/campaign')} style={{ cursor: 'pointer' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(90, 82, 255, 0.08)', color: 'var(--accent)' }}>
-              <Megaphone size={24} />
+          <div className="glow-card bento-col-4" onClick={() => navigate('/features/review')} style={{ cursor: 'pointer', textAlign: 'left' }}>
+            <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 174, 0, 0.08)', color: 'var(--warning)', marginBottom: '16px' }}>
+              <BarChart3 size={22} />
             </div>
-            <h3>AI Campaign Manager</h3>
-            <p style={{ fontSize: '13.5px', marginTop: '8px' }}>
-              Launch advertising structures on sandbox Meta and Google Ads pipelines. Auto-targets demographics, sets bidding scopes, and dynamically handles budget redistribution.
+            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>Analytics & Brand Review</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Transform raw metrics into actionable natural-language decisions. Auto-detect ad fatigue before CPC spikes.
             </p>
           </div>
 
-          {/* Card 3 */}
-          <div className="solution-card" onClick={() => navigate('/features/seo')} style={{ cursor: 'pointer' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(0, 255, 157, 0.08)', color: 'var(--success)' }}>
-              <Globe size={24} />
+          <div className="glow-card bento-col-4" onClick={() => navigate('/features/social-manager')} style={{ cursor: 'pointer', textAlign: 'left' }}>
+            <div className="solution-icon-wrapper" style={{ background: 'rgba(238, 130, 238, 0.08)', color: 'violet', marginBottom: '16px' }}>
+              <Share2 size={22} />
             </div>
-            <h3>SEO + GEO/AEO Dominance</h3>
-            <p style={{ fontSize: '13.5px', marginTop: '8px' }}>
-              Dominate indexing on traditional Google Search, and maximize visibility indices on ChatGPT, Claude, and Gemini citations. Optimizes structured schema databases.
-            </p>
-          </div>
-
-          {/* Card 4 */}
-          <div className="solution-card" onClick={() => navigate('/features/review')} style={{ cursor: 'pointer' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 174, 0, 0.08)', color: 'var(--warning)' }}>
-              <BarChart3 size={24} />
-            </div>
-            <h3>Analytics + Brand Review</h3>
-            <p style={{ fontSize: '13.5px', marginTop: '8px' }}>
-              Transform numbers into narrative decisions. Connect Meta, Google Search, and source systems. Review and approve everything in one workspace.
-            </p>
-          </div>
-
-          {/* Card 5 */}
-          <div className="solution-card" onClick={() => navigate('/features/social-manager')} style={{ cursor: 'pointer' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(238, 130, 238, 0.08)', color: 'violet' }}>
-              <Share2 size={24} />
-            </div>
-            <h3>Social Hub AI</h3>
-            <p style={{ fontSize: '13.5px', marginTop: '8px' }}>
-              Maintain active channels (LinkedIn, Twitter) dynamically. Autogenerates platform drafts, coordinates calendar schedules, writes comment replies, and automates DMs.
-            </p>
-          </div>
-
-          {/* Card 6 */}
-          <div className="solution-card" onClick={() => navigate('/features/influencer')} style={{ cursor: 'pointer' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 71, 87, 0.08)', color: 'var(--danger)' }}>
-              <Users2 size={24} />
-            </div>
-            <h3>Influencer Marketplace</h3>
-            <p style={{ fontSize: '13.5px', marginTop: '8px' }}>
-              Find creators using matching matrix tools. Evaluates fake followers, computes fit matching scores, predicts campaign ROAS, and organizes outreach proposals automatically.
+            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>Social Hub AI</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              30-day visual social media calendar planner with &lt;2s automated customer DM checkout responses.
             </p>
           </div>
         </div>
