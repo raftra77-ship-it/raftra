@@ -13,14 +13,14 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
 
   useEffect(() => {
     const handleScroll = () => {
-      // User-friendly scroll threshold (220px down to collapse, <150px to expand)
+      // Smooth scroll threshold (collapse past 220px, expand when <150px)
       if (window.scrollY > 220) {
         setIsScrolled(true);
       } else if (window.scrollY < 150) {
         setIsScrolled(false);
       }
     };
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -62,24 +62,34 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
   const isCollapsed = isScrolled && !isNavHovered;
 
   return (
-    <nav
+    <motion.nav
       onMouseEnter={() => setIsNavHovered(true)}
       onMouseLeave={() => {
         setIsNavHovered(false);
         setHoverFeature(false);
       }}
+      initial={false}
+      animate={{
+        width: isCollapsed ? 78 : 'calc(100% - 48px)',
+        maxWidth: isCollapsed ? 78 : 1240,
+        height: isCollapsed ? 46 : 52,
+        paddingLeft: isCollapsed ? 12 : 24,
+        paddingRight: isCollapsed ? 12 : 24,
+        left: isCollapsed ? 'max(24px, calc(50% - 620px))' : '50%',
+        x: isCollapsed ? '0%' : '-50%'
+      }}
+      transition={{
+        type: 'spring',
+        stiffness: 300,
+        damping: 32,
+        mass: 0.8
+      }}
       style={{
         position: 'fixed',
         top: '16px',
-        left: isCollapsed ? 'max(24px, calc(50% - 620px))' : '50%',
-        transform: isCollapsed ? 'none' : 'translateX(-50%)',
-        width: isCollapsed ? '78px' : 'calc(100% - 48px)',
-        height: isCollapsed ? '46px' : '52px',
-        maxWidth: isCollapsed ? '78px' : '1240px',
         display: 'flex',
         alignItems: 'center',
         justify: isCollapsed ? 'center' : 'space-between',
-        padding: isCollapsed ? '0 12px' : '10px 24px',
         background: 'rgba(14, 14, 26, 0.88)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
@@ -89,7 +99,6 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           ? '0 10px 30px rgba(90, 82, 255, 0.4), 0 0 20px rgba(90, 82, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
           : '0 12px 40px -5px rgba(0, 0, 0, 0.7), 0 0 25px rgba(90, 82, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
         zIndex: 1000,
-        transition: 'all 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
         cursor: isCollapsed ? 'pointer' : 'default',
         overflow: isCollapsed ? 'hidden' : 'visible'
       }}
@@ -126,127 +135,123 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         )}
       </div>
 
-      {/* Center 5 Links (Fluid Animated Fade) */}
-      <AnimatePresence>
-        {!isCollapsed && (
-          <motion.div
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.25 }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', flex: '2 1 0%' }}
-          >
-            <button onClick={handleScrollToFriction} className="nav-link-btn">
-              The Friction
-            </button>
-            
-            <button onClick={() => navigate('/security')} className="nav-link-btn">
-              Security
-            </button>
+      {/* Center 5 Links (GPU Accelerated Smooth Opacity Morph) */}
+      <motion.div
+        animate={{
+          opacity: isCollapsed ? 0 : 1,
+          scale: isCollapsed ? 0.94 : 1,
+          pointerEvents: isCollapsed ? 'none' : 'auto'
+        }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', flex: '2 1 0%', whiteSpace: 'nowrap' }}
+      >
+        <button onClick={handleScrollToFriction} className="nav-link-btn">
+          The Friction
+        </button>
+        
+        <button onClick={() => navigate('/security')} className="nav-link-btn">
+          Security
+        </button>
 
-            <div 
-              style={{ position: 'relative' }}
-              onMouseEnter={() => setHoverFeature(true)}
-              onMouseLeave={() => setHoverFeature(false)}
-            >
-              <button onClick={handleScrollToSolution} className="nav-link-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                The Solution <ChevronDown size={14} />
-              </button>
-              
-              <AnimatePresence>
-                {hoverFeature && (
-                  <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', paddingTop: '10px', zIndex: 1000 }}>
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                      transition={{ duration: 0.2 }}
+        <div 
+          style={{ position: 'relative' }}
+          onMouseEnter={() => setHoverFeature(true)}
+          onMouseLeave={() => setHoverFeature(false)}
+        >
+          <button onClick={handleScrollToSolution} className="nav-link-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            The Solution <ChevronDown size={14} />
+          </button>
+          
+          <AnimatePresence>
+            {hoverFeature && (
+              <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', paddingTop: '10px', zIndex: 1000 }}>
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  style={{
+                    background: 'rgba(12, 12, 22, 0.96)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(90, 82, 255, 0.35)',
+                    borderRadius: '16px',
+                    padding: '10px',
+                    minWidth: '230px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.8), 0 0 25px rgba(90,82,255,0.3)'
+                  }}
+                >
+                  {features.map((feat, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => { setHoverFeature(false); navigate(feat.path); }}
                       style={{
-                        background: 'rgba(12, 12, 22, 0.96)',
-                        backdropFilter: 'blur(20px)',
-                        border: '1px solid rgba(90, 82, 255, 0.35)',
-                        borderRadius: '16px',
-                        padding: '10px',
-                        minWidth: '230px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        boxShadow: '0 20px 50px rgba(0,0,0,0.8), 0 0 25px rgba(90,82,255,0.3)'
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#e0e0ff',
+                        textAlign: 'left',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        fontSize: '13.5px',
+                        fontWeight: 500,
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(90,82,255,0.2)';
+                        e.currentTarget.style.color = '#ffffff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#e0e0ff';
                       }}
                     >
-                      {features.map((feat, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => { setHoverFeature(false); navigate(feat.path); }}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#e0e0ff',
-                            textAlign: 'left',
-                            padding: '10px 14px',
-                            borderRadius: '10px',
-                            cursor: 'pointer',
-                            fontSize: '13.5px',
-                            fontWeight: 500,
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(90,82,255,0.2)';
-                            e.currentTarget.style.color = '#ffffff';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                            e.currentTarget.style.color = '#e0e0ff';
-                          }}
-                        >
-                          {feat.name}
-                        </button>
-                      ))}
-                    </motion.div>
-                  </div>
-                )}
-              </AnimatePresence>
-            </div>
+                      {feat.name}
+                    </button>
+                  ))}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
 
-            <button onClick={() => navigate('/about')} className="nav-link-btn">
-              About Us
-            </button>
+        <button onClick={() => navigate('/about')} className="nav-link-btn">
+          About Us
+        </button>
 
-            <button onClick={() => navigate('/pricing')} className="nav-link-btn">
-              Pricing
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <button onClick={() => navigate('/pricing')} className="nav-link-btn">
+          Pricing
+        </button>
+      </motion.div>
 
-      {/* Extreme Right Actions (Fluid Animated Fade) */}
-      <AnimatePresence>
-        {!isCollapsed && (
-          <motion.div
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
-            transition={{ duration: 0.25 }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '14px', flex: '1 1 0%' }}
-          >
-            <button 
-              onClick={() => {
-                if (onOpenCreatorPortal) {
-                  onOpenCreatorPortal();
-                } else {
-                  navigate('/');
-                }
-              }}
-              className="creator-portal-btn"
-            >
-              Creator Portal
-            </button>
-            <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px', whiteSpace: 'nowrap' }}>
-              Login
-            </GlowButton>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Extreme Right Actions (GPU Accelerated Smooth Opacity Morph) */}
+      <motion.div
+        animate={{
+          opacity: isCollapsed ? 0 : 1,
+          scale: isCollapsed ? 0.94 : 1,
+          pointerEvents: isCollapsed ? 'none' : 'auto'
+        }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '14px', flex: '1 1 0%', whiteSpace: 'nowrap' }}
+      >
+        <button 
+          onClick={() => {
+            if (onOpenCreatorPortal) {
+              onOpenCreatorPortal();
+            } else {
+              navigate('/');
+            }
+          }}
+          className="creator-portal-btn"
+        >
+          Creator Portal
+        </button>
+        <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px', whiteSpace: 'nowrap' }}>
+          Login
+        </GlowButton>
+      </motion.div>
       
       <style>{`
         .nav-link-btn {
@@ -256,7 +261,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           font-size: 13.5px;
           font-weight: 500;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: all 0.15s ease;
           position: relative;
           padding: 6px 8px;
           white-space: nowrap;
@@ -274,7 +279,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           padding: 8px 16px;
           border-radius: 100px;
           cursor: pointer;
-          transition: all 0.25s ease;
+          transition: all 0.2s ease;
           white-space: nowrap;
         }
         .creator-portal-btn:hover {
@@ -284,6 +289,6 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           box-shadow: 0 0 15px rgba(90, 82, 255, 0.3);
         }
       `}</style>
-    </nav>
+    </motion.nav>
   );
 };
