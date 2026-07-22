@@ -67,17 +67,17 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
     }}>
       {/* Logo Extreme Left */}
       <div 
-        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 0%', justifyContent: 'flex-start' }}
         onClick={() => navigate('/')}
       >
         <Cpu color="var(--primary)" size={22} />
-        <span style={{ fontSize: '19px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', color: '#fff' }}>
+        <span style={{ fontSize: '19px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', color: '#fff', whiteSpace: 'nowrap' }}>
           Raftra<span style={{ color: 'var(--primary)' }}>AI</span>
         </span>
       </div>
 
-      {/* Center Links with balanced spacing */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+      {/* Center 5 Links (Dead-Centered) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', flex: '2 1 0%' }}>
         <button onClick={handleScrollToFriction} className="nav-link-btn">
           The Friction
         </button>
@@ -162,8 +162,8 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         </button>
       </div>
 
-      {/* Extreme Right Buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {/* Extreme Right Actions (Creator Portal & Login) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '14px', flex: '1 1 0%' }}>
         <button 
           onClick={() => {
             if (onOpenCreatorPortal) {
@@ -176,7 +176,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         >
           Creator Portal
         </button>
-        <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px' }}>
+        <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px', whiteSpace: 'nowrap' }}>
           Login
         </GlowButton>
       </div>
@@ -192,6 +192,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           transition: all 0.2s ease;
           position: relative;
           padding: 6px 8px;
+          white-space: nowrap;
         }
         .nav-link-btn:hover {
           color: #ffffff;
@@ -207,6 +208,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           border-radius: 100px;
           cursor: pointer;
           transition: all 0.25s ease;
+          white-space: nowrap;
         }
         .creator-portal-btn:hover {
           background: rgba(90, 82, 255, 0.15);
