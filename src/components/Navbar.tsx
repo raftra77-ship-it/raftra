@@ -55,13 +55,13 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
       display: 'flex',
       alignItems: 'center',
       justify: 'space-between',
-      padding: '12px 32px',
-      background: 'rgba(14, 14, 24, 0.78)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
+      padding: '10px 24px',
+      background: 'rgba(14, 14, 26, 0.82)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
       borderRadius: '100px',
-      border: '1px solid rgba(255, 255, 255, 0.14)',
-      boxShadow: '0 10px 35px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+      border: '1px solid rgba(90, 82, 255, 0.35)',
+      boxShadow: '0 12px 40px -5px rgba(0, 0, 0, 0.7), 0 0 25px rgba(90, 82, 255, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
       zIndex: 1000,
       transition: 'all 0.3s ease'
     }}>
@@ -70,14 +70,14 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
         onClick={() => navigate('/')}
       >
-        <Cpu color="var(--primary)" size={24} />
-        <span style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', color: '#fff' }}>
+        <Cpu color="var(--primary)" size={22} />
+        <span style={{ fontSize: '19px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', color: '#fff' }}>
           Raftra<span style={{ color: 'var(--primary)' }}>AI</span>
         </span>
       </div>
 
-      {/* Center Links */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+      {/* Center Links with balanced spacing */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
         <button onClick={handleScrollToFriction} className="nav-link-btn">
           The Friction
         </button>
@@ -107,17 +107,17 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
                   top: '100%',
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  background: 'rgba(10, 10, 10, 0.95)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '12px',
-                  padding: '16px',
+                  background: 'rgba(12, 12, 22, 0.95)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(90, 82, 255, 0.3)',
+                  borderRadius: '16px',
+                  padding: '12px',
                   minWidth: '220px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '8px',
-                  marginTop: '16px',
-                  boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+                  gap: '6px',
+                  marginTop: '12px',
+                  boxShadow: '0 15px 45px rgba(0,0,0,0.6), 0 0 20px rgba(90,82,255,0.2)',
                   zIndex: 100
                 }}
               >
@@ -131,13 +131,19 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
                       color: '#fff',
                       textAlign: 'left',
                       padding: '8px 12px',
-                      borderRadius: '6px',
+                      borderRadius: '8px',
                       cursor: 'pointer',
-                      fontSize: '14px',
-                      transition: 'background 0.2s'
+                      fontSize: '13.5px',
+                      transition: 'all 0.2s'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(90,82,255,0.15)';
+                      e.currentTarget.style.color = '#fff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = '#fff';
+                    }}
                   >
                     {feat.name}
                   </button>
@@ -157,20 +163,20 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
       </div>
 
       {/* Extreme Right Buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <button 
           onClick={() => {
             if (onOpenCreatorPortal) {
               onOpenCreatorPortal();
             } else {
-              navigate('/'); // fallback if not on landing page
+              navigate('/');
             }
           }}
-          style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
+          className="creator-portal-btn"
         >
           Creator Portal
         </button>
-        <GlowButton variant="glow" onClick={() => navigate('/login')}>
+        <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px' }}>
           Login
         </GlowButton>
       </div>
@@ -179,30 +185,34 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         .nav-link-btn {
           background: transparent;
           border: none;
-          color: #aaa;
-          font-size: 14px;
+          color: #b0b0cc;
+          font-size: 13.5px;
           font-weight: 500;
           cursor: pointer;
-          transition: color 0.2s;
+          transition: all 0.2s ease;
           position: relative;
-          padding-bottom: 4px;
-        }
-        .nav-link-btn::after {
-          content: '';
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          width: 0;
-          height: 2px;
-          background: #fff;
-          transition: width 0.3s ease;
-          border-radius: 2px;
+          padding: 6px 8px;
         }
         .nav-link-btn:hover {
-          color: #fff;
+          color: #ffffff;
+          text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
-        .nav-link-btn:hover::after {
-          width: 100%;
+        .creator-portal-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: #e0e0ff;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 8px 16px;
+          border-radius: 100px;
+          cursor: pointer;
+          transition: all 0.25s ease;
+        }
+        .creator-portal-btn:hover {
+          background: rgba(90, 82, 255, 0.15);
+          border-color: rgba(90, 82, 255, 0.4);
+          color: #ffffff;
+          box-shadow: 0 0 15px rgba(90, 82, 255, 0.3);
         }
       `}</style>
     </nav>
