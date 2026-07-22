@@ -75,13 +75,13 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         height: isCollapsed ? 46 : 52,
         paddingLeft: isCollapsed ? 12 : 24,
         paddingRight: isCollapsed ? 12 : 24,
-        left: isCollapsed ? 'max(24px, calc(50% - 620px))' : '50%',
-        x: isCollapsed ? '0%' : '-50%'
+        left: isScrolled ? 'max(24px, calc(50% - 620px))' : '50%',
+        x: isScrolled ? '0%' : '-50%'
       }}
       transition={{
         type: 'spring',
-        stiffness: 300,
-        damping: 32,
+        stiffness: 280,
+        damping: 30,
         mass: 0.8
       }}
       style={{
