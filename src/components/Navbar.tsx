@@ -70,19 +70,19 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
       style={{
         position: 'fixed',
         top: '16px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: isCollapsed ? '56px' : 'calc(100% - 48px)',
-        height: isCollapsed ? '56px' : '52px',
-        maxWidth: isCollapsed ? '56px' : '1240px',
+        left: isCollapsed ? 'max(24px, calc(50% - 620px))' : '50%',
+        transform: isCollapsed ? 'none' : 'translateX(-50%)',
+        width: isCollapsed ? '78px' : 'calc(100% - 48px)',
+        height: isCollapsed ? '46px' : '52px',
+        maxWidth: isCollapsed ? '78px' : '1240px',
         display: 'flex',
         alignItems: 'center',
         justify: isCollapsed ? 'center' : 'space-between',
-        padding: isCollapsed ? '0' : '10px 24px',
+        padding: isCollapsed ? '0 12px' : '10px 24px',
         background: 'rgba(14, 14, 26, 0.88)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        borderRadius: isCollapsed ? '50%' : '100px',
+        borderRadius: '100px',
         border: '1px solid rgba(90, 82, 255, 0.45)',
         boxShadow: isCollapsed
           ? '0 10px 30px rgba(90, 82, 255, 0.4), 0 0 20px rgba(90, 82, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
@@ -104,7 +104,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: '6px',
           flex: isCollapsed ? '0 0 auto' : '1 1 0%',
           justify: isCollapsed ? 'center' : 'flex-start'
         }}
@@ -113,8 +113,12 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           navigate('/');
         }}
       >
-        <Cpu color="var(--primary)" size={isCollapsed ? 24 : 22} />
-        {!isCollapsed && (
+        <Cpu color="var(--primary)" size={isCollapsed ? 20 : 22} />
+        {isCollapsed ? (
+          <span style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'var(--font-heading)', color: '#fff', letterSpacing: '-0.02em' }}>
+            R
+          </span>
+        ) : (
           <span style={{ fontSize: '19px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', color: '#fff', whiteSpace: 'nowrap' }}>
             Raftra<span style={{ color: 'var(--primary)' }}>AI</span>
           </span>
