@@ -13,9 +13,10 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 80) {
+      // User-friendly scroll threshold (220px down to collapse, <150px to expand)
+      if (window.scrollY > 220) {
         setIsScrolled(true);
-      } else {
+      } else if (window.scrollY < 150) {
         setIsScrolled(false);
       }
     };
@@ -88,9 +89,9 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           ? '0 10px 30px rgba(90, 82, 255, 0.4), 0 0 20px rgba(90, 82, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
           : '0 12px 40px -5px rgba(0, 0, 0, 0.7), 0 0 25px rgba(90, 82, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
         zIndex: 1000,
-        transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+        transition: 'all 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
         cursor: isCollapsed ? 'pointer' : 'default',
-        overflow: 'hidden'
+        overflow: isCollapsed ? 'hidden' : 'visible'
       }}
       onClick={() => {
         if (isCollapsed) {
@@ -125,114 +126,127 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         )}
       </div>
 
-      {/* Center 5 Links (Visible when expanded) */}
-      {!isCollapsed && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', flex: '2 1 0%' }}>
-          <button onClick={handleScrollToFriction} className="nav-link-btn">
-            The Friction
-          </button>
-          
-          <button onClick={() => navigate('/security')} className="nav-link-btn">
-            Security
-          </button>
-
-          <div 
-            style={{ position: 'relative' }}
-            onMouseEnter={() => setHoverFeature(true)}
-            onMouseLeave={() => setHoverFeature(false)}
+      {/* Center 5 Links (Fluid Animated Fade) */}
+      <AnimatePresence>
+        {!isCollapsed && (
+          <motion.div
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.25 }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', flex: '2 1 0%' }}
           >
-            <button onClick={handleScrollToSolution} className="nav-link-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              The Solution <ChevronDown size={14} />
+            <button onClick={handleScrollToFriction} className="nav-link-btn">
+              The Friction
             </button>
             
-            <AnimatePresence>
-              {hoverFeature && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  transition={{ duration: 0.2 }}
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'rgba(12, 12, 22, 0.95)',
-                    backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(90, 82, 255, 0.3)',
-                    borderRadius: '16px',
-                    padding: '12px',
-                    minWidth: '220px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    marginTop: '12px',
-                    boxShadow: '0 15px 45px rgba(0,0,0,0.6), 0 0 20px rgba(90,82,255,0.2)',
-                    zIndex: 100
-                  }}
-                >
-                  {features.map((feat, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => { setHoverFeature(false); navigate(feat.path); }}
+            <button onClick={() => navigate('/security')} className="nav-link-btn">
+              Security
+            </button>
+
+            <div 
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoverFeature(true)}
+              onMouseLeave={() => setHoverFeature(false)}
+            >
+              <button onClick={handleScrollToSolution} className="nav-link-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                The Solution <ChevronDown size={14} />
+              </button>
+              
+              <AnimatePresence>
+                {hoverFeature && (
+                  <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', paddingTop: '10px', zIndex: 1000 }}>
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.2 }}
                       style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#fff',
-                        textAlign: 'left',
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontSize: '13.5px',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(90,82,255,0.15)';
-                        e.currentTarget.style.color = '#fff';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent';
-                        e.currentTarget.style.color = '#fff';
+                        background: 'rgba(12, 12, 22, 0.96)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(90, 82, 255, 0.35)',
+                        borderRadius: '16px',
+                        padding: '10px',
+                        minWidth: '230px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.8), 0 0 25px rgba(90,82,255,0.3)'
                       }}
                     >
-                      {feat.name}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                      {features.map((feat, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => { setHoverFeature(false); navigate(feat.path); }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#e0e0ff',
+                            textAlign: 'left',
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            fontSize: '13.5px',
+                            fontWeight: 500,
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(90,82,255,0.2)';
+                            e.currentTarget.style.color = '#ffffff';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#e0e0ff';
+                          }}
+                        >
+                          {feat.name}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
 
-          <button onClick={() => navigate('/about')} className="nav-link-btn">
-            About Us
-          </button>
+            <button onClick={() => navigate('/about')} className="nav-link-btn">
+              About Us
+            </button>
 
-          <button onClick={() => navigate('/pricing')} className="nav-link-btn">
-            Pricing
-          </button>
-        </div>
-      )}
+            <button onClick={() => navigate('/pricing')} className="nav-link-btn">
+              Pricing
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Extreme Right Actions (Visible when expanded) */}
-      {!isCollapsed && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '14px', flex: '1 1 0%' }}>
-          <button 
-            onClick={() => {
-              if (onOpenCreatorPortal) {
-                onOpenCreatorPortal();
-              } else {
-                navigate('/');
-              }
-            }}
-            className="creator-portal-btn"
+      {/* Extreme Right Actions (Fluid Animated Fade) */}
+      <AnimatePresence>
+        {!isCollapsed && (
+          <motion.div
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
+            transition={{ duration: 0.25 }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '14px', flex: '1 1 0%' }}
           >
-            Creator Portal
-          </button>
-          <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px', whiteSpace: 'nowrap' }}>
-            Login
-          </GlowButton>
-        </div>
-      )}
+            <button 
+              onClick={() => {
+                if (onOpenCreatorPortal) {
+                  onOpenCreatorPortal();
+                } else {
+                  navigate('/');
+                }
+              }}
+              className="creator-portal-btn"
+            >
+              Creator Portal
+            </button>
+            <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px', whiteSpace: 'nowrap' }}>
+              Login
+            </GlowButton>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       <style>{`
         .nav-link-btn {
