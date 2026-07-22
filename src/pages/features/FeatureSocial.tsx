@@ -1,8 +1,44 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Share2, Bot, CheckCircle2, Calendar, MessageCircle, TrendingUp, Image as ImageIcon, Briefcase, Video, Loader2, Check } from 'lucide-react';
+import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
 
 export const FeatureSocial = () => {
+  const socialExplainerSteps = [
+    {
+      title: "1. Visual 30-Day Content Calendar & Planner",
+      agent: "Content Planning Agent",
+      description: "Structures a 30-day visual content calendar with carousel posts, video reels, and product highlights aligned with brand voice.",
+      badge: "CALENDAR GENERATED",
+      visualType: "social_calendar" as const,
+      metrics: [
+        { label: "Posts Built", value: "30 Posts", color: "#00E676" },
+        { label: "Platforms", value: "IG, X, LinkedIn", color: "#5A52FF" }
+      ]
+    },
+    {
+      title: "2. Cross-Channel Auto-Publishing",
+      agent: "Scheduling Agent",
+      description: "Automatically publishes high-resolution visuals and copy to Instagram, Twitter/X, and LinkedIn at peak audience activity hours.",
+      badge: "LIVE PUBLISHED",
+      visualType: "social_calendar" as const,
+      metrics: [
+        { label: "Auto-Publish", value: "100%", color: "#00E676" },
+        { label: "Optimal Time", value: "6:30 PM", color: "#FFBD2E" }
+      ]
+    },
+    {
+      title: "3. AI Comment & DM Auto-Responder",
+      agent: "DM Automation Agent",
+      description: "Handles customer inquiries, pricing questions, and product link requests instantly in comments and direct messages.",
+      badge: "RESPONSE ACTIVE",
+      visualType: "social_calendar" as const,
+      metrics: [
+        { label: "Response Speed", value: "< 5 sec", color: "#00E676" },
+        { label: "Conversion Rate", value: "+34%", color: "#5A52FF" }
+      ]
+    }
+  ];
   return (
     <div style={{ animation: 'fadeIn 0.5s ease' }}>
       
@@ -61,6 +97,15 @@ export const FeatureSocial = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Motion Design Explainer Video */}
+      <FeatureExplainerVideo
+        title="Social Media AI Automation"
+        subtitle="How Raftra AI manages your content calendar, auto-posts, and answers DMs 24/7."
+        badgeText="SOCIAL MOTION DEMO"
+        steps={socialExplainerSteps}
+        ctaText="Unlock Social Media AI"
+      />
 
       {/* Interactive Visual Demo */}
       <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>

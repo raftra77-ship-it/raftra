@@ -68,6 +68,20 @@ export const Security = () => {
             </ul>
           </motion.div>
 
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="glow-card" style={{ padding: '40px', background: 'rgba(0,230,118,0.04)', border: '1px solid rgba(0,230,118,0.25)' }}>
+            <div style={{ width: '48px', height: '48px', background: 'rgba(0,230,118,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', border: '1px solid rgba(0,230,118,0.3)' }}>
+              <ShieldAlert size={24} color="#00E676" />
+            </div>
+            <h3 style={{ fontSize: '24px', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>Brand Safety & Creator Escrow</h3>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', color: '#ccc', fontSize: '15px' }}>
+              <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} /> <strong>100% Brand Safety:</strong> Automated content & tone moderation gate</li>
+              <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} /> <strong>Fake Follower Audit:</strong> Scans creator profiles to filter &lt; 3% bot ratio</li>
+              <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} /> <strong>Escrow Deal Locks:</strong> Payment funds locked safely in escrow until content review</li>
+              <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} /> <strong>Human-in-the-loop Approval:</strong> One-click campaign publish confirmation</li>
+              <li style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}><CheckCircle2 size={18} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} /> <strong>Enterprise Social Manager Standards:</strong> Compliance protocols designed with senior growth leads</li>
+            </ul>
+          </motion.div>
+
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="glow-card" style={{ padding: '40px' }}>
             <div style={{ width: '48px', height: '48px', background: 'rgba(234,179,8,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', border: '1px solid rgba(234,179,8,0.2)' }}>
               <Database size={24} color="#eab308" />

@@ -55,6 +55,43 @@ export const AboutUs = () => {
             </div>
           </motion.div>
 
+          {/* OUR FOUNDING VISION & CREDIBILITY RESEARCH */}
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px' }}>
+            <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '16px', textAlign: 'center' }}>Backed by Global Industry Data & Visionary Leadership</h2>
+            <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '40px', fontSize: '17px', maxWidth: '800px', margin: '0 auto 40px auto' }}>
+              Why the world's fastest-growing brands are switching to Agentic AI and Open-Web Search Engine Optimization.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+              {/* Taboola Study Card */}
+              <div style={{ padding: '32px', background: 'rgba(90,82,255,0.06)', borderRadius: '24px', border: '1px solid rgba(90,82,255,0.25)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', marginBottom: '12px' }}>TABOOLA RESEARCH STUDY (2026)</div>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#fff', marginBottom: '12px', lineHeight: 1.2 }}>76% Benefit from Agentic AI</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: 0 }}>
+                  A groundbreaking Taboola study reveals that <strong>76% of digital advertisers benefit from Agentic AI</strong>, with <strong>86% willing to shift advertising budgets to the Open Web & Answer Engines</strong> to escape walled gardens.
+                </p>
+              </div>
+
+              {/* Founder Story Card */}
+              <div style={{ padding: '32px', background: 'rgba(0,230,118,0.06)', borderRadius: '24px', border: '1px solid rgba(0,230,118,0.25)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', letterSpacing: '0.08em', marginBottom: '12px' }}>GEN-Z INNOVATION + ENTERPRISE TRUST</div>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#fff', marginBottom: '12px', lineHeight: 1.2 }}>Building Next-Gen Growth OS</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: 0 }}>
+                  Co-founded by ambitious <strong>Gen-Z engineers & product creators</strong> who understand AI search, viral social algorithms, and modern automation — built in collaboration with <strong>veteran enterprise social media managers and security directors</strong>.
+                </p>
+              </div>
+
+              {/* Brand Safety & Escrow Card */}
+              <div style={{ padding: '32px', background: 'rgba(255,189,46,0.06)', borderRadius: '24px', border: '1px solid rgba(255,189,46,0.25)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em', marginBottom: '12px' }}>100% BRAND SAFETY & CREATOR ESCROW</div>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#fff', marginBottom: '12px', lineHeight: 1.2 }}>Guaranteed Safety Standards</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: 0 }}>
+                  100% brand safety guaranteed with automated content moderation gates, verified follower authenticity checks, and direct <strong>escrow deal protection</strong> for both brands and creators.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px' }}>
             <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '40px', textAlign: 'center' }}>What Raftra AI Does</h2>
             <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '48px', fontSize: '18px' }}>Raftra AI combines six core growth functions into one platform:</p>

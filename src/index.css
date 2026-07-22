@@ -103,28 +103,38 @@ p {
 
 /* Utility Classes */
 .glass {
-  background: rgba(10, 10, 12, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(14, 14, 22, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
-.glow-card {
-  background: rgba(10, 10, 15, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-color);
+.glow-card, .problem-card, .solution-card {
+  background: linear-gradient(145deg, rgba(20, 20, 32, 0.85), rgba(10, 10, 18, 0.95));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-lg);
   padding: 24px;
   position: relative;
   overflow: hidden;
-  transition: var(--transition-smooth);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.glow-card:hover {
-  border-color: var(--border-hover);
-  box-shadow: 0 10px 30px -10px rgba(90, 82, 255, 0.1);
-  transform: translateY(-2px);
+.glow-card:hover, .problem-card:hover, .solution-card:hover {
+  border-color: rgba(90, 82, 255, 0.45);
+  box-shadow: 0 20px 45px -10px rgba(90, 82, 255, 0.25), 0 0 20px rgba(90, 82, 255, 0.15);
+  transform: translateY(-5px) scale(1.01);
+}
+
+.glow-card::before, .problem-card::before, .solution-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(90, 82, 255, 0.6), transparent);
+  opacity: 0.7;
 }
 
 /* Glowing text and buttons */

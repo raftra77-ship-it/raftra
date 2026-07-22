@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, Cpu, AlertCircle } from 'lucide-react';
+import { ArrowRight, Cpu, AlertCircle, Rocket, AlertTriangle, Sparkles } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
 interface OnboardingWizardProps {
@@ -229,15 +229,17 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
         )}
 
         {step === 4 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', alignItems: 'center', padding: '20px 0' }}>
-            <div className="terminal-dots" style={{ alignSelf: 'stretch', justifyContent: 'center', marginBottom: '8px' }}>
-              <span className="shimmer-loading" style={{ width: '48px', height: '48px', borderRadius: '50%', display: 'block' }} />
-            </div>
-
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '10px 0' }}>
             <div style={{ textAlign: 'center' }}>
-              <h4 style={{ marginBottom: '8px', fontSize: '16px' }}>AI GROWTH ENGINE WORKERS DEPLOYING</h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                [Task Execution System Active]
+              <h4 style={{ marginBottom: '6px', fontSize: '18px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                {loadingProgress < 100 ? 'AI GROWTH AGENTS EXTRACTING BRAND INTEL' : (
+                  <>
+                    <Sparkles size={20} color="var(--primary)" /> INITIAL AI AUDIT & STRATEGY REPORT READY
+                  </>
+                )}
+              </h4>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                {loadingProgress < 100 ? 'Scanning domain, auditing answer engines, and analyzing competitor gaps...' : `Initial Audit for ${name || url || 'Your Brand'}`}
               </p>
             </div>
 
@@ -248,21 +250,56 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                 border: '1px solid var(--border-color)',
                 borderRadius: 'var(--radius-md)',
                 padding: '16px',
-                minHeight: '120px',
                 fontFamily: 'var(--font-mono)',
                 fontSize: '11px',
                 color: '#86ffb3',
                 textAlign: 'left',
               }}
             >
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span style={{ color: 'var(--accent)' }}>$</span>
                 <span>{loadingText}</span>
               </div>
-              <div style={{ marginTop: '16px', height: '4px', background: 'var(--border-color)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div style={{ marginTop: '12px', height: '4px', background: 'var(--border-color)', borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{ height: '100%', background: 'var(--success)', width: `${loadingProgress}%`, transition: 'width 0.4s ease' }} />
               </div>
             </div>
+
+            {loadingProgress === 100 && (
+              <div style={{ animation: 'fadeIn 0.4s ease', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+                {/* 8 SEO/GEO Mistakes Card */}
+                <div style={{ padding: '14px', background: 'rgba(255, 95, 86, 0.08)', borderRadius: '10px', border: '1px solid rgba(255, 95, 86, 0.25)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#FF5F56', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <AlertTriangle size={16} color="#FF5F56" /> 8 SEO & GEO Answer-Engine Mistakes Detected
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.5 }}>
+                    • Missing JSON-LD Schema (ChatGPT & Perplexity cannot cite brand)<br/>
+                    • 14 Unindexed Product URLs in Answer Engines<br/>
+                    • Low Perplexity Citation Index (&lt;12%) + 5 missing long-tail Q&A schemas
+                  </div>
+                </div>
+
+                {/* 3 Campaign Ideas Card */}
+                <div style={{ padding: '14px', background: 'rgba(0, 230, 118, 0.08)', borderRadius: '10px', border: '1px solid rgba(0, 230, 118, 0.25)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#00E676', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Rocket size={16} color="#00E676" /> 3 High-ROI AI Campaign Strategies Prepared
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#ccc', lineHeight: 1.5 }}>
+                    • 1. Seasonal Retargeting Video UGC ($500, Est ROAS 4.8x)<br/>
+                    • 2. Competitor Conquest Blitz ($750, Est ROAS 5.2x)<br/>
+                    • 3. High-ROAS 5-Slide Carousel Showcase ($400, Est ROAS 4.5x)
+                  </div>
+                </div>
+
+                <GlowButton
+                  variant="glow"
+                  onClick={() => onComplete({ url: url || 'https://example.com', name: name || 'Aura Ventures', tone, colors })}
+                  style={{ width: '100%', padding: '14px', justifyContent: 'center', fontWeight: 700 }}
+                >
+                  Enter Workspace & Auto-Fix Mistakes <ArrowRight size={16} />
+                </GlowButton>
+              </div>
+            )}
           </div>
         )}
       </div>

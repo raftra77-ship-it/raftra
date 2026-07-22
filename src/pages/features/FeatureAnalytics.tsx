@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, Bot, CheckCircle2, MessageSquare, Loader2, AlertTriangle, ArrowRightLeft, Sparkles, Check } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
+import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
 
 export const FeatureAnalytics = () => {
   const [chatState, setChatState] = useState(0); // 0: loading, 1: response ready, 2: applied
@@ -10,6 +11,43 @@ export const FeatureAnalytics = () => {
     const timer = setTimeout(() => setChatState(1), 2500);
     return () => clearTimeout(timer);
   }, []);
+
+  const analyticsExplainerSteps = [
+    {
+      title: "1. Visual Multi-Channel Performance Dashboard",
+      agent: "Data Collection Agent",
+      description: "Aggregates net revenue, blended ROAS, CPC, CTR, and search traffic curves into an intuitive, real-time visual dashboard.",
+      badge: "DASHBOARD LIVE",
+      visualType: "analytics_chart" as const,
+      metrics: [
+        { label: "Blended ROAS", value: "4.8x", color: "#00E676" },
+        { label: "Total Spend", value: "$12,400", color: "#fff" },
+        { label: "Net Revenue", value: "$59,520", color: "#5A52FF" }
+      ]
+    },
+    {
+      title: "2. Conversational Claude 3.5 Insight Assistant",
+      agent: "Claude Recommendation Agent",
+      description: "Ask natural language questions like 'Why did CPA spike yesterday?' and get immediate, visual action cards explaining performance shifts.",
+      badge: "INSIGHT READY",
+      visualType: "analytics_chart" as const,
+      metrics: [
+        { label: "Top Channel", value: "Meta UGC Ad 3", color: "#00E676" },
+        { label: "CPA Cut Goal", value: "-22%", color: "#5A52FF" }
+      ]
+    },
+    {
+      title: "3. 1-Click Visual Action & Budget Rebalancing",
+      agent: "Python Analytics Agent",
+      description: "Apply recommendations directly from the chat interface to adjust budgets, pause failing ad sets, or re-route campaign focus.",
+      badge: "ACTION EXECUTED",
+      visualType: "analytics_chart" as const,
+      metrics: [
+        { label: "Budget Rebalanced", value: "$150 / day", color: "#00E676" },
+        { label: "Execution Status", value: "Success", color: "#5A52FF" }
+      ]
+    }
+  ];
 
   return (
     <div style={{ animation: 'fadeIn 0.5s ease' }}>
@@ -69,6 +107,15 @@ export const FeatureAnalytics = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Motion Design Explainer Video */}
+      <FeatureExplainerVideo
+        title="Analytics & Claude Decision Engine"
+        subtitle="How Raftra AI aggregates data and gives real-time actionable growth advice."
+        badgeText="ANALYTICS MOTION DEMO"
+        steps={analyticsExplainerSteps}
+        ctaText="Unlock Analytics Engine"
+      />
 
       {/* Interactive Visual Demo */}
       <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>

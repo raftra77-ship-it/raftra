@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Megaphone, Bot, CheckCircle2, Globe, MousePointerClick, RefreshCcw, Check, Users2 } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
+import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
 
 export const FeatureCampaignManager = () => {
   const [publishState, setPublishState] = useState(0); // 0: review, 1: publishing, 2: published
@@ -10,6 +11,45 @@ export const FeatureCampaignManager = () => {
     setPublishState(1);
     setTimeout(() => setPublishState(2), 2000);
   };
+
+  const campaignExplainerSteps = [
+    {
+      title: "1. AI Campaign Brief & Audience Blueprint",
+      agent: "Campaign Planning Agent",
+      description: "Analyzes seasonal trends and target demographics to structure optimal ROAS objectives, budget allocation, and placement rules.",
+      badge: "STRATEGY BUILT",
+      visualType: "oauth_campaign" as const,
+      metrics: [
+        { label: "Target ROAS", value: "4.5x", color: "#00E676" },
+        { label: "Budget Split", value: "$500 / day", color: "#fff" },
+        { label: "Placements", value: "Meta & Google", color: "#5A52FF" }
+      ]
+    },
+    {
+      title: "2. Easy 1-Click OAuth Publisher Gateway Deploy",
+      agent: "Placement Strategy Agent",
+      description: "Pushes verified ad packages directly to Meta Ads Sandbox, Google Ads, and TikTok with human review control and 1-click connect.",
+      badge: "DEPLOYED LIVE",
+      visualType: "oauth_campaign" as const,
+      metrics: [
+        { label: "Channels Synced", value: "3 Active", color: "#00E676" },
+        { label: "Deploy Time", value: "1.2s", color: "#5A52FF" },
+        { label: "UTM Tracking", value: "Verified", color: "#FFBD2E" }
+      ]
+    },
+    {
+      title: "3. Auto-Kill & Smart Rotation Triggers",
+      agent: "Creative Fatigue Agent",
+      description: "Monitors real-time performance. Automatically kills ads exceeding Frequency Cap (5x) or CPA Threshold ($25) and rotates fresh creatives.",
+      badge: "AUTO-OPTIMIZING",
+      visualType: "oauth_campaign" as const,
+      metrics: [
+        { label: "Fatigued Ads Killed", value: "2 Ads", color: "#FF5F56" },
+        { label: "CPA Saved", value: "$18.40", color: "#00E676" },
+        { label: "Auto-Rotation", value: "Enabled", color: "#5A52FF" }
+      ]
+    }
+  ];
 
   return (
     <div style={{ animation: 'fadeIn 0.5s ease' }}>
@@ -69,6 +109,15 @@ export const FeatureCampaignManager = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Motion Design Explainer Video */}
+      <FeatureExplainerVideo
+        title="Multi-Platform Campaign Manager"
+        subtitle="How Raftra AI builds, deploys, and auto-rotates campaigns across Meta, Google & TikTok."
+        badgeText="CAMPAIGN MOTION DEMO"
+        steps={campaignExplainerSteps}
+        ctaText="Unlock Campaign Manager"
+      />
 
       {/* Interactive Visual Demo */}
       <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>

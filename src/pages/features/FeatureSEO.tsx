@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Bot, CheckCircle2, TrendingUp, Globe, Activity, Eye, Zap, ArrowUpRight } from 'lucide-react';
+import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
 
 export const FeatureSEO = () => {
   const [score, setScore] = useState(74);
@@ -15,6 +16,45 @@ export const FeatureSEO = () => {
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
+
+  const seoExplainerSteps = [
+    {
+      title: "1. Crawl & 8-Point Mistake Audit",
+      agent: "Technical SEO Agent",
+      description: "Scans your domain to detect 8 critical search & answer engine flaws including broken schemas, missing canonical tags, and unindexed product URLs.",
+      badge: "AUDIT COMPLETE",
+      visualType: "seo_pipeline" as const,
+      metrics: [
+        { label: "Errors Found", value: "8 Critical", color: "#FF5F56" },
+        { label: "Audit Health", value: "92/100", color: "#00E676" },
+        { label: "Crawl Speed", value: "480ms", color: "#5A52FF" }
+      ]
+    },
+    {
+      title: "2. Answer Engine Optimization (GEO/AEO)",
+      agent: "LLM Visibility Agent",
+      description: "Structures your brand knowledge graph so AI engines like ChatGPT, Claude, Perplexity & Gemini cite your products when users search.",
+      badge: "GEO INDEXED",
+      visualType: "seo_pipeline" as const,
+      metrics: [
+        { label: "AI Citations", value: "+78%", color: "#00E676" },
+        { label: "Perplexity Rank", value: "Top 3", color: "#5A52FF" },
+        { label: "ChatGPT Reach", value: "High", color: "#FFBD2E" }
+      ]
+    },
+    {
+      title: "3. Auto-Publishing High-Authority Articles",
+      agent: "Content Strategy Agent",
+      description: "Generates and publishes SEO-optimized articles targeting high-intent longtail keywords directly into your CMS with automated sitemap submission.",
+      badge: "LIVE PUBLISHED",
+      visualType: "seo_pipeline" as const,
+      metrics: [
+        { label: "Articles Built", value: "12 / mo", color: "#fff" },
+        { label: "Rank Speed", value: "3x Faster", color: "#00E676" },
+        { label: "Organic Traffic", value: "+42%", color: "#5A52FF" }
+      ]
+    }
+  ];
 
   return (
     <div style={{ animation: 'fadeIn 0.5s ease' }}>
@@ -74,6 +114,15 @@ export const FeatureSEO = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Motion Design Explainer Video */}
+      <FeatureExplainerVideo
+        title="SEO & Answer Engine Optimization"
+        subtitle="How Raftra AI fixes 8 search mistakes and ranks your brand on ChatGPT, Perplexity & Google."
+        badgeText="SEARCH MOTION DEMO"
+        steps={seoExplainerSteps}
+        ctaText="Unlock Search & GEO Agent"
+      />
 
       {/* Interactive Visual Demo */}
       <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>

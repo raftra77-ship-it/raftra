@@ -156,7 +156,12 @@ export function BrandDashboard() {
   ]);
 
   // AI Priorities List
-  const [priorities, setPriorities] = useState<{ id: string; title: string; description: string; type: string }[]>([]);
+  const [priorities, setPriorities] = useState<{ id: string; title: string; description: string; type: string }[]>([
+    { id: 'p1', title: 'Fix 8 SEO & GEO Answer-Engine Schema Mistakes', description: 'Missing JSON-LD entity structures preventing ChatGPT & Perplexity citations.', type: 'critical' },
+    { id: 'p2', title: 'Deploy Diwali Retargeting Video Campaign', description: 'Target high-intent cart abandoners with 15s UGC video ads (Est ROAS: 4.8x).', type: 'warning' },
+    { id: 'p3', title: 'Launch Competitor Conquest Search Blitz', description: 'Bidding on rival search terms across Meta & Google Ads (Est ROAS: 5.2x).', type: 'warning' },
+    { id: 'p4', title: 'Publish 5-Slide Carousel Ad Showcase', description: 'Highlight top verified customer reviews on Instagram & Facebook.', type: 'normal' }
+  ]);
 
   // Metrics, Billing and node locks state
   const [metrics, setMetrics] = useState({
@@ -1270,7 +1275,7 @@ export function BrandDashboard() {
               {/* Home Greeting Title */}
               <div>
                 <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                  Good Morning {userName} 👋
+                  Good Morning {userName}
                 </h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                   Your marketing agents are working background operations. Here is today's summary context.

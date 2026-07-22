@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { animate } from 'animejs';
 
 interface GlowButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'glow';
@@ -14,8 +15,22 @@ export const GlowButton: React.FC<GlowButtonProps> = ({
   loading = false,
   className = '',
   disabled,
+  onClick,
   ...props
 }) => {
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (btnRef.current) {
+      animate(btnRef.current, {
+        scale: [0.95, 1],
+        duration: 350,
+        ease: 'outElastic(1, .5)'
+      });
+    }
+    if (onClick) onClick(e);
+  };
+
   const getButtonClass = () => {
     switch (variant) {
       case 'secondary':
@@ -30,9 +45,11 @@ export const GlowButton: React.FC<GlowButtonProps> = ({
 
   return (
     <button
+      ref={btnRef}
       className={`${getButtonClass()} ${className}`}
       disabled={disabled || loading}
       style={{ position: 'relative' }}
+      onClick={handleClick}
       {...props}
     >
       {variant === 'glow' && <div className="btn-glow-shadow" />}

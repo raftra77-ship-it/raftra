@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Bot, CheckCircle2, Loader2, ArrowRight, Upload, Play, Image as ImageIcon } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
+import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
 
 export const FeatureCreativeStudio = () => {
   const [demoState, setDemoState] = useState(0); // 0: init, 1: generating, 2: complete
@@ -12,6 +13,44 @@ export const FeatureCreativeStudio = () => {
       return () => clearTimeout(timer);
     }
   }, [demoState]);
+
+  const creativeExplainerSteps = [
+    {
+      title: "1. Product-to-Ad Carousel & Banner Rendering",
+      agent: "Brand Intelligence Agent",
+      description: "Automatically turns product images and brand URL into 5-slide interactive carousel ads and high-converting static banners.",
+      badge: "CAROUSEL BUILT",
+      visualType: "carousel" as const,
+      metrics: [
+        { label: "Carousel Slides", value: "5 Slides", color: "#5A52FF" },
+        { label: "Product Synced", value: "Verified", color: "#00E676" },
+        { label: "Tone Match", value: "98%", color: "#FFBD2E" }
+      ]
+    },
+    {
+      title: "2. AI UGC Video Presenter Generation",
+      agent: "Video & Copywriting Agent",
+      description: "Synthesizes realistic AI UGC presenter videos, audio waveforms, captions, and 15s video scripts tailored to product features.",
+      badge: "UGC RENDERED",
+      visualType: "ugc_video" as const,
+      metrics: [
+        { label: "Video Length", value: "15s UGC", color: "#00E676" },
+        { label: "Audio Waveform", value: "Synced", color: "#5A52FF" },
+        { label: "UGC Presenter", value: "Active", color: "#fff" }
+      ]
+    },
+    {
+      title: "3. Multi-Format Aspect Ratio Fitting",
+      agent: "Quality Review Agent",
+      description: "Automatically formats creatives into 9:16 Vertical (Instagram Reels/TikTok), 1:1 Square (Feed), and 16:9 Landscape for launch.",
+      badge: "APPROVED FOR LAUNCH",
+      visualType: "carousel" as const,
+      metrics: [
+        { label: "Aspect Ratios", value: "9:16, 1:1, 16:9", color: "#00E676" },
+        { label: "Ad Library Sync", value: "Instant", color: "#5A52FF" }
+      ]
+    }
+  ];
 
   return (
     <div style={{ animation: 'fadeIn 0.5s ease' }}>
@@ -71,6 +110,15 @@ export const FeatureCreativeStudio = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Motion Design Explainer Video */}
+      <FeatureExplainerVideo
+        title="AI Creative Studio Engine"
+        subtitle="How Raftra AI generates videos, UGC presenters, carousel banners, and ad hooks automatically."
+        badgeText="CREATIVE MOTION DEMO"
+        steps={creativeExplainerSteps}
+        ctaText="Unlock Creative Engine"
+      />
 
       {/* Interactive Visual Demo */}
       <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
