@@ -782,7 +782,7 @@ export function BrandDashboard() {
       }}>
         <div className="glow-card" style={{ maxWidth: '400px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
           <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', color: '#fff', borderRadius: '50%', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Sparkle size={24} />
+            <Sparkles size={24} />
           </div>
           <div>
             <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>Upgrade to Unlock Node</h3>
@@ -794,7 +794,7 @@ export function BrandDashboard() {
             {priceDisplay}<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
           </div>
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <GlowButton variant="glow" onClick={handleUnlock} style={{ width: '100%' }}>
+            <GlowButton variant="glow" onClick={() => handleUnlockNode(tabKey, priceUSD)} style={{ width: '100%' }}>
               Unlock with Balance (Active: {balanceDisplay})
             </GlowButton>
             {billingBalance < priceUSD && (
@@ -1039,18 +1039,33 @@ export function BrandDashboard() {
     }
   };
 
-  const handleFixPriority = (title: string) => {
-    setPriorities((prev) => prev.filter((p) => p.title !== title));
-    const timeStr = new Date().toLocaleTimeString();
-    setLogs((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        time: timeStr,
-        agent: 'Optimization Agent',
-        message: `Auto-fix action parsed successfully for priority node: "${title}"`,
-      },
-    ]);
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('currency');
+    navigate('/login');
+  };
+
+  const handleTopUpShortcut = (amount: number = 100) => {
+    setBillingBalance((prev) => prev + amount);
+    alert(`Successfully added credits to SaaS Account Balance!`);
+  };
+
+  const handleUnlockNode = (nodeName: string, priceUSD: number) => {
+    if (billingBalance >= priceUSD) {
+      setBillingBalance((prev) => prev - priceUSD);
+      setUnlockedNodes((prev) => [...prev, nodeName]);
+      alert(`Unlocked ${nodeName.toUpperCase()} Node!`);
+    } else {
+      alert(`Insufficient balance to unlock ${nodeName.toUpperCase()} Node.`);
+    }
+  };
+
+  const handleReindex = () => {
+    setIsReindexing(true);
+    setTimeout(() => {
+      setIsReindexing(false);
+      alert('Knowledge Graph reindexed successfully!');
+    }, 1500);
   };
 
 
@@ -1261,7 +1276,7 @@ export function BrandDashboard() {
               className="topbar-icon-button"
               style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--accent)', background: 'var(--accent-glow)', padding: '4px 10px', borderRadius: 'var(--radius-md)' }}
             >
-              <Sparkle size={12} />
+              <Sparkles size={12} />
               <span>AI Assistant</span>
             </button>
 
@@ -1292,7 +1307,7 @@ export function BrandDashboard() {
                   <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
                     You need to initialize your brand's AI knowledge graph before the agents can operate.
                   </p>
-                  <GlowButton variant="glow" onClick={() => setAppState('onboarding')}>
+                  <GlowButton variant="glow" onClick={() => navigate('/onboarding')}>
                     Run Quick Setup Wizard
                   </GlowButton>
                 </div>
