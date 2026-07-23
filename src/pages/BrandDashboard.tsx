@@ -17,7 +17,6 @@ import { GlowButton } from '../components/GlowButton';
 import '../App.css';
 
 import {
-  Cpu,
   LayoutDashboard,
   Sparkles,
   Megaphone,
@@ -25,16 +24,11 @@ import {
   BarChart3,
   Share2,
   Users2,
-  CheckCircle,
   Zap,
   Search,
   Bell,
-  BookOpen,
-  ToyBrick,
   Settings,
   ChevronDown,
-  Sparkle,
-  FileText,
   LogOut
 } from 'lucide-react';
 
@@ -59,6 +53,13 @@ interface CreativeAsset {
   type: string;
   status: 'pending_review' | 'approved' | 'rejected';
   imageUrl?: string;
+}
+
+interface BlogDraft {
+  id: string;
+  title: string;
+  keyword: string;
+  status: string;
 }
 
 export function BrandDashboard() {
@@ -1717,11 +1718,11 @@ export function BrandDashboard() {
                   <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Brand Configuration</h3>
                   <div className="form-group">
                     <label>Brand Name</label>
-                    <input type="text" value={brandProfile?.name || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, name: e.target.value }))} />
+                    <input type="text" value={brandProfile?.name || ''} onChange={(e) => setBrandProfile(prev => ({ ...prev, name: e.target.value }))} />
                   </div>
                   <div className="form-group">
                     <label>Brand Hue Color</label>
-                    <input type="text" value={brandProfile?.colors || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, colors: e.target.value }))} />
+                    <input type="text" value={brandProfile?.colors || ''} onChange={(e) => setBrandProfile(prev => ({ ...prev, colors: e.target.value }))} />
                   </div>
                   <GlowButton variant="glow" onClick={() => alert('Settings saved successfully!')} style={{ width: '100%' }}>
                     Save Settings
