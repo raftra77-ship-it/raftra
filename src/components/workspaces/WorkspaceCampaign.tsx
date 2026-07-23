@@ -28,7 +28,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
   const [integrations] = useState([
     { platform: 'Meta Ads', connected: true, accountName: 'Meta Sandbox (Act_208392)' },
     { platform: 'Google Ads', connected: true, accountName: 'Google Sandbox (902-8392)' },
-    { platform: 'TikTok Ads', connected: false, accountName: 'Disconnected' },
+    { platform: 'YouTube Ads', connected: true, accountName: 'YouTube Business (902-8392)' },
   ]);
 
   // Left Side State

@@ -9,7 +9,7 @@ export const FeatureInfluencer = () => {
     {
       title: "1. AI Creator Discovery & Fake Follower Audit",
       agent: "Creator Discovery Agent",
-      description: "Crawls Instagram, YouTube & TikTok to index creators by niche, engagement authenticity, and fake follower ratios.",
+      description: "Crawls Instagram, YouTube & Facebook to index creators by niche, engagement authenticity, and fake follower ratios.",
       badge: "VERIFIED CREATORS",
       visualType: "influencer_escrow" as const,
       metrics: [

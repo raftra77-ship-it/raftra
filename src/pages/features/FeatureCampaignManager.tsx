@@ -28,7 +28,7 @@ export const FeatureCampaignManager = () => {
     {
       title: "2. Easy 1-Click OAuth Publisher Gateway Deploy",
       agent: "Placement Strategy Agent",
-      description: "Pushes verified ad packages directly to Meta Ads Sandbox, Google Ads, and TikTok with human review control and 1-click connect.",
+      description: "Pushes verified ad packages directly to Meta Ads Sandbox, Google Ads, and YouTube Ads with human review control and 1-click connect.",
       badge: "DEPLOYED LIVE",
       visualType: "oauth_campaign" as const,
       metrics: [

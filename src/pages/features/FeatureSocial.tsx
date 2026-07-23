@@ -13,13 +13,13 @@ export const FeatureSocial = () => {
       visualType: "social_calendar" as const,
       metrics: [
         { label: "Posts Built", value: "30 Posts", color: "#00E676" },
-        { label: "Platforms", value: "IG, X, LinkedIn", color: "#5A52FF" }
+        { label: "Platforms", value: "IG, FB, YouTube", color: "#5A52FF" }
       ]
     },
     {
       title: "2. Cross-Channel Auto-Publishing",
       agent: "Scheduling Agent",
-      description: "Automatically publishes high-resolution visuals and copy to Instagram, Twitter/X, and LinkedIn at peak audience activity hours.",
+      description: "Automatically publishes high-resolution visuals and copy to Instagram, Facebook, and YouTube at peak audience activity hours.",
       badge: "LIVE PUBLISHED",
       visualType: "social_calendar" as const,
       metrics: [

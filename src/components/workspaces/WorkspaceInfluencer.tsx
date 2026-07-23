@@ -6,7 +6,7 @@ export interface InfluencerItemExtended {
   id: string;
   name: string;
   handle: string;
-  platform: 'TikTok' | 'Instagram' | 'YouTube';
+  platform: 'Facebook' | 'Instagram' | 'YouTube';
   niche: string;
   category: 'Nano' | 'Micro' | 'Macro';
   expectedPrice: string;
@@ -21,9 +21,9 @@ export interface InfluencerItemExtended {
 }
 
 const INITIAL_CREATORS: InfluencerItemExtended[] = [
-  { id: '1', name: 'Emma Wilson', handle: '@emmastyles', platform: 'Instagram', niche: 'Fashion & Lifestyle', category: 'Micro', expectedPrice: '₹15,000', deliverables: ['UGC Video', 'Story', 'Static Post'], followers: '45k', fakeFollowerScore: 2, rating: 4.8, reviewsCount: 34, recentWorks: ['Zara', 'H&M Summer Collection'], topComments: [{author: 'Brand Rep, Zara', text: 'Beautiful aesthetic and perfectly aligned with our brand voice.'}] },
-  { id: '2', name: 'Tech Bro Sam', handle: '@samtech', platform: 'YouTube', niche: 'SaaS Tech', category: 'Macro', expectedPrice: '₹45,000', deliverables: ['Dedicated Video', 'Community Post'], followers: '250k', fakeFollowerScore: 4, rating: 4.9, reviewsCount: 120, recentWorks: ['Notion', 'Figma Plugin Review', 'Raycast'], topComments: [{author: 'Growth Lead, Notion', text: 'Extremely clear technical breakdown. The audience loved the tutorial format.'}] },
-  { id: '3', name: 'Fitness Jess', handle: '@jessfit', platform: 'TikTok', niche: 'Health & Fitness', category: 'Nano', expectedPrice: '₹8,000', deliverables: ['UGC Video'], followers: '8k', fakeFollowerScore: 1, rating: 4.5, reviewsCount: 12, recentWorks: ['Gymshark', 'MyProtein'], topComments: [{author: 'Campaign Manager, Gymshark', text: 'Her fitness content is incredibly authentic. Our CPA dropped by 30%.'}] },
+  { id: '1', name: 'Sneha Roy', handle: '@snehastyles', platform: 'Instagram', niche: 'Fashion & Lifestyle', category: 'Micro', expectedPrice: '₹15,000', deliverables: ['UGC Video', 'Story', 'Static Post'], followers: '45k', fakeFollowerScore: 2, rating: 4.8, reviewsCount: 34, recentWorks: ['Nykaa', 'FabIndia'], topComments: [{author: 'Brand Rep, Nykaa', text: 'Beautiful aesthetic and perfectly aligned with our brand voice.'}] },
+  { id: '2', name: 'Vikram Malhotra', handle: '@vikramtech', platform: 'YouTube', niche: 'SaaS Tech', category: 'Macro', expectedPrice: '₹45,000', deliverables: ['Dedicated Video', 'Community Post'], followers: '250k', fakeFollowerScore: 4, rating: 4.9, reviewsCount: 120, recentWorks: ['Zoho', 'Razorpay Review'], topComments: [{author: 'Growth Lead, Razorpay', text: 'Extremely clear technical breakdown. The audience loved the tutorial format.'}] },
+  { id: '3', name: 'Ananya Patel', handle: '@ananyafit', platform: 'Instagram', niche: 'Health & Fitness', category: 'Nano', expectedPrice: '₹8,000', deliverables: ['UGC Video'], followers: '8k', fakeFollowerScore: 1, rating: 4.5, reviewsCount: 12, recentWorks: ['Cult.fit', 'Fast&Up'], topComments: [{author: 'Campaign Manager, Cult.fit', text: 'Her fitness content is incredibly authentic. Our CPA dropped by 30%.'}] },
 ];
 
 export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceId}) => {

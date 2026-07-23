@@ -4,7 +4,7 @@ import { GlowButton } from '../GlowButton';
 
 export interface SocialPostItem {
   id: string;
-  platform: 'Twitter' | 'LinkedIn' | 'Instagram';
+  platform: 'Instagram' | 'Facebook' | 'YouTube';
   caption: string;
   scheduledFor: string;
   status: 'draft' | 'scheduled' | 'published';
@@ -13,7 +13,7 @@ export interface SocialPostItem {
 interface WorkspaceSocialProps {
   posts: SocialPostItem[];
   onOpenReview: (itemId: string) => void;
-  onComposePost: (caption: string, platform: 'Twitter' | 'LinkedIn' | 'Instagram') => void;
+  onComposePost: (caption: string, platform: 'Instagram' | 'Facebook' | 'YouTube') => void;
 }
 
 export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
@@ -49,7 +49,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
           <Briefcase size={24} color="var(--primary)" /> Social Media Manager Hub
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Hire experienced human Social Media Managers. Raftra AI supports both you and your manager with powerful workflow automations.
+          Hire experienced Indian Social Media Managers. Raftra AI supports both you and your manager with powerful workflow automations.
         </p>
       </div>
 
@@ -113,13 +113,13 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
           
-          {/* PROFILE 1: Alex */}
+          {/* PROFILE 1: Aarav Sharma */}
           <div className="glow-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', border: isDeployed('alex') ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <img src="https://ui-avatars.com/api/?name=Alex+Carter&background=FF6B6B&color=fff&size=56" alt="Alex" style={{ borderRadius: '50%' }} />
+              <img src="https://ui-avatars.com/api/?name=Aarav+Sharma&background=FF6B6B&color=fff&size=56" alt="Aarav" style={{ borderRadius: '50%' }} />
               <div>
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Alex Carter <CheckCircle2 size={12} color="var(--success)" /></h4>
-                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>Gen-Z & Lifestyle Expert</div>
+                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Aarav Sharma <CheckCircle2 size={12} color="var(--success)" /></h4>
+                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>Gen-Z & D2C Growth Expert</div>
               </div>
             </div>
             
@@ -128,7 +128,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
                 <Award size={14} color="var(--accent)" /> <b>Experience:</b> 4 Years
               </div>
               <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Gymshark, RedBull, H&M
+                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Nykaa, Boat, Flipkart
               </div>
             </div>
             
@@ -138,7 +138,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <Search size={14} color="var(--primary)" /> Trend & Website Scraper
+                  <Search size={14} color="var(--primary)" /> Trend & Scraper Agent
                 </div>
                 <label className="toggle-switch">
                   <input type="checkbox" checked={alexToggles.planner} onChange={e => setAlexToggles(p => ({...p, planner: e.target.checked}))} disabled={isDeployed('alex')} />
@@ -167,25 +167,25 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', marginBottom: '8px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Monthly Retainer:</span>
-              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>$400<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>₹28,000<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
             </div>
 
             <GlowButton 
               variant="glow" 
-              onClick={() => { if (!isDeployed('alex')) setHiringManager({id: 'alex', name: 'Alex Carter', basePrice: 400}); }}
+              onClick={() => { if (!isDeployed('alex')) setHiringManager({id: 'alex', name: 'Aarav Sharma', basePrice: 28000}); }}
               style={{ marginTop: '16px', padding: '12px', width: '100%', background: isDeployed('alex') ? 'rgba(0,230,118,0.1)' : '', borderColor: isDeployed('alex') ? 'var(--success)' : '', color: isDeployed('alex') ? 'var(--success)' : '' }}
             >
               {isDeployed('alex') ? <><CheckCircle2 size={16} style={{marginRight: '8px'}} /> Hire Request Sent</> : 'Send Hire Request & Enable AI'}
             </GlowButton>
           </div>
 
-          {/* PROFILE 2: Sarah */}
+          {/* PROFILE 2: Priya Verma */}
           <div className="glow-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', border: isDeployed('sarah') ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <img src="https://ui-avatars.com/api/?name=Sarah+Jenkins&background=4facfe&color=fff&size=56" alt="Sarah" style={{ borderRadius: '50%' }} />
+              <img src="https://ui-avatars.com/api/?name=Priya+Verma&background=4facfe&color=fff&size=56" alt="Priya" style={{ borderRadius: '50%' }} />
               <div>
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Sarah Jenkins <CheckCircle2 size={12} color="var(--success)" /></h4>
-                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>B2B & Corporate Strategist</div>
+                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Priya Verma <CheckCircle2 size={12} color="var(--success)" /></h4>
+                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>Brand & Growth Strategist</div>
               </div>
             </div>
             
@@ -194,7 +194,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
                 <Award size={14} color="var(--accent)" /> <b>Experience:</b> 7 Years
               </div>
               <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Salesforce, Stripe, IBM
+                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Zomato, Swiggy, Razorpay
               </div>
             </div>
             
@@ -204,7 +204,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <Search size={14} color="var(--primary)" /> B2B Knowledge Scraper
+                  <Search size={14} color="var(--primary)" /> Brand Knowledge Scraper
                 </div>
                 <label className="toggle-switch">
                   <input type="checkbox" checked={sarahToggles.planner} onChange={e => setSarahToggles(p => ({...p, planner: e.target.checked}))} disabled={isDeployed('sarah')} />
@@ -233,25 +233,25 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', marginBottom: '8px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Monthly Retainer:</span>
-              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>$1,200<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>₹75,000<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
             </div>
 
             <GlowButton 
               variant="glow" 
-              onClick={() => { if (!isDeployed('sarah')) setHiringManager({id: 'sarah', name: 'Sarah Jenkins', basePrice: 1200}); }}
+              onClick={() => { if (!isDeployed('sarah')) setHiringManager({id: 'sarah', name: 'Priya Verma', basePrice: 75000}); }}
               style={{ marginTop: '16px', padding: '12px', width: '100%', background: isDeployed('sarah') ? 'rgba(0,230,118,0.1)' : '', borderColor: isDeployed('sarah') ? 'var(--success)' : '', color: isDeployed('sarah') ? 'var(--success)' : '' }}
             >
               {isDeployed('sarah') ? <><CheckCircle2 size={16} style={{marginRight: '8px'}} /> Hire Request Sent</> : 'Send Hire Request & Enable AI'}
             </GlowButton>
           </div>
 
-          {/* PROFILE 3: Max */}
+          {/* PROFILE 3: Rohan Malhotra */}
           <div className="glow-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', border: isDeployed('max') ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <img src="https://ui-avatars.com/api/?name=Max+Rivera&background=43e97b&color=111&size=56" alt="Max" style={{ borderRadius: '50%' }} />
+              <img src="https://ui-avatars.com/api/?name=Rohan+Malhotra&background=43e97b&color=111&size=56" alt="Rohan" style={{ borderRadius: '50%' }} />
               <div>
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Max Rivera <CheckCircle2 size={12} color="var(--success)" /></h4>
-                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>Community Manager</div>
+                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Rohan Malhotra <CheckCircle2 size={12} color="var(--success)" /></h4>
+                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>Community & Social Manager</div>
               </div>
             </div>
             
@@ -260,7 +260,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
                 <Award size={14} color="var(--accent)" /> <b>Experience:</b> 3 Years
               </div>
               <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Discord, Reddit, Web3 Brands
+                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Cred, Meesho, PhonePe
               </div>
             </div>
             
@@ -299,12 +299,12 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', marginBottom: '8px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Monthly Retainer:</span>
-              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>$650<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>₹45,000<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
             </div>
 
             <GlowButton 
               variant="glow" 
-              onClick={() => { if (!isDeployed('max')) setHiringManager({id: 'max', name: 'Max Rivera', basePrice: 650}); }}
+              onClick={() => { if (!isDeployed('max')) setHiringManager({id: 'max', name: 'Rohan Malhotra', basePrice: 45000}); }}
               style={{ marginTop: '16px', padding: '12px', width: '100%', background: isDeployed('max') ? 'rgba(0,230,118,0.1)' : '', borderColor: isDeployed('max') ? 'var(--success)' : '', color: isDeployed('max') ? 'var(--success)' : '' }}
             >
               {isDeployed('max') ? <><CheckCircle2 size={16} style={{marginRight: '8px'}} /> Hire Request Sent</> : 'Send Hire Request & Enable AI'}
@@ -329,7 +329,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
             </div>
 
             <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Final Negotiated Monthly Retainer ($)</label>
+              <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Final Negotiated Monthly Retainer (₹)</label>
               <input
                 type="number"
                 placeholder={`e.g. ${hiringManager.basePrice}`}
@@ -343,11 +343,14 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Total Retainer</span>
-                  <span style={{ color: '#fff' }}>${parseFloat(hirePrice).toFixed(2)}</span>
+                  <span style={{ color: '#fff' }}>₹{parseFloat(hirePrice).toLocaleString('en-IN')}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Raftra AI Fee (10%)</span>
-                  <span style={{ color: 'var(--primary)' }}>${(parseFloat(hirePrice) * 0.1).toFixed(2)}</span>
+                  <span style={{ color: 'var(--primary)' }}>₹{(parseFloat(hirePrice) * 0.1).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+            )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', fontSize: '14px', fontWeight: 600 }}>
                   <span style={{ color: '#fff' }}>Manager Payout (90%)</span>
