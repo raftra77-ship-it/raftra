@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Copy, CheckCircle, Database, UploadCloud, Check, Download, FileUp, Image as ImageIcon, Zap, AlertTriangle, ShieldCheck, RefreshCw, XCircle, DollarSign, BarChart3, Clock, Sparkles, TrendingUp, AlertCircle, ArrowRight, Activity } from 'lucide-react';
+import { Copy, CheckCircle, Database, UploadCloud, Check, Download, FileUp, Image as ImageIcon, Zap, AlertTriangle, ShieldCheck, RefreshCw, XCircle, DollarSign, BarChart3, Clock, Sparkles, TrendingUp, AlertCircle, ArrowRight, Activity, Rocket, Bot, ShoppingCart, CheckCircle2, OctagonX, Video, Camera } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 export interface CampaignItem {
@@ -48,7 +48,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
   const brandAutoPresets = [
     {
       id: 'festive-blast',
-      title: '🚀 Festive Conversion Blast',
+      title: 'Festive Conversion Blast',
+      iconType: 'rocket',
       badge: 'High ROAS Focus',
       description: 'Scale festive sale with state-level BOF retargeting and 15s video hook rotation.',
       params: {
@@ -65,7 +66,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     },
     {
       id: 'cart-recovery',
-      title: '🛒 Retargeting & Cart Recovery',
+      title: 'Retargeting & Cart Recovery',
+      iconType: 'cart',
       badge: 'High Conversion %',
       description: 'Capture high-intent abandoned carts with dynamic carousel ads & exit offers.',
       params: {
@@ -82,7 +84,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     },
     {
       id: 'lookalike-expansion',
-      title: '📈 1% Lookalike Brand Expansion',
+      title: '1% Lookalike Brand Expansion',
+      iconType: 'trend',
       badge: 'Scale Audience',
       description: 'Acquire new customers by targeting top 1% lookalikes of top 20% LTV buyers.',
       params: {
@@ -104,7 +107,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     {
       id: 'action-1',
       type: 'scale',
-      statusTag: '🟢 Scale (High Performance)',
+      statusTag: 'Scale (High Performance)',
+      icon: CheckCircle2,
       color: '#00e676',
       bgColor: 'rgba(0, 230, 118, 0.08)',
       borderColor: 'rgba(0, 230, 118, 0.3)',
@@ -117,7 +121,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     {
       id: 'action-2',
       type: 'creative',
-      statusTag: '🟡 Rotate Creative (Ad Fatigue Alert)',
+      statusTag: 'Rotate Creative (Ad Fatigue Alert)',
+      icon: AlertTriangle,
       color: '#ffb74d',
       bgColor: 'rgba(255, 183, 77, 0.08)',
       borderColor: 'rgba(255, 183, 77, 0.3)',
@@ -130,7 +135,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     {
       id: 'action-3',
       type: 'kill',
-      statusTag: '🔴 Pause Ad Set (CPA Limit Exceeded)',
+      statusTag: 'Pause Ad Set (CPA Limit Exceeded)',
+      icon: OctagonX,
       color: '#ff5252',
       bgColor: 'rgba(255, 82, 82, 0.08)',
       borderColor: 'rgba(255, 82, 82, 0.3)',
@@ -143,7 +149,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     {
       id: 'action-4',
       type: 'pivot',
-      statusTag: '🔄 Pivot Strategy (Audience Saturation)',
+      statusTag: 'Pivot Strategy (Audience Saturation)',
+      icon: RefreshCw,
       color: '#9c27b0',
       bgColor: 'rgba(156, 39, 176, 0.08)',
       borderColor: 'rgba(156, 39, 176, 0.3)',
@@ -181,7 +188,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     setStrategyParams(preset.params);
     setIsGenerating(true);
     setTimeout(() => {
-      setGeneratedStrategy(`### 🤖 AI Auto-Suggested Strategy: ${preset.title}\n\n**Campaign Focus**: ${preset.params.campaignFocus}\n**Objective**: ${preset.params.objective}\n**Total Budget**: $${preset.params.budget}\n**Target CPA**: $12.50\n\n**Audience Blueprint**:\n${preset.params.audience} targeting high-intent segments across ${preset.params.placement} (Granularity: ${preset.params.geoTargetingLevel}) at ${preset.params.funnel}.\n\n**Creative Rotation Logic**:\n- Rotate creatives every ${smartSettings.refreshIntervalDays} days.\n- **Auto-Kill**: CPA > $${smartSettings.cpaThreshold} or Frequency > ${smartSettings.frequencyCap}\n- **Skip Rate Threshold**: ${smartSettings.skipRateThreshold}%\n\n**Tracking Confirmed**:\n${preset.params.tracking}`);
+      setGeneratedStrategy(`### AI Auto-Suggested Strategy: ${preset.title}\n\n**Campaign Focus**: ${preset.params.campaignFocus}\n**Objective**: ${preset.params.objective}\n**Total Budget**: $${preset.params.budget}\n**Target CPA**: $12.50\n\n**Audience Blueprint**:\n${preset.params.audience} targeting high-intent segments across ${preset.params.placement} (Granularity: ${preset.params.geoTargetingLevel}) at ${preset.params.funnel}.\n\n**Creative Rotation Logic**:\n- Rotate creatives every ${smartSettings.refreshIntervalDays} days.\n- **Auto-Kill**: CPA > $${smartSettings.cpaThreshold} or Frequency > ${smartSettings.frequencyCap}\n- **Skip Rate Threshold**: ${smartSettings.skipRateThreshold}%\n\n**Tracking Confirmed**:\n${preset.params.tracking}`);
       setIsGenerating(false);
     }, 1000);
   };
@@ -337,7 +344,10 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
             >
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: action.color }}>{action.statusTag}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: action.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <action.icon size={14} color={action.color} />
+                    {action.statusTag}
+                  </span>
                   {action.executed && (
                     <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px' }}>Executed</span>
                   )}
@@ -395,36 +405,40 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Based on profile.json</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {brandAutoPresets.map((preset) => (
-                  <div 
-                    key={preset.id}
-                    onClick={() => handleApplyPreset(preset)}
-                    style={{ 
-                      padding: '10px 12px', 
-                      background: 'rgba(255,255,255,0.03)', 
-                      border: '1px solid var(--border)', 
-                      borderRadius: '8px', 
-                      cursor: 'pointer', 
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between'
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'rgba(90,82,255,0.1)'; }}
-                    onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                  >
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {preset.title}
-                        <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(90, 82, 255, 0.2)', color: '#fff', borderRadius: '4px' }}>{preset.badge}</span>
+                {brandAutoPresets.map((preset) => {
+                  const PresetIcon = preset.iconType === 'rocket' ? Rocket : preset.iconType === 'cart' ? ShoppingCart : TrendingUp;
+                  return (
+                    <div 
+                      key={preset.id}
+                      onClick={() => handleApplyPreset(preset)}
+                      style={{ 
+                        padding: '10px 12px', 
+                        background: 'rgba(255,255,255,0.03)', 
+                        border: '1px solid var(--border)', 
+                        borderRadius: '8px', 
+                        cursor: 'pointer', 
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'rgba(90,82,255,0.1)'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <PresetIcon size={14} color="var(--primary)" />
+                          {preset.title}
+                          <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(90, 82, 255, 0.2)', color: '#fff', borderRadius: '4px' }}>{preset.badge}</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{preset.description}</div>
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{preset.description}</div>
+                      <button style={{ padding: '4px 10px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                        Use AI Preset
+                      </button>
                     </div>
-                    <button style={{ padding: '4px 10px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                      Use AI Preset
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
             
@@ -628,9 +642,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
                       return (
                         <div key={i} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
                           {uploaded ? (
-                            <><span style={{ fontSize: '14px' }}>{uploaded.type === 'video' ? '🎬' : '📸'}</span> {uploaded.name}</>
+                            <>{uploaded.type === 'video' ? <Video size={14} color="var(--primary)" /> : <Camera size={14} color="var(--primary)" />} {uploaded.name}</>
                           ) : (
-                            <>📸 Asset #{ad}</>
+                            <><Camera size={14} color="var(--primary)" /> Asset #{ad}</>
                           )}
                           <span onClick={() => { setSelectedAds(prev => prev.filter(x => x !== ad)); setUploadedCreatives(prev => prev.filter(c => c.id !== ad)); }} style={{ cursor: 'pointer', color: 'var(--warning)' }}>✕</span>
                         </div>
@@ -801,7 +815,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
               ) : (
                 creativeAssets.map(asset => (
                   <div key={asset.id} onClick={() => { setSelectedAds(prev => [...new Set([...prev, String(asset.id)])]); setIsLibraryOpen(false); }} style={{ padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', cursor: 'pointer', border: '1px solid var(--border)', textAlign: 'center', transition: 'all 0.2s ease' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--primary)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}>
-                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>🖼️</div>
+                    <ImageIcon size={32} color="var(--primary)" style={{ margin: '0 auto 8px', display: 'block' }} />
                     <div style={{ fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{asset.headline || `Ad #${asset.id}`}</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{asset.type}</div>
                   </div>
