@@ -2,8 +2,44 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Users2, Bot, CheckCircle2, ShieldCheck, UserCheck, Star, Activity, MapPin } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
+import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
 
 export const FeatureInfluencer = () => {
+  const influencerExplainerSteps = [
+    {
+      title: "1. AI Creator Discovery & Fake Follower Audit",
+      agent: "Creator Discovery Agent",
+      description: "Crawls Instagram, YouTube & TikTok to index creators by niche, engagement authenticity, and fake follower ratios.",
+      badge: "VERIFIED CREATORS",
+      visualType: "influencer_escrow" as const,
+      metrics: [
+        { label: "Authenticity", value: "98%", color: "#00E676" },
+        { label: "Fake Follower Check", value: "Passed", color: "#5A52FF" }
+      ]
+    },
+    {
+      title: "2. Brand Fit Scoring & Easy Hiring",
+      agent: "Pricing Intelligence Agent",
+      description: "Calculates an instant Brand Fit Score and calculates fair market rate recommendations for easy creator hiring.",
+      badge: "SCORED MATCH",
+      visualType: "influencer_escrow" as const,
+      metrics: [
+        { label: "Brand Fit Score", value: "96 / 100", color: "#00E676" },
+        { label: "Base Rate", value: "₹15,000 / Reel", color: "#FFBD2E" }
+      ]
+    },
+    {
+      title: "3. Easy Direct Escrow Deal Lock & Content Delivery",
+      agent: "Campaign Collaboration Agent",
+      description: "Locks deal contracts securely in escrow with automated platform commission processing and direct video deliverable review.",
+      badge: "DEAL LOCKED",
+      visualType: "influencer_escrow" as const,
+      metrics: [
+        { label: "Escrow Status", value: "Secured", color: "#00E676" },
+        { label: "Platform Fee", value: "10%", color: "#5A52FF" }
+      ]
+    }
+  ];
   return (
     <div style={{ animation: 'fadeIn 0.5s ease' }}>
       
@@ -62,6 +98,15 @@ export const FeatureInfluencer = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Motion Design Explainer Video */}
+      <FeatureExplainerVideo
+        title="Influencer Marketplace & AI Matching"
+        subtitle="How Raftra AI discovers creators, verifies real audiences, and locks escrow deals."
+        badgeText="CREATOR MOTION DEMO"
+        steps={influencerExplainerSteps}
+        ctaText="Unlock Influencer Marketplace"
+      />
 
       {/* Interactive Visual Demo */}
       <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden', maxWidth: '800px', margin: '0 auto' }}>
