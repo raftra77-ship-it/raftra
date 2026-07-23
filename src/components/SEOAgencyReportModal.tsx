@@ -164,7 +164,7 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, item, o
                     AWAITING HUMAN APPROVAL
                   </span>
                   <h1 style={{ fontSize: '28px', fontWeight: 600, color: 'white', marginBottom: '8px' }}>{title || item.title}</h1>
-                  <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{subtitle || 'Review the generated strategy below before deploying.'}</p>
+                  <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{subtitle || 'Review the generated strategy below before approving.'}</p>
                 </div>
                 <button
                   onClick={onClose}
@@ -263,9 +263,11 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, item, o
                 }}>
                   <Zap size={24} style={{ color: '#4285F4' }} />
                   <div>
-                    <h4 style={{ fontSize: '14px', color: 'white', marginBottom: '4px' }}>Ready for Deployment</h4>
+                    <h4 style={{ fontSize: '14px', color: 'white', marginBottom: '4px' }}>Ready to Approve</h4>
                     <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      Approving this strategy will instruct the Publishing Agent to immediately execute redirects, schema injections, and meta updates via API.
+                      Approving accepts this strategy and saves it. Nothing is published to your site
+                      automatically — connect a site (GitHub, WordPress or Shopify) in Content Studio to
+                      apply the changes, with your final review kept in place.
                     </p>
                   </div>
                 </div>
@@ -312,7 +314,7 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, item, o
                   onClick={handleDeploy}
                   style={{ padding: '12px 32px' }}
                 >
-                  Deploy to Production
+                  Approve Strategy
                 </GlowButton>
               </div>
             </div>

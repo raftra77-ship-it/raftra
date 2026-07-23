@@ -127,6 +127,14 @@ export function BrandDashboard() {
   // Review Drawer state
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [activeReviewItem, setActiveReviewItem] = useState<ReviewItem | null>(null);
+  // Brief confirmation banner shown after an approval (the review modal closes on approve,
+  // so this is what tells the user something actually happened).
+  const [approveToast, setApproveToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!approveToast) return;
+    const t = setTimeout(() => setApproveToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [approveToast]);
 
   // Creative Studio Assets
   const [creativeAssets, setCreativeAssets] = useState<CreativeAsset[]>([]);
@@ -896,22 +904,21 @@ export function BrandDashboard() {
                 ...blog,
                 title: updatedData.headline,
                 excerpt: updatedData.bodyText,
-                status: 'published',
+                // Approved accepts the strategy — it does NOT publish to the site, so
+                // don't label it "published".
+                status: 'approved',
               }
             : blog
         )
       );
-      // Trigger the remaining backend pipeline (Publishing Agent -> Reporting Agent)
+      // Trigger the remaining backend pipeline (Publishing Agent -> Reporting Agent),
+      // which reports honestly against the workspace's real site-connector state.
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
       fetch(`/api/agents/${workspaceId}/seo/publish`, { method: 'POST', headers })
         .catch(err => console.error("Error triggering SEO publish:", err));
-        
-      // Simulate post-publish reporting and metrics bump locally
-      setMetrics((prev) => ({
-        ...prev,
-        seoVisibility: Math.min(100, prev.seoVisibility + 2),
-      }));
+      setApproveToast('SEO strategy approved. Connect a site (Content Studio) to apply the changes — nothing was published automatically.');
+      // (No metric bump: visibility must come from measured data, not from approving.)
     } else if (id.startsWith('geo-')) {
       setSeoBlogs((prev) =>
         prev.map((blog) =>
@@ -920,7 +927,8 @@ export function BrandDashboard() {
                 ...blog,
                 title: updatedData.headline || updatedData.title,
                 excerpt: updatedData.bodyText,
-                status: 'published',
+                // Approved, not published — the GEO plan still has to be applied.
+                status: 'approved',
               }
             : blog
         )
@@ -929,11 +937,8 @@ export function BrandDashboard() {
       const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
       fetch(`/api/agents/${workspaceId}/geo/publish`, { method: 'POST', headers })
         .catch(err => console.error("Error triggering GEO publish:", err));
-        
-      setMetrics((prev) => ({
-        ...prev,
-        aiVisibility: Math.min(100, prev.aiVisibility + 3),
-      }));
+      setApproveToast('GEO strategy approved. Connect a site (Content Studio) to apply the changes — nothing was published automatically.');
+      // (No aiVisibility bump: that must come from the measured LLM recall probe.)
     } else if (id.startsWith('sp-')) {
       setSocialPosts((prev) =>
         prev.map((post) =>
@@ -959,7 +964,7 @@ export function BrandDashboard() {
         id: String(Date.now()),
         time: timeStr,
         agent: 'Optimization Agent',
-        message: `Approved parameter change for asset token ${id}. Dispatched variables update to sandbox.`,
+        message: `Approved item ${id}. Saved for applying via a connected site.`,
       },
     ]);
   };
@@ -1836,6 +1841,15 @@ export function BrandDashboard() {
             )}
           </div>
         </>
+      )}
+
+      {/* Approval confirmation banner */}
+      {approveToast && (
+        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 3000, maxWidth: '520px', background: 'rgba(20,22,30,0.97)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '12px', padding: '14px 18px', color: '#fff', fontSize: '13px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ color: '#22C55E', fontSize: '18px' }}>✓</span>
+          <span style={{ lineHeight: 1.5 }}>{approveToast}</span>
+          <button onClick={() => setApproveToast(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+        </div>
       )}
 
       {/* Review Drawer slide panel overlay */}

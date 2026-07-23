@@ -13,6 +13,8 @@ class SEOState(TypedDict):
     status: str
     audit_score: int
     crawl_error: str
+    site_signals: dict
+    audit: dict
 
     # Placeholder fields for future LLM integration
     crawl_data: dict
@@ -81,6 +83,28 @@ def analyze_markdown(md: str, target_url: str) -> dict:
         "thin_content": word_count < 300,
     }
 
+async def _fetch_site_signals(target_url: str) -> dict:
+    """Measure site-level facts used by the audit (HTTPS, robots.txt, sitemap.xml).
+    Everything here is an observed HTTP result — never assumed."""
+    import httpx
+    p = _urlparse(target_url)
+    origin = f"{p.scheme}://{p.netloc}"
+    signals = {"https": p.scheme == "https", "origin": origin}
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        for key, path in (("robots_txt", "/robots.txt"), ("sitemap", "/sitemap.xml")):
+            try:
+                r = await client.get(origin + path)
+                body = r.text if r.status_code == 200 else ""
+                entry = {"found": r.status_code == 200 and bool(body.strip()),
+                         "status": r.status_code}
+                if key == "robots_txt" and body:
+                    entry["disallow_all"] = bool(_re.search(r"(?mi)^\s*Disallow:\s*/\s*$", body))
+                signals[key] = entry
+            except Exception as e:
+                signals[key] = {"found": False, "status": None, "error": str(e)[:80]}
+    return signals
+
+
 async def crawler_node(state: SEOState) -> SEOState:
     state["current_node"] = "Crawler Agent"
     import httpx
@@ -111,15 +135,35 @@ async def crawler_node(state: SEOState) -> SEOState:
                 res = await client.post(
                     "https://api.firecrawl.dev/v1/scrape",
                     headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
-                    json={"url": state['target_url'], "formats": ["markdown"]},
+                    # rawHtml is needed to audit metadata, schema and accessibility — those
+                    # facts do not survive the markdown conversion.
+                    json={"url": state['target_url'], "formats": ["markdown", "rawHtml"]},
                 )
             if res.status_code == 200:
-                markdown = (res.json().get("data", {}).get("markdown", "") or "")
+                data = res.json().get("data", {}) or {}
+                markdown = (data.get("markdown", "") or "")
                 if markdown.strip():
+                    html = data.get("rawHtml") or data.get("html") or ""
+                    meta = data.get("metadata", {}) or {}
                     # Keep the FULL page. (Previously truncated to 4000 chars, which crippled
                     # the analysis and falsely flagged large pages as "thin content".)
-                    state["crawl_data"] = {"markdown": markdown, "full_length": len(markdown)}
-                    ok = f"Crawled {len(markdown):,} characters from {state['target_url']}."
+                    state["crawl_data"] = {"markdown": markdown, "html": html,
+                                           "full_length": len(markdown), "status_code": meta.get("statusCode")}
+                    try:
+                        state["site_signals"] = await _fetch_site_signals(state["target_url"])
+                        state["site_signals"]["status_code"] = meta.get("statusCode")
+                    except Exception as e:
+                        state["site_signals"] = {"error": str(e)[:100]}
+                    # Core Web Vitals (Performance). Failure is fine — the auditor then reports
+                    # Performance as "Not Verified" rather than estimating it.
+                    try:
+                        from core.pagespeed import fetch_core_web_vitals
+                        psi = await fetch_core_web_vitals(state["target_url"])
+                        if psi:
+                            state["site_signals"]["psi"] = psi
+                    except Exception as e:
+                        print(f"PageSpeed step skipped: {e}")
+                    ok = f"Crawled {len(markdown):,} chars (+{len(html):,} HTML) from {state['target_url']}."
                     state["logs"].append(ok)
                     await manager.broadcast_agent_log("SEO Agent", ok, "running")
                     await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
@@ -144,8 +188,31 @@ async def technical_seo_node(state: SEOState) -> SEOState:
     state["current_node"] = "Technical SEO Agent"
     await manager.broadcast_node_update("seo_geo", "Technical SEO Agent", "running")
     # REAL analysis: compute on-page metrics from the crawled content.
-    metrics = analyze_markdown(state.get("crawl_data", {}).get("markdown", ""), state["target_url"])
+    crawl = state.get("crawl_data", {}) or {}
+    metrics = analyze_markdown(crawl.get("markdown", ""), state["target_url"])
     state["content_metrics"] = metrics
+
+    # Evidence-based scoring: every point is derived from a real measurement. Anything we
+    # cannot measure is marked "Not Verified" and excluded rather than estimated.
+    try:
+        from core.seo_scoring import build_audit
+        audit = build_audit(
+            url=state["target_url"],
+            html=crawl.get("html", "") or "",
+            markdown=crawl.get("markdown", "") or "",
+            metrics=metrics,
+            signals=state.get("site_signals", {}) or {},
+        )
+        state["audit"] = audit
+        state["audit_score"] = int(round(audit["seo"]["score_100"]))
+        await manager.broadcast_agent_log(
+            "SEO Agent",
+            f"Scored SEO {audit['seo']['score_100']}/100 and GEO {audit['geo']['score_100']}/100 "
+            f"from measured evidence (not estimated).", "running")
+    except Exception as e:
+        print(f"Scoring failed: {e}")
+        state["audit"] = {"error": str(e)[:200]}
+
     msg = (f"Technical audit: {metrics['word_count']} words, {metrics['h1_count']} H1 / {metrics['h2_count']} H2, "
            f"{metrics['image_count']} images ({metrics['images_missing_alt']} missing alt)"
            + (", THIN CONTENT (<300 words)" if metrics["thin_content"] else ""))
@@ -200,6 +267,33 @@ async def backlink_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("seo_geo", "Backlink Agent", "completed")
     return state
 
+def _scorecard_markdown(audit: dict) -> str:
+    """Deterministic scorecard rendered straight from the computed audit — no LLM, so the
+    published numbers can never be fabricated or drift."""
+    if not audit or "seo" not in audit:
+        return ""
+    lines = ["## Scorecard (computed from measured evidence)", ""]
+    for key in ("seo", "geo"):
+        sec = audit.get(key) or {}
+        if not sec:
+            continue
+        lines.append(f"**{sec['label']} Score: {sec['score_100']}/100**")
+        for c in sec.get("categories", []):
+            val = "Not Verified" if c.get("status") != "verified" else f"{c['score']}/{c['max']}"
+            lines.append(f"- {c['name']}: {val}")
+        lines.append("")
+        lines.append(f"_Formula:_ `{sec.get('formula','')}`")
+        lines.append("")
+    lines.append(f"**Overall Website Health: {audit.get('overall_health')}/100**")
+    top = audit.get("top_5_issues") or []
+    if top:
+        lines.append("")
+        lines.append("**Top 5 Issues**")
+        for i, it in enumerate(top, 1):
+            lines.append(f"{i}. **[{it['severity']}]** {it['area']} — {it['issue']}")
+    return "\n".join(lines)
+
+
 async def schema_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "Schema Agent"
     msg = "Generating comprehensive SEO & AEO Strategy Report using LLM..."
@@ -249,14 +343,17 @@ async def schema_agent_node(state: SEOState) -> SEOState:
         print(f"LLM Error in seo_geo: {e}")
         mock_report = f"# Comprehensive SEO & AEO Strategy Report\nTarget: {state['target_url']}\n[LLM Generation Failed]"
     
-    state["audit_score"] = 92
+    # audit_score was already set from the real computed score in technical_seo_node —
+    # do NOT overwrite it with a hardcoded number. Prepend the deterministic scorecard so
+    # the report's headline numbers are guaranteed correct regardless of the narrative.
     state["status"] = "pending_approval"
-    state["report"] = mock_report
+    scorecard = _scorecard_markdown(state.get("audit") or {})
+    state["report"] = (scorecard + "\n\n---\n\n" + mock_report) if scorecard else mock_report
     import json
     await manager.broadcast(json.dumps({
         "type": "new_seo_report",
         "title": f"Technical SEO & Content Strategy for {state['target_url']}",
-        "excerpt": mock_report.replace('{target_url}', state['target_url']),
+        "excerpt": state["report"].replace('{target_url}', state['target_url']),
         "keywords": "SEO, AEO, Cannibalization, Technical Audit, Schema Markup"
     }))
     
@@ -328,11 +425,17 @@ def _persist_audit(workspace_id: int, pipeline: str, target_url: str, result: di
         from database import SessionLocal
         import models
         metrics = result.get("content_metrics") or {}
+        kd = {"pipeline": pipeline, "target_url": target_url, "metrics": metrics}
+        # Also store the already-computed structured audit (scores/categories/issues) so the
+        # dashboard can render it directly instead of re-parsing the report markdown.
+        audit = result.get("audit")
+        if isinstance(audit, dict) and "seo" in audit:
+            kd["audit"] = audit
         db = SessionLocal()
         db.add(models.SEOAudit(
             workspace_id=workspace_id,
             score=result.get("audit_score", 0) or 0,
-            keywords_data={"pipeline": pipeline, "target_url": target_url, "metrics": metrics},
+            keywords_data=kd,
             recommendation=(result.get("report") or "")[:20000],
             status="COMPLETED",
         ))

@@ -55,10 +55,26 @@ def _require_workspace(workspace_id: int, db: Session, current_user: models.User
     return ws
 
 
+def _looks_like_real_topic(topic: str) -> bool:
+    """Reject obvious junk (random key-mashing like 'fgg', 'asdfgh') before spending an
+    LLM call. Not a spell-checker — just enough to catch nonsense."""
+    import re as _re
+    t = (topic or "").strip()
+    if len(t) < 4:
+        return False
+    words = _re.findall(r"[A-Za-z][A-Za-z'-]*", t)
+    if not words:
+        return False
+    # At least one word must look word-like: >=3 letters AND contain a vowel.
+    return any(len(w) >= 3 and _re.search(r"[aeiou]", w.lower()) for w in words)
+
+
 @router.post("/{workspace_id}/content/generate")
 async def generate_content(workspace_id: int, req: schemas.ContentGenerateRequest, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     """Kick off content generation. Produces a ContentDraft (pending_review) grounded in the brand KB."""
     _require_workspace(workspace_id, db, current_user)
+    if not _looks_like_real_topic(req.topic):
+        raise HTTPException(status_code=422, detail="Please enter a real topic or keyword (a few words describing what to write about).")
     from agents.content_studio import run_content_generation
     background_tasks.add_task(run_content_generation, workspace_id, req.topic, req.content_type or "blog")
     return {"status": "success", "message": "Content generation started. It will appear in the review queue when ready."}
@@ -89,6 +105,24 @@ def review_content(workspace_id: int, draft_id: int, req: schemas.ContentReviewR
     if action not in mapping:
         raise HTTPException(status_code=400, detail="action must be approve, reject or publish")
     draft.status = mapping[action]
+    db.commit()
+    return {"status": "success", "draft_id": draft_id, "new_status": draft.status}
+
+
+@router.post("/{workspace_id}/content/{draft_id}/edit")
+def edit_content(workspace_id: int, draft_id: int, req: schemas.ContentEditRequest, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Let the human edit a draft's title/body (and reset it to pending_review so the
+    edited version is re-approved before it can be sent to a site)."""
+    _require_workspace(workspace_id, db, current_user)
+    draft = db.query(models.ContentDraft).filter(models.ContentDraft.id == draft_id, models.ContentDraft.workspace_id == workspace_id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if req.title is not None and req.title.strip():
+        draft.title = req.title.strip()
+    if req.body is not None:
+        draft.body = req.body
+    # An edited draft goes back to pending so the new version is reviewed, not the old one.
+    draft.status = "pending_review"
     db.commit()
     return {"status": "success", "draft_id": draft_id, "new_status": draft.status}
 
@@ -317,6 +351,28 @@ def get_seo_audits(workspace_id: int, db: Session = Depends(database.get_db), cu
         raise HTTPException(status_code=403, detail="Workspace access denied")
     audits = db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id).all()
     return audits
+
+
+@router.get("/{workspace_id}/seo/latest-audit")
+def latest_audit(workspace_id: int, db: Session = Depends(database.get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    """Read-only: the most recent run's structured audit (SEO/GEO scores, category
+    breakdown, top issues) for the dashboard. Nothing is computed here — it just returns
+    what the pipeline already produced."""
+    _require_workspace(workspace_id, db, current_user)
+    rows = (db.query(models.SEOAudit)
+              .filter(models.SEOAudit.workspace_id == workspace_id)
+              .order_by(models.SEOAudit.created_at.desc()).all())
+    latest_with_audit = next((r for r in rows if (r.keywords_data or {}).get("audit")), None)
+    if not latest_with_audit:
+        return {"has_audit": False, "target_url": None, "created_at": None, "audit": None}
+    kd = latest_with_audit.keywords_data or {}
+    return {
+        "has_audit": True,
+        "target_url": kd.get("target_url"),
+        "created_at": latest_with_audit.created_at.isoformat() if latest_with_audit.created_at else None,
+        "audit": kd.get("audit"),
+    }
 
 
 @router.get("/{workspace_id}/seo/comparison")

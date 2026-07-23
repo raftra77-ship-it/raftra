@@ -118,7 +118,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
-import auth, models, database, payments, agent_routes, workspace_routes
+import auth, models, database, payments, agent_routes, workspace_routes, connector_routes
 
 # Create tables in db (in production, use alembic for migrations)
 models.Base.metadata.create_all(bind=database.engine)
@@ -127,3 +127,4 @@ app.include_router(auth.router)
 app.include_router(payments.router)
 app.include_router(agent_routes.router)
 app.include_router(workspace_routes.router)
+app.include_router(connector_routes.router)

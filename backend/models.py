@@ -275,3 +275,86 @@ class AuthEvent(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
     user = relationship("User")
+
+
+class SearchConsoleConnection(Base):
+    """Per-workspace Google Search Console connection. Stores a long-lived refresh
+    token that mints short-lived access tokens for reading search performance."""
+    __tablename__ = "search_console_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    connected_email = Column(String, nullable=True)
+    site_url = Column(String, nullable=True)        # selected GSC property, e.g. https://site.com/
+    refresh_token = Column(String, nullable=True)   # long-lived; mints access tokens
+    access_token = Column(String, nullable=True)
+    token_expiry = Column(DateTime, nullable=True)
+    scopes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class GitHubConnection(Base):
+    """Per-workspace GitHub connection used to apply approved changes to the site's
+    repo (commit content/SEO files as a pull request). One connection per workspace.
+
+    NOTE: the access token is stored as-is; in production encrypt it at rest.
+    """
+    __tablename__ = "github_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    access_token = Column(String, nullable=True)
+    login = Column(String, nullable=True)            # GitHub username
+    repo_full_name = Column(String, nullable=True)   # "owner/repo"
+    default_branch = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class MetaAdsConnection(Base):
+    """Per-workspace Meta (Facebook/Instagram) Ads connection. Stores an access token
+    plus the selected ad account so campaigns can be created against it."""
+    __tablename__ = "meta_ads_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    access_token = Column(String, nullable=True)
+    token_expiry = Column(DateTime, nullable=True)
+    connected_name = Column(String, nullable=True)   # connected Meta user
+    ad_account_id = Column(String, nullable=True)    # selected act_ id (without prefix)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class ShopifyConnection(Base):
+    """Per-workspace Shopify store connection used to publish approved content as a
+    blog article. Articles are created UNPUBLISHED so a human still presses publish.
+
+    NOTE: the access token is stored as-is; in production encrypt it at rest.
+    """
+    __tablename__ = "shopify_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    shop_domain = Column(String, nullable=True)      # "my-store.myshopify.com"
+    shop_name = Column(String, nullable=True)
+    access_token = Column(String, nullable=True)
+    blog_id = Column(Integer, nullable=True)         # selected blog to publish into
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class WordPressConnection(Base):
+    """Per-workspace WordPress connection. Uses an Application Password (WP 5.6+)
+    rather than OAuth, which is what self-hosted sites support out of the box.
+    Posts are created as DRAFTS so a human still presses publish.
+
+    NOTE: the application password is stored as-is; in production encrypt it at rest.
+    """
+    __tablename__ = "wordpress_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    site_url = Column(String, nullable=True)         # "https://example.com"
+    site_name = Column(String, nullable=True)
+    username = Column(String, nullable=True)
+    app_password = Column(String, nullable=True)
+    display_name = Column(String, nullable=True)     # connected WP user
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

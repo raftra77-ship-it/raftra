@@ -192,3 +192,11 @@ class AgentTaskResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ContentEditRequest(BaseModel):
+    """User edits to a generated content draft before approval. Both fields optional
+    so the frontend can send only what changed; editing sends the draft back to
+    pending_review."""
+    title: Optional[str] = None
+    body: Optional[str] = None
