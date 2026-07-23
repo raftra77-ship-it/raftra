@@ -30,6 +30,7 @@ import {
   Bell,
   BookOpen,
   ToyBrick,
+  FileText,
   Settings,
   ChevronDown,
   LogOut
