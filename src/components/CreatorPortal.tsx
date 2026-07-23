@@ -246,7 +246,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               <div className="glow-card" style={{ padding: '24px' }}>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>Total Escrowed Funds</div>
                 <div style={{ fontSize: '32px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <DollarSign color="var(--success)" size={28}/> 1,250.00
+                  <span style={{ color: 'var(--success)', fontSize: '28px', fontWeight: 800 }}>₹</span> 98,500
                 </div>
               </div>
               <div className="glow-card" style={{ padding: '24px' }}>

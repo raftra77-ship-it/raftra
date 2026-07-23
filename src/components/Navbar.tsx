@@ -241,7 +241,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
             if (onOpenCreatorPortal) {
               onOpenCreatorPortal();
             } else {
-              navigate('/');
+              navigate('/creator-dashboard');
             }
           }}
           className="creator-portal-btn"
