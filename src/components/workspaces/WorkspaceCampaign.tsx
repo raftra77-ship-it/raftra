@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Copy, CheckCircle, Database, UploadCloud, Check, Download, FileUp, Image as ImageIcon, Zap, AlertTriangle, ShieldCheck, RefreshCw, XCircle, DollarSign, BarChart3, Clock } from 'lucide-react';
+import { Copy, CheckCircle, Database, UploadCloud, Check, Download, FileUp, Image as ImageIcon, Zap, AlertTriangle, ShieldCheck, RefreshCw, XCircle, DollarSign, BarChart3, Clock, Sparkles, TrendingUp, AlertCircle, ArrowRight, Activity } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 export interface CampaignItem {
@@ -43,6 +43,117 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     schedule: '14 Days',
     tracking: 'utm_source=ai_agent'
   });
+
+  // ─── Brand AI Auto-Suggest Presets ───
+  const brandAutoPresets = [
+    {
+      id: 'festive-blast',
+      title: '🚀 Festive Conversion Blast',
+      badge: 'High ROAS Focus',
+      description: 'Scale festive sale with state-level BOF retargeting and 15s video hook rotation.',
+      params: {
+        campaignFocus: 'Diwali Festive Sale',
+        objective: 'Conversions',
+        budget: 800,
+        audience: 'Festive Shoppers & Tech Enthusiasts',
+        funnel: 'Bottom of Funnel',
+        geoTargetingLevel: 'State-Level',
+        placement: 'Maharashtra, Delhi, Karnataka, Gujarat',
+        schedule: '14 Days',
+        tracking: 'utm_source=ai_agent_festive'
+      }
+    },
+    {
+      id: 'cart-recovery',
+      title: '🛒 Retargeting & Cart Recovery',
+      badge: 'High Conversion %',
+      description: 'Capture high-intent abandoned carts with dynamic carousel ads & exit offers.',
+      params: {
+        campaignFocus: '7-Day Abandoned Cart Recovery',
+        objective: 'Conversions',
+        budget: 350,
+        audience: 'Added to Cart (Last 7 Days) - No Purchase',
+        funnel: 'Bottom of Funnel',
+        geoTargetingLevel: 'City-Level',
+        placement: 'Metro Cities (Mumbai, Bangalore, Delhi NCR)',
+        schedule: 'Ongoing / Evergreen',
+        tracking: 'utm_source=ai_agent_retargeting'
+      }
+    },
+    {
+      id: 'lookalike-expansion',
+      title: '📈 1% Lookalike Brand Expansion',
+      badge: 'Scale Audience',
+      description: 'Acquire new customers by targeting top 1% lookalikes of top 20% LTV buyers.',
+      params: {
+        campaignFocus: 'Lookalike Customer Acquisition',
+        objective: 'Lead Generation',
+        budget: 600,
+        audience: 'Top 1% LAL of Past Buyers + Interest in Premium Tech',
+        funnel: 'Top of Funnel',
+        geoTargetingLevel: 'Country-Level',
+        placement: 'India (Tier 1 & Tier 2)',
+        schedule: '30 Days',
+        tracking: 'utm_source=ai_agent_lal'
+      }
+    }
+  ];
+
+  // ─── Daily AI Performance & Action Feed State ───
+  const [dailyActions, setDailyActions] = useState([
+    {
+      id: 'action-1',
+      type: 'scale',
+      statusTag: '🟢 Scale (High Performance)',
+      color: '#00e676',
+      bgColor: 'rgba(0, 230, 118, 0.08)',
+      borderColor: 'rgba(0, 230, 118, 0.3)',
+      campaignName: 'Diwali Festive Sale (Meta Ads)',
+      metrics: 'ROAS: 4.2x | CPA: $11.20 | Spend: $420/$800',
+      recommendation: 'Performing 38% above ROAS target. Recommend +25% daily budget scaling.',
+      actionText: 'Scale Budget +25%',
+      executed: false,
+    },
+    {
+      id: 'action-2',
+      type: 'creative',
+      statusTag: '🟡 Rotate Creative (Ad Fatigue Alert)',
+      color: '#ffb74d',
+      bgColor: 'rgba(255, 183, 77, 0.08)',
+      borderColor: 'rgba(255, 183, 77, 0.3)',
+      campaignName: 'Summer Apparel Retargeting',
+      metrics: 'Frequency: 4.1x | CTR: 0.8% (-35%) | Skip: 74%',
+      recommendation: 'Ad frequency reached 4.1x with high skip rate. Recommend creative rotation.',
+      actionText: 'Rotate Creative',
+      executed: false,
+    },
+    {
+      id: 'action-3',
+      type: 'kill',
+      statusTag: '🔴 Pause Ad Set (CPA Limit Exceeded)',
+      color: '#ff5252',
+      bgColor: 'rgba(255, 82, 82, 0.08)',
+      borderColor: 'rgba(255, 82, 82, 0.3)',
+      campaignName: 'Broad TOF Awareness (Google Ads)',
+      metrics: 'CPA: $48.50 (Cap: $45.00) | 0 Conv (24h)',
+      recommendation: 'CPA breached $45 safety threshold. Auto-kill rule triggered.',
+      actionText: 'Pause Ad Set',
+      executed: false,
+    },
+    {
+      id: 'action-4',
+      type: 'pivot',
+      statusTag: '🔄 Pivot Strategy (Audience Saturation)',
+      color: '#9c27b0',
+      bgColor: 'rgba(156, 39, 176, 0.08)',
+      borderColor: 'rgba(156, 39, 176, 0.3)',
+      campaignName: 'State-Level Scale Campaign',
+      metrics: 'MH ROI: 1.5x | KA ROI: 3.8x',
+      recommendation: 'Regional saturation detected. Recommend 40% budget reallocation to high-ROI zones.',
+      actionText: 'Reallocate Budget',
+      executed: false,
+    }
+  ]);
   
   const [generatedStrategy, setGeneratedStrategy] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -65,6 +176,19 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
   const importFileRef = useRef<HTMLInputElement>(null);
   // Upload creative ref
   const creativeFileRef = useRef<HTMLInputElement>(null);
+
+  const handleApplyPreset = (preset: typeof brandAutoPresets[0]) => {
+    setStrategyParams(preset.params);
+    setIsGenerating(true);
+    setTimeout(() => {
+      setGeneratedStrategy(`### 🤖 AI Auto-Suggested Strategy: ${preset.title}\n\n**Campaign Focus**: ${preset.params.campaignFocus}\n**Objective**: ${preset.params.objective}\n**Total Budget**: $${preset.params.budget}\n**Target CPA**: $12.50\n\n**Audience Blueprint**:\n${preset.params.audience} targeting high-intent segments across ${preset.params.placement} (Granularity: ${preset.params.geoTargetingLevel}) at ${preset.params.funnel}.\n\n**Creative Rotation Logic**:\n- Rotate creatives every ${smartSettings.refreshIntervalDays} days.\n- **Auto-Kill**: CPA > $${smartSettings.cpaThreshold} or Frequency > ${smartSettings.frequencyCap}\n- **Skip Rate Threshold**: ${smartSettings.skipRateThreshold}%\n\n**Tracking Confirmed**:\n${preset.params.tracking}`);
+      setIsGenerating(false);
+    }, 1000);
+  };
+
+  const handleExecuteDailyAction = (actionId: string) => {
+    setDailyActions(prev => prev.map(act => act.id === actionId ? { ...act, executed: true } : act));
+  };
 
   const handleGenerate = () => {
     setIsGenerating(true);
@@ -177,6 +301,78 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
         </div>
       </div>
 
+      {/* ─── DAILY PERFORMANCE & AI ACTION FEED ─── */}
+      <div style={{ background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(90, 82, 255, 0.15)', border: '1px solid rgba(90, 82, 255, 0.3)' }}>
+              <Activity size={18} color="var(--primary)" />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Daily Performance & AI Action Feed
+                <span style={{ fontSize: '11px', padding: '2px 8px', background: 'rgba(0, 230, 118, 0.15)', color: '#00e676', borderRadius: '12px', border: '1px solid rgba(0,230,118,0.3)', fontFamily: 'var(--font-mono)' }}>Autonomous Monitoring Active</span>
+              </h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Autonomous performance optimization and real-time campaign recommendations.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+          {dailyActions.map((action) => (
+            <div 
+              key={action.id} 
+              style={{ 
+                padding: '14px', 
+                background: action.bgColor, 
+                border: `1px solid ${action.borderColor}`, 
+                borderRadius: '10px', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                justifyContent: 'space-between', 
+                gap: '10px',
+                opacity: action.executed ? 0.6 : 1,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: action.color }}>{action.statusTag}</span>
+                  {action.executed && (
+                    <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px' }}>Executed</span>
+                  )}
+                </div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff', marginBottom: '4px' }}>{action.campaignName}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>{action.metrics}</div>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: '1.4' }}>{action.recommendation}</div>
+              </div>
+
+              <button
+                onClick={() => handleExecuteDailyAction(action.id)}
+                disabled={action.executed}
+                style={{
+                  padding: '8px 12px',
+                  background: action.executed ? 'rgba(255,255,255,0.05)' : action.color,
+                  color: action.executed ? 'var(--text-muted)' : '#000',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  cursor: action.executed ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {action.executed ? 'Applied to Campaign' : <>{action.actionText} <ArrowRight size={14} /></>}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: 'flex', gap: '24px', flex: 1, overflow: 'hidden' }}>
         
         {/* LEFT PANE: Campaign Strategist */}
@@ -185,10 +381,52 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
             <h3 style={{ fontSize: '16px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
               <Zap size={18} color="var(--primary)" /> AI Ideation & Strategist
             </h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Describe your campaign brief — the AI will generate a full strategy, audience blueprint, and creative rotation plan.</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Choose a brand auto-preset or describe a custom campaign brief — the AI will generate a full strategy and creative rotation plan.</p>
           </div>
           
           <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Brand AI Auto-Suggest Section */}
+            <div style={{ background: 'rgba(90, 82, 255, 0.05)', border: '1px solid rgba(90, 82, 255, 0.2)', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={14} color="var(--primary)" /> Brand AI Auto-Suggested Campaigns
+                </span>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Based on profile.json</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {brandAutoPresets.map((preset) => (
+                  <div 
+                    key={preset.id}
+                    onClick={() => handleApplyPreset(preset)}
+                    style={{ 
+                      padding: '10px 12px', 
+                      background: 'rgba(255,255,255,0.03)', 
+                      border: '1px solid var(--border)', 
+                      borderRadius: '8px', 
+                      cursor: 'pointer', 
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'rgba(90,82,255,0.1)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {preset.title}
+                        <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(90, 82, 255, 0.2)', color: '#fff', borderRadius: '4px' }}>{preset.badge}</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{preset.description}</div>
+                    </div>
+                    <button style={{ padding: '4px 10px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                      Use AI Preset
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
             
             <div className="form-group">
               <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Campaign Idea / Theme (Season or Product)</label>
