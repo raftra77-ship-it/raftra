@@ -35,7 +35,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
   const [strategyParams, setStrategyParams] = useState({
     objective: 'Conversions',
     campaignFocus: 'Diwali Festive Sale',
-    budget: 500,
+    budget: 40000,
     audience: 'Gen-Z Tech Enthusiasts',
     funnel: 'Bottom of Funnel',
     geoTargetingLevel: 'State-Level',
@@ -55,7 +55,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
       params: {
         campaignFocus: 'Diwali Festive Sale',
         objective: 'Conversions',
-        budget: 800,
+        budget: 65000,
         audience: 'Festive Shoppers & Tech Enthusiasts',
         funnel: 'Bottom of Funnel',
         geoTargetingLevel: 'State-Level',
@@ -73,7 +73,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
       params: {
         campaignFocus: '7-Day Abandoned Cart Recovery',
         objective: 'Conversions',
-        budget: 350,
+        budget: 30000,
         audience: 'Added to Cart (Last 7 Days) - No Purchase',
         funnel: 'Bottom of Funnel',
         geoTargetingLevel: 'City-Level',
@@ -91,7 +91,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
       params: {
         campaignFocus: 'Lookalike Customer Acquisition',
         objective: 'Lead Generation',
-        budget: 600,
+        budget: 50000,
         audience: 'Top 1% LAL of Past Buyers + Interest in Premium Tech',
         funnel: 'Top of Funnel',
         geoTargetingLevel: 'Country-Level',
@@ -113,7 +113,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
       bgColor: 'rgba(0, 230, 118, 0.08)',
       borderColor: 'rgba(0, 230, 118, 0.3)',
       campaignName: 'Diwali Festive Sale (Meta Ads)',
-      metrics: 'ROAS: 4.2x | CPA: $11.20 | Spend: $420/$800',
+      metrics: 'ROAS: 4.2x | CPA: ₹900 | Spend: ₹35,000/₹65,000',
       recommendation: 'Performing 38% above ROAS target. Recommend +25% daily budget scaling.',
       actionText: 'Scale Budget +25%',
       executed: false,
@@ -141,8 +141,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
       bgColor: 'rgba(255, 82, 82, 0.08)',
       borderColor: 'rgba(255, 82, 82, 0.3)',
       campaignName: 'Broad TOF Awareness (Google Ads)',
-      metrics: 'CPA: $48.50 (Cap: $45.00) | 0 Conv (24h)',
-      recommendation: 'CPA breached $45 safety threshold. Auto-kill rule triggered.',
+      metrics: 'CPA: ₹3,900 (Cap: ₹3,500) | 0 Conv (24h)',
+      recommendation: 'CPA breached ₹3,500 safety threshold. Auto-kill rule triggered.',
       actionText: 'Pause Ad Set',
       executed: false,
     },
@@ -175,7 +175,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     autoRotate: true,
     skipRateThreshold: 70,
     frequencyCap: 3.5,
-    cpaThreshold: 45,
+    cpaThreshold: 3500,
     refreshIntervalDays: 4,
   });
 
@@ -188,7 +188,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
     setStrategyParams(preset.params);
     setIsGenerating(true);
     setTimeout(() => {
-      setGeneratedStrategy(`### AI Auto-Suggested Strategy: ${preset.title}\n\n**Campaign Focus**: ${preset.params.campaignFocus}\n**Objective**: ${preset.params.objective}\n**Total Budget**: $${preset.params.budget}\n**Target CPA**: $12.50\n\n**Audience Blueprint**:\n${preset.params.audience} targeting high-intent segments across ${preset.params.placement} (Granularity: ${preset.params.geoTargetingLevel}) at ${preset.params.funnel}.\n\n**Creative Rotation Logic**:\n- Rotate creatives every ${smartSettings.refreshIntervalDays} days.\n- **Auto-Kill**: CPA > $${smartSettings.cpaThreshold} or Frequency > ${smartSettings.frequencyCap}\n- **Skip Rate Threshold**: ${smartSettings.skipRateThreshold}%\n\n**Tracking Confirmed**:\n${preset.params.tracking}`);
+      setGeneratedStrategy(`### AI Auto-Suggested Strategy: ${preset.title}\n\n**Campaign Focus**: ${preset.params.campaignFocus}\n**Objective**: ${preset.params.objective}\n**Total Budget**: ₹${preset.params.budget.toLocaleString()}\n**Target CPA**: ₹1,000\n\n**Audience Blueprint**:\n${preset.params.audience} targeting high-intent segments across ${preset.params.placement} (Granularity: ${preset.params.geoTargetingLevel}) at ${preset.params.funnel}.\n\n**Creative Rotation Logic**:\n- Rotate creatives every ${smartSettings.refreshIntervalDays} days.\n- **Auto-Kill**: CPA > ₹${smartSettings.cpaThreshold} or Frequency > ${smartSettings.frequencyCap}\n- **Skip Rate Threshold**: ${smartSettings.skipRateThreshold}%\n\n**Tracking Confirmed**:\n${preset.params.tracking}`);
       setIsGenerating(false);
     }, 1000);
   };
@@ -200,7 +200,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
   const handleGenerate = () => {
     setIsGenerating(true);
     setTimeout(() => {
-      setGeneratedStrategy(`### AI Campaign Strategy Generated\n\n**Campaign Focus**: ${strategyParams.campaignFocus}\n**Objective**: ${strategyParams.objective}\n**Total Budget**: $${strategyParams.budget}\n**Target CPA**: $14.50\n\n**Audience Blueprint**:\n${strategyParams.audience} targeting high intent markers across ${strategyParams.placement} (Granularity: ${strategyParams.geoTargetingLevel}) at the ${strategyParams.funnel}.\n\n**Creative Rotation Logic**:\n- 3x Video Assets (15s Hooks)\n- 2x Static Retargeting Banners\n- **Suggestion**: Rotate creatives every ${smartSettings.refreshIntervalDays} days based on ${strategyParams.campaignFocus} momentum to combat ad blindness.\n- **Auto-Kill**: Ads exceeding CPA of $${smartSettings.cpaThreshold} or frequency > ${smartSettings.frequencyCap}\n- **Skip Rate Threshold**: ${smartSettings.skipRateThreshold}%\n\n**Tracking Confirmed**:\n${strategyParams.tracking}`);
+      setGeneratedStrategy(`### AI Campaign Strategy Generated\n\n**Campaign Focus**: ${strategyParams.campaignFocus}\n**Objective**: ${strategyParams.objective}\n**Total Budget**: ₹${strategyParams.budget.toLocaleString()}\n**Target CPA**: ₹1,200\n\n**Audience Blueprint**:\n${strategyParams.audience} targeting high intent markers across ${strategyParams.placement} (Granularity: ${strategyParams.geoTargetingLevel}) at the ${strategyParams.funnel}.\n\n**Creative Rotation Logic**:\n- 3x Video Assets (15s Hooks)\n- 2x Static Retargeting Banners\n- **Suggestion**: Rotate creatives every ${smartSettings.refreshIntervalDays} days based on ${strategyParams.campaignFocus} momentum to combat ad blindness.\n- **Auto-Kill**: Ads exceeding CPA of ₹${smartSettings.cpaThreshold} or frequency > ${smartSettings.frequencyCap}\n- **Skip Rate Threshold**: ${smartSettings.skipRateThreshold}%\n\n**Tracking Confirmed**:\n${strategyParams.tracking}`);
       setIsGenerating(false);
     }, 1500);
   };
@@ -467,7 +467,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
                 </select>
               </div>
               <div className="form-group">
-                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Budget ($)</label>
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Budget (₹)</label>
                 <input 
                   type="number" 
                   value={strategyParams.budget} 
@@ -662,7 +662,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
                   <AlertTriangle size={16} color="var(--warning)" /> Human Review Required
                 </h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  Please confirm the objective ({strategyParams.objective}), total budget (${strategyParams.budget}), and attached creatives before executing the deployment.
+                  Please confirm the objective ({strategyParams.objective}), total budget (₹{strategyParams.budget.toLocaleString()}), and attached creatives before executing the deployment.
                 </p>
                 <button 
                   onClick={handlePublish} 
@@ -715,7 +715,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Kill if CPA exceeds</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <span style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.1)', fontSize: '12px', color: 'var(--text-secondary)' }}>$</span>
+                        <span style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.1)', fontSize: '12px', color: 'var(--text-secondary)' }}>₹</span>
                         <input 
                           type="number" 
                           value={smartSettings.cpaThreshold} 

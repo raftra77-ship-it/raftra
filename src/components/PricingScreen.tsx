@@ -117,7 +117,7 @@ const CREDIT_COSTS = [
 
 export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
-  const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'USD');
+  const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'INR');
 
   const handleCurrencyChange = (curr: 'INR' | 'USD') => {
     setCurrency(curr);

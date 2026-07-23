@@ -444,22 +444,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                 <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--danger)', background: 'rgba(255,71,87,0.12)', padding: '6px 14px', borderRadius: '100px', border: '1px solid rgba(255,71,87,0.3)' }}>
                   CRITICAL BOTTLENECK
                 </span>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: '#ff6b6b' }}>-$24,000 / yr Wasted</span>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#ff6b6b' }}>-₹20 Lakhs / yr Wasted</span>
               </div>
               <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '14px', lineHeight: 1.3 }}>
-                The $2,000/mo Fragmented Marketing Tool Trap
+                The ₹1,75,000/mo Fragmented Marketing Tool Trap
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>
-                Brands spend over $2,000 every month juggling 6 separate single-purpose platforms: one for static graphic design, another for ad campaign deployment, a third for SEO monitoring, plus separate tools for influencer outreach and social scheduling. Data never syncs, and context gets lost in transition.
+                Brands spend over ₹1,75,000 every month juggling 6 separate single-purpose platforms: one for static graphic design, another for ad campaign deployment, a third for SEO monitoring, plus separate tools for influencer outreach and social scheduling. Data never syncs, and context gets lost in transition.
               </p>
             </div>
 
             <div style={{ marginTop: '24px', padding: '16px 20px', background: 'rgba(0,0,0,4)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <AlertTriangle size={18} color="var(--danger)" />
-                <span style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>Fragmented Stack Cost: 6 Apps ($2,150/mo)</span>
+                <span style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>Fragmented Stack Cost: 6 Apps (₹1,85,000/mo)</span>
               </div>
-              <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>Raftra Growth OS: 1 Workspace ($0/mo sandbox)</span>
+              <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>Raftra Growth OS: 1 Workspace (₹0/mo sandbox)</span>
             </div>
           </div>
 

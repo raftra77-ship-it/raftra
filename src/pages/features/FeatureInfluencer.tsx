@@ -25,7 +25,7 @@ export const FeatureInfluencer = () => {
       visualType: "influencer_escrow" as const,
       metrics: [
         { label: "Brand Fit Score", value: "96 / 100", color: "#00E676" },
-        { label: "Base Rate", value: "$350 / Reel", color: "#FFBD2E" }
+        { label: "Base Rate", value: "₹15,000 / Reel", color: "#FFBD2E" }
       ]
     },
     {

@@ -21,8 +21,8 @@ export const FeatureAnalytics = () => {
       visualType: "analytics_chart" as const,
       metrics: [
         { label: "Blended ROAS", value: "4.8x", color: "#00E676" },
-        { label: "Total Spend", value: "$12,400", color: "#fff" },
-        { label: "Net Revenue", value: "$59,520", color: "#5A52FF" }
+        { label: "Total Spend", value: "₹9,80,000", color: "#fff" },
+        { label: "Net Revenue", value: "₹47,00,000", color: "#5A52FF" }
       ]
     },
     {
@@ -43,7 +43,7 @@ export const FeatureAnalytics = () => {
       badge: "ACTION EXECUTED",
       visualType: "analytics_chart" as const,
       metrics: [
-        { label: "Budget Rebalanced", value: "$150 / day", color: "#00E676" },
+        { label: "Budget Rebalanced", value: "₹12,000 / day", color: "#00E676" },
         { label: "Execution Status", value: "Success", color: "#5A52FF" }
       ]
     }

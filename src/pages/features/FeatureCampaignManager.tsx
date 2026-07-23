@@ -21,7 +21,7 @@ export const FeatureCampaignManager = () => {
       visualType: "oauth_campaign" as const,
       metrics: [
         { label: "Target ROAS", value: "4.5x", color: "#00E676" },
-        { label: "Budget Split", value: "$500 / day", color: "#fff" },
+        { label: "Budget Split", value: "₹40,000 / day", color: "#fff" },
         { label: "Placements", value: "Meta & Google", color: "#5A52FF" }
       ]
     },
@@ -40,12 +40,12 @@ export const FeatureCampaignManager = () => {
     {
       title: "3. Auto-Kill & Smart Rotation Triggers",
       agent: "Creative Fatigue Agent",
-      description: "Monitors real-time performance. Automatically kills ads exceeding Frequency Cap (5x) or CPA Threshold ($25) and rotates fresh creatives.",
+      description: "Monitors real-time performance. Automatically kills ads exceeding Frequency Cap (5x) or CPA Threshold (₹2,000) and rotates fresh creatives.",
       badge: "AUTO-OPTIMIZING",
       visualType: "oauth_campaign" as const,
       metrics: [
         { label: "Fatigued Ads Killed", value: "2 Ads", color: "#FF5F56" },
-        { label: "CPA Saved", value: "$18.40", color: "#00E676" },
+        { label: "CPA Saved", value: "₹1,500", color: "#00E676" },
         { label: "Auto-Rotation", value: "Enabled", color: "#5A52FF" }
       ]
     }
