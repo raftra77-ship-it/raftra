@@ -17,6 +17,7 @@ import { GlowButton } from '../components/GlowButton';
 import '../App.css';
 
 import {
+  Cpu,
   LayoutDashboard,
   Sparkles,
   Megaphone,
@@ -27,6 +28,8 @@ import {
   Zap,
   Search,
   Bell,
+  BookOpen,
+  ToyBrick,
   Settings,
   ChevronDown,
   LogOut
