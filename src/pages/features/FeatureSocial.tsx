@@ -208,7 +208,7 @@ export const FeatureSocial = () => {
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: '16px', borderRadius: '12px', flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-                        <Briefcase size={16} color="#0077B5" /> LinkedIn Post
+                        <Briefcase size={16} color="#1877F2" /> Facebook Post
                       </div>
                     </div>
                     <div style={{ fontSize: '13px', color: '#888', display: 'flex', alignItems: 'center', gap: '6px' }}>

@@ -344,7 +344,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               <option value="Instagram" style={{ color: '#000' }}>Instagram</option>
               <option value="Facebook" style={{ color: '#000' }}>Facebook</option>
               <option value="Google Ads" style={{ color: '#000' }}>Google Ads</option>
-              <option value="LinkedIn" style={{ color: '#000' }}>LinkedIn</option>
+              <option value="YouTube" style={{ color: '#000' }}>YouTube</option>
             </select>
           
             <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>Ratio:</label>
@@ -590,13 +590,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '36px', height: '36px', background: '#000', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '16px' }}>♪</div>
+                  <div style={{ width: '36px', height: '36px', background: '#FF0000', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>▶</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center' }}>
-                    <div style={{ fontSize: '15px', fontWeight: '600', lineHeight: '1' }}>TikTok Ads</div>
+                    <div style={{ fontSize: '15px', fontWeight: '600', lineHeight: '1' }}>YouTube Ads</div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1' }}>Not Connected</div>
                   </div>
                 </div>
-                <button className="action-button primary" onClick={() => alert('Redirecting to TikTok OAuth...')} style={{ fontSize: '13px', padding: '8px 16px' }}>Connect</button>
+                <button className="action-button primary" onClick={() => alert('Redirecting to YouTube OAuth...')} style={{ fontSize: '13px', padding: '8px 16px' }}>Connect</button>
               </div>
             </div>
             

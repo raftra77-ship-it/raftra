@@ -64,7 +64,7 @@ export const FeatureCampaignManager = () => {
           AI Campaign Manager
         </motion.h1>
         <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}>
-          Builds, publishes, and optimizes campaigns across Meta, Google, LinkedIn, and other ad platforms.
+          Builds, publishes, and optimizes campaigns across Meta Ads, Google Ads, and YouTube.
         </motion.p>
       </div>
 
@@ -113,7 +113,7 @@ export const FeatureCampaignManager = () => {
       {/* Motion Design Explainer Video */}
       <FeatureExplainerVideo
         title="Multi-Platform Campaign Manager"
-        subtitle="How Raftra AI builds, deploys, and auto-rotates campaigns across Meta, Google & TikTok."
+        subtitle="How Raftra AI builds, deploys, and auto-rotates campaigns across Meta Ads, Google Ads & YouTube Ads."
         badgeText="CAMPAIGN MOTION DEMO"
         steps={campaignExplainerSteps}
         ctaText="Unlock Campaign Manager"

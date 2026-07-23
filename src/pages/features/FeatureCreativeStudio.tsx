@@ -42,7 +42,7 @@ export const FeatureCreativeStudio = () => {
     {
       title: "3. Multi-Format Aspect Ratio Fitting",
       agent: "Quality Review Agent",
-      description: "Automatically formats creatives into 9:16 Vertical (Instagram Reels/TikTok), 1:1 Square (Feed), and 16:9 Landscape for launch.",
+      description: "Automatically formats creatives into 9:16 Vertical (Instagram Reels/YouTube Shorts), 1:1 Square (Feed), and 16:9 Landscape for launch.",
       badge: "APPROVED FOR LAUNCH",
       visualType: "carousel" as const,
       metrics: [

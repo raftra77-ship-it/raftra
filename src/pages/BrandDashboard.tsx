@@ -950,7 +950,7 @@ export function BrandDashboard() {
     );
   };
 
-  const handleComposeSocial = (caption: string, platform: 'Twitter' | 'LinkedIn' | 'Instagram') => {
+  const handleComposeSocial = (caption: string, platform: 'Instagram' | 'Facebook' | 'YouTube') => {
     handleTriggerSocial(platform, caption);
 
     const newPost: SocialPostItem = {
@@ -1021,7 +1021,7 @@ export function BrandDashboard() {
           isVisual = true;
           visualType = 'heatmap';
         } else if (message.toLowerCase().includes('pie')) {
-          response = 'Based on the connected APIs, your current budget allocation is heavily skewed towards Meta Ads (40%). However, given recent CPA trends, diversifying further into TikTok and LinkedIn could reduce overall customer acquisition costs by an estimated 12%.';
+          response = 'Based on the connected APIs, your current budget allocation is heavily skewed towards Meta Ads (40%). However, given recent CPA trends, diversifying further into YouTube Ads and Meta Retargeting could reduce overall customer acquisition costs by an estimated 12%.';
           isVisual = true;
           visualType = 'pie';
         } else if (message.toLowerCase().includes('line')) {
@@ -1691,7 +1691,7 @@ export function BrandDashboard() {
                 </p>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
-                {['Meta Ads Sandbox', 'Google Ads Sandbox', 'LinkedIn Marketing Node', 'Twitter Social API', 'ChatGPT citation pipeline', 'Gemini Citation context'].map((plat) => (
+                {['Meta Ads Sandbox', 'Google Ads Sandbox', 'Instagram Graph API', 'WhatsApp Business API', 'ChatGPT citation pipeline', 'Gemini Citation context'].map((plat) => (
                   <div key={plat} className="glow-card" style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <h4 style={{ fontSize: '14px' }}>{plat}</h4>

@@ -369,7 +369,7 @@ export const FeatureExplainerVideo: React.FC<FeatureExplainerVideoProps> = ({
                       <div style={{ fontSize: '9px', color: '#00E676' }}>✓ 902-8392</div>
                     </div>
                     <div style={{ padding: '10px', background: 'rgba(0,242,254,0.15)', borderRadius: '8px', border: '1px solid rgba(0,242,254,0.3)', textAlign: 'center' }}>
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#fff' }}>TikTok Ads</div>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#fff' }}>YouTube Ads</div>
                       <div style={{ fontSize: '9px', color: '#00E676' }}>✓ Connected</div>
                     </div>
                   </div>
@@ -420,7 +420,7 @@ export const FeatureExplainerVideo: React.FC<FeatureExplainerVideoProps> = ({
                     <Share2 size={14} color="var(--primary)" /> 30-DAY SOCIAL CALENDAR & DM AUTO-RESPONDER
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '12px' }}>
-                    {['IG Reel #1', 'X Post #2', 'LinkedIn #3', 'IG Carousel'].map((p, i) => (
+                    {['IG Reel #1', 'FB Post #2', 'YT Short #3', 'IG Carousel'].map((p, i) => (
                       <div key={i} style={{ padding: '8px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', fontSize: '10px', color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                         {p}
                       </div>

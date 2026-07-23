@@ -101,7 +101,7 @@ export const Security = () => {
               <Globe size={24} color="#10b981" />
             </div>
             <h3 style={{ fontSize: '24px', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>Protected Integrations</h3>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '15px' }}>Connected platforms include: Meta Ads, Google Ads, GA4, Search Console, LinkedIn, TikTok.</p>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '15px' }}>Connected platforms include: Meta Ads, Google Ads, GA4, Search Console, Instagram, WhatsApp.</p>
             <div style={{ padding: '16px', background: 'rgba(16,185,129,0.05)', borderRadius: '12px', border: '1px solid rgba(16,185,129,0.1)' }}>
               <p style={{ color: '#ccc', margin: 0, fontSize: '14px', lineHeight: 1.6 }}>
                 Permissions are requested only when needed, tokens are stored server-side, and integrations can be disconnected at any time.
