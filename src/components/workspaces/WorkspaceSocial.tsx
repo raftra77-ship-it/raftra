@@ -349,12 +349,9 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
                   <span style={{ color: 'var(--text-secondary)' }}>Raftra AI Fee (10%)</span>
                   <span style={{ color: 'var(--primary)' }}>₹{(parseFloat(hirePrice) * 0.1).toLocaleString('en-IN')}</span>
                 </div>
-              </div>
-            )}
-                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', fontSize: '14px', fontWeight: 600 }}>
                   <span style={{ color: '#fff' }}>Manager Payout (90%)</span>
-                  <span style={{ color: 'var(--success)' }}>${(parseFloat(hirePrice) * 0.9).toFixed(2)}</span>
+                  <span style={{ color: 'var(--success)' }}>₹{(parseFloat(hirePrice) * 0.9).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             )}
@@ -363,7 +360,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
               variant="glow" 
               onClick={() => {
                 if (!hirePrice || isNaN(Number(hirePrice))) return;
-                showToast(`SUCCESS! Deal Locked.\n$${(parseFloat(hirePrice) * 0.1).toFixed(2)} credited to Raftra AI.\n$${(parseFloat(hirePrice) * 0.9).toFixed(2)} escrowed for ${hiringManager.name}.\nNotification sent.`);
+                showToast(`SUCCESS! Deal Locked.\n₹${(parseFloat(hirePrice) * 0.1).toLocaleString('en-IN')} credited to Raftra AI.\n₹${(parseFloat(hirePrice) * 0.9).toLocaleString('en-IN')} escrowed for ${hiringManager.name}.\nNotification sent.`);
                 handleDeploy(hiringManager.id);
                 setHiringManager(null);
                 setHirePrice('');
