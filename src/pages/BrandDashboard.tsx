@@ -1039,17 +1039,6 @@ export function BrandDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('currency');
-    navigate('/login');
-  };
-
-  const handleTopUpShortcut = (amount: number = 100) => {
-    setBillingBalance((prev) => prev + amount);
-    alert(`Successfully added credits to SaaS Account Balance!`);
-  };
-
   const handleUnlockNode = (nodeName: string, priceUSD: number) => {
     if (billingBalance >= priceUSD) {
       setBillingBalance((prev) => prev - priceUSD);
@@ -1058,14 +1047,6 @@ export function BrandDashboard() {
     } else {
       alert(`Insufficient balance to unlock ${nodeName.toUpperCase()} Node.`);
     }
-  };
-
-  const handleReindex = () => {
-    setIsReindexing(true);
-    setTimeout(() => {
-      setIsReindexing(false);
-      alert('Knowledge Graph reindexed successfully!');
-    }, 1500);
   };
 
 
