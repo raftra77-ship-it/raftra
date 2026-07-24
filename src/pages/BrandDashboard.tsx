@@ -65,6 +65,7 @@ interface CreativeAsset {
 export function BrandDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<NavigationTab>('control');
+  const [creativeSeedPrompt, setCreativeSeedPrompt] = useState('');
 
   // User details extracted from JWT
   const [userName, setUserName] = useState<string>('User');
@@ -1531,6 +1532,7 @@ export function BrandDashboard() {
                 onOpenReview={handleOpenReview}
                 onGenerate={handleGenerateCreative}
                 onAssetSaved={handleAssetSaved}
+                initialPrompt={creativeSeedPrompt}
               />
             </div>
           )}
@@ -1539,10 +1541,12 @@ export function BrandDashboard() {
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
               {renderLockOverlay('campaign', 149)}
               <WorkspaceCampaign
+                workspaceId={workspaceId}
                 campaigns={campaigns}
                 creativeAssets={creativeAssets}
                 onOpenReview={handleOpenReview}
                 onToggleStatus={handleToggleCampaign}
+                onOpenCreativeStudio={(seed) => { setCreativeSeedPrompt(seed); setActiveTab('studio'); }}
               />
             </div>
           )}

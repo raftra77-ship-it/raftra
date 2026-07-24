@@ -28,6 +28,7 @@ interface WorkspaceCreativeProps {
   onGenerate: (prompt: string, referenceAd?: any, config?: any) => void;
   onAssetSaved?: (asset: CreativeAsset) => void;
   workspaceId?: number;
+  initialPrompt?: string;
 }
 
 export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
@@ -36,7 +37,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onOpenReview,
   onGenerate,
   onAssetSaved,
-  workspaceId
+  workspaceId,
+  initialPrompt,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -56,6 +58,16 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Seed the prompt when arriving from the Campaign Manager ("generate more"),
+  // and orient the studio toward image generation.
+  useEffect(() => {
+    if (initialPrompt && initialPrompt.trim()) {
+      setPrompt(initialPrompt);
+      setAdFormat('Image');
+      setEngineMode('Image Ad');
+    }
+  }, [initialPrompt]);
 
   // When assets list updates with new pending items from websocket, we push them into the chat!
   useEffect(() => {

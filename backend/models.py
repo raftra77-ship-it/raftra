@@ -132,9 +132,14 @@ class Campaign(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     platform = Column(String)
+    name = Column(String, nullable=True)
+    objective = Column(String, nullable=True)
+    budget = Column(Float, default=0.0)              # lifetime/total budget entered by the user
+    daily_budget = Column(Float, nullable=True)      # daily budget (Meta uses minor units internally)
     status = Column(String)  # DRAFT, PENDING_REVIEW, ACTIVE, PAUSED
     roas = Column(Float, default=0.0)
-    metrics = Column(JSON, nullable=True)
+    meta_campaign_id = Column(String, nullable=True) # id of the campaign created on Meta
+    metrics = Column(JSON, nullable=True)            # last-synced insights + linkage (e.g. {"meta": {...}, "insights": {...}})
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     workspace = relationship("Workspace", back_populates="campaigns")

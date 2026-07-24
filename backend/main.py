@@ -123,6 +123,29 @@ import auth, models, database, payments, agent_routes, workspace_routes, connect
 # Create tables in db (in production, use alembic for migrations)
 models.Base.metadata.create_all(bind=database.engine)
 
+
+def _run_light_migrations():
+    """create_all() creates missing TABLES but never adds missing COLUMNS to tables that
+    already exist. These idempotent ADD COLUMN IF NOT EXISTS statements bring older
+    `campaigns` rows in line with the model without needing Alembic. Safe to run every boot."""
+    from sqlalchemy import text
+    stmts = [
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS name VARCHAR",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS objective VARCHAR",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS budget DOUBLE PRECISION DEFAULT 0.0",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS daily_budget DOUBLE PRECISION",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS meta_campaign_id VARCHAR",
+    ]
+    try:
+        with database.engine.begin() as conn:
+            for s in stmts:
+                conn.execute(text(s))
+    except Exception as e:
+        print(f"Light migration warning (non-fatal): {e}")
+
+
+_run_light_migrations()
+
 app.include_router(auth.router)
 app.include_router(payments.router)
 app.include_router(agent_routes.router)

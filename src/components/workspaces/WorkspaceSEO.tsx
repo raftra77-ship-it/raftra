@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, Check, ExternalLink, TrendingUp } from 'lucide-react';
+import { Globe, Check, ExternalLink, TrendingUp, ChevronDown, AlertTriangle, Zap, Target } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { Markdown } from '../Markdown';
+import { GitHubPanel } from './GitHubPanel';
+import { ShopifyPanel } from './ShopifyPanel';
+import { WordPressPanel } from './WordPressPanel';
+import { SearchConsolePanel } from './SearchConsolePanel';
+import { GA4Panel } from './GA4Panel';
 
 // Month-over-month comparison card — reads the /seo/comparison endpoint and shows the deltas
 // between the two most recent runs (the "monthly analysis" view).
@@ -73,6 +78,162 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
   );
 };
 
+// ─────────────────────────────────────────────── audit results (real, from the pipeline)
+const scoreColor = (v: number) => (v >= 80 ? '#00ff9d' : v >= 55 ? '#ffae00' : '#ff5c5c');
+const SEV_COLOR: Record<string, string> = { Critical: '#ff5c5c', High: '#ff8a5c', Medium: '#ffae00', Low: '#00ff9d' };
+
+const ScoreBadge: React.FC<{ label: string; value: number; sub?: string }> = ({ label, value, sub }) => (
+  <div style={{ flex: 1, minWidth: '104px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px 12px', textAlign: 'center' }}>
+    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>{label}</div>
+    <div style={{ fontSize: '28px', fontWeight: 800, color: scoreColor(value), lineHeight: 1 }}>
+      {value}<span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>/100</span>
+    </div>
+    {sub && <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '6px' }}>{sub}</div>}
+  </div>
+);
+
+const CategoryBar: React.FC<{ c: any }> = ({ c }) => {
+  const verified = c.status === 'verified';
+  const pct = verified && c.max ? Math.round((c.score / c.max) * 100) : 0;
+  return (
+    <div style={{ marginBottom: '10px' }} title={c.reason || ''}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+        <span style={{ color: 'var(--text-secondary)' }}>{c.name}</span>
+        <span style={{ color: verified ? '#fff' : 'var(--text-muted)', fontWeight: 600 }}>
+          {verified ? `${c.score}/${c.max}` : 'Not Verified'}
+        </span>
+      </div>
+      <div style={{ height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: verified ? scoreColor(pct) : 'var(--text-muted)', borderRadius: '4px', transition: 'width .5s ease' }} />
+      </div>
+    </div>
+  );
+};
+
+// Reads the pipeline's structured audit and shows it in plain language. Falls back to a clear
+// "run an audit" state — never invented numbers.
+const AuditResults: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/seo/latest-audit`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null)).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
+  }, [workspaceId]);
+
+  if (loading) return <div className="glow-card"><p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading your audit…</p></div>;
+
+  if (!data || !data.has_audit) {
+    return (
+      <div className="glow-card">
+        <h3 style={{ fontSize: '16px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Target size={16} style={{ color: '#00ff9d' }} /> Your SEO / GEO Health
+        </h3>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          No audit yet. Enter your site URL above and click <b style={{ color: '#fff' }}>Run SEO Pipeline</b>.
+          You'll get real, measured scores for content, metadata, technical SEO, performance, accessibility and
+          structured data — plus how visible you are on AI answer engines (ChatGPT, Claude, Gemini, Perplexity).
+        </p>
+      </div>
+    );
+  }
+
+  const a = data.audit;
+  const recall = a.geo?.llm_recall;
+  const when = data.created_at ? new Date(data.created_at).toLocaleDateString() : '';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div className="glow-card">
+        <h3 style={{ fontSize: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Target size={16} style={{ color: '#00ff9d' }} /> Your Website Health
+          {when && <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-secondary)' }}>as of {when}</span>}
+        </h3>
+        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+          {a.target_url} · every point below is measured from your live site — nothing estimated.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <ScoreBadge label="Overall" value={a.overall_health} />
+          <ScoreBadge label="SEO · Google" value={a.seo.score_100} />
+          <ScoreBadge label="GEO · AI search" value={a.geo.score_100} />
+        </div>
+        {recall && (
+          <div style={{ marginTop: '14px', padding: '12px 14px', background: 'rgba(90,82,255,0.06)', border: '1px solid rgba(90,82,255,0.2)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <Zap size={13} style={{ color: '#8B85FF' }} /> How you show up on AI search
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+              {recall.brand_recognised ? 'Your brand is recognised' : 'Your brand is not yet recognised'} by AI answer engines when asked about your space.
+              {recall.model_response ? ` "${String(recall.model_response).slice(0, 160)}…"` : ''}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {[{ sec: a.seo, title: 'SEO breakdown · Google', hint: 'How well Google can find, read and rank your pages.' },
+        { sec: a.geo, title: 'GEO breakdown · AI answer engines', hint: 'How likely LLMs are to cite you in their answers.' }].map(({ sec, title, hint }) => (
+        <div key={title} className="glow-card">
+          <h3 style={{ fontSize: '15px', marginBottom: '2px' }}>{title}
+            <span style={{ float: 'right', fontSize: '15px', fontWeight: 800, color: scoreColor(sec.score_100) }}>{sec.score_100}/100</span>
+          </h3>
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>{hint}</p>
+          {sec.categories.map((c: any) => <CategoryBar key={c.name} c={c} />)}
+        </div>
+      ))}
+
+      {a.top_5_issues?.length > 0 && (
+        <div className="glow-card">
+          <h3 style={{ fontSize: '15px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertTriangle size={15} style={{ color: '#ffae00' }} /> Top fixes to make (biggest impact first)
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {a.top_5_issues.map((it: any, i: number) => (
+              <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px' }}>
+                <span style={{ flexShrink: 0, fontSize: '10px', fontWeight: 700, color: SEV_COLOR[it.severity] || '#fff', background: `${SEV_COLOR[it.severity] || '#fff'}1f`, border: `1px solid ${SEV_COLOR[it.severity] || '#fff'}55`, borderRadius: '5px', padding: '2px 7px', marginTop: '1px' }}>{it.severity}</span>
+                <div>
+                  <div style={{ color: '#fff' }}>{it.issue}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{it.area}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// The "connect your website & data" hub — reuses the already-built connector panels, each of
+// which shows its own connect / "keys missing" placeholder state.
+const ConnectSection: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
+  const [open, setOpen] = useState(true);
+  const wid = workspaceId ?? null;
+  return (
+    <div className="glow-card">
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 0, color: '#fff' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', fontWeight: 600 }}>
+          <Globe size={16} style={{ color: '#00ff9d' }} /> Connect your website &amp; data sources
+        </span>
+        <ChevronDown size={18} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', color: 'var(--text-secondary)' }} />
+      </button>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '6px 0 0' }}>
+        Publish approved changes to your site, and pull in real Google rankings + traffic. Connect what you have — the rest stay as placeholders until keys are added.
+      </p>
+      {open && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginTop: '16px' }}>
+          <GitHubPanel workspaceId={wid} />
+          <ShopifyPanel workspaceId={wid} />
+          <WordPressPanel workspaceId={wid} />
+          <SearchConsolePanel workspaceId={wid} />
+          <GA4Panel workspaceId={wid} />
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface BlogDraft {
   id: string;
   title: string;
@@ -93,13 +254,6 @@ interface WorkspaceSEOProps {
 
 export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview, seoAgent, geoAgent, onTriggerSEO, onTriggerGEO, workspaceId }) => {
   const [targetUrl, setTargetUrl] = useState('https://example.com');
-  const [rankings] = useState([
-    { engine: 'Google Search index', score: 82, trend: '+4%' },
-    { engine: 'ChatGPT / OpenAI index', score: 68, trend: '+12%' },
-    { engine: 'Claude AI Citation Graph', score: 71, trend: '+2%' },
-    { engine: 'Gemini Search Citation', score: 59, trend: '+8%' },
-    { engine: 'Perplexity Engine Citation', score: 64, trend: '+15%' },
-  ]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
@@ -219,48 +373,14 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
         </div>
       </div>
 
+      {/* Connect your website & data sources (inside the SEO workspace) */}
+      <ConnectSection workspaceId={workspaceId} />
+
       <div className="workspace-grid-split">
-        {/* Left Side: SEO Crawl & AEO Citation Indexes */}
+        {/* Left Side: real audit results + month-over-month growth */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <AuditResults workspaceId={workspaceId} />
           <SeoComparisonCard workspaceId={workspaceId} />
-
-          <div className="glow-card">
-            <h3 style={{ fontSize: '16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Globe size={16} style={{ color: '#00ff9d' }} />
-              Answer Engine Citation (AEO) Index
-              <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px', color: '#ffae00', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '6px', padding: '2px 6px' }}>SAMPLE</span>
-            </h3>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '-8px', marginBottom: '14px' }}>
-              Illustrative figures. Run a GEO audit for a real, measured answer-engine recall probe.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {rankings.map((rank) => (
-                <div key={rank.engine} style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', fontSize: '13px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{rank.engine}</span>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <span style={{ fontWeight: 600 }}>{rank.score}% visibility</span>
-                    <span style={{ color: 'var(--success)', fontWeight: 600 }}>{rank.trend}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="glow-card">
-            <h3 style={{ fontSize: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              AEO Recommendation Engine
-              <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px', color: '#ffae00', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '6px', padding: '2px 6px' }}>SAMPLE</span>
-            </h3>
-            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px' }}>
-              <h4 style={{ fontSize: '13px', color: '#ffae00', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                Example recommendation
-              </h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                This is an illustrative example of the entity/schema gaps a GEO audit surfaces. Run a GEO audit above to get real, brand-specific recommendations for your site.
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Right Side: Blog / Blog generation list */}

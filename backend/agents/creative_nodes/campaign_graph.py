@@ -123,11 +123,55 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
 
     try:
         result = await campaign_graph.ainvoke(initial_state)
-        await manager.send_personal_message(workspace_id, {
+        spec = json.loads(result["campaign_spec"])
+
+        # Auto-generate an image ad from the strategy (Pollinations returns a URL
+        # instantly, no API key). Shown in the Campaign Manager; the user can open
+        # Creative Studio to generate more.
+        image_url = None
+        try:
+            from core.providers.image_providers import FluxSchnellProvider
+            img_prompt = (
+                f"Advertising creative for: {prompt[:140]}. "
+                f"{spec.get('objective', '')} campaign for {spec.get('audience', '')}. "
+                f"Commercial ad photography, vibrant, high detail, no text."
+            )
+            image_url = await FluxSchnellProvider().generate_image(img_prompt, aspect_ratio="1:1")
+        except Exception as e:
+            print(f"Campaign image generation failed: {e}")
+
+        # Persist the plan (audience/placements live in metrics; the model has no
+        # columns for them). send_personal_message no longer exists on the manager,
+        # so broadcast (scoped to this workspace by the contextvar set above) instead.
+        campaign_id = 0
+        try:
+            with SessionLocal() as db:
+                m = dict(spec)
+                if image_url:
+                    m["image_url"] = image_url
+                camp = models.Campaign(
+                    workspace_id=workspace_id,
+                    platform="Meta / Google",
+                    name=spec.get("campaign_name", "AI Campaign"),
+                    objective=spec.get("objective", ""),
+                    budget=float(spec.get("daily_budget", 0) or 0),
+                    status="PENDING_REVIEW",
+                    metrics=m,
+                )
+                db.add(camp)
+                db.commit()
+                db.refresh(camp)
+                campaign_id = camp.id
+        except Exception as e:
+            print(f"Failed to save Campaign: {e}")
+
+        await manager.broadcast(json.dumps({
             "type": "campaign_spec_generated",
-            "spec": result["campaign_spec"]
-        })
-        record_agent_task(workspace_id, "CAMPAIGN", "COMPLETED", "Campaign plan generated")
+            "campaign_id": campaign_id,
+            "spec": result["campaign_spec"],
+            "image_url": image_url,
+        }))
+        record_agent_task(workspace_id, "CAMPAIGN", "COMPLETED", f"Campaign plan ready: {spec.get('campaign_name', '')[:60]}")
     except Exception as e:
-        await manager.broadcast_agent_log("System", f"Fatal Error in Campaign Generation: {str(e)}", "error")
+        await manager.broadcast_agent_log("Campaign Agent", f"Campaign generation failed: {e}", "failed")
         record_agent_task(workspace_id, "CAMPAIGN", "FAILED", str(e)[:120])
