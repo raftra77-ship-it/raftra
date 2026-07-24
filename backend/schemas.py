@@ -194,6 +194,13 @@ class AgentTaskResponse(BaseModel):
         from_attributes = True
 
 
+class AdSetupRequest(BaseModel):
+    """Ad-platform setup step. While real Meta/Google API keys aren't configured these run in
+    MOCK mode so the end-to-end flow is testable; the response always says which mode it was."""
+    platform: str            # "meta" | "google"
+    action: str              # "connect" | "disconnect" | "launch"
+
+
 class ContentEditRequest(BaseModel):
     """User edits to a generated content draft before approval. Both fields optional
     so the frontend can send only what changed; editing sends the draft back to

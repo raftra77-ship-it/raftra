@@ -16,6 +16,7 @@ class CampaignState(TypedDict):
     budget: str
     audience: str
     placement: str
+    brief: dict          # channels, ad types, KPIs, keywords, Google copy, budget split
     campaign_spec: str
     logs: list
 
@@ -71,18 +72,102 @@ async def audience_placement_node(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("Audience Agent", "Audience and placements mapped successfully.", "completed")
     return state
 
+async def creative_brief_node(state: CampaignState) -> CampaignState:
+    """Everything the downstream setup screens need: channels, ad types, KPIs, keywords,
+    Google Ads copy and how the total budget splits across platforms."""
+    await manager.broadcast_agent_log("Creative Brief Agent", "Deriving channels, KPIs, keywords and ad copy...", "running")
+    llm = GeminiProvider() if "gemini" in state["model"].lower() else OpenRouterProvider()
+
+    prompt = (
+        f"User Request: {state['prompt']}\nContext: {state['cached_context']}\n"
+        f"Objective: {state['objective']}\nAudience: {state['audience']}\n\n"
+        "Return ONLY a JSON object with these keys:\n"
+        '  "channels": array of ad channels, e.g. ["Meta Ads","Google Ads"]\n'
+        '  "ad_types": array, e.g. ["Image Ads","Carousel Ads","Stories"]\n'
+        '  "kpis": array of 2-4 short measurable targets, e.g. ["CTR > 4%","CPA < 200"]\n'
+        '  "top_keywords": array of 4-12 short keyword phrases\n'
+        '  "google_headlines": array of up to 15 ad headlines (max 30 characters each)\n'
+        '  "google_descriptions": array of up to 4 ad descriptions (max 90 characters each)\n'
+        '  "duration_days": integer campaign length in days\n'
+        '  "total_budget": number, the TOTAL campaign budget from the request\n'
+        '  "meta_split_pct": integer 0-100, share of budget for Meta (remainder goes to Google)\n'
+    )
+    resp = await generate_json(llm, prompt, "You are a media planner writing a precise campaign brief.", state["model"])
+
+    brief: dict = {}
+    try:
+        brief = json.loads(resp) or {}
+    except Exception:
+        brief = {}
+
+    # Defensive defaults so the UI always has something real to render.
+    brief.setdefault("channels", ["Meta Ads", "Google Ads"])
+    brief.setdefault("ad_types", ["Image Ads", "Carousel Ads", "Stories"])
+    brief.setdefault("kpis", ["CTR > 2%", "CPA within target"])
+    brief.setdefault("top_keywords", [])
+    brief.setdefault("google_headlines", [])
+    brief.setdefault("google_descriptions", [])
+    brief.setdefault("duration_days", 15)
+    brief.setdefault("meta_split_pct", 70)
+
+    state["brief"] = brief
+    await manager.broadcast_agent_log(
+        "Creative Brief Agent",
+        f"Brief ready: {len(brief.get('top_keywords') or [])} keywords, "
+        f"{len(brief.get('google_headlines') or [])} headlines.", "completed")
+    return state
+
+
+def _to_float(v, default=0.0) -> float:
+    try:
+        return float(str(v).replace(",", "").replace("₹", "").strip())
+    except Exception:
+        return default
+
+
 async def supervisor_spec_node(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("Supervisor", "Merging node outputs into final Campaign JSON Spec...", "running")
-    
+
+    import datetime as _dt
+    brief = state.get("brief") or {}
+
+    # Budget split across platforms, derived from the total the user asked for.
+    total = _to_float(brief.get("total_budget"), 0.0)
+    if total <= 0:
+        total = _to_float(state["budget"], 0.0) * float(brief.get("duration_days", 15) or 15)
+    meta_pct = int(brief.get("meta_split_pct", 70) or 70)
+    meta_pct = max(0, min(100, meta_pct))
+    google_pct = 100 - meta_pct
+    meta_amt = round(total * meta_pct / 100.0, 2)
+    google_amt = round(total - meta_amt, 2)
+
+    days = int(brief.get("duration_days", 15) or 15)
+    start = _dt.date.today()
+    end = start + _dt.timedelta(days=days)
+
     spec = {
         "campaign_name": f"AI Campaign - {state['objective']}",
         "objective": state["objective"],
         "daily_budget": state["budget"],
         "audience": state["audience"],
         "placements": state["placement"],
-        "status": "pending_review"
+        # ---- richer plan used by the setup screens ----
+        "total_budget": total,
+        "budget_split": {
+            "meta": {"pct": meta_pct, "amount": meta_amt},
+            "google": {"pct": google_pct, "amount": google_amt},
+        },
+        "channels": brief.get("channels"),
+        "ad_types": brief.get("ad_types"),
+        "kpis": brief.get("kpis"),
+        "top_keywords": brief.get("top_keywords"),
+        "google_headlines": brief.get("google_headlines"),
+        "google_descriptions": brief.get("google_descriptions"),
+        "duration_days": days,
+        "duration_label": f"{start.strftime('%d %b')} - {end.strftime('%d %b %Y')} ({days} Days)",
+        "status": "pending_review",
     }
-    
+
     state["campaign_spec"] = json.dumps(spec)
     await manager.broadcast_agent_log("Supervisor", "Campaign Spec Ready for Human Review.", "completed")
     return state
@@ -91,12 +176,14 @@ workflow = StateGraph(CampaignState)
 workflow.add_node("context", fetch_campaign_context)
 workflow.add_node("budget", objective_budget_node)
 workflow.add_node("audience", audience_placement_node)
+workflow.add_node("brief", creative_brief_node)
 workflow.add_node("supervisor", supervisor_spec_node)
 
 workflow.set_entry_point("context")
 workflow.add_edge("context", "budget")
 workflow.add_edge("budget", "audience")
-workflow.add_edge("audience", "supervisor")
+workflow.add_edge("audience", "brief")
+workflow.add_edge("brief", "supervisor")
 workflow.add_edge("supervisor", END)
 
 campaign_graph = workflow.compile()
@@ -112,6 +199,7 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
         "budget": "",
         "audience": "",
         "placement": "",
+        "brief": {},
         "campaign_spec": "",
         "logs": []
     }

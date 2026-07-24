@@ -268,6 +268,108 @@ def get_campaigns(workspace_id: int, db: Session = Depends(database.get_db), cur
     campaigns = db.query(models.Campaign).filter(models.Campaign.workspace_id == workspace_id).all()
     return campaigns
 
+def _get_campaign_or_404(workspace_id: int, campaign_id: int, db: Session) -> "models.Campaign":
+    camp = db.query(models.Campaign).filter(
+        models.Campaign.id == campaign_id, models.Campaign.workspace_id == workspace_id
+    ).first()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return camp
+
+
+@router.get("/{workspace_id}/campaigns/{campaign_id}", response_model=schemas.CampaignResponse)
+def get_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    """One campaign including its full generated strategy (in `metrics`)."""
+    _require_workspace(workspace_id, db, current_user)
+    return _get_campaign_or_404(workspace_id, campaign_id, db)
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/approve")
+def approve_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Human approves the AI strategy. From here the approved strategy is the single source of
+    truth — creatives and ad setup stay locked until this happens."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    import datetime as _dt
+    camp.status = "APPROVED"
+    m = dict(camp.metrics or {})
+    m["status"] = "approved"
+    m["approved_at"] = _dt.datetime.utcnow().isoformat()
+    camp.metrics = m
+    db.commit()
+    return {"status": "success", "campaign_id": camp.id, "new_status": camp.status,
+            "message": "Strategy approved — it is now the source of truth for creatives and ad setup."}
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/ad-setup")
+def campaign_ad_setup(workspace_id: int, campaign_id: int, req: schemas.AdSetupRequest,
+                      db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    """Connect / launch a platform for this campaign. Real Meta + Google API keys are not wired
+    yet, so this records a clearly-flagged MOCK setup — enough to exercise the whole flow."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+
+    # The rule: nothing downstream may populate until the strategy is approved.
+    if (camp.status or "").upper() != "APPROVED":
+        raise HTTPException(status_code=409, detail="Approve the strategy first — ad setup is locked until then.")
+
+    platform = (req.platform or "").lower()
+    if platform not in ("meta", "google"):
+        raise HTTPException(status_code=400, detail="platform must be 'meta' or 'google'")
+    action = (req.action or "").lower()
+
+    import datetime as _dt
+    m = dict(camp.metrics or {})
+    key = f"{platform}_setup"
+    setup = dict(m.get(key) or {})
+
+    if action == "connect":
+        setup.update({"connected": True, "mock": True,
+                      "account": f"Mock {platform.title()} Ad Account",
+                      "connected_at": _dt.datetime.utcnow().isoformat()})
+    elif action == "disconnect":
+        setup.update({"connected": False, "launched": False})
+    elif action == "launch":
+        if not setup.get("connected"):
+            raise HTTPException(status_code=409, detail=f"Connect {platform.title()} first.")
+        setup.update({"launched": True, "mock": True,
+                      "launched_at": _dt.datetime.utcnow().isoformat()})
+    else:
+        raise HTTPException(status_code=400, detail="action must be 'connect', 'disconnect' or 'launch'")
+
+    m[key] = setup
+    camp.metrics = m
+    db.commit()
+    return {"status": "success", "platform": platform, "action": action, "mock": True, "setup": setup}
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/publish")
+def publish_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Final publish. Simulated (DEMO) until real Meta/Google credentials exist — the response
+    says so explicitly rather than implying anything went live."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    if (camp.status or "").upper() not in ("APPROVED", "PUBLISHED_DEMO"):
+        raise HTTPException(status_code=409, detail="Approve the strategy before publishing.")
+    m = dict(camp.metrics or {})
+    missing = [p for p in ("meta", "google") if not (m.get(f"{p}_setup") or {}).get("launched")]
+    if missing:
+        raise HTTPException(status_code=409,
+                            detail=f"Complete the {', '.join(p.title() for p in missing)} setup before publishing.")
+    import datetime as _dt
+    camp.status = "PUBLISHED_DEMO"
+    m["published_at"] = _dt.datetime.utcnow().isoformat()
+    m["published_mode"] = "demo"
+    camp.metrics = m
+    db.commit()
+    return {"status": "success", "campaign_id": camp.id, "mode": "demo", "new_status": camp.status,
+            "message": "Published in DEMO mode — nothing was sent to Meta or Google (API keys not configured)."}
+
+
 @router.post("/{workspace_id}/campaigns/{campaign_id}/toggle")
 def toggle_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
