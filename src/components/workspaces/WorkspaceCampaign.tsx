@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Check, CheckCircle2, Clock, AlertTriangle, Rocket, Activity,
   Image as ImageIcon, ShieldCheck, Edit3, RefreshCw, XCircle,
-  OctagonX, ArrowRight, FileUp, Download, Copy, Database,
+  OctagonX, ArrowRight, FileUp, Download, Copy, Database, Upload,
   TrendingUp, ShoppingCart,
 } from 'lucide-react';
 
@@ -134,6 +134,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [platforms, setPlatforms] = useState({ meta: true, google: true });
   const [confirmed, setConfirmed] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
+
+  // The single approved creative that flows into the platform reviews, plus any
+  // images the user uploads, plus a manual override of the Google campaign type.
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [googleTypeOverride, setGoogleTypeOverride] = useState<string>('');
+  const uploadImageRef = useRef<HTMLInputElement>(null);
 
   const flash = (msg: string, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 6000); };
   const log = (l: string) => setActivity(a => [{ label: l, at: Date.now() }, ...a].slice(0, 6));
@@ -149,7 +157,50 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const headlines: string[] = spec.google_headlines || [];
   const descriptions: string[] = spec.google_descriptions || [];
   const keywords: string[] = spec.top_keywords || [];
+  const rec = spec.recommendations || {};
+  const aiGoogleType: string = spec.google_campaign_type || (rec.google_campaign_type && rec.google_campaign_type.value) || 'Search';
+  const GOOGLE_TYPES = ['Search', 'Display', 'Performance Max', 'Shopping', 'Demand Gen', 'Video'];
+  const googleType: string = googleTypeOverride || aiGoogleType;
+  const g = spec.google || {};
+  // Plain-language reasons for the "Why AI Recommended This" section.
+  const whyRows: { label: string; value: string; reason: string }[] = [
+    rec.objective && { label: 'Objective', value: rec.objective.value, reason: rec.objective.reason },
+    ...(Array.isArray(rec.platforms) ? rec.platforms.map((p: any) => ({ label: 'Platform', value: p.value, reason: p.reason })) : []),
+    rec.budget_allocation && { label: 'Budget Split', value: `${rec.budget_allocation.meta_pct ?? '—'}% Meta / ${rec.budget_allocation.google_pct ?? '—'}% Google`, reason: rec.budget_allocation.reason },
+    rec.google_campaign_type && { label: 'Google Campaign Type', value: rec.google_campaign_type.value, reason: rec.google_campaign_type.reason },
+    rec.audience && { label: 'Audience', value: rec.audience.value, reason: rec.audience.reason },
+    rec.creative && { label: 'Creative', value: rec.creative.value, reason: rec.creative.reason },
+    rec.cta && { label: 'CTA', value: rec.cta.value, reason: rec.cta.reason },
+    rec.optimization_goal && { label: 'Optimization Goal', value: rec.optimization_goal.value, reason: rec.optimization_goal.reason },
+  ].filter((r: any) => r && r.reason);
+  // Which Google fields to show depends on the AI-chosen campaign type.
+  const gt = (googleType || '').toLowerCase();
+  const gShow = {
+    keywords: gt.includes('search') || gt.includes('shopping'),
+    extensions: gt.includes('search'),
+    images: gt.includes('display') || gt.includes('performance') || gt.includes('demand'),
+    videos: gt.includes('performance') || gt.includes('video'),
+    signals: gt.includes('performance') || gt.includes('demand'),
+  };
+  const chips = (arr: any[]) => (arr && arr.length) ? (
+    <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+      {arr.slice(0, 6).map((x: any, i: number) => <span key={i} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{String(x)}</span>)}
+      {arr.length > 6 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', alignSelf: 'center' }}>+{arr.length - 6} more</span>}
+    </span>
+  ) : <span style={{ color: 'var(--text-muted)' }}>—</span>;
   const libraryImages: string[] = (creativeAssets || []).map((a: any) => a.image_url || a.imageUrl).filter(Boolean);
+  // Every creative the user can pick from: the AI-generated ad, their library, and uploads.
+  const allImages: string[] = Array.from(new Set([heroImage, ...uploadedImages, ...libraryImages].filter(Boolean) as string[]));
+  // Once a campaign (with its image) loads, pre-select the AI-generated ad.
+  useEffect(() => { if (heroImage && !selectedImage) setSelectedImage(heroImage); }, [heroImage]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const onUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { const url = String(reader.result); setUploadedImages(imgs => [url, ...imgs]); setSelectedImage(url); };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // ── data ──
   const loadLatest = useCallback(async () => {
@@ -393,7 +444,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       </div>
 
       {/* ── 3. brief + generated strategy (with its image) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.25fr)', gap: '18px' }}>
+      {/* alignItems:start so the shorter brief card keeps its natural height instead of
+          stretching to match the long strategy output (which left a big empty gap). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.25fr)', gap: '18px', alignItems: 'start' }}>
         {/* brief */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -457,9 +510,17 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
         {/* generated strategy + image together */}
         <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '10px', flexWrap: 'wrap' }}>
             <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Your AI Strategy &amp; Ad</h3>
-            <Pill status={!campaign ? 'Pending' : approved ? 'Approved' : 'Needs approval'} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {campaign && whyRows.length > 0 && (
+                <button onClick={() => setWhyOpen(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: '#b3aaff', background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.35)', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer' }}>
+                  <Sparkles size={13} /> Why AI recommended this
+                </button>
+              )}
+              <Pill status={!campaign ? 'Pending' : approved ? 'Approved' : 'Needs approval'} />
+            </div>
           </div>
           <p style={{ ...sectionHint, marginBottom: '16px' }}>
             {!campaign ? 'Nothing generated yet.' : approved
@@ -474,31 +535,54 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             </div>
           ) : (
             <>
-              {/* the ad image, inline with the strategy */}
-              <div style={{ display: 'flex', gap: '14px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                <div style={{ width: '150px', height: '150px', borderRadius: '11px', overflow: 'hidden', background: '#000', border: '1px solid var(--border, var(--border-color))', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {heroImage ? <img src={heroImage} alt="Generated ad" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <ImageIcon size={26} color="var(--text-muted)" />}
-                </div>
-                <div style={{ flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '9px' }}>
-                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                    {heroImage ? 'This ad image was generated with the strategy. Keep it, or make a new one.' : 'No image was produced for this run.'}
+              {/* the ad image — pick the one creative that flows into the platform reviews */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                  <div style={{ width: '150px', height: '150px', borderRadius: '11px', overflow: 'hidden', background: '#000', border: '1px solid var(--border, var(--border-color))', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {selectedImage ? <img src={selectedImage} alt="Selected ad" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <ImageIcon size={26} color="var(--text-muted)" />}
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button onClick={regenerateImage} disabled={busy === 'image'} style={{ ...btnGhost, padding: '8px 12px', fontSize: '12px' }}>
-                      <RefreshCw size={13} /> {busy === 'image' ? 'Generating…' : 'New image'}
-                    </button>
-                    <button style={{ ...btnGhost, padding: '8px 12px', fontSize: '12px' }}><Edit3 size={13} /> Creative Studio</button>
-                  </div>
-                  {libraryImages.length > 0 && (
-                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                      {libraryImages.slice(0, 5).map((src, i) => (
-                        <img key={i} src={src} alt="" style={{ width: '34px', height: '34px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border, var(--border-color))' }} />
-                      ))}
-                      <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', alignSelf: 'center' }}>in your library</span>
+                  <div style={{ flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '9px' }}>
+                    <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                      {selectedImage ? 'This is the approved creative. Only this image is sent to the platform reviews below.' : 'Pick or upload the image you want to advertise.'}
                     </div>
-                  )}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button onClick={regenerateImage} disabled={busy === 'image'} style={{ ...btnGhost, padding: '8px 12px', fontSize: '12px' }}>
+                        <RefreshCw size={13} /> {busy === 'image' ? 'Generating…' : 'New image'}
+                      </button>
+                      <button onClick={() => uploadImageRef.current?.click()} style={{ ...btnGhost, padding: '8px 12px', fontSize: '12px' }}>
+                        <Upload size={13} /> Upload
+                      </button>
+                      <input ref={uploadImageRef} type="file" accept="image/*" onChange={onUploadImage} style={{ display: 'none' }} />
+                    </div>
+                  </div>
                 </div>
+
+                {/* selectable thumbnails: generated + uploaded + library */}
+                {allImages.length > 0 && (
+                  <>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '13px 0 7px' }}>Choose the creative to advertise (click to approve)</div>
+                    <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap' }}>
+                      {allImages.map((src, i) => {
+                        const active = selectedImage === src;
+                        const label = src === heroImage ? 'AI generated' : uploadedImages.includes(src) ? 'Uploaded' : 'Library';
+                        return (
+                          <button key={i} onClick={() => setSelectedImage(src)} title={label}
+                            style={{ position: 'relative', width: '64px', height: '64px', padding: 0, borderRadius: '9px', overflow: 'hidden', cursor: 'pointer',
+                              border: active ? '2px solid var(--primary)' : '1px solid var(--border, var(--border-color))',
+                              boxShadow: active ? '0 0 0 3px rgba(90,82,255,0.22)' : 'none', background: '#000' }}>
+                            <img src={src} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: active ? 1 : 0.72 }} />
+                            {active && (
+                              <span style={{ position: 'absolute', top: '3px', right: '3px', background: 'var(--primary)', borderRadius: '50%', width: '17px', height: '17px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Check size={11} color="#fff" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* the plan */}
@@ -583,7 +667,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
       {/* ── 5. per-platform review ── */}
       <Gated locked={!approved} why="Approve the strategy to review platform ads">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '18px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {/* Meta + Google sit side-by-side when both are selected, full-width when only one. */}
+          <div style={{ display: 'grid', gridTemplateColumns: (platforms.meta && platforms.google) ? 'repeat(auto-fit, minmax(330px, 1fr))' : '1fr', gap: '18px' }}>
 
           {/* META */}
           {platforms.meta && (
@@ -595,7 +681,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               <Row k="Campaign name" v={campaign?.name || '—'} />
               <Row k="Objective" v={campaign?.objective || '—'} />
               <Row k="Budget" v={split.meta ? money(split.meta.amount) : '—'} />
-              <Row k="Ad format" v={`Image ads (${heroImage ? 1 : 0})`} />
+              <Row k="Ad format" v={`Image ads (${selectedImage ? 1 : 0})`} />
               <Row k="Audience" v={spec.audience || form.audience} stack />
               <Row k="Placements" v={
                 <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -606,11 +692,10 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               <div style={{ marginTop: '12px' }}>
                 <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Creatives</div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {[heroImage, ...libraryImages].filter(Boolean).slice(0, 4).map((src, i) => (
-                    <img key={i} src={src as string} alt={`Creative ${i + 1}`} style={{ width: '68px', height: '68px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border, var(--border-color))' }} />
-                  ))}
-                  {![heroImage, ...libraryImages].filter(Boolean).length && (
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>No creatives yet.</span>
+                  {selectedImage ? (
+                    <img src={selectedImage} alt="Approved creative" style={{ width: '68px', height: '68px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border, var(--border-color))' }} />
+                  ) : (
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>No creative selected — approve one above.</span>
                   )}
                 </div>
               </div>
@@ -637,16 +722,28 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status="MOCK" /></h3>
                 <Pill status={googleSetup.launched ? 'Ready' : googleSetup.connected ? 'In Progress' : 'Pending'} />
               </div>
-              <Row k="Campaign type" v="Search" />
+              <div style={{ padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Campaign type</div>
+                <select value={googleType} onChange={e => setGoogleTypeOverride(e.target.value)}
+                  style={{ ...input, padding: '8px 10px', fontSize: '12.5px', width: '100%' }}>
+                  {GOOGLE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {(rec.google_campaign_type && rec.google_campaign_type.reason) && (
+                  <div style={{ display: 'flex', gap: '7px', marginTop: '8px', fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                    <Sparkles size={13} color="var(--primary)" style={{ flexShrink: 0, marginTop: '1px' }} />
+                    <span>
+                      {googleType === aiGoogleType
+                        ? <><b style={{ color: '#b3aaff' }}>Why {aiGoogleType}?</b> {rec.google_campaign_type.reason}</>
+                        : <>AI recommended <b style={{ color: '#b3aaff' }}>{aiGoogleType}</b> — {rec.google_campaign_type.reason} You've switched to <b style={{ color: '#b3aaff' }}>{googleType}</b>.</>}
+                    </span>
+                  </div>
+                )}
+              </div>
               <Row k="Campaign name" v={campaign?.name || '—'} />
               <Row k="Budget" v={split.google ? money(split.google.amount) : '—'} />
-              <Row k={`Keywords (${keywords.length})`} v={
-                keywords.length ? (
-                  <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {keywords.slice(0, 4).map(kw => <span key={kw} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{kw}</span>)}
-                    {keywords.length > 4 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', alignSelf: 'center' }}>+{keywords.length - 4} more</span>}
-                  </span>
-                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>} stack />
+              {gt.includes('search') && <Row k="Landing page" v={spec.landing_page || form.tracking || '—'} />}
+              {gShow.keywords && <Row k={`Keywords (${keywords.length})`} v={chips(keywords)} stack />}
+              {gShow.extensions && <Row k="Extensions" v={chips(g.extensions || [])} stack />}
               <Row k={`Headlines (${headlines.length})`} v={
                 headlines.length ? (
                   <span style={{ display: 'block' }}>
@@ -671,6 +768,16 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     {descriptions.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{descriptions.length - 2} more descriptions</span>}
                   </span>
                 ) : <span style={{ color: 'var(--text-muted)' }}>—</span>} stack />
+              {gShow.images && <Row k="Images" v={
+                <span style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {selectedImage
+                    ? <img src={selectedImage} alt="Approved creative" style={{ width: '68px', height: '68px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border, var(--border-color))' }} />
+                    : <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>No creative selected — approve one above.</span>}
+                  {(g.image_ideas || []).length ? chips(g.image_ideas) : null}
+                </span>} stack />}
+              {gShow.videos && <Row k="Videos" v={chips((g.video_ideas || []).length ? g.video_ideas : ['Video placeholder (optional)'])} stack />}
+              {gShow.signals && <Row k="Audience signals" v={chips(g.audience_signals || [])} stack />}
+              {gShow.images && <Row k="CTA" v={g.cta || (rec.cta && rec.cta.value) || '—'} />}
               <div style={{ display: 'flex', gap: '8px', marginTop: '15px', flexWrap: 'wrap' }}>
                 {!googleSetup.connected ? (
                   <button onClick={() => adSetup('google', 'connect')} style={{ ...btnGhost, flex: 1 }}>Connect account</button>
@@ -687,7 +794,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             </div>
           )}
 
-          {/* OPTIMIZATION RULES */}
+          </div>
+
+          {/* OPTIMIZATION RULES — full width, below the platform reviews */}
           <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
               <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Campaign Optimization Rules</h3>
@@ -744,7 +853,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '12px', marginBottom: '18px' }}>
             {[
               { n: 'Strategy', d: approved ? 'Approved' : 'Not approved', ok: approved },
-              { n: 'Creative assets', d: `${[heroImage, ...libraryImages].filter(Boolean).length} image(s)`, ok: !!heroImage },
+              { n: 'Creative assets', d: selectedImage ? '1 image approved' : 'None selected', ok: !!selectedImage },
               ...(platforms.meta ? [{ n: 'Meta Ads', d: metaSetup.launched ? money(split.meta?.amount) : 'Not ready', ok: !!metaSetup.launched }] : []),
               ...(platforms.google ? [{ n: 'Google Ads', d: googleSetup.launched ? money(split.google?.amount) : 'Not ready', ok: !!googleSetup.launched }] : []),
               { n: 'Optimization rules', d: smart.killAds || smart.autoRotate ? 'Configured' : 'Off', ok: true },
@@ -825,6 +934,30 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       </div>
 
       {/* ── full review modal: the approved strategy, all in one place ── */}
+      {whyOpen && (
+        <div onClick={() => setWhyOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ ...card, width: '100%', maxWidth: '640px', maxHeight: '86vh', overflowY: 'auto', background: 'rgba(18,20,28,0.99)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '4px' }}>
+              <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
+                <Sparkles size={18} color="var(--primary)" /> Why AI recommended this
+              </h3>
+              <button onClick={() => setWhyOpen(false)} style={{ ...btnGhost, padding: '6px 12px', fontSize: '12px' }}>Close</button>
+            </div>
+            <p style={{ ...sectionHint, marginBottom: '18px' }}>The reasoning behind each part of this strategy, in plain language.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {whyRows.map((r, i) => (
+                <div key={i} style={{ borderLeft: '2px solid rgba(90,82,255,0.4)', paddingLeft: '13px', paddingTop: '2px', paddingBottom: '2px' }}>
+                  <div style={{ fontSize: '13px', color: '#fff' }}><b style={{ color: '#b3aaff' }}>{r.label}:</b> {r.value}</div>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55, marginTop: '3px' }}>{r.reason}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {reviewOpen && (
         <div onClick={() => setReviewOpen(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
@@ -842,7 +975,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <div style={{ marginBottom: '18px' }}>
               <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>APPROVED STRATEGY</div>
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                {heroImage && <img src={heroImage} alt="Ad creative" style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }} />}
+                {selectedImage && <img src={selectedImage} alt="Ad creative" style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }} />}
                 <div style={{ flex: 1, minWidth: '230px' }}>
                   <Row k="Campaign" v={campaign?.name || '—'} />
                   <Row k="Objective" v={campaign?.objective || '—'} />

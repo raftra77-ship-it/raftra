@@ -72,27 +72,66 @@ async def audience_placement_node(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("Audience Agent", "Audience and placements mapped successfully.", "completed")
     return state
 
+_GOOGLE_TYPES = {"Search", "Display", "Performance Max", "Shopping", "Demand Gen", "Video"}
+
+
 async def creative_brief_node(state: CampaignState) -> CampaignState:
-    """Everything the downstream setup screens need: channels, ad types, KPIs, keywords,
-    Google Ads copy and how the total budget splits across platforms."""
-    await manager.broadcast_agent_log("Creative Brief Agent", "Deriving channels, KPIs, keywords and ad copy...", "running")
+    """The reasoning core. Produces a *reasoned* strategy — every recommendation carries a
+    plain-language WHY grounded in real best practice — plus the correct Google campaign
+    TYPE and ONLY the assets that type needs, and Meta ad-copy fields."""
+    await manager.broadcast_agent_log("Strategy Agent", "Reasoning about platforms, budget split, Google campaign type and creative...", "running")
     llm = GeminiProvider() if "gemini" in state["model"].lower() else OpenRouterProvider()
 
-    prompt = (
-        f"User Request: {state['prompt']}\nContext: {state['cached_context']}\n"
-        f"Objective: {state['objective']}\nAudience: {state['audience']}\n\n"
-        "Return ONLY a JSON object with these keys:\n"
-        '  "channels": array of ad channels, e.g. ["Meta Ads","Google Ads"]\n'
-        '  "ad_types": array, e.g. ["Image Ads","Carousel Ads","Stories"]\n'
-        '  "kpis": array of 2-4 short measurable targets, e.g. ["CTR > 4%","CPA < 200"]\n'
-        '  "top_keywords": array of 4-12 short keyword phrases\n'
-        '  "google_headlines": array of up to 15 ad headlines (max 30 characters each)\n'
-        '  "google_descriptions": array of up to 4 ad descriptions (max 90 characters each)\n'
-        '  "duration_days": integer campaign length in days\n'
-        '  "total_budget": number, the TOTAL campaign budget from the request\n'
-        '  "meta_split_pct": integer 0-100, share of budget for Meta (remainder goes to Google)\n'
+    system = (
+        "You are a senior digital-marketing strategist. Apply real, current best practices for "
+        "Meta Ads and Google Ads. EVERY recommendation MUST include a short, plain-language reason "
+        "(the WHY) tied to the business, goal, audience, budget or search intent. Never invent "
+        "statistics or facts; if unsure, explain the reasoning rather than fabricating numbers.\n\n"
+        "Choose the Google campaign TYPE from goal + intent:\n"
+        "- Search: people actively search for this product/service (high intent; leads/sales). NO images.\n"
+        "- Display: awareness/retargeting across sites (visual, lower intent). Needs images.\n"
+        "- Performance Max: goal-based automation across all Google inventory (ecommerce/conversions). Needs images + optional video.\n"
+        "- Shopping: retail products with a product feed. Keywords not user-set.\n"
+        "- Demand Gen: social-style discovery on YouTube/Discover/Gmail. Needs images + audience signals.\n"
+        "- Video: awareness/consideration on YouTube. Needs video.\n"
+        "Only fill the asset arrays the chosen type actually uses; leave the rest as []."
     )
-    resp = await generate_json(llm, prompt, "You are a media planner writing a precise campaign brief.", state["model"])
+    prompt = (
+        f"Campaign brief from the user (may include business type, industry, product, goal, budget, "
+        f"audience, location, season, website, landing page):\n{state['prompt']}\n\n"
+        f"Business/brand context:\n{state['cached_context']}\n\n"
+        f"Chosen objective: {state['objective']}\nAudience: {state['audience']}\n\n"
+        "Return ONLY a JSON object with EXACTLY these keys:\n"
+        "{\n"
+        '  "recommendations": {\n'
+        '    "objective": {"value": "...", "reason": "..."},\n'
+        '    "platforms": [{"value": "Meta Ads", "reason": "..."}, {"value": "Google Ads", "reason": "..."}],\n'
+        '    "budget_allocation": {"meta_pct": 60, "google_pct": 40, "reason": "..."},\n'
+        '    "google_campaign_type": {"value": "Search", "reason": "..."},\n'
+        '    "audience": {"value": "...", "reason": "..."},\n'
+        '    "creative": {"value": "...", "reason": "..."},\n'
+        '    "cta": {"value": "Shop Now", "reason": "..."},\n'
+        '    "optimization_goal": {"value": "...", "reason": "..."}\n'
+        "  },\n"
+        '  "meta": {"primary_text": "... (1-2 sentences)", "headline": "... (max 40 chars)", "cta": "...", "placements": ["Instagram Reels","Facebook Feed"]},\n'
+        '  "google": {\n'
+        '    "headlines": ["... up to 15, max 30 chars each"],\n'
+        '    "descriptions": ["... up to 4, max 90 chars each"],\n'
+        '    "keywords": ["... 5-15 phrases; [] if type is Display/Video/Demand Gen"],\n'
+        '    "extensions": ["Sitelink: ...","Callout: ..."; [] unless Search],\n'
+        '    "image_ideas": ["short image descriptions; [] unless Display/Performance Max/Demand Gen"],\n'
+        '    "video_ideas": ["short video concepts; [] unless Performance Max/Video"],\n'
+        '    "audience_signals": ["...; [] unless Performance Max/Demand Gen"],\n'
+        '    "cta": "..."\n'
+        "  },\n"
+        '  "kpis": ["2-4 measurable targets, e.g. CTR > 2%"],\n'
+        '  "channels": ["Meta Ads","Google Ads"],\n'
+        '  "ad_types": ["Image Ads","Carousel Ads"],\n'
+        '  "duration_days": 15,\n'
+        '  "total_budget": <total budget number from the request>\n'
+        "}\n"
+    )
+    resp = await generate_json(llm, prompt, system, state["model"])
 
     brief: dict = {}
     try:
@@ -100,21 +139,44 @@ async def creative_brief_node(state: CampaignState) -> CampaignState:
     except Exception:
         brief = {}
 
-    # Defensive defaults so the UI always has something real to render.
-    brief.setdefault("channels", ["Meta Ads", "Google Ads"])
-    brief.setdefault("ad_types", ["Image Ads", "Carousel Ads", "Stories"])
-    brief.setdefault("kpis", ["CTR > 2%", "CPA within target"])
-    brief.setdefault("top_keywords", [])
-    brief.setdefault("google_headlines", [])
-    brief.setdefault("google_descriptions", [])
+    rec = brief.get("recommendations") or {}
+    google = brief.get("google") or {}
+    meta = brief.get("meta") or {}
+
+    # Normalise the Google campaign type to one we support.
+    gtype = ((rec.get("google_campaign_type") or {}).get("value") or "Search").strip().title()
+    if gtype not in _GOOGLE_TYPES:
+        gtype = "Performance Max" if gtype.lower().startswith("perf") else "Search"
+    rec.setdefault("google_campaign_type", {})
+    rec["google_campaign_type"]["value"] = gtype
+
+    # Budget split from the reasoned allocation (fall back to 70/30).
+    ba = rec.get("budget_allocation") or {}
+    try:
+        meta_pct = int(ba.get("meta_pct", 70))
+    except (TypeError, ValueError):
+        meta_pct = 70
+    meta_pct = max(0, min(100, meta_pct))
+
+    # Back-compat fields the existing setup screens already read.
+    brief["channels"] = brief.get("channels") or ["Meta Ads", "Google Ads"]
+    brief["ad_types"] = brief.get("ad_types") or ["Image Ads", "Carousel Ads"]
+    brief["kpis"] = brief.get("kpis") or ["CTR > 2%", "CPA within target"]
+    brief["top_keywords"] = google.get("keywords") or []
+    brief["google_headlines"] = google.get("headlines") or []
+    brief["google_descriptions"] = google.get("descriptions") or []
     brief.setdefault("duration_days", 15)
-    brief.setdefault("meta_split_pct", 70)
+    brief["meta_split_pct"] = meta_pct
+    brief["recommendations"] = rec
+    brief["google"] = google
+    brief["google_campaign_type"] = gtype
+    brief["meta"] = meta
 
     state["brief"] = brief
     await manager.broadcast_agent_log(
-        "Creative Brief Agent",
-        f"Brief ready: {len(brief.get('top_keywords') or [])} keywords, "
-        f"{len(brief.get('google_headlines') or [])} headlines.", "completed")
+        "Strategy Agent",
+        f"Reasoned strategy ready — Google type: {gtype}, budget split {meta_pct}/{100 - meta_pct} Meta/Google, "
+        f"{len(brief['google_headlines'])} headlines.", "completed")
     return state
 
 
@@ -165,6 +227,11 @@ async def supervisor_spec_node(state: CampaignState) -> CampaignState:
         "google_descriptions": brief.get("google_descriptions"),
         "duration_days": days,
         "duration_label": f"{start.strftime('%d %b')} - {end.strftime('%d %b %Y')} ({days} Days)",
+        # ---- reasoned strategy (the "Why AI Recommended This" + dynamic Google type) ----
+        "recommendations": brief.get("recommendations") or {},
+        "google_campaign_type": brief.get("google_campaign_type") or "Search",
+        "google": brief.get("google") or {},
+        "meta": brief.get("meta") or {},
         "status": "pending_review",
     }
 
