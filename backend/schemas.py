@@ -194,6 +194,11 @@ class AgentTaskResponse(BaseModel):
         from_attributes = True
 
 
+class PublishCampaignRequest(BaseModel):
+    """Which platforms to publish to. Omit to publish to every platform that is set up."""
+    platforms: Optional[List[str]] = None      # e.g. ["meta"], ["google"], ["meta","google"]
+
+
 class AdSetupRequest(BaseModel):
     """Ad-platform setup step. While real Meta/Google API keys aren't configured these run in
     MOCK mode so the end-to-end flow is testable; the response always says which mode it was."""

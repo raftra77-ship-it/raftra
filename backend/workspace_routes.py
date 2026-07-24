@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import database, models, schemas, auth
 import os
 
@@ -347,27 +347,40 @@ def campaign_ad_setup(workspace_id: int, campaign_id: int, req: schemas.AdSetupR
 
 
 @router.post("/{workspace_id}/campaigns/{campaign_id}/publish")
-def publish_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
+def publish_campaign(workspace_id: int, campaign_id: int,
+                     req: Optional[schemas.PublishCampaignRequest] = None,
+                     db: Session = Depends(database.get_db),
                      current_user: models.User = Depends(auth.get_current_user)):
-    """Final publish. Simulated (DEMO) until real Meta/Google credentials exist — the response
-    says so explicitly rather than implying anything went live."""
+    """Final publish to the chosen platforms. Simulated (DEMO) until real Meta/Google credentials
+    exist — the response says so explicitly rather than implying anything went live."""
     _require_workspace(workspace_id, db, current_user)
     camp = _get_campaign_or_404(workspace_id, campaign_id, db)
     if (camp.status or "").upper() not in ("APPROVED", "PUBLISHED_DEMO"):
         raise HTTPException(status_code=409, detail="Approve the strategy before publishing.")
+
+    wanted = [p.lower() for p in ((req.platforms if req and req.platforms else None) or ["meta", "google"])]
+    bad = [p for p in wanted if p not in ("meta", "google")]
+    if bad:
+        raise HTTPException(status_code=400, detail=f"Unknown platform(s): {', '.join(bad)}")
+
     m = dict(camp.metrics or {})
-    missing = [p for p in ("meta", "google") if not (m.get(f"{p}_setup") or {}).get("launched")]
+    missing = [p for p in wanted if not (m.get(f"{p}_setup") or {}).get("launched")]
     if missing:
         raise HTTPException(status_code=409,
                             detail=f"Complete the {', '.join(p.title() for p in missing)} setup before publishing.")
+
     import datetime as _dt
+    published = list(dict.fromkeys((m.get("published_platforms") or []) + wanted))
     camp.status = "PUBLISHED_DEMO"
     m["published_at"] = _dt.datetime.utcnow().isoformat()
     m["published_mode"] = "demo"
+    m["published_platforms"] = published
     camp.metrics = m
     db.commit()
+    names = " & ".join(p.title() for p in wanted)
     return {"status": "success", "campaign_id": camp.id, "mode": "demo", "new_status": camp.status,
-            "message": "Published in DEMO mode — nothing was sent to Meta or Google (API keys not configured)."}
+            "platforms": wanted, "published_platforms": published,
+            "message": f"Published to {names} in DEMO mode — nothing was sent to a real ad account (API keys not configured)."}
 
 
 @router.post("/{workspace_id}/campaigns/{campaign_id}/toggle")

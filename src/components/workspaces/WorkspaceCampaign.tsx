@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Check, CheckCircle2, Clock, AlertTriangle, Rocket, Activity,
-  Image as ImageIcon, ShieldCheck, Edit3, RefreshCw, XCircle, DollarSign,
-  BarChart3, OctagonX, ArrowRight, FileUp, Download, Copy, Database,
+  Image as ImageIcon, ShieldCheck, Edit3, RefreshCw, XCircle,
+  OctagonX, ArrowRight, FileUp, Download, Copy, Database,
   TrendingUp, ShoppingCart,
 } from 'lucide-react';
 
@@ -61,6 +61,8 @@ const Pill: React.FC<{ status: string }> = ({ status }) => {
     Published: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
     Generated: { c: '#5a8dff', b: 'rgba(90,141,255,0.14)' },
     'In Progress': { c: '#5a8dff', b: 'rgba(90,141,255,0.14)' },
+    Ready: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
+    Configured: { c: '#5a8dff', b: 'rgba(90,141,255,0.14)' },
     'Needs approval': { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     Locked: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)' },
     Pending: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)' },
@@ -127,6 +129,11 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
   // Smart ad management (restored)
   const [smart, setSmart] = useState({ killAds: true, autoRotate: true, skipRateThreshold: 70, frequencyCap: 3.5, cpaThreshold: 3500, refreshIntervalDays: 4 });
+
+  // Which platforms this campaign goes to, the final sign-off, and the full-review modal.
+  const [platforms, setPlatforms] = useState({ meta: true, google: true });
+  const [confirmed, setConfirmed] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const flash = (msg: string, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 6000); };
   const log = (l: string) => setActivity(a => [{ label: l, at: Date.now() }, ...a].slice(0, 6));
@@ -218,14 +225,19 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     setBusy(null);
   };
 
-  const publish = async () => {
-    if (!campaign) return;
-    setBusy('publish');
+  const publish = async (targets: ('meta' | 'google')[]) => {
+    if (!campaign || targets.length === 0) return;
+    setBusy(`publish-${targets.join('-')}`);
     try {
-      const r = await fetch(`/api/workspaces/${workspaceId}/campaigns/${campaign.id}/publish`, { method: 'POST', headers: authHeaders() });
+      const r = await fetch(`/api/workspaces/${workspaceId}/campaigns/${campaign.id}/publish`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ platforms: targets }),
+      });
       const d = await r.json();
-      if (r.ok) { await refresh(campaign.id); log('Campaign published (demo)'); flash(d.message || 'Published in DEMO mode.'); }
-      else flash(d.detail || 'Publish failed.', false);
+      if (r.ok) {
+        await refresh(campaign.id);
+        log(`Published to ${targets.map(t => (t === 'meta' ? 'Meta' : 'Google')).join(' & ')} (demo)`);
+        flash(d.message || 'Published in demo mode.');
+      } else flash(d.detail || 'Publish failed.', false);
     } catch { flash('Publish failed.', false); }
     setBusy(null);
   };
@@ -282,15 +294,23 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   };
 
   // ── stepper ──
+  // Which platforms are actually in play, and whether each one's ads are reviewed & ready.
+  const chosen: ('meta' | 'google')[] = (['meta', 'google'] as const).filter(p => platforms[p]);
+  const setupOf = (p: 'meta' | 'google') => (p === 'meta' ? metaSetup : googleSetup);
+  const platformsReady = chosen.length > 0 && chosen.every(p => setupOf(p).launched);
+  const publishedList: string[] = spec.published_platforms || [];
+
   const steps = [
-    { n: 1, name: 'Strategy', s: !campaign ? 'Pending' : approved ? 'Completed' : 'Needs approval' },
-    { n: 2, name: 'Creatives', s: !campaign ? 'Pending' : heroImage ? (approved ? 'Completed' : 'Generated') : 'Pending' },
-    { n: 3, name: 'Meta Ads', s: !approved ? 'Locked' : metaSetup.launched ? 'Completed' : metaSetup.connected ? 'In Progress' : 'Pending' },
-    { n: 4, name: 'Google Ads', s: !approved ? 'Locked' : googleSetup.launched ? 'Completed' : googleSetup.connected ? 'In Progress' : 'Pending' },
-    { n: 5, name: 'Review & Publish', s: published ? 'Completed' : !approved ? 'Locked' : 'Pending' },
+    { n: 1, name: 'Ideation', sub: 'Fill campaign brief', s: campaign ? 'Completed' : 'Pending' },
+    { n: 2, name: 'AI Strategy', sub: 'Generate strategy', s: !campaign ? 'Pending' : 'Completed' },
+    { n: 3, name: 'Approve Strategy', sub: 'Review & approve', s: !campaign ? 'Locked' : approved ? 'Completed' : 'Needs approval' },
+    { n: 4, name: 'Select Platforms', sub: 'Choose where to publish', s: !approved ? 'Locked' : chosen.length ? 'Completed' : 'Pending' },
+    { n: 5, name: 'Review Platforms', sub: 'Review & edit platform ads', s: !approved || !chosen.length ? 'Locked' : platformsReady ? 'Completed' : 'In Progress' },
+    { n: 6, name: 'Human Review', sub: 'Final review & publish', s: published ? 'Completed' : !platformsReady ? 'Locked' : confirmed ? 'In Progress' : 'Pending' },
+    { n: 7, name: 'Status', sub: 'Track campaign', s: published ? 'Completed' : 'Locked' },
   ];
   const stepColor = (s: string) => (s === 'Completed' ? '#00e676' : s === 'In Progress' || s === 'Generated' ? '#5a8dff' : s === 'Needs approval' ? '#ffae00' : 'var(--text-secondary)');
-  const canPublish = approved && metaSetup.launched && googleSetup.launched && !published;
+  const canPublish = approved && platformsReady && confirmed && !published;
 
   // ── sample performance feed (mock data, kept at top) ──
   const sampleFeed = [
@@ -533,141 +553,249 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         </div>
       </div>
 
-      {/* ── 4. downstream steps ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: '18px' }}>
-        {/* Meta */}
-        <Gated locked={!approved} why="Approve the strategy to set up Meta Ads">
-          <div style={card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '8px' }}>
-              <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Meta Ads <Pill status="MOCK" /></h3>
-              <Pill status={metaSetup.launched ? 'Completed' : metaSetup.connected ? 'In Progress' : 'Pending'} />
-            </div>
-            <p style={{ ...sectionHint, marginBottom: '12px' }}>Auto-filled from your approved strategy.</p>
-            <Row k="Account" v={metaSetup.connected ? <span style={{ color: '#00e676' }}>{metaSetup.account}</span>
-              : <button onClick={() => adSetup('meta', 'connect')} style={{ ...btnGhost, padding: '5px 13px', fontSize: '11.5px' }}>Connect</button>} />
-            <Row k="Campaign" v={campaign?.name || '—'} />
-            <Row k="Objective" v={campaign?.objective || '—'} />
-            <Row k="Audience" v="From approved strategy" />
-            <Row k="Budget" v={split.meta ? money(split.meta.amount) : '—'} />
-            <Row k="Placements" v={spec.placements || form.placement} stack />
-            <button onClick={() => adSetup('meta', 'launch')} disabled={!metaSetup.connected || metaSetup.launched || busy === 'meta-launch'}
-              style={{ ...btnPrimary, marginTop: '14px', background: metaSetup.launched ? 'rgba(0,230,118,0.15)' : !metaSetup.connected ? 'rgba(255,255,255,0.06)' : btnPrimary.background, color: metaSetup.launched ? '#00e676' : '#fff', cursor: metaSetup.connected && !metaSetup.launched ? 'pointer' : 'not-allowed' }}>
-              <Rocket size={14} /> {metaSetup.launched ? 'Launched (mock)' : busy === 'meta-launch' ? 'Launching…' : 'Review & Launch'}
-            </button>
+      {/* ── 4. select platforms ── */}
+      <Gated locked={!approved} why="Approve the strategy first to choose platforms">
+        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: '190px', flex: '0 1 auto' }}>
+            <h3 style={{ ...sectionTitle, marginBottom: '2px' }}>Selected Platforms</h3>
+            <p style={sectionHint}>Tick where this strategy should run.</p>
           </div>
-        </Gated>
+          {([{ k: 'meta' as const, name: 'Meta Ads', sub: 'Facebook & Instagram' },
+             { k: 'google' as const, name: 'Google Ads', sub: 'Search & Display' }]).map(p => {
+            const on = platforms[p.k];
+            return (
+              <label key={p.k} style={{ display: 'flex', alignItems: 'center', gap: '11px', padding: '13px 16px', borderRadius: '11px', border: `1px solid ${on ? 'rgba(0,230,118,0.45)' : 'var(--border, var(--border-color))'}`, background: on ? 'rgba(0,230,118,0.06)' : 'rgba(255,255,255,0.02)', cursor: 'pointer', minWidth: '205px' }}>
+                <input type="checkbox" checked={on} onChange={e => { setPlatforms(s => ({ ...s, [p.k]: e.target.checked })); setConfirmed(false); }}
+                  style={{ width: '17px', height: '17px', accentColor: '#00e676', cursor: 'pointer', flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600 }}>{p.name}</span>
+                  <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)' }}>{p.sub}</span>
+                </span>
+                {on && <CheckCircle2 size={17} color="#00e676" />}
+              </label>
+            );
+          })}
+          <div style={{ flex: 1, minWidth: '215px', fontSize: '11.5px', color: 'var(--text-secondary)', background: 'rgba(90,82,255,0.06)', border: '1px solid rgba(90,82,255,0.2)', borderRadius: '10px', padding: '12px 14px', lineHeight: 1.55 }}>
+            <b style={{ color: '#fff' }}>Edit each platform on its own.</b> Same approved strategy — different ads per platform.
+          </div>
+        </div>
+      </Gated>
 
-        {/* Google */}
-        <Gated locked={!approved} why="Approve the strategy to set up Google Ads">
-          <div style={card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '8px' }}>
-              <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads <Pill status="MOCK" /></h3>
-              <Pill status={googleSetup.launched ? 'Completed' : googleSetup.connected ? 'In Progress' : 'Pending'} />
-            </div>
-            <p style={{ ...sectionHint, marginBottom: '12px' }}>Keywords and copy come straight from the strategy.</p>
-            <Row k="Account" v={googleSetup.connected ? <span style={{ color: '#00e676' }}>{googleSetup.account}</span>
-              : <button onClick={() => adSetup('google', 'connect')} style={{ ...btnGhost, padding: '5px 13px', fontSize: '11.5px' }}>Connect</button>} />
-            <Row k="Type" v="Search Campaign" />
-            <Row k="Keywords" v={`${keywords.length} from strategy`} />
-            <Row k="Headlines" v={`${headlines.length} AI-written`} />
-            <Row k="Descriptions" v={`${descriptions.length} AI-written`} />
-            <Row k="Budget" v={split.google ? money(split.google.amount) : '—'} />
-            <button onClick={() => adSetup('google', 'launch')} disabled={!googleSetup.connected || googleSetup.launched || busy === 'google-launch'}
-              style={{ ...btnPrimary, marginTop: '14px', background: googleSetup.launched ? 'rgba(0,230,118,0.15)' : !googleSetup.connected ? 'rgba(255,255,255,0.06)' : btnPrimary.background, color: googleSetup.launched ? '#00e676' : '#fff', cursor: googleSetup.connected && !googleSetup.launched ? 'pointer' : 'not-allowed' }}>
-              <Rocket size={14} /> {googleSetup.launched ? 'Launched (mock)' : busy === 'google-launch' ? 'Launching…' : 'Review & Launch'}
-            </button>
-          </div>
-        </Gated>
+      {/* ── 5. per-platform review ── */}
+      <Gated locked={!approved} why="Approve the strategy to review platform ads">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '18px' }}>
 
-        {/* Human review & publish */}
-        <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-            <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Human Review &amp; Publish</h3>
-            <Pill status={published ? 'Published' : 'Pending'} />
-          </div>
-          <p style={{ ...sectionHint, marginBottom: '12px' }}>Nothing goes out until you check these off yourself.</p>
-          {[
-            { n: 'Strategy approved', d: campaign ? (approved ? 'Approved by you' : 'Waiting for your approval') : 'Not generated yet', ok: approved },
-            { n: 'Ad creative ready', d: heroImage ? 'Image generated' : 'No image yet', ok: approved && !!heroImage },
-            { n: 'Meta Ads', d: metaSetup.launched ? 'Launched (mock)' : metaSetup.connected ? 'Connected (mock)' : 'Not connected', ok: !!metaSetup.launched },
-            { n: 'Google Ads', d: googleSetup.launched ? 'Launched (mock)' : googleSetup.connected ? 'Connected (mock)' : 'Not connected', ok: !!googleSetup.launched },
-          ].map(r => (
-            <div key={r.n} style={{ display: 'flex', alignItems: 'center', gap: '11px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              {r.ok ? <CheckCircle2 size={16} color="#00e676" /> : <Clock size={16} color="var(--text-secondary)" />}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '13px' }}>{r.n}</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{r.d}</div>
+          {/* META */}
+          {platforms.meta && (
+            <div style={card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Meta Ads Review <Pill status="MOCK" /></h3>
+                <Pill status={metaSetup.launched ? 'Ready' : metaSetup.connected ? 'In Progress' : 'Pending'} />
+              </div>
+              <Row k="Campaign name" v={campaign?.name || '—'} />
+              <Row k="Objective" v={campaign?.objective || '—'} />
+              <Row k="Budget" v={split.meta ? money(split.meta.amount) : '—'} />
+              <Row k="Ad format" v={`Image ads (${heroImage ? 1 : 0})`} />
+              <Row k="Audience" v={spec.audience || form.audience} stack />
+              <Row k="Placements" v={
+                <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {String(spec.placements || form.placement).split(',').map((pl, i) => (
+                    <span key={i} style={{ fontSize: '11px', background: 'rgba(255,255,255,0.07)', borderRadius: '6px', padding: '3px 9px' }}>{pl.trim()}</span>
+                  ))}
+                </span>} stack />
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Creatives</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {[heroImage, ...libraryImages].filter(Boolean).slice(0, 4).map((src, i) => (
+                    <img key={i} src={src as string} alt={`Creative ${i + 1}`} style={{ width: '68px', height: '68px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border, var(--border-color))' }} />
+                  ))}
+                  {![heroImage, ...libraryImages].filter(Boolean).length && (
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>No creatives yet.</span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '15px', flexWrap: 'wrap' }}>
+                {!metaSetup.connected ? (
+                  <button onClick={() => adSetup('meta', 'connect')} style={{ ...btnGhost, flex: 1 }}>Connect account</button>
+                ) : !metaSetup.launched ? (
+                  <button onClick={() => adSetup('meta', 'launch')} disabled={busy === 'meta-launch'} style={{ ...btnPrimary, flex: 1, padding: '10px' }}>
+                    <Check size={14} /> {busy === 'meta-launch' ? 'Marking…' : 'Mark as Ready'}
+                  </button>
+                ) : (
+                  <span style={{ flex: 1, fontSize: '12px', color: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', padding: '10px' }}>
+                    <CheckCircle2 size={14} /> Ready to publish
+                  </span>
+                )}
               </div>
             </div>
-          ))}
-          <Row k="Total budget" v={money(spec.total_budget || form.budget)} />
+          )}
 
-          <div style={{ marginTop: '14px', padding: '12px 14px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.22)', borderRadius: '9px' }}>
-            <div style={{ fontSize: '12.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '4px' }}>
-              <AlertTriangle size={14} color="#ffae00" /> Human review required
+          {/* GOOGLE */}
+          {platforms.google && (
+            <div style={card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status="MOCK" /></h3>
+                <Pill status={googleSetup.launched ? 'Ready' : googleSetup.connected ? 'In Progress' : 'Pending'} />
+              </div>
+              <Row k="Campaign type" v="Search" />
+              <Row k="Campaign name" v={campaign?.name || '—'} />
+              <Row k="Budget" v={split.google ? money(split.google.amount) : '—'} />
+              <Row k={`Keywords (${keywords.length})`} v={
+                keywords.length ? (
+                  <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {keywords.slice(0, 4).map(kw => <span key={kw} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{kw}</span>)}
+                    {keywords.length > 4 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', alignSelf: 'center' }}>+{keywords.length - 4} more</span>}
+                  </span>
+                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>} stack />
+              <Row k={`Headlines (${headlines.length})`} v={
+                headlines.length ? (
+                  <span style={{ display: 'block' }}>
+                    {headlines.slice(0, 3).map((h, i) => (
+                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '12.5px' }}>
+                        <span>{h}</span>
+                        <span style={{ color: h.length > 30 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{h.length}/30</span>
+                      </span>
+                    ))}
+                    {headlines.length > 3 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{headlines.length - 3} more headlines</span>}
+                  </span>
+                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>} stack />
+              <Row k={`Descriptions (${descriptions.length})`} v={
+                descriptions.length ? (
+                  <span style={{ display: 'block' }}>
+                    {descriptions.slice(0, 2).map((d, i) => (
+                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '12.5px' }}>
+                        <span>{d}</span>
+                        <span style={{ color: d.length > 90 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{d.length}/90</span>
+                      </span>
+                    ))}
+                    {descriptions.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{descriptions.length - 2} more descriptions</span>}
+                  </span>
+                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>} stack />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '15px', flexWrap: 'wrap' }}>
+                {!googleSetup.connected ? (
+                  <button onClick={() => adSetup('google', 'connect')} style={{ ...btnGhost, flex: 1 }}>Connect account</button>
+                ) : !googleSetup.launched ? (
+                  <button onClick={() => adSetup('google', 'launch')} disabled={busy === 'google-launch'} style={{ ...btnPrimary, flex: 1, padding: '10px' }}>
+                    <Check size={14} /> {busy === 'google-launch' ? 'Marking…' : 'Mark as Ready'}
+                  </button>
+                ) : (
+                  <span style={{ flex: 1, fontSize: '12px', color: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', padding: '10px' }}>
+                    <CheckCircle2 size={14} /> Ready to publish
+                  </span>
+                )}
+              </div>
             </div>
-            <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-              Confirm the objective ({campaign?.objective || form.objective}), total budget ({money(spec.total_budget || form.budget)}) and the ad creative before publishing.
-            </p>
-          </div>
+          )}
 
-          <button onClick={publish} disabled={!canPublish || busy === 'publish'}
-            style={{ width: '100%', marginTop: '12px', background: published ? 'rgba(0,230,118,0.15)' : canPublish ? '#00e676' : 'rgba(255,255,255,0.06)', border: 'none', color: published ? '#00e676' : canPublish ? '#03121a' : 'var(--text-muted)', padding: '13px', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: canPublish ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            <Rocket size={15} /> {published ? 'Published (demo)' : busy === 'publish' ? 'Publishing…' : 'Publish Campaign'}
-          </button>
-          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '8px' }}>
-            {published ? 'Demo publish — nothing was sent to Meta or Google.'
-              : canPublish ? 'Runs in demo mode — no real ad account is touched.'
-              : 'Finish the steps above to enable publishing.'}
-          </p>
-        </div>
-      </div>
+          {/* OPTIMIZATION RULES */}
+          <div style={card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Campaign Optimization Rules</h3>
+              <Pill status="Configured" />
+            </div>
+            <p style={{ ...sectionHint, marginBottom: '14px' }}>Safety limits applied once ads are live, so a bad ad gets stopped early.</p>
 
-      {/* ── 5. smart ad management (auto-kill / rotate) ── */}
-      <div style={card}>
-        <h3 style={{ ...sectionTitle }}>Smart Auto-Rotation &amp; Ad Management</h3>
-        <p style={{ ...sectionHint, marginBottom: '16px' }}>Safety rules the optimizer applies once campaigns are live — so a bad ad gets killed before it burns budget.</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
-          {/* kill */}
-          <div style={{ padding: '16px', background: 'rgba(255,174,0,0.04)', border: '1px solid rgba(255,174,0,0.18)', borderRadius: '11px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <span style={{ fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}><XCircle size={16} color="#ffae00" /> Auto-kill bad ads</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}><XCircle size={15} color="#ffae00" /> Auto-kill bad ads</span>
               <label className="toggle-switch"><input type="checkbox" checked={smart.killAds} onChange={e => setSmart(s => ({ ...s, killAds: e.target.checked }))} /><span className="slider" /></label>
             </div>
-            {smart.killAds && (
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '130px' }}>
-                  <span style={{ ...label, display: 'flex', alignItems: 'center', gap: '6px' }}><DollarSign size={12} color="#ffae00" /> Kill if CPA over (₹)</span>
-                  <input type="number" style={input} value={smart.cpaThreshold} onChange={e => setSmart(s => ({ ...s, cpaThreshold: Number(e.target.value) }))} />
-                </div>
-                <div style={{ flex: 1, minWidth: '130px' }}>
-                  <span style={{ ...label, display: 'flex', alignItems: 'center', gap: '6px' }}><BarChart3 size={12} color="#ffae00" /> Kill if frequency over</span>
-                  <input type="number" step="0.1" style={input} value={smart.frequencyCap} onChange={e => setSmart(s => ({ ...s, frequencyCap: Number(e.target.value) }))} />
-                </div>
+            {smart.killAds && (<>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Kill if CPA over (₹)</span>
+                <input type="number" value={smart.cpaThreshold} onChange={e => setSmart(s => ({ ...s, cpaThreshold: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
               </div>
-            )}
-          </div>
-          {/* rotate */}
-          <div style={{ padding: '16px', background: 'rgba(90,82,255,0.04)', border: '1px solid rgba(90,82,255,0.18)', borderRadius: '11px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <span style={{ fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}><RefreshCw size={16} color="var(--primary)" /> Smart creative rotation</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Kill if frequency over</span>
+                <input type="number" step="0.1" value={smart.frequencyCap} onChange={e => setSmart(s => ({ ...s, frequencyCap: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
+              </div>
+            </>)}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', marginTop: '4px' }}>
+              <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}><RefreshCw size={15} color="var(--primary)" /> Smart creative rotation</span>
               <label className="toggle-switch"><input type="checkbox" checked={smart.autoRotate} onChange={e => setSmart(s => ({ ...s, autoRotate: e.target.checked }))} /><span className="slider" /></label>
             </div>
-            {smart.autoRotate && (
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '130px' }}>
-                  <span style={label}>Rotate if skip rate over (%)</span>
-                  <input type="number" style={input} value={smart.skipRateThreshold} onChange={e => setSmart(s => ({ ...s, skipRateThreshold: Number(e.target.value) }))} />
-                </div>
-                <div style={{ flex: 1, minWidth: '130px' }}>
-                  <span style={label}>Refresh every (days)</span>
-                  <input type="number" style={input} value={smart.refreshIntervalDays} onChange={e => setSmart(s => ({ ...s, refreshIntervalDays: Number(e.target.value) }))} />
-                </div>
+            {smart.autoRotate && (<>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Rotate if skip rate over (%)</span>
+                <input type="number" value={smart.skipRateThreshold} onChange={e => setSmart(s => ({ ...s, skipRateThreshold: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
               </div>
-            )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Refresh every (days)</span>
+                <input type="number" value={smart.refreshIntervalDays} onChange={e => setSmart(s => ({ ...s, refreshIntervalDays: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
+              </div>
+            </>)}
           </div>
         </div>
-      </div>
+      </Gated>
+
+      {/* ── 6. human review & publish ── */}
+      <Gated locked={!platformsReady} why={!approved ? 'Approve the strategy first' : 'Mark your selected platforms as Ready first'}>
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <ShieldCheck size={17} color="var(--primary)" /> Human Review &amp; Publish
+            </h3>
+            <button onClick={() => setReviewOpen(true)} style={{ ...btnGhost, padding: '9px 15px' }}>
+              <Database size={14} /> Open full review
+            </button>
+          </div>
+          <p style={{ ...sectionHint, marginBottom: '16px' }}>Check everything below, then confirm. Open the full review to re-read the approved strategy in one place.</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+            {[
+              { n: 'Strategy', d: approved ? 'Approved' : 'Not approved', ok: approved },
+              { n: 'Creative assets', d: `${[heroImage, ...libraryImages].filter(Boolean).length} image(s)`, ok: !!heroImage },
+              ...(platforms.meta ? [{ n: 'Meta Ads', d: metaSetup.launched ? money(split.meta?.amount) : 'Not ready', ok: !!metaSetup.launched }] : []),
+              ...(platforms.google ? [{ n: 'Google Ads', d: googleSetup.launched ? money(split.google?.amount) : 'Not ready', ok: !!googleSetup.launched }] : []),
+              { n: 'Optimization rules', d: smart.killAds || smart.autoRotate ? 'Configured' : 'Off', ok: true },
+            ].map(s => (
+              <div key={s.n} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}>
+                  {s.ok ? <CheckCircle2 size={14} color="#00e676" /> : <Clock size={14} color="var(--text-secondary)" />}
+                  <span style={{ fontSize: '12.5px', fontWeight: 600 }}>{s.n}</span>
+                </div>
+                <div style={{ fontSize: '11.5px', color: s.ok ? '#00e676' : 'var(--text-secondary)' }}>{s.d}</div>
+              </div>
+            ))}
+            <div style={{ background: 'rgba(90,82,255,0.08)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '10px', padding: '13px' }}>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total budget</div>
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>{money(spec.total_budget || form.budget)}</div>
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '11px', cursor: 'pointer', marginBottom: '16px' }}>
+            <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} style={{ width: '17px', height: '17px', accentColor: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }} />
+            <span style={{ fontSize: '13px' }}>I have reviewed all details and confirm this campaign is ready to publish.</span>
+          </label>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={() => { setConfirmed(false); flash('Unlocked — edit anything above, then confirm again.'); }} style={btnGhost}>Back to edit</button>
+            <div style={{ flex: 1 }} />
+            {platforms.meta && (
+              <button onClick={() => publish(['meta'])} disabled={!canPublish || !metaSetup.launched || busy?.startsWith('publish')}
+                style={{ ...btnGhost, opacity: canPublish && metaSetup.launched ? 1 : 0.45, cursor: canPublish && metaSetup.launched ? 'pointer' : 'not-allowed' }}>
+                Publish to Meta only
+              </button>
+            )}
+            {platforms.google && (
+              <button onClick={() => publish(['google'])} disabled={!canPublish || !googleSetup.launched || busy?.startsWith('publish')}
+                style={{ ...btnGhost, opacity: canPublish && googleSetup.launched ? 1 : 0.45, cursor: canPublish && googleSetup.launched ? 'pointer' : 'not-allowed' }}>
+                Publish to Google only
+              </button>
+            )}
+            <button onClick={() => publish(chosen)} disabled={!canPublish || busy?.startsWith('publish')}
+              style={{ ...btnPrimary, padding: '12px 22px', opacity: canPublish ? 1 : 0.45, cursor: canPublish ? 'pointer' : 'not-allowed' }}>
+              <Rocket size={15} /> {published ? 'Published (demo)' : busy?.startsWith('publish') ? 'Publishing…' : `Publish to ${chosen.length === 2 ? 'all selected' : chosen.length === 1 ? (chosen[0] === 'meta' ? 'Meta' : 'Google') : 'selected'}`}
+            </button>
+          </div>
+
+          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '14px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.2)', borderRadius: '9px', padding: '10px' }}>
+            {published
+              ? `Published to ${publishedList.map(p => (p === 'meta' ? 'Meta' : 'Google')).join(' & ')} in demo mode — nothing was sent to a real ad account.`
+              : 'Demo mode. Real publishing turns on once your Meta and Google Ads accounts are connected.'}
+          </p>
+        </div>
+      </Gated>
 
       {/* ── mock notice ── */}
       <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.22)' }}>
@@ -695,6 +823,119 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           </div>
         )}
       </div>
+
+      {/* ── full review modal: the approved strategy, all in one place ── */}
+      {reviewOpen && (
+        <div onClick={() => setReviewOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ ...card, width: '100%', maxWidth: '820px', maxHeight: '86vh', overflowY: 'auto', background: 'rgba(18,20,28,0.99)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '4px' }}>
+              <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
+                <ShieldCheck size={18} color="var(--primary)" /> Full campaign review
+              </h3>
+              <button onClick={() => setReviewOpen(false)} style={{ ...btnGhost, padding: '6px 12px', fontSize: '12px' }}>Close</button>
+            </div>
+            <p style={{ ...sectionHint, marginBottom: '18px' }}>Everything you approved, in one place — read it through before publishing.</p>
+
+            {/* strategy */}
+            <div style={{ marginBottom: '18px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>APPROVED STRATEGY</div>
+              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                {heroImage && <img src={heroImage} alt="Ad creative" style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }} />}
+                <div style={{ flex: 1, minWidth: '230px' }}>
+                  <Row k="Campaign" v={campaign?.name || '—'} />
+                  <Row k="Objective" v={campaign?.objective || '—'} />
+                  <Row k="Runs for" v={spec.duration_label || form.schedule} />
+                  <Row k="Total budget" v={money(spec.total_budget || form.budget)} />
+                </div>
+              </div>
+              <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Who this campaign targets</div>
+                <div style={{ fontSize: '13px', lineHeight: 1.6 }}>{spec.audience || form.audience}</div>
+              </div>
+            </div>
+
+            {/* budget split + KPIs */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '18px', marginBottom: '18px' }}>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>BUDGET SPLIT</div>
+                {split.meta && <Row k="Meta Ads" v={`${split.meta.pct}% · ${money(split.meta.amount)}`} />}
+                {split.google && <Row k="Google Ads" v={`${split.google.pct}% · ${money(split.google.amount)}`} />}
+                {!split.meta && !split.google && <p style={sectionHint}>Not set.</p>}
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>SUCCESS TARGETS</div>
+                {(spec.kpis || []).map((k: string) => (
+                  <div key={k} style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}><CheckCircle2 size={13} color="#00e676" /> {k}</div>
+                ))}
+                {!(spec.kpis || []).length && <p style={sectionHint}>None set.</p>}
+              </div>
+            </div>
+
+            {/* ad copy */}
+            {(keywords.length > 0 || headlines.length > 0 || descriptions.length > 0) && (
+              <div style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>AD COPY &amp; KEYWORDS</div>
+                {keywords.length > 0 && (
+                  <div style={{ marginBottom: '10px' }}>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Keywords ({keywords.length})</div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {keywords.map(k => <span key={k} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{k}</span>)}
+                    </div>
+                  </div>
+                )}
+                {headlines.length > 0 && (
+                  <div style={{ marginBottom: '10px' }}>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Headlines ({headlines.length})</div>
+                    {headlines.map((h, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12.5px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span>{h}</span><span style={{ color: h.length > 30 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{h.length}/30</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {descriptions.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Descriptions ({descriptions.length})</div>
+                    {descriptions.map((d, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12.5px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span>{d}</span><span style={{ color: d.length > 90 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{d.length}/90</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* where it goes + rules */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '18px' }}>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>PUBLISHING TO</div>
+                {chosen.length === 0 && <p style={sectionHint}>No platform selected.</p>}
+                {chosen.map(p => (
+                  <Row key={p} k={p === 'meta' ? 'Meta Ads' : 'Google Ads'}
+                    v={setupOf(p).launched ? <span style={{ color: '#00e676' }}>Ready</span> : <span style={{ color: '#ffae00' }}>Not ready</span>} />
+                ))}
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>SAFETY RULES</div>
+                <Row k="Auto-kill bad ads" v={smart.killAds ? `On · CPA > ₹${smart.cpaThreshold}, freq > ${smart.frequencyCap}` : 'Off'} stack />
+                <Row k="Creative rotation" v={smart.autoRotate ? `On · skip > ${smart.skipRateThreshold}%, every ${smart.refreshIntervalDays}d` : 'Off'} stack />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => setReviewOpen(false)} style={btnGhost}>Close</button>
+              <button onClick={() => { setConfirmed(true); setReviewOpen(false); flash('Reviewed and confirmed — you can publish now.'); }}
+                disabled={!platformsReady}
+                style={{ ...btnPrimary, padding: '11px 20px', opacity: platformsReady ? 1 : 0.45, cursor: platformsReady ? 'pointer' : 'not-allowed' }}>
+                <Check size={15} /> I've reviewed — confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 4000, maxWidth: '580px', background: 'rgba(20,22,30,0.97)', border: `1px solid ${toast.ok ? 'rgba(0,230,118,0.4)' : 'rgba(255,174,0,0.4)'}`, borderRadius: '12px', padding: '14px 18px', color: '#fff', fontSize: '13px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)', display: 'flex', gap: '11px', alignItems: 'center' }}>
