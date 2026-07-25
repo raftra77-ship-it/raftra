@@ -1565,8 +1565,6 @@ export function BrandDashboard() {
                   workspaceId={workspaceId}
                 />
               </div>
-              {/* Content Studio is not paywalled behind the SEO node */}
-              <WorkspaceContent workspaceId={workspaceId} />
             </div>
           )}
 

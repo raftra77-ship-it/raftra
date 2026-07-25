@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, Check, ExternalLink, TrendingUp, ChevronDown, AlertTriangle, Zap, Target } from 'lucide-react';
+import { Globe, Check, ExternalLink, TrendingUp, ChevronDown, AlertTriangle, Zap, Target, RefreshCw, GitBranch, ShoppingBag, PenSquare, X, ShieldCheck, Lock } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { Markdown } from '../Markdown';
 import { GitHubPanel } from './GitHubPanel';
@@ -110,8 +110,8 @@ const CategoryBar: React.FC<{ c: any }> = ({ c }) => {
   );
 };
 
-// Reads the pipeline's structured audit and shows it in plain language. Falls back to a clear
-// "run an audit" state — never invented numbers.
+// The audit section (restored to the original): Website Health scores + SEO & GEO category
+// breakdowns + Top fixes. Real pipeline data only.
 const AuditResults: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -201,6 +201,241 @@ const AuditResults: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// Human Review: every audit suggestion gets Approve / Edit / Reject. Nothing is applied
+// automatically — this is the review step before the user goes and makes the change.
+const HumanReview: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
+  const [issues, setIssues] = useState<any[]>([]);
+  const [hasAudit, setHasAudit] = useState(false);
+  const [state, setState] = useState<Record<number, { status: 'pending' | 'approved' | 'rejected' | 'editing' | 'edited'; text: string }>>({});
+  const [open, setOpen] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/seo/latest-audit`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { const a = d?.audit; setHasAudit(!!a); setIssues(a ? (a.priority_issues || a.top_5_issues || []) : []); })
+      .catch(() => {});
+  }, [workspaceId]);
+
+  // Locked until the first audit has run.
+  if (!hasAudit) {
+    return (
+      <div className="glow-card" style={{ textAlign: 'center', padding: '30px 20px', borderStyle: 'dashed' }}>
+        <div style={{ width: '46px', height: '46px', borderRadius: '50%', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+          <Lock size={20} style={{ color: 'var(--text-muted)' }} />
+        </div>
+        <h3 style={{ fontSize: '16px', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+          <ShieldCheck size={16} style={{ color: 'var(--text-muted)' }} /> Human Review <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '.4px' }}>LOCKED</span>
+        </h3>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '460px', margin: '0 auto' }}>
+          Run your first <b style={{ color: '#fff' }}>SEO + GEO pipeline</b> to unlock Human Review. Once the audit is ready,
+          you'll approve, edit or reject each suggestion here before applying it to your site.
+        </p>
+      </div>
+    );
+  }
+
+  if (!issues.length) {
+    return (
+      <div className="glow-card">
+        <h3 style={{ fontSize: '16px', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ShieldCheck size={16} style={{ color: '#00ff9d' }} /> Human Review
+        </h3>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>No fixes to review — your latest audit found no prioritized issues. 🎉</p>
+      </div>
+    );
+  }
+
+  const cur = (i: number) => state[i] || { status: 'pending' as const, text: issues[i].issue };
+  const patch = (i: number, p: Partial<{ status: any; text: string }>) => setState(s => ({ ...s, [i]: { ...cur(i), ...p } }));
+  const toggle = (i: number) => setOpen(o => ({ ...o, [i]: !o[i] }));
+
+  const count = (st: string) => issues.filter((_, i) => cur(i).status === st).length;
+  const approved = count('approved'), edited = count('edited'), rejected = count('rejected');
+  const pending = issues.length - approved - edited - rejected;
+  const chip = (label: string, n: number, color: string) => (
+    <span style={{ fontSize: '11px', fontWeight: 600, color, background: `${color}1a`, border: `1px solid ${color}55`, borderRadius: '20px', padding: '3px 10px' }}>{n} {label}</span>
+  );
+  const accentOf = (s: string) => s === 'approved' ? '#00ff9d' : s === 'edited' ? '#8B85FF' : s === 'rejected' ? '#ff5c5c' : '#ffae00';
+
+  return (
+    <div className="glow-card">
+      <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <ShieldCheck size={16} style={{ color: '#00ff9d' }} /> Human Review
+      </h3>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 12px' }}>
+        Click a suggestion to open it, then Approve, Edit, or Reject. Nothing is applied automatically.
+      </p>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        {chip('approved', approved, '#00ff9d')}
+        {chip('edited', edited, '#8B85FF')}
+        {chip('rejected', rejected, '#ff5c5c')}
+        {chip('pending', pending, '#ffae00')}
+      </div>
+
+      {/* horizontal grid; each suggestion is a collapsible card that opens on click */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px', alignItems: 'start' }}>
+        {issues.map((it: any, i: number) => {
+          const c = cur(i);
+          const isOpen = !!open[i];
+          const accent = accentOf(c.status);
+          return (
+            <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.status === 'pending' ? 'var(--border-color)' : accent}`, borderLeft: `3px solid ${accent}`, borderRadius: '10px', overflow: 'hidden' }}>
+              <button onClick={() => toggle(i)} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer', padding: '11px 13px', display: 'flex', alignItems: 'center', gap: '9px', color: '#fff', font: 'inherit' }}>
+                <span style={{ fontSize: '10px', fontWeight: 700, flexShrink: 0, color: SEV_COLOR[it.severity] || '#fff', background: `${SEV_COLOR[it.severity] || '#fff'}1f`, border: `1px solid ${SEV_COLOR[it.severity] || '#fff'}55`, borderRadius: '5px', padding: '2px 7px' }}>{it.severity}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: '12.5px', whiteSpace: isOpen ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: c.status === 'rejected' ? 'line-through' : 'none' }}>{c.text}</span>
+                {c.status !== 'pending' && <span title={c.status} style={{ width: '8px', height: '8px', borderRadius: '50%', background: accent, flexShrink: 0 }} />}
+                <ChevronDown size={15} style={{ flexShrink: 0, color: 'var(--text-secondary)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+              </button>
+
+              {isOpen && (
+                <div style={{ padding: '0 13px 13px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '9px' }}>{it.area}</div>
+                  {c.status === 'editing' ? (
+                    <>
+                      <textarea value={c.text} onChange={e => patch(i, { text: e.target.value })}
+                        style={{ width: '100%', minHeight: '64px', resize: 'vertical', fontSize: '13px', color: '#fff', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 11px', fontFamily: 'inherit' }} />
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
+                        <button onClick={() => patch(i, { status: 'edited' })} style={{ fontSize: '12px', fontWeight: 600, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '7px', padding: '6px 13px', cursor: 'pointer' }}>Save</button>
+                        <button onClick={() => patch(i, { status: 'pending' })} style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '6px 13px', cursor: 'pointer' }}>Cancel</button>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button onClick={() => patch(i, { status: 'approved' })}
+                        style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: c.status === 'approved' ? '#03121a' : '#00ff9d', background: c.status === 'approved' ? '#00ff9d' : 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
+                        <Check size={13} /> Approve
+                      </button>
+                      <button onClick={() => patch(i, { status: 'editing' })}
+                        style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: '#8B85FF', background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
+                        <PenSquare size={13} /> Edit
+                      </button>
+                      <button onClick={() => patch(i, { status: 'rejected' })}
+                        style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: c.status === 'rejected' ? '#03121a' : '#ff5c5c', background: c.status === 'rejected' ? '#ff5c5c' : 'rgba(255,92,92,0.08)', border: '1px solid rgba(255,92,92,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
+                        <X size={13} /> Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// Explainer beside the Integration panel, so the audit column doesn't feel empty.
+const ExplainerCard: React.FC = () => {
+  const steps = [
+    { n: 1, t: 'Run the pipeline', d: 'We crawl your live site and audit it for Google SEO + AI search (GEO).' },
+    { n: 2, t: 'Real, measured fixes', d: 'Every suggestion comes from your actual page — nothing is invented.' },
+    { n: 3, t: 'Human review', d: 'Approve, edit, or reject each suggestion below. Nothing auto-applies.' },
+    { n: 4, t: 'Make the changes', d: 'Open GitHub / Shopify / WordPress on the right and apply the approved fixes.' },
+    { n: 5, t: 'Re-run & track', d: 'Deploy, then re-run to watch your scores improve over time.' },
+  ];
+  return (
+    <div className="glow-card">
+      <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Globe size={16} style={{ color: '#00ff9d' }} /> How SEO + GEO works here
+      </h3>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 16px' }}>
+        The workflow, from audit to live changes.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {steps.map(s => (
+          <div key={s.n} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <span style={{ flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.35)', color: '#00ff9d', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
+            <span>
+              <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600, color: '#fff' }}>{s.t}</span>
+              <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{s.d}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Sits in the audit section: once you've read the fixes above, jump straight to the platform
+// where your site lives (GitHub repo / WordPress admin / Shopify admin), make the changes,
+// deploy, then re-run the pipeline to see the new scores. Nothing here reads or edits code —
+// it only links out to where you edit, and re-triggers the audit.
+const ApplyChangesCard: React.FC<{ workspaceId?: number | null; onRerun: () => void; onConnect: () => void }> = ({ workspaceId, onRerun, onConnect }) => {
+  const [st, setSt] = useState<{ gh?: any; wp?: any; sh?: any }>({});
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const h: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const get = (p: string) => fetch(`/api/connectors/${p}/${workspaceId}/status`, { headers: h }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    Promise.all([get('github'), get('wordpress'), get('shopify')]).then(([gh, wp, sh]) => setSt({ gh, wp, sh }));
+  }, [workspaceId]);
+
+  const rows = [
+    { key: 'gh', name: 'GitHub', sub: st.gh?.repo_full_name || 'Select a repo', Icon: GitBranch, connected: !!st.gh?.connected,
+      url: st.gh?.repo_full_name ? `https://github.com/${st.gh.repo_full_name}` : null },
+    { key: 'sh', name: 'Shopify Store', sub: st.sh?.shop_name || st.sh?.shop_domain || 'Connect store', Icon: ShoppingBag, connected: !!st.sh?.connected,
+      url: st.sh?.shop_domain ? `https://${st.sh.shop_domain}/admin` : null },
+    { key: 'wp', name: 'WordPress Admin', sub: st.wp?.site_name || st.wp?.site_url || 'Connect site', Icon: PenSquare, connected: !!st.wp?.connected,
+      url: st.wp?.site_url ? `${String(st.wp.site_url).replace(/\/$/, '')}/wp-admin` : null },
+  ];
+
+  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '11px 13px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', cursor: 'pointer', textDecoration: 'none', width: '100%', textAlign: 'left', font: 'inherit' };
+  const badge = (connected: boolean) => (
+    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap',
+      color: connected ? '#00ff9d' : '#ffae00', background: connected ? 'rgba(0,255,157,0.1)' : 'rgba(255,174,0,0.1)',
+      border: `1px solid ${connected ? 'rgba(0,255,157,0.35)' : 'rgba(255,174,0,0.35)'}` }}>
+      {connected ? 'Connected' : 'Pending Setup'}
+    </span>
+  );
+
+  return (
+    <div className="glow-card">
+      <h3 style={{ fontSize: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <ExternalLink size={16} style={{ color: '#00ff9d' }} /> Integration Connections &amp; Access
+      </h3>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+        Open the platform where your site lives, apply the fixes, deploy, then re-run the audit.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {rows.map(({ key, name, sub, Icon, connected, url }) => {
+          const inner = (
+            <>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '11px', minWidth: 0 }}>
+                <span style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={16} style={{ color: connected ? '#00ff9d' : 'var(--text-muted)' }} />
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {name} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>({sub})</span>
+                  </span>
+                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)' }}>Open to Edit</span>
+                </span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '9px', flexShrink: 0 }}>
+                {badge(connected)}
+                <ExternalLink size={14} style={{ color: 'var(--text-secondary)' }} />
+              </span>
+            </>
+          );
+          return connected && url
+            ? <a key={key} href={url} target="_blank" rel="noreferrer" style={rowStyle}>{inner}</a>
+            : <button key={key} onClick={onConnect} style={rowStyle}>{inner}</button>;
+        })}
+      </div>
+
+      <button onClick={onRerun}
+        style={{ width: '100%', marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 700, color: '#03121a', background: '#00ff9d', border: 'none', borderRadius: '10px', padding: '12px', cursor: 'pointer' }}>
+        <RefreshCw size={15} /> Re-run SEO + GEO pipeline
+      </button>
     </div>
   );
 };
@@ -373,21 +608,10 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
         </div>
       </div>
 
-      {/* Connect your website & data sources (inside the SEO workspace) */}
-      <ConnectSection workspaceId={workspaceId} />
-
-      <div className="workspace-grid-split">
-        {/* Left Side: real audit results + month-over-month growth */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <AuditResults workspaceId={workspaceId} />
-          <SeoComparisonCard workspaceId={workspaceId} />
-        </div>
-
-        {/* Right Side: Blog / Blog generation list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <h3 style={{ fontSize: '16px' }}>Blog & Content Generator Queue</h3>
+      {/* Strategy-report cards from the pipeline (each with a Review Post action) — below the AEO/GEO citations pipeline container */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {blogs.map((blog) => (
+            {blogs.filter((blog) => blog.status === 'pending_review').map((blog) => (
               <div
                 key={blog.id}
                 className="glow-card"
@@ -446,8 +670,39 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
               </div>
             ))}
           </div>
+      </div>
+
+      {/* Audit section (SEO + GEO) — appears after running the pipeline, above the guide/integration */}
+      <AuditResults workspaceId={workspaceId} />
+
+      {/* Explainer card beside the Integration Connections panel */}
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ flex: '2 1 460px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <ExplainerCard />
+          {/* Search Console + GA4 are analytics/tracking sources — they feed the month-over-month tracking below. */}
+          <div className="glow-card">
+            <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Search Console &amp; Analytics
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+              Connect Google Search Console &amp; GA4 to pull real rankings, clicks and traffic — this powers the performance tracking below.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              <SearchConsolePanel workspaceId={workspaceId ?? null} />
+              <GA4Panel workspaceId={workspaceId ?? null} />
+            </div>
+          </div>
+          <SeoComparisonCard workspaceId={workspaceId} />
+        </div>
+        <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+          <ApplyChangesCard
+            workspaceId={workspaceId}
+            onRerun={() => { const u = targetUrl.trim(); if (u) { onTriggerSEO(u); onTriggerGEO(u); } }}
+            onConnect={() => document.getElementById('seo-connect-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          />
         </div>
       </div>
+
     </div>
   );
 };
