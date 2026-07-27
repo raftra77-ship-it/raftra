@@ -2,7 +2,7 @@
 
 Raftra is a state-of-the-art Growth Operating System built for modern businesses. It replaces fragmented, disconnected SaaS stacks (creatives, ads, SEO, analytics, influencers) with a coordinated, live multi-agent network.
 
-Built with a design philosophy inspired by **Linear**, **Vercel**, **Arc**, and **Ryze AI**, Raftra delivers a premium, dark-mode glassmorphic interface that runs automated growth pipelines with Human-in-the-Loop (HITL) checkpoints.
+Raftra delivers a premium, dark-mode glassmorphic interface that runs automated growth pipelines with Human-in-the-Loop (HITL) checkpoints.
 
 ---
 
