@@ -49,29 +49,6 @@ async def verify_connection(site_url: str, username: str, app_password: str) -> 
     return {"site_url": site_url, "name": info.get("name", ""), "site": title}
 
 
-async def find_page_by_slug(conn, slug: str) -> dict | None:
-    """Look up an existing WP page or post by slug. Read-only — used by the Page Mapping
-    service (publishing/page_mapping.py) to find which existing resource a crawled page
-    path corresponds to, so a human can see which live page a suggestion is about. Checks
-    pages before posts (most site content targeted by SEO fixes is a page). Returns
-    {"id": int, "type": "page"|"post", "link": str} or None if nothing matches — never
-    guesses or fabricates a match.
-    """
-    if not slug:
-        return None
-    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-        for resource in ("pages", "posts"):
-            res = await client.get(_api(conn.site_url, resource), auth=_auth(conn),
-                                   params={"slug": slug, "status": "any"})
-            if res.status_code != 200:
-                continue
-            items = res.json()
-            if items:
-                item = items[0]
-                return {"id": item.get("id"), "type": resource[:-1], "link": item.get("link")}
-    return None
-
-
 async def publish_markdown(conn, title: str, body: str, status: str = "draft") -> dict:
     """Create a WordPress post from markdown. Draft by default — a human publishes it."""
     html = markdown_to_html(body)

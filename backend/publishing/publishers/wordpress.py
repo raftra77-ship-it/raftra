@@ -1,18 +1,11 @@
 from .base import Publisher
-from core import wordpress_connect as wp
 
 
 class WordPressPublisher(Publisher):
-    """The one platform with a real publish() so far. Reuses core/wordpress_connect.py —
-    the same real, working client the existing `/wordpress/{id}/publish-draft` endpoint
-    already uses for content drafts — rather than a new WordPress client.
-
-    Design choice: publish() creates a NEW draft post describing the suggested change; it
-    never edits the live page in place. This matches the guarantee already documented on
-    models.WordPressConnection ("Posts are created as DRAFTS so a human still presses
-    publish") and sidesteps the fact that we don't know which custom SEO-plugin meta key (if
-    any) a given site uses for title/meta description — writing to a guessed meta key on an
-    arbitrary site would be exactly the kind of fabrication this whole package avoids.
+    """Architecture-only for now, same as GitHub and Shopify — no external API is called.
+    preview()/validate() describe what publish() would do once wired to the real client
+    (core/wordpress_connect.py already has a working publish_markdown() to reuse — see the
+    TODO on publish() below for exactly how that wiring will look).
     """
 
     platform_name = "wordpress"
@@ -30,29 +23,15 @@ class WordPressPublisher(Publisher):
             "platform": "wordpress",
             "would_create": "draft_post",
             "site_url": getattr(self.connection, "site_url", None),
-            "existing_post_id": payload.get("post_id"),  # from page-mapping discovery, if resolved — reference only
+            "existing_post_id": payload.get("post_id"),  # from page-mapping, if resolved — reference only
             "title": self._draft_title(payload),
             "body_preview": self._draft_body(payload),
         }
 
-    async def publish(self, payload: dict) -> dict:
-        check = self.validate(payload)
-        if not check["valid"]:
-            return {"status": "error", "platform": "wordpress", "message": "; ".join(check["errors"])}
-        try:
-            result = await wp.publish_markdown(
-                self.connection, title=self._draft_title(payload), body=self._draft_body(payload),
-            )
-        except Exception as e:
-            return {"status": "error", "platform": "wordpress", "message": f"Could not create the WordPress draft: {e}"}
-        return {
-            "status": "published_as_draft",
-            "platform": "wordpress",
-            "post_id": result["post_id"],
-            "edit_url": result["edit_url"],
-            "message": "Created a draft post with the suggested change. Review it in WordPress, "
-                      "then manually apply it to the live page.",
-        }
+    # publish() is inherited from Publisher — architecture-only preview for now. TODO (real
+    # publishing): call core/wordpress_connect.publish_markdown(self.connection,
+    # title=self._draft_title(payload), body=self._draft_body(payload)) — that client
+    # already exists and is used by the /wordpress/{id}/publish-draft endpoint.
 
     @staticmethod
     def _draft_title(payload: dict) -> str:

@@ -82,9 +82,10 @@ class DiscoverBody(BaseModel):
 async def publish_discover(workspace_id: int, platform: str, body: DiscoverBody,
                            db: Session = Depends(database.get_db),
                            current_user: models.User = Depends(auth.get_current_user)):
-    """Real, read-only lookup: calls the platform's own API to find which existing
-    page/post/file a crawled page corresponds to, and stores the result. Only WordPress is
-    implemented today (see page_mapping.py's _DISCOVERERS registry)."""
+    """Would call the platform's own API to find which existing page/post/file a crawled
+    page corresponds to, and store the result. Architecture only — no platform is
+    implemented yet (see page_mapping.py's empty _DISCOVERERS registry), so this currently
+    always responds 400 rather than guessing."""
     _require_workspace(workspace_id, db, current_user)
     conn = _get_connection(db, workspace_id, platform)
     service = PageMappingService(db)
@@ -106,10 +107,12 @@ class PublishBody(BaseModel):
 async def publish_now(workspace_id: int, platform: str, body: PublishBody,
                       db: Session = Depends(database.get_db),
                       current_user: models.User = Depends(auth.get_current_user)):
-    """Actually calls the platform's publisher. REAL for WordPress (creates a draft post) —
-    still `status: "not_implemented"` for GitHub/Shopify. This is a real, external write —
-    the frontend should only call this after the user has explicitly approved the
-    recommendation and confirmed they want to send it to this platform."""
+    """Calls the platform's publisher. Architecture only for all three platforms right
+    now — no external API is called; returns the same preview wrapped as
+    "ready_for_publish". Once a platform's publish() is wired to a real API call, this
+    route becomes the real, external write — the frontend should only call it after the
+    user has explicitly approved the recommendation and confirmed they want to send it to
+    this platform."""
     _require_workspace(workspace_id, db, current_user)
     conn = _get_connection(db, workspace_id, platform)
     try:

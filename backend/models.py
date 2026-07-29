@@ -316,6 +316,32 @@ class GitHubConnection(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class RepositoryMapping(Base):
+    """Result of automatically scanning a connected GitHub repository right after it's
+    selected (see publishing/repo_scanner.py, triggered from connector_routes.gh_select_repo).
+    Stores the detected framework and a page-by-page file mapping so a future Platform
+    Converter can resolve a page path like "/about" to a real file path like
+    "src/app/about/page.tsx" without re-scanning. One row per workspace — re-scanning
+    overwrites it. Purely a read-only scan result: nothing here ever modifies the repo.
+    """
+    __tablename__ = "repository_mappings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    repo_full_name = Column(String, nullable=True)
+    default_branch = Column(String, nullable=True)
+    framework = Column(String, default="Unknown")
+    pages = Column(JSON, nullable=True)          # list of {url, file_path, type, editable, metadata_location}
+    pages_count = Column(Integer, default=0)     # count of type == "page" (route pages only, not layouts/assets)
+    truncated = Column(Boolean, default=False)   # GitHub's tree API truncates very large repos
+    status = Column(String, default="pending")   # pending | scanning | ready | failed
+    error = Column(String, nullable=True)
+    scanned_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    workspace = relationship("Workspace")
+
+
 class MetaAdsConnection(Base):
     """Per-workspace Meta (Facebook/Instagram) Ads connection. Stores an access token
     plus the selected ad account so campaigns can be created against it."""

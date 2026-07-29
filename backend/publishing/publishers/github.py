@@ -26,9 +26,5 @@ class GitHubPublisher(Publisher):
             "summary": payload.get("description"),
         }
 
-    async def publish(self, payload: dict) -> dict:
-        return {
-            "status": "not_implemented",
-            "platform": "github",
-            "message": "Real GitHub publishing (commit + pull request) is not implemented yet.",
-        }
+    # publish() is inherited from Publisher — architecture-only preview for now. Override
+    # here later with the real commit+PR call (core/github_connect.py already has one).

@@ -25,10 +25,15 @@ class Publisher(ABC):
         network calls — this only describes the payload already produced by a converter."""
         ...
 
-    @abstractmethod
     async def publish(self, payload: dict) -> dict:
-        """Performs the real write, when implemented. Async because a real implementation
-        makes a network call (see publishers/wordpress.py for the one platform this is
-        wired up for so far). GitHub/Shopify still return a `status: "not_implemented"`
-        placeholder — see ../publish_service.py's docstring for what's left there."""
-        ...
+        """Architecture-only placeholder for all three platforms right now — no external
+        API is called anywhere in this package. Returns the same preview a human would
+        review, wrapped as "ready_for_publish" so the shape already matches what a real
+        implementation will return later.
+
+        Step 8 of the publishing architecture: a platform "goes real" by overriding just
+        this method in its subclass (e.g. publishers/wordpress.py) to make the actual API
+        call — validate(), preview(), the converters, and PublishService all stay
+        unchanged.
+        """
+        return {"status": "ready_for_publish", "platform": self.platform_name, "payload": self.preview(payload)}

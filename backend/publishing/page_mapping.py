@@ -1,4 +1,4 @@
-"""Step 5 — Page Mapping service.
+"""Step 6 — Page Mapping service.
 
 When a platform is connected later, publishing a fix needs to know where a crawled page
 actually lives on that platform:
@@ -10,11 +10,12 @@ This service only reads/writes the `PageMapping` table (models.py). It does NOT 
 the page path comes from the audit's own `target_url`, which is already the output of the
 existing Firecrawl-based crawler (agents/seo_geo.py).
 
-Real discovery — actually calling a platform's read API to find the target_ref — is wired
-for WordPress only right now (via core/wordpress_connect.find_page_by_slug, the same real
-client the existing `/wordpress/{id}/publish-draft` endpoint already uses). GitHub and
-Shopify discovery are not implemented yet; `discover()` raises NotImplementedError for them
-rather than guessing, same principle as the rest of this package.
+Architecture only for now, per spec: no platform's discovery actually calls an external API
+yet. `discover()` raises NotImplementedError for every platform (see the empty
+`_DISCOVERERS` registry below) rather than guessing a target_ref. TODO (real publishing):
+add one entry per platform once its discovery is implemented — e.g. for WordPress, reuse
+core/wordpress_connect.py's real REST client to look up a page/post by slug; for GitHub,
+walk the repo tree; for Shopify, list pages/articles and match by handle.
 """
 from __future__ import annotations
 
@@ -25,18 +26,11 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 import models
-from core import wordpress_connect as wp
-
-
-async def _discover_wordpress(connection, slug: str) -> Optional[dict]:
-    return await wp.find_page_by_slug(connection, slug)
-
 
 # platform -> async (connection, slug) -> {"id", "type", "link"} | None. Registry instead of
-# a switch statement; new platforms add one entry here plus a discoverer function.
-_DISCOVERERS = {
-    "wordpress": _discover_wordpress,
-}
+# a switch statement; a platform "goes real" by adding one entry here plus a discoverer
+# function, without changing discover() itself.
+_DISCOVERERS: dict = {}
 
 
 class PageMappingService:
@@ -97,27 +91,21 @@ class PageMappingService:
 
     def resolve_target(self, workspace_id: int, platform: str, page_url: Optional[str]) -> Optional[str]:
         """Best-effort, read-only, no API calls — returns a stored mapping's target_ref, or
-        None. Never fabricates a target_ref; a None here means "not mapped yet" (call
-        `discover()` to actually try to resolve it)."""
+        None. Never fabricates a target_ref; a None here means "not mapped yet"."""
         path = self.path_from_url(page_url)
         row = self.get_mapping(workspace_id, platform, path)
         return row.target_ref if row else None
 
     async def discover(self, workspace_id: int, platform: str, connection,
                        page_url: Optional[str]) -> Optional[models.PageMapping]:
-        """Actually calls the platform's real read API to find the target_ref for a page,
-        and stores the result. Only WordPress is implemented (see _DISCOVERERS above).
-
-        Homepage ("/") is intentionally never auto-discovered: WordPress's REST API doesn't
-        expose which page is set as the static front page without extra plugin support, so
-        guessing would risk silently mapping to the wrong resource. It stays unmapped until
-        an explicit mapping is stored via `upsert_mapping()`.
+        """Would call the platform's real read API to find the target_ref for a page, and
+        store the result. Architecture only right now — no platform is implemented (see
+        _DISCOVERERS above), so this always raises NotImplementedError rather than guessing.
         """
         handler = _DISCOVERERS.get(platform)
         if not handler:
             raise NotImplementedError(
-                f"Real page discovery for '{platform}' is not implemented yet. "
-                f"Implemented: {', '.join(_DISCOVERERS)}."
+                f"Page discovery for '{platform}' is not implemented yet — architecture only."
             )
         path = self.path_from_url(page_url)
         slug = self.slug_from_path(path)

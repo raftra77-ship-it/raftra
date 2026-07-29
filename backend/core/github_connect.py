@@ -13,6 +13,7 @@ Requires (founder, one-time, in the GitHub OAuth App settings):
 import os
 import base64
 import re
+from typing import Optional
 import httpx
 
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
@@ -68,6 +69,42 @@ async def fetch_login(token: str) -> str:
     async with httpx.AsyncClient() as client:
         res = await client.get(f"{API}/user", headers=_headers(token))
     return res.json().get("login", "") if res.status_code == 200 else ""
+
+
+async def get_repo_tree(token: str, repo: str, branch: str) -> dict:
+    """Full recursive file tree for a branch — read-only, used by the Repository Scanner
+    (publishing/repo_scanner.py) to understand project structure. Never modifies anything.
+    Returns {"tree": [{"path": str, "type": "blob"|"tree"}], "truncated": bool} — GitHub
+    truncates the response for very large repos rather than erroring, so `truncated` is
+    surfaced rather than silently dropped.
+    """
+    async with httpx.AsyncClient(timeout=30) as client:
+        res = await client.get(f"{API}/repos/{repo}/git/trees/{branch}",
+                               headers=_headers(token), params={"recursive": "1"})
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not read repository tree: {res.status_code} {res.text[:200]}")
+    data = res.json()
+    return {
+        "tree": [{"path": t["path"], "type": t["type"]} for t in data.get("tree", [])],
+        "truncated": bool(data.get("truncated")),
+    }
+
+
+async def get_file_content(token: str, repo: str, path: str, ref: str) -> Optional[str]:
+    """Read one file's text content (e.g. package.json, for framework detection) —
+    read-only. Returns None if the file doesn't exist or isn't decodable as UTF-8 text."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        res = await client.get(f"{API}/repos/{repo}/contents/{path}",
+                               headers=_headers(token), params={"ref": ref})
+    if res.status_code != 200:
+        return None
+    data = res.json()
+    if data.get("encoding") == "base64" and data.get("content"):
+        try:
+            return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+        except Exception:
+            return None
+    return None
 
 
 async def list_repos(token: str) -> list:

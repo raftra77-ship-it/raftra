@@ -9,22 +9,27 @@ Orchestrates the whole foundation layer for one audit:
         -> attach page targets          via PageMappingService (page_mapping.py)
         -> return {"status": "ready_for_publish", "platform": ..., "convertedPayload": ...}
 
-No external API is called from prepare() itself — that stays a pure, read-only preview.
-WordPress now has a real, working publish() (publishing/publishers/wordpress.py, reusing
-core/wordpress_connect.py) and real page-mapping discovery (PageMappingService.discover()).
-GitHub and Shopify are still `status: "not_implemented"` placeholders for both.
+No external API is called anywhere in this package right now — prepare() is a pure,
+read-only preview, and Publisher.publish() (see publishers/base.py) just returns the same
+preview wrapped as "ready_for_publish" for all three platforms. This is intentional: the
+architecture is ready to plug in a real API call per platform without anything else here
+changing (Step 8).
 
-What's left for REAL publishing on GitHub / Shopify (WordPress is done):
-    1. PageMappingService needs a discoverer for each: walk the GitHub repo tree for a file
-       matching the page slug; list Shopify pages/articles and match by handle. Register
-       each in page_mapping.py's `_DISCOVERERS` dict — same pattern as `_discover_wordpress`.
-    2. Publisher.publish() needs the actual write call: GitHub (create branch, commit file
-       change, open PR); Shopify (create an unpublished page/article).
+What's left for REAL publishing (none of it built yet, on purpose):
+    1. PageMappingService needs a discoverer per platform (walk the GitHub repo tree for a
+       file matching the page slug; look up a WordPress page/post by slug via
+       core/wordpress_connect.py — a real, working client already exists there; list
+       Shopify pages/articles and match by handle). Register each in page_mapping.py's
+       `_DISCOVERERS` dict — it's empty today.
+    2. Each Publisher subclass overrides `publish()` with the actual write call: GitHub
+       (create branch, commit file change, open PR — core/github_connect.py has a working
+       client); WordPress (core/wordpress_connect.publish_markdown() — already exists,
+       used by the /wordpress/{id}/publish-draft endpoint); Shopify (create an unpublished
+       page/article — core/shopify_connect.py has a working client).
     3. A review/approval gate before publish() is called for real (today, `approved_only`
        exists on prepare()/normalize_audit(), but nothing yet requires it before a route
        calls publish() — see publishing_routes.py).
-    4. Retry/error handling and a persisted publish-attempt log (who/when/what/result) —
-       WordPress's publish() currently returns errors inline but doesn't log attempts.
+    4. Retry/error handling and a persisted publish-attempt log (who/when/what/result).
 """
 from __future__ import annotations
 

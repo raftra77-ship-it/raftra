@@ -5,6 +5,14 @@ import React, { useEffect, useState } from 'react';
 
 interface Status { configured: boolean; connected: boolean; login: string | null; repo_full_name: string | null; }
 interface Repo { full_name: string; default_branch: string; private: boolean; }
+interface RepoMapping {
+  scanned: boolean;
+  framework?: string;
+  default_branch?: string;
+  pages_count?: number;
+  status?: 'pending' | 'scanning' | 'ready' | 'failed';
+  error?: string | null;
+}
 
 const authHeaders = (): HeadersInit => {
   const token = localStorage.getItem('token');
@@ -15,19 +23,26 @@ export const GitHubPanel: React.FC<{ workspaceId: number | null }> = ({ workspac
   const [status, setStatus] = useState<Status | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [mapping, setMapping] = useState<RepoMapping | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   const base = () => `/api/connectors/github/${workspaceId}`;
 
   const loadStatus = () => {
     if (!workspaceId) return;
     fetch(`${base()}/status`, { headers: authHeaders() })
-      .then(r => r.json()).then((s: Status) => { setStatus(s); if (s.connected) loadRepos(); })
+      .then(r => r.json()).then((s: Status) => { setStatus(s); if (s.connected) { loadRepos(); if (s.repo_full_name) loadMapping(); } })
       .catch(() => {});
   };
 
   const loadRepos = () => {
     fetch(`${base()}/repos`, { headers: authHeaders() })
       .then(r => r.json()).then(d => { if (d && Array.isArray(d.repos)) setRepos(d.repos); }).catch(() => {});
+  };
+
+  const loadMapping = () => {
+    fetch(`${base()}/repository-mapping`, { headers: authHeaders() })
+      .then(r => r.json()).then((d: RepoMapping) => { if (d && d.scanned) setMapping(d); }).catch(() => {});
   };
 
   useEffect(() => {
@@ -47,11 +62,19 @@ export const GitHubPanel: React.FC<{ workspaceId: number | null }> = ({ workspac
 
   const selectRepo = async (full_name: string) => {
     const repo = repos.find(x => x.full_name === full_name);
-    await fetch(`${base()}/repo`, {
-      method: 'POST', headers: authHeaders(),
-      body: JSON.stringify({ repo_full_name: full_name, default_branch: repo?.default_branch || 'main' }),
-    });
     setStatus(s => (s ? { ...s, repo_full_name: full_name } : s));
+    setScanning(true);
+    setMapping(null);
+    try {
+      const r = await fetch(`${base()}/repo`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ repo_full_name: full_name, default_branch: repo?.default_branch || 'main' }),
+      });
+      const d = await r.json().catch(() => ({}));
+      setMapping({ scanned: true, framework: d.framework, pages_count: d.pages_count, status: d.scan_status });
+    } finally {
+      setScanning(false);
+    }
   };
 
   if (!status) return null;
@@ -90,6 +113,22 @@ export const GitHubPanel: React.FC<{ workspaceId: number | null }> = ({ workspac
             <option value="" disabled>Select a repository…</option>
             {repos.map(r => <option key={r.full_name} value={r.full_name}>{r.full_name}{r.private ? ' (private)' : ''}</option>)}
           </select>
+        </div>
+      )}
+
+      {status.connected && status.repo_full_name && (scanning || mapping) && (
+        <div style={{ marginTop: '12px', padding: '10px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+            {scanning || mapping?.status === 'scanning' ? (
+              <span>Scanning repository…</span>
+            ) : mapping?.status === 'failed' ? (
+              <span style={{ color: '#ff5c5c' }}>Repository scan failed{mapping.error ? `: ${mapping.error}` : '.'}</span>
+            ) : (
+              <>
+                <span><b style={{ color: '#fff' }}>Framework:</b> {mapping?.framework || 'Unknown'}</span>
+                <span><b style={{ color: '#fff' }}>Pages Detected:</b> {mapping?.pages_count ?? 0}</span>
+                <span style={{ color: '#22C55E' }}>Ready for AI Publishing</span>
+              </>
+            )}
         </div>
       )}
     </div>

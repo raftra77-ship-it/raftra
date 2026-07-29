@@ -368,7 +368,7 @@ async def gh_repos(workspace_id: int, db: Session = Depends(database.get_db), cu
 
 
 @router.post("/github/{workspace_id}/repo")
-def gh_select_repo(workspace_id: int, body: RepoSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def gh_select_repo(workspace_id: int, body: RepoSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _get_gh(workspace_id, db)
     if not conn or not conn.access_token:
@@ -376,7 +376,46 @@ def gh_select_repo(workspace_id: int, body: RepoSelect, db: Session = Depends(da
     conn.repo_full_name = body.repo_full_name
     conn.default_branch = body.default_branch or "main"
     db.commit()
-    return {"status": "success", "repo_full_name": conn.repo_full_name, "default_branch": conn.default_branch}
+
+    # Automatically scan the repo now that it's connected — read-only (file tree +
+    # framework detection + page mapping), never modifies the repo. Best-effort: a scan
+    # failure must never break repo selection itself.
+    from publishing.repo_scanner import RepositoryScanner
+    scan_result = {"framework": None, "pages_count": 0, "scan_status": "failed", "scanned_at": None}
+    try:
+        mapping = await RepositoryScanner(db).scan(workspace_id, conn)
+        scan_result = {"framework": mapping.framework, "pages_count": mapping.pages_count,
+                       "scan_status": mapping.status,
+                       "scanned_at": mapping.scanned_at.isoformat() if mapping.scanned_at else None}
+    except Exception as e:
+        print(f"Repository scan failed for workspace {workspace_id}: {e}")
+
+    return {"status": "success", "repo_full_name": conn.repo_full_name, "default_branch": conn.default_branch,
+           **scan_result}
+
+
+@router.get("/github/{workspace_id}/repository-mapping")
+def gh_repository_mapping(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """The result of the automatic repository scan (backend/publishing/repo_scanner.py) —
+    detected framework, branch, and page-by-page file mapping. Read-only; triggers no scan
+    itself (re-selecting the repo, or a future explicit re-scan action, does that)."""
+    _require_workspace(workspace_id, db, current_user)
+    from publishing.repo_scanner import RepositoryScanner
+    mapping = RepositoryScanner(db).get_mapping(workspace_id)
+    if not mapping:
+        return {"scanned": False}
+    return {
+        "scanned": True,
+        "repo_full_name": mapping.repo_full_name,
+        "framework": mapping.framework,
+        "default_branch": mapping.default_branch,
+        "pages_count": mapping.pages_count,
+        "pages": mapping.pages or [],
+        "status": mapping.status,
+        "error": mapping.error,
+        "truncated": mapping.truncated,
+        "scanned_at": mapping.scanned_at.isoformat() if mapping.scanned_at else None,
+    }
 
 
 @router.post("/github/{workspace_id}/publish-draft")

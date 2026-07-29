@@ -25,9 +25,6 @@ class ShopifyPublisher(Publisher):
             "summary": payload.get("description"),
         }
 
-    async def publish(self, payload: dict) -> dict:
-        return {
-            "status": "not_implemented",
-            "platform": "shopify",
-            "message": "Real Shopify publishing (unpublished page/article update) is not implemented yet.",
-        }
+    # publish() is inherited from Publisher — architecture-only preview for now. Override
+    # here later with the real unpublished-article/page call (core/shopify_connect.py
+    # already has one).
