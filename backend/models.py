@@ -312,6 +312,7 @@ class GitHubConnection(Base):
     login = Column(String, nullable=True)            # GitHub username
     repo_full_name = Column(String, nullable=True)   # "owner/repo"
     default_branch = Column(String, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)  # last time this connection's data (repo/branch) was refreshed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -343,6 +344,7 @@ class ShopifyConnection(Base):
     shop_name = Column(String, nullable=True)
     access_token = Column(String, nullable=True)
     blog_id = Column(Integer, nullable=True)         # selected blog to publish into
+    last_synced_at = Column(DateTime, nullable=True)  # last time this connection's data (blogs/pages) was refreshed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -362,4 +364,28 @@ class WordPressConnection(Base):
     username = Column(String, nullable=True)
     app_password = Column(String, nullable=True)
     display_name = Column(String, nullable=True)     # connected WP user
+    last_synced_at = Column(DateTime, nullable=True)  # last time this connection's data (pages) was refreshed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class PageMapping(Base):
+    """Maps one crawled page (by path) to its target location on a specific connected
+    platform, so the publishing layer knows exactly where a fix should land once real
+    publishing is implemented. One row per (workspace, platform, page_path).
+
+    This is populated by publishing/page_mapping.py — PageMappingService. It reuses the
+    existing crawler output (the audit's target_url) rather than crawling again.
+    """
+    __tablename__ = "page_mappings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"))
+    platform = Column(String)                  # "github" | "wordpress" | "shopify"
+    page_path = Column(String)                 # e.g. "/", "/about" — relative to the crawled site
+    page_url = Column(String, nullable=True)   # full URL, if known
+    target_ref = Column(String, nullable=True)   # GitHub file path | WP post/page id | Shopify page/article id
+    target_type = Column(String, nullable=True)  # "file" | "post" | "page" | "article"
+    last_synced_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    workspace = relationship("Workspace")

@@ -118,7 +118,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
-import auth, models, database, payments, agent_routes, workspace_routes, connector_routes
+import auth, models, database, payments, agent_routes, workspace_routes, connector_routes, publishing_routes
 
 # Create tables in db (in production, use alembic for migrations)
 models.Base.metadata.create_all(bind=database.engine)
@@ -135,6 +135,10 @@ def _run_light_migrations():
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS budget DOUBLE PRECISION DEFAULT 0.0",
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS daily_budget DOUBLE PRECISION",
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS meta_campaign_id VARCHAR",
+        # Publishing foundation (backend/publishing/) — last_synced_at on existing connections.
+        "ALTER TABLE github_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
+        "ALTER TABLE shopify_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
+        "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
     ]
     try:
         with database.engine.begin() as conn:
@@ -151,3 +155,4 @@ app.include_router(payments.router)
 app.include_router(agent_routes.router)
 app.include_router(workspace_routes.router)
 app.include_router(connector_routes.router)
+app.include_router(publishing_routes.router)

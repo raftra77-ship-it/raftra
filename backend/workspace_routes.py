@@ -48,6 +48,81 @@ def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background
     
     return {"status": "success", "message": "Knowledge Graph re-indexing started."}
 
+
+# Friendly names for the point `type` payload written into the vector store.
+_KB_TYPE_LABELS = {
+    "onboarding_scrape": "Brand & onboarding context",
+    "seo": "SEO audit context",
+    "geo": "GEO audit context",
+    "campaign": "Campaign context",
+    "content": "Generated content",
+}
+
+
+@router.get("/{workspace_id}/knowledge/stats")
+def knowledge_stats(workspace_id: int, db: Session = Depends(database.get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    """Real vector-store stats for this workspace's knowledge base — actual point counts
+    from Qdrant, grouped by source type. Fails open (available=False) if Qdrant or the
+    collection isn't reachable, so the dashboard never crashes."""
+    _require_workspace(workspace_id, db, current_user)
+
+    from core.embeddings import COLLECTION_NAME, EMBEDDING_MODEL_NAME, EMBEDDING_DIM
+    base = {
+        "available": False,
+        "collection": COLLECTION_NAME,
+        "embedding_model": EMBEDDING_MODEL_NAME,
+        "dimensions": EMBEDDING_DIM,
+        "total_vectors": 0,
+        "stores": [],
+    }
+    try:
+        from database import qdrant_client
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        # Collection may not exist yet (no one has indexed anything).
+        names = {c.name for c in qdrant_client.get_collections().collections}
+        if COLLECTION_NAME not in names:
+            base["available"] = True
+            return base
+
+        ws_filter = Filter(must=[FieldCondition(key="workspace_id", match=MatchValue(value=workspace_id))])
+        total = qdrant_client.count(collection_name=COLLECTION_NAME, count_filter=ws_filter, exact=True).count
+
+        # Tally points by their `type` payload, and collect each page's source URL
+        # (scroll payload only — no vectors pulled).
+        by_type: dict[str, int] = {}
+        srcs_by_type: dict[str, list] = {}
+        next_page = None
+        for _ in range(50):  # safety cap: up to 50 * 256 points
+            points, next_page = qdrant_client.scroll(
+                collection_name=COLLECTION_NAME, scroll_filter=ws_filter,
+                with_payload=["type", "source_url"], with_vectors=False, limit=256, offset=next_page,
+            )
+            for p in points:
+                pl = p.payload or {}
+                t = pl.get("type") or "other"
+                by_type[t] = by_type.get(t, 0) + 1
+                su = pl.get("source_url")
+                if su:
+                    lst = srcs_by_type.setdefault(t, [])
+                    if su not in lst:
+                        lst.append(su)
+            if not next_page:
+                break
+
+        stores = [
+            {"type": t, "name": _KB_TYPE_LABELS.get(t, t.replace("_", " ").title()),
+             "vectors": n, "sources": srcs_by_type.get(t, [])[:25]}
+            for t, n in sorted(by_type.items(), key=lambda kv: -kv[1])
+        ]
+        base.update({"available": True, "total_vectors": total, "stores": stores})
+        return base
+    except Exception as e:
+        print(f"knowledge_stats: Qdrant unavailable for ws {workspace_id}: {e}")
+        return base
+
+
 def _require_workspace(workspace_id: int, db: Session, current_user: models.User):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
     if not ws:
@@ -553,6 +628,264 @@ def seo_comparison(workspace_id: int, pipeline: str = "SEO",
         "ai_visibility": ai_visibility,
         "note": None if previous else "Only one run so far — the comparison fills in on the next run.",
     }
+
+
+# ---------------------------------------------------------------- unified audit report
+# SEO and GEO stay two independent pipelines (separate trigger buttons, separate single-
+# flight state, separate scoring) — but they render into ONE combined report: this is the
+# read model that report reads. Never create a second report container on the frontend;
+# these endpoints all feed the same existing modal.
+
+from agents.seo_geo import SEO_STAGES, GEO_STAGES  # noqa: E402
+import datetime as _dt
+from pydantic import BaseModel as _BaseModel
+
+
+@router.get("/{workspace_id}/seo/run-status")
+def seo_run_status(workspace_id: int, pipeline: str = "SEO", db: Session = Depends(database.get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    """Live state of one pipeline's current run: idle / queued / running / completed /
+    failed / cancelled, plus its stage checklist. Backed by the AgentTask row (updated as
+    each real graph node completes) — not a fabricated timer."""
+    _require_workspace(workspace_id, db, current_user)
+    if pipeline not in ("SEO", "GEO"):
+        raise HTTPException(status_code=400, detail="pipeline must be SEO or GEO")
+    from core.agent_status import get_agent_task, is_running, reconcile_stale_running
+    reconcile_stale_running(workspace_id, pipeline)
+    task = get_agent_task(workspace_id, pipeline)
+    stages = SEO_STAGES if pipeline == "SEO" else GEO_STAGES
+
+    if not task:
+        return {"status": "idle", "stages": stages, "stages_done": [], "current_stage": None,
+                "started_at": None, "target_url": None, "running": False}
+
+    logs = task.get("logs") or {}
+    raw_status = task.get("status") or "idle"
+    running = raw_status == "RUNNING" and is_running(workspace_id, pipeline)
+    status_map = {"RUNNING": "running" if running else "failed", "COMPLETED": "completed",
+                 "FAILED": "failed", "CANCELLED": "cancelled"}
+    return {
+        "status": status_map.get(raw_status, "idle"),
+        "running": running,
+        "stages": stages,
+        "stages_done": logs.get("stages_done") or [],
+        "current_stage": logs.get("current_stage"),
+        "started_at": logs.get("started_at"),
+        "target_url": logs.get("target_url"),
+        "summary": logs.get("summary"),
+    }
+
+
+@router.post("/{workspace_id}/seo/cancel")
+def seo_cancel_run(workspace_id: int, pipeline: str = "SEO", db: Session = Depends(database.get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    """Cancel the in-flight audit for this pipeline, if one is running."""
+    _require_workspace(workspace_id, db, current_user)
+    if pipeline not in ("SEO", "GEO"):
+        raise HTTPException(status_code=400, detail="pipeline must be SEO or GEO")
+    from core.agent_status import cancel_task
+    ok = cancel_task(workspace_id, pipeline)
+    if not ok:
+        raise HTTPException(status_code=409, detail="No audit is currently running for this pipeline.")
+    return {"status": "success", "message": "Cancelling the audit…"}
+
+
+def _latest_pipeline_row(rows: list, pipeline: str):
+    return next((r for r in rows if (r.keywords_data or {}).get("pipeline") == pipeline
+                and (r.keywords_data or {}).get("audit")), None)
+
+
+def _audit_row_view(r) -> Optional[dict]:
+    if not r:
+        return None
+    kd = r.keywords_data or {}
+    return {"id": r.id, "target_url": kd.get("target_url"),
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "audit": kd.get("audit"), "decisions": kd.get("decisions") or {},
+            "duration_seconds": kd.get("duration_seconds"),
+            # The full LLM-written narrative strategy report for this run (the theoretical,
+            # plain-language explanation) — the structured scores above are the "what",
+            # this is the "why it matters and what to do about it".
+            "narrative_report": r.recommendation}
+
+
+@router.get("/{workspace_id}/seo/audit-report")
+def audit_report(workspace_id: int, db: Session = Depends(database.get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    """The ONE combined Website Audit Report — merges the latest SEO audit row and the
+    latest GEO audit row (each scored independently by its own pipeline) into a single
+    read model. This is the only audit report surface in the app; it is read-only —
+    approval lives per-recommendation via the decision endpoint below, never on the report
+    itself."""
+    _require_workspace(workspace_id, db, current_user)
+    rows = (db.query(models.SEOAudit)
+              .filter(models.SEOAudit.workspace_id == workspace_id)
+              .order_by(models.SEOAudit.created_at.desc()).all())
+    seo_data = _audit_row_view(_latest_pipeline_row(rows, "SEO"))
+    geo_data = _audit_row_view(_latest_pipeline_row(rows, "GEO"))
+
+    seo_score = seo_data["audit"]["seo"]["score_100"] if seo_data else None
+    geo_score = geo_data["audit"]["geo"]["score_100"] if geo_data else None
+    if seo_score is not None and geo_score is not None:
+        overall = round((seo_score + geo_score) / 2, 1)
+    else:
+        overall = seo_score if seo_score is not None else geo_score
+
+    target_url = (seo_data or {}).get("target_url") or (geo_data or {}).get("target_url")
+    dates = [d["created_at"] for d in (seo_data, geo_data) if d and d.get("created_at")]
+    generated_at = max(dates) if dates else None
+
+    # Merge priority issues from both pipelines, tagging each with where it came from so the
+    # frontend knows which audit_id to POST a decision against.
+    priority_issues = []
+    for pipeline_key, data in (("SEO", seo_data), ("GEO", geo_data)):
+        if not data:
+            continue
+        decisions = data.get("decisions") or {}
+        for it in (data["audit"].get("priority_issues") or []):
+            key = f"{it.get('area')}::{it.get('issue')}"
+            dec = decisions.get(key) or {}
+            priority_issues.append({**it, "pipeline": pipeline_key, "audit_id": data["id"], "key": key,
+                                    "decision": dec.get("decision"), "edited_text": dec.get("edited_text")})
+    order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    priority_issues.sort(key=lambda i: order.get(i.get("severity"), 4))
+
+    return {
+        "has_audit": bool(seo_data or geo_data),
+        "target_url": target_url,
+        "generated_at": generated_at,
+        "overall_health": overall,
+        "seo": seo_data,
+        "geo": geo_data,
+        "priority_issues": priority_issues,
+    }
+
+
+@router.get("/{workspace_id}/seo/audit-history")
+def audit_history(workspace_id: int, limit: int = 20, db: Session = Depends(database.get_db),
+                  current_user: models.User = Depends(auth.get_current_user)):
+    """Compact combined history — one row per day a run happened, showing whichever
+    SEO/GEO score was captured that day. Clicking a row loads that day's audits into the
+    same report (never a new report card)."""
+    _require_workspace(workspace_id, db, current_user)
+    rows = (db.query(models.SEOAudit)
+              .filter(models.SEOAudit.workspace_id == workspace_id)
+              .order_by(models.SEOAudit.created_at.desc()).all())
+    buckets: dict = {}
+    durations = {"SEO": [], "GEO": []}
+    for r in rows:
+        kd = r.keywords_data or {}
+        if not kd.get("audit") or not r.created_at:
+            continue
+        day = r.created_at.date().isoformat()
+        b = buckets.setdefault(day, {"date": day, "target_url": kd.get("target_url"), "status": "COMPLETED"})
+        pipeline = kd.get("pipeline")
+        if pipeline == "SEO" and "seo_id" not in b:
+            b["seo_id"] = r.id
+            b["seo_score"] = kd["audit"]["seo"]["score_100"]
+        elif pipeline == "GEO" and "geo_id" not in b:
+            b["geo_id"] = r.id
+            b["geo_score"] = kd["audit"]["geo"]["score_100"]
+        if pipeline in durations and kd.get("duration_seconds"):
+            durations[pipeline].append(kd["duration_seconds"])
+    out = sorted(buckets.values(), key=lambda b: b["date"], reverse=True)[:limit]
+    # Real historical average per pipeline (last 5 runs) — used for the Running state's
+    # "estimated time remaining", never a fabricated number.
+    avg_duration = {p: round(sum(d[:5]) / len(d[:5]), 1) for p, d in durations.items() if d}
+    return {"runs": out, "avg_duration_seconds": avg_duration}
+
+
+@router.get("/{workspace_id}/seo/audits/{audit_id}")
+def get_seo_audit_by_id(workspace_id: int, audit_id: int, db: Session = Depends(database.get_db),
+                        current_user: models.User = Depends(auth.get_current_user)):
+    """Fetch one specific past audit (for opening an Audit History row) — same per-pipeline
+    shape used inside the combined report, so the frontend can compose a historical view by
+    fetching the SEO id and/or GEO id from that day's history bucket."""
+    _require_workspace(workspace_id, db, current_user)
+    row = db.query(models.SEOAudit).filter(models.SEOAudit.id == audit_id,
+                                            models.SEOAudit.workspace_id == workspace_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Audit not found")
+    data = _audit_row_view(row)
+    pipeline = (row.keywords_data or {}).get("pipeline")
+    return {**data, "pipeline": pipeline}
+
+
+@router.delete("/{workspace_id}/seo/audits/{audit_id}")
+def delete_seo_audit(workspace_id: int, audit_id: int, db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Delete one past audit run (from Audit History, or the current report)."""
+    _require_workspace(workspace_id, db, current_user)
+    row = db.query(models.SEOAudit).filter(models.SEOAudit.id == audit_id,
+                                            models.SEOAudit.workspace_id == workspace_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Audit not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "success", "message": "Audit deleted."}
+
+
+class RecommendationDecisionBody(_BaseModel):
+    issue_key: str          # stable key for the issue within this audit (area + issue text)
+    decision: str           # "approved" | "edited" | "rejected"
+    edited_text: Optional[str] = None
+
+
+@router.post("/{workspace_id}/seo/audits/{audit_id}/decision")
+def set_recommendation_decision(workspace_id: int, audit_id: int, body: RecommendationDecisionBody,
+                                db: Session = Depends(database.get_db),
+                                current_user: models.User = Depends(auth.get_current_user)):
+    """Approve / Edit / Reject ONE recommendation inside the combined report. This is the
+    only place approval lives — the audit report itself stays read-only. Approved/edited
+    decisions surface in the Publishing Queue."""
+    _require_workspace(workspace_id, db, current_user)
+    if body.decision not in ("approved", "edited", "rejected"):
+        raise HTTPException(status_code=400, detail="decision must be approved, edited or rejected")
+    row = db.query(models.SEOAudit).filter(models.SEOAudit.id == audit_id,
+                                            models.SEOAudit.workspace_id == workspace_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Audit not found")
+    kd = dict(row.keywords_data or {})
+    decisions = dict(kd.get("decisions") or {})
+    decisions[body.issue_key] = {"decision": body.decision, "edited_text": body.edited_text,
+                                 "decided_at": _dt.datetime.utcnow().isoformat()}
+    kd["decisions"] = decisions
+    row.keywords_data = kd
+    db.commit()
+    return {"status": "success", "decisions": decisions}
+
+
+@router.get("/{workspace_id}/publishing-queue")
+def publishing_queue(workspace_id: int, db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Every approved/edited recommendation across the latest SEO + GEO audits — the queue
+    of fixes ready to actually apply on the connected platform."""
+    _require_workspace(workspace_id, db, current_user)
+    rows = (db.query(models.SEOAudit)
+              .filter(models.SEOAudit.workspace_id == workspace_id)
+              .order_by(models.SEOAudit.created_at.desc()).all())
+    items = []
+    for r in rows:
+        kd = r.keywords_data or {}
+        decisions = kd.get("decisions") or {}
+        audit = kd.get("audit") or {}
+        issues = audit.get("priority_issues") or audit.get("top_5_issues") or []
+        by_key = {f"{it.get('area')}::{it.get('issue')}": it for it in issues}
+        for key, d in decisions.items():
+            if d.get("decision") not in ("approved", "edited"):
+                continue
+            src = by_key.get(key, {})
+            items.append({
+                "audit_id": r.id,
+                "pipeline": kd.get("pipeline"),
+                "target_url": kd.get("target_url"),
+                "area": src.get("area"),
+                "issue": d.get("edited_text") or src.get("issue"),
+                "decision": d.get("decision"),
+                "decided_at": d.get("decided_at"),
+            })
+    items.sort(key=lambda x: x.get("decided_at") or "", reverse=True)
+    return {"items": items}
 
 
 # Social posts

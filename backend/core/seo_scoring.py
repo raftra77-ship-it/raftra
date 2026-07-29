@@ -562,3 +562,38 @@ def build_audit(url: str, html: str, markdown: str, metrics: dict, signals: dict
         "priority_issues": issues,
         "top_5_issues": issues[:5],
     }
+
+
+def _build_issues(sections: list) -> list:
+    """Shared severity-sorted issue builder for a single-pipeline audit (SEO-only or
+    GEO-only) — same logic as build_audit's combined version, just over one section."""
+    issues = []
+    for section in sections:
+        for c in section["categories"]:
+            if c["status"] != "verified" or not c["recommendations"]:
+                continue
+            pct = (c["score"] / c["max"]) if c["max"] else 1
+            sev = "Critical" if pct < 0.4 else "High" if pct < 0.6 else "Medium" if pct < 0.85 else "Low"
+            for r in c["recommendations"]:
+                issues.append({"severity": sev, "area": f"{section['label']} · {c['name']}",
+                               "issue": r, "impact": c["expected_impact"]})
+    order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    issues.sort(key=lambda i: order.get(i["severity"], 4))
+    return issues
+
+
+def build_seo_audit(url: str, html: str, markdown: str, metrics: dict, signals: dict) -> dict:
+    """SEO-only evidence-based audit — no GEO score is computed or stored here, so the
+    SEO and GEO pipelines never overwrite or blend each other's results."""
+    seo = score_seo(url, html, markdown, metrics, signals)
+    issues = _build_issues([seo])
+    return {"target_url": url, "seo": seo, "priority_issues": issues, "top_5_issues": issues[:5]}
+
+
+def build_geo_audit(url: str, html: str, markdown: str, metrics: dict, signals: dict,
+                    llm_recall: dict | None = None) -> dict:
+    """GEO-only evidence-based audit — computed from the GEO pipeline's own real crawl,
+    independent of the SEO pipeline."""
+    geo = score_geo(url, html, markdown, metrics, signals, llm_recall)
+    issues = _build_issues([geo])
+    return {"target_url": url, "geo": geo, "priority_issues": issues, "top_5_issues": issues[:5]}

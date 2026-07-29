@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { LogLine } from '../components/TerminalFeed';
 import { ReviewDrawer } from '../components/ReviewDrawer';
-import { SEOAgencyReportModal } from '../components/SEOAgencyReportModal';
 import type { ReviewItem } from '../components/ReviewDrawer';
 import { WorkspaceCreative } from '../components/workspaces/WorkspaceCreative';
 import { WorkspaceCampaign } from '../components/workspaces/WorkspaceCampaign';
@@ -60,6 +59,72 @@ interface CreativeAsset {
   type: string;
   status: 'pending_review' | 'approved' | 'rejected';
   imageUrl?: string;
+}
+
+// Real vector-store stats for the Knowledge Base tab — reads /knowledge/stats (actual Qdrant
+// point counts for this workspace), replacing the old hardcoded placeholder list.
+function VectorDatastores({ workspaceId, reindexing }: { workspaceId: number | null; reindexing: boolean }) {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId || reindexing) { setLoading(!!workspaceId); return; }
+    setLoading(true);
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/knowledge/stats`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then(setStats)
+      .catch(() => setStats(null))
+      .finally(() => setLoading(false));
+  }, [workspaceId, reindexing]);
+
+  return (
+    <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+        <h3 style={{ fontSize: '16px' }}>Vector Datastores</h3>
+        {stats?.available && stats.total_vectors > 0 && (
+          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{stats.total_vectors} vectors · {stats.dimensions}-dim</span>
+        )}
+      </div>
+
+      {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading vector store…</p>}
+
+      {!loading && (!stats || !stats.available) && (
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>Vector store isn't reachable right now.</p>
+      )}
+
+      {!loading && stats?.available && stats.total_vectors === 0 && (
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          No vectors indexed yet. Add a resource URL and click <b style={{ color: '#fff' }}>Re-index Knowledge Graph</b> to build it.
+        </p>
+      )}
+
+      {!loading && stats?.available && stats.total_vectors > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {stats.stores.map((s: any) => (
+            <div key={s.type} style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><FileText size={14} /> {s.name}</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{s.vectors} page{s.vectors === 1 ? '' : 's'}</span>
+              </div>
+              {Array.isArray(s.sources) && s.sources.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {s.sources.map((u: string, i: number) => {
+                    let label = u;
+                    try { const p = new URL(u); label = (p.pathname === '/' ? '/ (home)' : p.pathname); } catch { /* non-URL like web-search:tavily */ }
+                    return (
+                      <span key={i} title={u} style={{ fontSize: '10.5px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '5px', padding: '2px 7px', whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+          <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>Collection: {stats.collection} · {stats.embedding_model}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function BrandDashboard() {
@@ -1563,6 +1628,8 @@ export function BrandDashboard() {
                   onTriggerSEO={handleTriggerSEO}
                   onTriggerGEO={handleTriggerGEO}
                   workspaceId={workspaceId}
+                  siteUrl={brandProfile?.url}
+                  onManageIntegrations={() => setActiveTab('integrations')}
                 />
               </div>
             </div>
@@ -1695,19 +1762,7 @@ export function BrandDashboard() {
                     Re-index Knowledge Graph
                   </GlowButton>
                 </div>
-                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h3 style={{ fontSize: '16px' }}>Vector Datastores</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px', display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><FileText size={14} /> BrandVoiceEmbeddings.idx</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>208 vectors</span>
-                    </div>
-                    <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px', display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><FileText size={14} /> CompetitorAudits.idx</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>85 vectors</span>
-                    </div>
-                  </div>
-                </div>
+                <VectorDatastores workspaceId={workspaceId} reindexing={isReindexing} />
               </div>
             </div>
           )}
@@ -1854,23 +1909,15 @@ export function BrandDashboard() {
         </div>
       )}
 
-      {/* Review Drawer slide panel overlay */}
-      {activeReviewItem?.type === 'seo' || activeReviewItem?.type === 'geo' ? (
-        <SEOAgencyReportModal
-          isOpen={isReviewOpen}
-          onClose={() => setIsReviewOpen(false)}
-          item={activeReviewItem}
-          onApprove={handleApprove}
-        />
-      ) : (
-        <ReviewDrawer
-          isOpen={isReviewOpen}
-          onClose={() => setIsReviewOpen(false)}
-          item={activeReviewItem}
-          onApprove={handleApprove}
-          onReject={handleReject}
-        />
-      )}
+      {/* Review Drawer slide panel overlay — the SEO/GEO audit report is a separate,
+          state-aware modal owned by WorkspaceSEO itself, not this generic review flow. */}
+      <ReviewDrawer
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        item={activeReviewItem}
+        onApprove={handleApprove}
+        onReject={handleReject}
+      />
     </div>
   );
 }

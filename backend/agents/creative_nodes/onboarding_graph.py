@@ -18,6 +18,7 @@ class OnboardingState(TypedDict):
     guidelines_url: Optional[str]
     # Intermediate state
     scraped_content: str
+    scraped_pages: List[dict]   # up to 5 crawled pages: [{"url": str, "content": str}]
     vision_insights: dict
     # Final structured outputs for DB
     typography: dict
@@ -40,6 +41,86 @@ def _html_to_text(html: str) -> str:
     return re.sub(r"\s+", " ", html).strip()
 
 
+# Shallow crawl config: homepage + up to (MAX-1) same-domain pages.
+_MAX_KB_PAGES = 5
+_PER_PAGE_CHARS = 3000
+_UA = "Mozilla/5.0 (compatible; RaftraBot/1.0)"
+
+
+def _extract_internal_links(html: str, base_url: str, limit: int) -> list:
+    """Same-domain content links found on the page — used for a shallow crawl."""
+    import re, urllib.parse
+    base_host = (urllib.parse.urlparse(base_url).netloc or "").lower().replace("www.", "")
+    base_norm = base_url.rstrip("/")
+    seen, out = set(), []
+    for m in re.finditer(r'href=["\']([^"\']+)["\']', html or "", re.I):
+        href = m.group(1).strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        absu = urllib.parse.urljoin(base_url, href)
+        pu = urllib.parse.urlparse(absu)
+        if pu.scheme not in ("http", "https"):
+            continue
+        if (pu.netloc or "").lower().replace("www.", "") != base_host:
+            continue
+        clean = pu._replace(fragment="").geturl()
+        if clean.rstrip("/") == base_norm or clean in seen:
+            continue
+        if re.search(r"\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|css|js|mp4|woff2?)(\?|$)", clean, re.I):
+            continue
+        seen.add(clean)
+        out.append(clean)
+        if len(out) >= limit:
+            break
+    return out
+
+
+async def _firecrawl_crawl(client, url: str, limit: int, key: str) -> list:
+    """Crawl a site via Firecrawl's /v1/crawl endpoint — renders JavaScript (works on SPAs)
+    and returns up to `limit` pages in one job. Returns [{'url','content'}]; [] on any failure
+    so the caller can fall back to the direct link-crawl."""
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    try:
+        start = await client.post(
+            "https://api.firecrawl.dev/v1/crawl",
+            headers=headers,
+            json={"url": url, "limit": limit, "scrapeOptions": {"formats": ["markdown"]}},
+        )
+        if start.status_code not in (200, 201):
+            print(f"Firecrawl crawl start failed: {start.status_code} {start.text[:150]}")
+            return []
+        j = start.json()
+        crawl_id = j.get("id") or (j["url"].rstrip("/").split("/")[-1] if j.get("url") else None)
+        if not crawl_id:
+            return []
+        # Crawl is async on Firecrawl's side — poll until it finishes (bounded).
+        for _ in range(20):  # ~ up to 80s
+            await asyncio.sleep(4)
+            poll = await client.get(f"https://api.firecrawl.dev/v1/crawl/{crawl_id}",
+                                    headers={"Authorization": f"Bearer {key}"})
+            if poll.status_code != 200:
+                continue
+            pj = poll.json()
+            status = pj.get("status")
+            if status == "completed":
+                out = []
+                for d in (pj.get("data") or [])[:limit]:
+                    md = (d.get("markdown") or "").strip()
+                    meta = d.get("metadata") or {}
+                    src = meta.get("sourceURL") or meta.get("url") or url
+                    if md:
+                        out.append({"url": src, "content": md[:_PER_PAGE_CHARS]})
+                return out
+            if status in ("failed", "cancelled"):
+                print(f"Firecrawl crawl {status}")
+                return []
+        print("Firecrawl crawl did not finish in time; falling back to direct crawl.")
+        return []
+    except Exception as e:
+        print(f"Firecrawl crawl error: {e}")
+        return []
+
+
 async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
     """
     Scrapes the brand URL. Prefers Firecrawl (clean markdown) when a key is set,
@@ -50,64 +131,90 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Brand Intelligence", msg, "running")
 
-    scraped_text = ""
     firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
     tavily_key = os.getenv("TAVILY_API_KEY")
 
-    if firecrawl_key and state['brand_url']:
-        msg = f"Scraping brand content from {state['brand_url']} via Firecrawl..."
-        await manager.broadcast_agent_log("Brand Intelligence", msg, "thinking")
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.post(
+    raw_url = (state.get("brand_url") or "").strip()
+    url = raw_url if raw_url.startswith(("http://", "https://")) else ("https://" + raw_url if raw_url else "")
+
+    async def _fetch_text(client, target: str, want_html: bool = False):
+        """Return (text, html). Firecrawl markdown when a key is set, else a direct fetch."""
+        html = ""
+        text = ""
+        if want_html or not firecrawl_key:
+            try:
+                r = await client.get(target)
+                if r.status_code == 200:
+                    html = r.text
+                    text = _html_to_text(html)
+            except Exception as e:
+                print(f"Direct fetch failed for {target}: {e}")
+        if firecrawl_key:
+            try:
+                fr = await client.post(
                     "https://api.firecrawl.dev/v1/scrape",
                     headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
-                    json={"url": state['brand_url'], "formats": ["markdown"]}
+                    json={"url": target, "formats": ["markdown"]},
                 )
-                if res.status_code == 200:
-                    data = res.json()
-                    scraped_text = data.get("data", {}).get("markdown", "")[:4000] # Limit size
-        except Exception as e:
-            # Never store the error text as content - it would be embedded into the
-            # knowledge base as if it were brand information. Fall through instead.
-            print(f"Firecrawl scrape failed: {e}")
+                if fr.status_code == 200:
+                    md = fr.json().get("data", {}).get("markdown", "")
+                    if md:
+                        text = md  # prefer clean markdown for the stored content
+            except Exception as e:
+                print(f"Firecrawl scrape failed for {target}: {e}")
+        return text, html
 
-    if not scraped_text and state['brand_url']:
-        # Fallback: fetch the page directly and extract its text.
-        msg = f"Fetching {state['brand_url']} directly (no Firecrawl key or Firecrawl failed)..."
-        await manager.broadcast_agent_log("Brand Intelligence", msg, "thinking")
-        try:
-            url = state['brand_url']
-            if not url.startswith(("http://", "https://")):
-                url = "https://" + url
-            async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
-                res = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; RaftraBot/1.0)"})
-                if res.status_code == 200:
-                    scraped_text = _html_to_text(res.text)[:4000]
-        except Exception as e:
-            print(f"Direct fetch failed: {e}")
+    pages: List[dict] = []
+    if url:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30, headers={"User-Agent": _UA}) as client:
+            # 1) Preferred: Firecrawl crawl — renders JavaScript (handles SPAs) and returns
+            #    up to _MAX_KB_PAGES pages in one job.
+            if firecrawl_key:
+                await manager.broadcast_agent_log("Brand Intelligence", f"Crawling {url} via Firecrawl (up to {_MAX_KB_PAGES} pages, JS-rendered)...", "thinking")
+                pages = await _firecrawl_crawl(client, url, _MAX_KB_PAGES, firecrawl_key)
+                if pages:
+                    await manager.broadcast_agent_log("Brand Intelligence", f"Firecrawl returned {len(pages)} page(s).", "thinking")
 
-    if not scraped_text:
+            # 2) Fallback (no key, or Firecrawl returned nothing): fetch the homepage HTML and
+            #    follow up to (MAX-1) same-domain links directly (no JS rendering).
+            if not pages:
+                await manager.broadcast_agent_log("Brand Intelligence", f"Scraping {url} directly...", "thinking")
+                home_text, home_html = await _fetch_text(client, url, want_html=True)
+                if home_text:
+                    pages.append({"url": url, "content": home_text[:_PER_PAGE_CHARS]})
+                links = _extract_internal_links(home_html, url, _MAX_KB_PAGES - 1)
+                if links:
+                    await manager.broadcast_agent_log("Brand Intelligence", f"Crawling {len(links)} more page(s) on the site...", "thinking")
+                for link in links:
+                    page_text, _ = await _fetch_text(client, link)
+                    if page_text and len(page_text.split()) > 20:  # skip near-empty pages
+                        pages.append({"url": link, "content": page_text[:_PER_PAGE_CHARS]})
+
+            # 3) Optional external search context (Tavily) as one extra entry.
+            if tavily_key:
+                await manager.broadcast_agent_log("Brand Intelligence", "Adding competitor/search context via Tavily...", "thinking")
+                try:
+                    tv = await client.post(
+                        "https://api.tavily.com/search",
+                        json={"api_key": tavily_key, "query": f"Brand information and competitors for {url}"},
+                    )
+                    if tv.status_code == 200:
+                        results = "\n".join([r.get("content", "") for r in tv.json().get("results", [])])
+                        if results.strip():
+                            pages.append({"url": "web-search:tavily", "content": results[:2000]})
+                except Exception:
+                    pass
+
+    if not pages:
         await manager.broadcast_agent_log("Brand Intelligence", "Could not extract any content from the brand URL - the knowledge base will be limited for this workspace.", "failed")
-        scraped_text = "No content extracted."
+        state["scraped_pages"] = []
+        state["scraped_content"] = "No content extracted."
+        return state
 
-    if tavily_key:
-        msg = f"Searching for brand and competitors using Tavily..."
-        await manager.broadcast_agent_log("Brand Intelligence", msg, "thinking")
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.post(
-                    "https://api.tavily.com/search",
-                    json={"api_key": tavily_key, "query": f"Brand information and competitors for {state['brand_url']}"}
-                )
-                if res.status_code == 200:
-                    tavily_data = res.json()
-                    results = "\n".join([r.get("content", "") for r in tavily_data.get("results", [])])
-                    scraped_text += "\n\nSearch Context:\n" + results[:2000]
-        except Exception as e:
-            pass
-
-    state["scraped_content"] = scraped_text
+    await manager.broadcast_agent_log("Brand Intelligence", f"Extracted {len(pages)} page(s) into the knowledge base.", "completed")
+    state["scraped_pages"] = pages
+    # Aggregate for the LLM synthesis step (it reads scraped_content).
+    state["scraped_content"] = "\n\n".join(f"[{p['url']}]\n{p['content']}" for p in pages)[:8000]
     return state
 
 async def vision_analysis_node(state: OnboardingState) -> OnboardingState:
@@ -204,16 +311,25 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
         except Exception as del_err:
             print(f"Qdrant cleanup (non-fatal): {del_err}")
 
-        qdrant_client.upsert(
-            collection_name=COLLECTION_NAME,
-            points=[
+        # Store one vector PER crawled page (better retrieval than one giant blob).
+        crawled = [p for p in (state.get("scraped_pages") or []) if (p.get("content") or "").strip()]
+        if crawled:
+            points = [
                 PointStruct(
                     id=str(uuid.uuid4()),
-                    vector=embed_passage(content_to_embed),
-                    payload={"workspace_id": state["workspace_id"], "content": content_to_embed, "type": "onboarding_scrape"}
+                    vector=embed_passage(p["content"]),
+                    payload={"workspace_id": state["workspace_id"], "content": p["content"],
+                             "type": "onboarding_scrape", "source_url": p.get("url", "")},
                 )
+                for p in crawled
             ]
-        )
+        else:
+            points = [PointStruct(
+                id=str(uuid.uuid4()),
+                vector=embed_passage(content_to_embed),
+                payload={"workspace_id": state["workspace_id"], "content": content_to_embed, "type": "onboarding_scrape"},
+            )]
+        qdrant_client.upsert(collection_name=COLLECTION_NAME, points=points)
     except Exception as e:
         # Previously this only printed, so onboarding reported success while the
         # knowledge base stayed empty - and every later generation had no context.
@@ -247,6 +363,7 @@ async def run_onboarding_pipeline(workspace_id: int, brand_url: str, brand_logo:
         "brand_logo": brand_logo,
         "guidelines_url": None,
         "scraped_content": "",
+        "scraped_pages": [],
         "vision_insights": {},
         "typography": {},
         "color_palette": [],

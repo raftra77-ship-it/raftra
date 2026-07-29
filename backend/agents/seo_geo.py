@@ -27,6 +27,24 @@ class SEOState(TypedDict):
     content_metrics: dict
 
 
+# Real node-name trails for the Running-state progress checklist. Must match the
+# `current_node` values each node below actually sets.
+SEO_STAGES = ["Crawler Agent", "Technical SEO Agent", "Keyword Agent", "Content Strategy Agent",
+              "Internal Linking Agent", "Backlink Agent", "Schema Agent", "Publishing Agent", "Reporting Agent"]
+GEO_STAGES = ["Entity Agent", "Citation Agent", "Prompt Visibility Agent", "LLM Ranking Agent",
+              "Authority Agent", "Knowledge Graph Agent", "Optimization Agent", "Reporting"]
+
+
+def _seo_stage_done(state: "SEOState", node_label: str) -> None:
+    from core.agent_status import record_agent_task
+    record_agent_task(state["workspace_id"], "SEO", "RUNNING", stage=node_label)
+
+
+def _geo_stage_done(state: "SEOState", node_label: str) -> None:
+    from core.agent_status import record_agent_task
+    record_agent_task(state["workspace_id"], "GEO", "RUNNING", stage=node_label)
+
+
 import re as _re
 from urllib.parse import urlparse as _urlparse
 
@@ -105,6 +123,58 @@ async def _fetch_site_signals(target_url: str) -> dict:
     return signals
 
 
+async def _crawl_via_firecrawl(target_url: str, agent_label: str) -> dict:
+    """Shared Firecrawl scrape (+ retry, + site signals) so the GEO pipeline can score from
+    a REAL crawl too, instead of never crawling at all. Never raises — a genuine post-retry
+    failure is reported back via crawl_error and the caller decides whether to fail the run."""
+    import httpx
+    firecrawl_key = (os.getenv("FIRECRAWL_API_KEY") or "").strip()
+    out = {"markdown": "", "html": "", "crawl_error": None, "site_signals": {}}
+
+    if not firecrawl_key:
+        await manager.broadcast_agent_log(
+            agent_label, f"No FIRECRAWL_API_KEY configured — SIMULATION only (no real crawl of {target_url}).", "running")
+        out["crawl_error"] = "no_api_key"
+        return out
+
+    await manager.broadcast_agent_log(agent_label, f"Crawling {target_url} via Firecrawl...", "running")
+    last_err = None
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                res = await client.post(
+                    "https://api.firecrawl.dev/v1/scrape",
+                    headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
+                    json={"url": target_url, "formats": ["markdown", "rawHtml"]},
+                )
+            if res.status_code == 200:
+                data = res.json().get("data", {}) or {}
+                markdown = (data.get("markdown", "") or "")
+                if markdown.strip():
+                    html = data.get("rawHtml") or data.get("html") or ""
+                    meta = data.get("metadata", {}) or {}
+                    out["markdown"], out["html"] = markdown, html
+                    try:
+                        out["site_signals"] = await _fetch_site_signals(target_url)
+                        out["site_signals"]["status_code"] = meta.get("statusCode")
+                    except Exception as e:
+                        out["site_signals"] = {"error": str(e)[:100]}
+                    await manager.broadcast_agent_log(
+                        agent_label, f"Crawled {len(markdown):,} chars (+{len(html):,} HTML) from {target_url}.", "running")
+                    return out
+                last_err = "empty content returned"
+            else:
+                last_err = f"HTTP {res.status_code}: {res.text[:150]}"
+        except Exception as e:
+            last_err = f"{type(e).__name__}: {e}"
+        if attempt == 0:
+            await asyncio.sleep(2.0)
+
+    out["crawl_error"] = last_err
+    await manager.broadcast_agent_log(agent_label, f"Crawl failed for {target_url} (after retry): {last_err}", "failed")
+    return out
+
+
 async def crawler_node(state: SEOState) -> SEOState:
     state["current_node"] = "Crawler Agent"
     import httpx
@@ -119,6 +189,7 @@ async def crawler_node(state: SEOState) -> SEOState:
         await manager.broadcast_agent_log("SEO Agent", msg, "running")
         await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
         state["crawl_data"] = {"markdown": "", "simulated": True}
+        _seo_stage_done(state, "Crawler Agent")
         return state
 
     msg = f"Crawling {state['target_url']} via Firecrawl..."
@@ -167,6 +238,7 @@ async def crawler_node(state: SEOState) -> SEOState:
                     state["logs"].append(ok)
                     await manager.broadcast_agent_log("SEO Agent", ok, "running")
                     await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
+                    _seo_stage_done(state, "Crawler Agent")
                     return state
                 last_err = "empty content returned"
             else:
@@ -195,8 +267,8 @@ async def technical_seo_node(state: SEOState) -> SEOState:
     # Evidence-based scoring: every point is derived from a real measurement. Anything we
     # cannot measure is marked "Not Verified" and excluded rather than estimated.
     try:
-        from core.seo_scoring import build_audit
-        audit = build_audit(
+        from core.seo_scoring import build_seo_audit
+        audit = build_seo_audit(
             url=state["target_url"],
             html=crawl.get("html", "") or "",
             markdown=crawl.get("markdown", "") or "",
@@ -207,8 +279,7 @@ async def technical_seo_node(state: SEOState) -> SEOState:
         state["audit_score"] = int(round(audit["seo"]["score_100"]))
         await manager.broadcast_agent_log(
             "SEO Agent",
-            f"Scored SEO {audit['seo']['score_100']}/100 and GEO {audit['geo']['score_100']}/100 "
-            f"from measured evidence (not estimated).", "running")
+            f"Scored SEO {audit['seo']['score_100']}/100 from measured evidence (not estimated).", "running")
     except Exception as e:
         print(f"Scoring failed: {e}")
         state["audit"] = {"error": str(e)[:200]}
@@ -219,6 +290,7 @@ async def technical_seo_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Technical SEO Agent", "completed")
+    _seo_stage_done(state, "Technical SEO Agent")
     return state
 
 async def keyword_agent_node(state: SEOState) -> SEOState:
@@ -233,6 +305,7 @@ async def keyword_agent_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Keyword Agent", "completed")
+    _seo_stage_done(state, "Keyword Agent")
     return state
 
 async def content_strategy_node(state: SEOState) -> SEOState:
@@ -243,6 +316,7 @@ async def content_strategy_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("seo_geo", "Content Strategy Agent", "running")
     await asyncio.sleep(1.5)
     await manager.broadcast_node_update("seo_geo", "Content Strategy Agent", "completed")
+    _seo_stage_done(state, "Content Strategy Agent")
     return state
 
 async def internal_linking_node(state: SEOState) -> SEOState:
@@ -255,6 +329,7 @@ async def internal_linking_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Internal Linking Agent", "completed")
+    _seo_stage_done(state, "Internal Linking Agent")
     return state
 
 async def backlink_agent_node(state: SEOState) -> SEOState:
@@ -265,12 +340,14 @@ async def backlink_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("seo_geo", "Backlink Agent", "running")
     await asyncio.sleep(1.5)
     await manager.broadcast_node_update("seo_geo", "Backlink Agent", "completed")
+    _seo_stage_done(state, "Backlink Agent")
     return state
 
 def _scorecard_markdown(audit: dict) -> str:
     """Deterministic scorecard rendered straight from the computed audit — no LLM, so the
-    published numbers can never be fabricated or drift."""
-    if not audit or "seo" not in audit:
+    published numbers can never be fabricated or drift. Works for a combined audit (both
+    seo+geo) or a single-pipeline audit (seo-only or geo-only)."""
+    if not audit or ("seo" not in audit and "geo" not in audit):
         return ""
     lines = ["## Scorecard (computed from measured evidence)", ""]
     for key in ("seo", "geo"):
@@ -284,7 +361,8 @@ def _scorecard_markdown(audit: dict) -> str:
         lines.append("")
         lines.append(f"_Formula:_ `{sec.get('formula','')}`")
         lines.append("")
-    lines.append(f"**Overall Website Health: {audit.get('overall_health')}/100**")
+    if "overall_health" in audit:
+        lines.append(f"**Overall Website Health: {audit.get('overall_health')}/100**")
     top = audit.get("top_5_issues") or []
     if top:
         lines.append("")
@@ -356,7 +434,8 @@ async def schema_agent_node(state: SEOState) -> SEOState:
         "excerpt": state["report"].replace('{target_url}', state['target_url']),
         "keywords": "SEO, AEO, Cannibalization, Technical Audit, Schema Markup"
     }))
-    
+    await manager.broadcast_node_update("seo_geo", "Schema Agent", "completed")
+    _seo_stage_done(state, "Schema Agent")
     return state
 
 async def publishing_agent_node(state: SEOState) -> SEOState:
@@ -370,6 +449,7 @@ async def publishing_agent_node(state: SEOState) -> SEOState:
     msg = "Deployment plan ready. Connect your site (GitHub/WordPress/Shopify) to auto-apply these changes — nothing was published automatically."
     await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Publishing Agent", "completed")
+    _seo_stage_done(state, "Publishing Agent")
     return state
 
 async def reporting_agent_node(state: SEOState) -> SEOState:
@@ -381,7 +461,8 @@ async def reporting_agent_node(state: SEOState) -> SEOState:
     await asyncio.sleep(2.0)
     await manager.broadcast_agent_log("SEO Agent", "Awaiting Answer Engine indexing. Post-publish metrics generated.", "completed")
     await manager.broadcast_node_update("seo_geo", "Reporting Agent", "completed")
-    
+    _seo_stage_done(state, "Reporting Agent")
+
     state["status"] = "completed"
     return state
 
@@ -404,7 +485,9 @@ workflow.add_edge("keyword_agent", "content_strategy")
 workflow.add_edge("content_strategy", "internal_linking")
 workflow.add_edge("internal_linking", "backlink_agent")
 workflow.add_edge("backlink_agent", "schema_agent")
-workflow.add_edge("schema_agent", END)
+workflow.add_edge("schema_agent", "publishing_agent")
+workflow.add_edge("publishing_agent", "reporting_agent")
+workflow.add_edge("reporting_agent", END)
 
 seo_graph = workflow.compile()
 
@@ -416,7 +499,7 @@ publish_workflow.add_edge("publishing_agent", "reporting_agent")
 publish_workflow.add_edge("reporting_agent", END)
 seo_publish_graph = publish_workflow.compile()
 
-def _persist_audit(workspace_id: int, pipeline: str, target_url: str, result: dict):
+def _persist_audit(workspace_id: int, pipeline: str, target_url: str, result: dict, duration_seconds: float = None):
     """Save a snapshot of this run (metrics + report + timestamp) so month-over-month
     history accumulates and monthly comparison reports become possible."""
     if not workspace_id:
@@ -426,10 +509,12 @@ def _persist_audit(workspace_id: int, pipeline: str, target_url: str, result: di
         import models
         metrics = result.get("content_metrics") or {}
         kd = {"pipeline": pipeline, "target_url": target_url, "metrics": metrics}
+        if duration_seconds is not None:
+            kd["duration_seconds"] = round(duration_seconds, 1)
         # Also store the already-computed structured audit (scores/categories/issues) so the
         # dashboard can render it directly instead of re-parsing the report markdown.
         audit = result.get("audit")
-        if isinstance(audit, dict) and "seo" in audit:
+        if isinstance(audit, dict) and ("seo" in audit or "geo" in audit):
             kd["audit"] = audit
         db = SessionLocal()
         db.add(models.SEOAudit(
@@ -463,11 +548,17 @@ async def run_seo_pipeline(workspace_id: int, target_url: str):
     }
     await manager.broadcast_agent_log("SEO Agent", "Initializing Marketing SEO Specialist pipeline...", "queued")
     from core.agent_status import record_agent_task
-    record_agent_task(workspace_id, "SEO", "RUNNING", f"Auditing {target_url}")
+    import datetime as _dt
+    start_time = _dt.datetime.utcnow()
+    record_agent_task(workspace_id, "SEO", "RUNNING", f"Auditing {target_url}", reset=True, target_url=target_url)
     try:
         result = await seo_graph.ainvoke(initial_state)
-        _persist_audit(workspace_id, "SEO", target_url, result)
+        duration = (_dt.datetime.utcnow() - start_time).total_seconds()
+        _persist_audit(workspace_id, "SEO", target_url, result, duration_seconds=duration)
         record_agent_task(workspace_id, "SEO", "COMPLETED", f"SEO audit complete for {target_url}")
+    except asyncio.CancelledError:
+        record_agent_task(workspace_id, "SEO", "CANCELLED", "Audit cancelled.")
+        raise
     except Exception as e:
         record_agent_task(workspace_id, "SEO", "FAILED", str(e)[:120])
         raise
@@ -504,12 +595,25 @@ async def run_seo_publish_pipeline(workspace_id: int):
 
 async def geo_entity_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "Entity Agent"
-    msg = f"Extracting primary and secondary NLP entities from {state['target_url']}..."
+    await manager.broadcast_node_update("geo_pipeline", "Entity Agent", "running")
+    # REAL crawl (previously this pipeline never fetched the page at all, so GEO scoring
+    # had nothing to measure). Same Firecrawl source as SEO, kept as a separate call so a
+    # crawl failure in one pipeline never blocks the other.
+    crawl = await _crawl_via_firecrawl(state["target_url"], "GEO Agent")
+    state["crawl_data"] = {"markdown": crawl["markdown"], "html": crawl["html"], "full_length": len(crawl["markdown"])}
+    state["site_signals"] = crawl["site_signals"]
+    if crawl["crawl_error"] and crawl["crawl_error"] != "no_api_key":
+        state["crawl_error"] = crawl["crawl_error"]
+        err = f"GEO crawl failed for {state['target_url']} (after retry): {crawl['crawl_error']}"
+        state["logs"].append(err)
+        await manager.broadcast_node_update("geo_pipeline", "Entity Agent", "failed")
+        raise RuntimeError(err)
+    state["content_metrics"] = analyze_markdown(crawl["markdown"], state["target_url"])
+    msg = f"Extracted {state['content_metrics']['word_count']} words of primary/secondary NLP entities from {state['target_url']}..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("GEO Agent", msg, "running")
-    await manager.broadcast_node_update("geo_pipeline", "Entity Agent", "running")
-    await asyncio.sleep(1.0)
     await manager.broadcast_node_update("geo_pipeline", "Entity Agent", "completed")
+    _geo_stage_done(state, "Entity Agent")
     return state
 
 async def geo_citation_agent_node(state: SEOState) -> SEOState:
@@ -520,6 +624,7 @@ async def geo_citation_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("geo_pipeline", "Citation Agent", "running")
     await asyncio.sleep(1.0)
     await manager.broadcast_node_update("geo_pipeline", "Citation Agent", "completed")
+    _geo_stage_done(state, "Citation Agent")
     return state
 
 async def geo_prompt_visibility_agent_node(state: SEOState) -> SEOState:
@@ -530,6 +635,7 @@ async def geo_prompt_visibility_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("geo_pipeline", "Prompt Visibility Agent", "running")
     await asyncio.sleep(1.0)
     await manager.broadcast_node_update("geo_pipeline", "Prompt Visibility Agent", "completed")
+    _geo_stage_done(state, "Prompt Visibility Agent")
     return state
 
 async def geo_llm_ranking_agent_node(state: SEOState) -> SEOState:
@@ -556,6 +662,7 @@ async def geo_llm_ranking_agent_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "LLM Ranking Agent", "completed")
+    _geo_stage_done(state, "LLM Ranking Agent")
     return state
 
 async def geo_authority_agent_node(state: SEOState) -> SEOState:
@@ -566,6 +673,7 @@ async def geo_authority_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("geo_pipeline", "Authority Agent", "running")
     await asyncio.sleep(1.0)
     await manager.broadcast_node_update("geo_pipeline", "Authority Agent", "completed")
+    _geo_stage_done(state, "Authority Agent")
     return state
 
 async def geo_knowledge_graph_agent_node(state: SEOState) -> SEOState:
@@ -576,6 +684,7 @@ async def geo_knowledge_graph_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("geo_pipeline", "Knowledge Graph Agent", "running")
     await asyncio.sleep(1.0)
     await manager.broadcast_node_update("geo_pipeline", "Knowledge Graph Agent", "completed")
+    _geo_stage_done(state, "Knowledge Graph Agent")
     return state
 
 async def geo_optimization_agent_node(state: SEOState) -> SEOState:
@@ -586,6 +695,7 @@ async def geo_optimization_agent_node(state: SEOState) -> SEOState:
     await manager.broadcast_node_update("geo_pipeline", "Optimization Agent", "running")
     await asyncio.sleep(1.0)
     await manager.broadcast_node_update("geo_pipeline", "Optimization Agent", "completed")
+    _geo_stage_done(state, "Optimization Agent")
     return state
 
 async def geo_reporting_agent_node(state: SEOState) -> SEOState:
@@ -594,8 +704,33 @@ async def geo_reporting_agent_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("GEO Agent", msg, "running")
     await manager.broadcast_node_update("geo_pipeline", "Reporting", "running")
-    await asyncio.sleep(1.0)
+
+    # Evidence-based GEO scoring, from the REAL crawl done in geo_entity_agent_node — this
+    # pipeline no longer just probes LLM recall, it computes a real, independently-verified
+    # GEO score the same way the SEO pipeline computes its own (never blended together).
+    crawl = state.get("crawl_data", {}) or {}
+    metrics = state.get("content_metrics") or {}
+    try:
+        from core.seo_scoring import build_geo_audit
+        llm_recall = {"llm_recall": metrics.get("llm_recall"), "brand_recognised": metrics.get("brand_recognised")}
+        audit = build_geo_audit(
+            url=state["target_url"],
+            html=crawl.get("html", "") or "",
+            markdown=crawl.get("markdown", "") or "",
+            metrics=metrics,
+            signals=state.get("site_signals", {}) or {},
+            llm_recall=llm_recall,
+        )
+        state["audit"] = audit
+        state["audit_score"] = int(round(audit["geo"]["score_100"]))
+        await manager.broadcast_agent_log(
+            "GEO Agent", f"Scored GEO {audit['geo']['score_100']}/100 from measured evidence (not estimated).", "running")
+    except Exception as e:
+        print(f"GEO scoring failed: {e}")
+        state["audit"] = {"error": str(e)[:200]}
+
     await manager.broadcast_node_update("geo_pipeline", "Reporting", "completed")
+    _geo_stage_done(state, "Reporting")
 
     state["status"] = "pending_approval"
 
@@ -632,15 +767,18 @@ async def geo_reporting_agent_node(state: SEOState) -> SEOState:
     except Exception as e:
         print(f"LLM Error in GEO reporting: {e}")
         mock_geo_report = f"# GEO / AEO Strategy Report\nTarget: {state['target_url']}\n\n[Report generation failed: {e}]"
-    state["report"] = mock_geo_report
+    # Prepend the deterministic scorecard so the report's headline GEO number is guaranteed
+    # correct regardless of the narrative (same pattern as the SEO pipeline's schema_agent_node).
+    scorecard = _scorecard_markdown(state.get("audit") or {})
+    state["report"] = (scorecard + "\n\n---\n\n" + mock_geo_report) if scorecard else mock_geo_report
     import json
     await manager.broadcast(json.dumps({
         "type": "new_geo_report",
         "title": f"Generative Engine Optimization (GEO) Strategy",
-        "excerpt": mock_geo_report.replace('{target_url}', state['target_url']),
+        "excerpt": state["report"].replace('{target_url}', state['target_url']),
         "keywords": "GEO, AEO, Perplexity, Gemini, Citation Audit, Entities"
     }))
-    
+
     return state
 
 async def geo_publishing_agent_node(state: SEOState) -> SEOState:
@@ -712,11 +850,17 @@ async def run_geo_pipeline(workspace_id: int, target_url: str):
     }
     await manager.broadcast_agent_log("GEO Agent", "Initializing Generative Engine Optimization pipeline...", "queued")
     from core.agent_status import record_agent_task
-    record_agent_task(workspace_id, "GEO", "RUNNING", f"GEO audit for {target_url}")
+    import datetime as _dt
+    start_time = _dt.datetime.utcnow()
+    record_agent_task(workspace_id, "GEO", "RUNNING", f"GEO audit for {target_url}", reset=True, target_url=target_url)
     try:
         result = await geo_graph.ainvoke(initial_state)
-        _persist_audit(workspace_id, "GEO", target_url, result)
+        duration = (_dt.datetime.utcnow() - start_time).total_seconds()
+        _persist_audit(workspace_id, "GEO", target_url, result, duration_seconds=duration)
         record_agent_task(workspace_id, "GEO", "COMPLETED", f"GEO audit complete for {target_url}")
+    except asyncio.CancelledError:
+        record_agent_task(workspace_id, "GEO", "CANCELLED", "Audit cancelled.")
+        raise
     except Exception as e:
         record_agent_task(workspace_id, "GEO", "FAILED", str(e)[:120])
         raise

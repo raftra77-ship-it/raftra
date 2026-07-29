@@ -27,18 +27,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Only rate limit API routes
         if request.url.path.startswith("/api/"):
             key = f"rate_limit:{client_ip}"
-            
+
             try:
-                # Upstash compatible rate limiting using a simple counter and expire
-                current = await self.redis.get(key)
-                if current and int(current) >= self.max_requests:
-                    raise HTTPException(status_code=429, detail="Too Many Requests")
-                
+                # Increment first, then check/repair the TTL. The previous version only set
+                # the TTL on the request that created the key (`if not current`) — if that
+                # EXPIRE was ever lost (race condition, Redis restart with a stale RDB
+                # snapshot, etc.) the key became permanent and every request from that IP
+                # was rate-limited forever. Checking ttl == -1 on EVERY request self-heals
+                # that instead of requiring a manual redis-cli fix.
                 pipe = self.redis.pipeline()
                 pipe.incr(key)
-                if not current:
-                    pipe.expire(key, self.window_seconds)
-                await pipe.execute()
+                pipe.ttl(key)
+                count, ttl = await pipe.execute()
+                if ttl == -1:
+                    await self.redis.expire(key, self.window_seconds)
+                if count > self.max_requests:
+                    raise HTTPException(status_code=429, detail="Too Many Requests")
             except HTTPException:
                 raise
             except Exception as e:

@@ -136,6 +136,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [reviewOpen, setReviewOpen] = useState(false);
   const [whyOpen, setWhyOpen] = useState(false);
 
+  // Real Meta ad-account connection (from the Meta connector), the publish popup, and the
+  // persistent list of campaigns already published.
+  const [metaAccount, setMetaAccount] = useState<{ configured?: boolean; connected?: boolean; name?: string }>({});
+  const [publishPopup, setPublishPopup] = useState(false);
+  const [recentPublished, setRecentPublished] = useState<any[]>([]);
+
   // The single approved creative that flows into the platform reviews, plus any
   // images the user uploads, plus a manual override of the Google campaign type.
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -207,7 +213,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     if (!workspaceId) return;
     try {
       const list = await fetch(`/api/workspaces/${workspaceId}/campaigns`, { headers: authHeaders() }).then(r => r.json());
-      if (Array.isArray(list) && list.length) setCampaign(list.slice().sort((a: any, b: any) => b.id - a.id)[0]);
+      if (Array.isArray(list)) {
+        const sorted = list.slice().sort((a: any, b: any) => b.id - a.id);
+        const isPub = (c: any) => String(c.status || '').toUpperCase() === 'PUBLISHED_DEMO';
+        setRecentPublished(sorted.filter(isPub).slice(0, 10));
+        // Active flow = the latest NOT-yet-published campaign. Once a campaign is published it
+        // drops into "Recently Published" and the flow starts fresh from the top checklist.
+        setCampaign(sorted.find((c: any) => !isPub(c)) || null);
+      }
     } catch { /* ignore */ }
   }, [workspaceId]);
   const refresh = useCallback(async (id: number) => {
@@ -217,6 +230,11 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     } catch { /* ignore */ }
   }, [workspaceId]);
   useEffect(() => { loadLatest(); }, [loadLatest]);
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch(`/api/connectors/meta/${workspaceId}/status`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null)).then(d => d && setMetaAccount(d)).catch(() => {});
+  }, [workspaceId]);
 
   // ── generate strategy (+ its ad image, together) ──
   const generate = async () => {
@@ -285,12 +303,40 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       });
       const d = await r.json();
       if (r.ok) {
-        await refresh(campaign.id);
-        log(`Published to ${targets.map(t => (t === 'meta' ? 'Meta' : 'Google')).join(' & ')} (demo)`);
-        flash(d.message || 'Published in demo mode.');
+        const label = targets.map(t => (t === 'meta' ? 'Meta' : 'Google')).join(' & ');
+        log(`Published to ${label} (demo)`);
+        flash(d.message || `Published to ${label} (demo). It's now in Recently Published below — starting a fresh campaign.`);
+        setPublishPopup(false);
+        await loadLatest();   // moves the published campaign into "Recently Published"
+        resetFlow();          // reset the checklist/flow back to the start
       } else flash(d.detail || 'Publish failed.', false);
     } catch { flash('Publish failed.', false); }
     setBusy(null);
+  };
+
+  // Reset the whole workflow so the top checklist (Ideation → Approve → …) appears fresh.
+  const resetFlow = () => {
+    setConfirmed(false); setReviewOpen(false); setPublishPopup(false);
+    setSelectedImage(null); setUploadedImages([]); setGoogleTypeOverride('');
+    setPlatforms({ meta: true, google: true });
+    setCampaign(null);
+  };
+
+  // Start a real Meta connection (OAuth). Falls back to a message when the server is in mock mode.
+  const connectMeta = async () => {
+    try {
+      const r = await fetch(`/api/connectors/meta/${workspaceId}/authorize`, { headers: authHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.url) { window.location.href = d.url; return; }
+      flash(d.detail || 'Meta login isn’t configured on the server yet (mock mode). You can still publish in demo mode.', false);
+    } catch { flash('Could not start Meta connection.', false); }
+  };
+
+  // Publish entry point: if a Meta account is connected (or Meta isn't a target) publish directly;
+  // otherwise show the connect-or-publish popup.
+  const attemptPublish = (targets: ('meta' | 'google')[]) => {
+    if (!targets.includes('meta') || metaAccount.connected) { publish(targets); return; }
+    setPublishPopup(true);
   };
 
   const regenerateImage = async () => {
@@ -319,11 +365,21 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
   // ── import / export (restored) ──
   const exportCampaign = () => {
-    const blob = new Blob([JSON.stringify({ version: '1.0', exportedAt: new Date().toISOString(), form, smart, strategy: spec }, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `campaign-${form.campaignFocus.replace(/\s+/g, '_').toLowerCase()}-${Date.now()}.json`;
-    a.click(); URL.revokeObjectURL(a.href);
+    if (!campaign) { flash('Nothing to export yet — generate a strategy first.', false); return; }
+    try {
+      const blob = new Blob([JSON.stringify({ version: '1.0', exportedAt: new Date().toISOString(), form, smart, strategy: spec }, null, 2)], { type: 'application/json' });
+      const filename = `campaign-${(form.campaignFocus || 'untitled').replace(/\s+/g, '_').toLowerCase()}-${Date.now()}.json`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      flash(`Exported "${filename}" to your Downloads folder.`);
+    } catch (err) {
+      flash('Export failed — could not build the file.', false);
+    }
   };
   const importCampaign = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -331,11 +387,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     r.onload = ev => {
       try {
         const d = JSON.parse(String(ev.target?.result));
+        if (!d.form && !d.smart) { flash("That file doesn't look like a campaign export.", false); return; }
         if (d.form) setForm(p => ({ ...p, ...d.form }));
         if (d.smart) setSmart(p => ({ ...p, ...d.smart }));
-        flash('Campaign brief imported.');
-      } catch { flash('Invalid campaign file.', false); }
+        flash(d.strategy
+          ? 'Campaign brief imported into the form on the left. Note: only the brief restores automatically — click "Generate Strategy + Ad" to recreate its AI strategy and image.'
+          : 'Campaign brief imported into the form on the left.');
+      } catch { flash('Invalid campaign file — could not read it as JSON.', false); }
     };
+    r.onerror = () => flash('Could not read that file.', false);
     r.readAsText(f); e.target.value = '';
   };
 
@@ -380,7 +440,16 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           <h2 style={{ fontSize: '25px', fontFamily: 'var(--font-heading)', marginBottom: '6px' }}>Campaign Manager</h2>
           <p style={sectionHint}>Describe your campaign once — AI writes the strategy and the ad image. You approve it, and that approved plan drives Meta, Google and publishing.</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+          {metaAccount.connected ? (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600, color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', padding: '8px 12px' }}>
+              <CheckCircle2 size={14} /> Meta connected{metaAccount.name ? ` · ${metaAccount.name}` : ''}
+            </span>
+          ) : (
+            <button onClick={connectMeta} style={{ ...btnGhost, color: '#8B85FF', borderColor: 'rgba(90,82,255,0.4)' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ffae00', display: 'inline-block' }} /> Connect Meta account
+            </button>
+          )}
           <input type="file" ref={importRef} accept=".json" style={{ display: 'none' }} onChange={importCampaign} />
           <button onClick={() => importRef.current?.click()} style={btnGhost}><FileUp size={14} /> Import</button>
           <button onClick={exportCampaign} style={btnGhost}><Download size={14} /> Export</button>
@@ -881,7 +950,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <button onClick={() => { setConfirmed(false); flash('Unlocked — edit anything above, then confirm again.'); }} style={btnGhost}>Back to edit</button>
             <div style={{ flex: 1 }} />
             {platforms.meta && (
-              <button onClick={() => publish(['meta'])} disabled={!canPublish || !metaSetup.launched || busy?.startsWith('publish')}
+              <button onClick={() => attemptPublish(['meta'])} disabled={!canPublish || !metaSetup.launched || busy?.startsWith('publish')}
                 style={{ ...btnGhost, opacity: canPublish && metaSetup.launched ? 1 : 0.45, cursor: canPublish && metaSetup.launched ? 'pointer' : 'not-allowed' }}>
                 Publish to Meta only
               </button>
@@ -892,7 +961,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 Publish to Google only
               </button>
             )}
-            <button onClick={() => publish(chosen)} disabled={!canPublish || busy?.startsWith('publish')}
+            <button onClick={() => attemptPublish(chosen)} disabled={!canPublish || busy?.startsWith('publish')}
               style={{ ...btnPrimary, padding: '12px 22px', opacity: canPublish ? 1 : 0.45, cursor: canPublish ? 'pointer' : 'not-allowed' }}>
               <Rocket size={15} /> {published ? 'Published (demo)' : busy?.startsWith('publish') ? 'Publishing…' : `Publish to ${chosen.length === 2 ? 'all selected' : chosen.length === 1 ? (chosen[0] === 'meta' ? 'Meta' : 'Google') : 'selected'}`}
             </button>
@@ -932,6 +1001,50 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           </div>
         )}
       </div>
+
+      {/* ── recently published (persists across the session; from real campaign data) ── */}
+      {recentPublished.length > 0 && (
+        <div style={card}>
+          <h3 style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: '9px' }}><Rocket size={16} color="var(--primary)" /> Recently Published</h3>
+          <p style={{ ...sectionHint, marginBottom: '12px' }}>Campaigns you've published. Publishing a new one adds it here and resets the flow above.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {recentPublished.map((c: any) => {
+              const cm = c.metrics || {};
+              const plats = (cm.published_platforms || []).map((p: string) => (p === 'meta' ? 'Meta' : 'Google')).join(' & ');
+              return (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '11px 14px' }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#fff' }}>{c.name || 'Campaign'}</span>
+                    <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)' }}>{c.objective || '—'} · {money(c.budget || 0)}{plats ? ` · ${plats}` : ''}</span>
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '3px 10px', whiteSpace: 'nowrap' }}>PUBLISHED (DEMO)</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── publish popup: connect Meta account or publish in demo mode ── */}
+      {publishPopup && (
+        <div onClick={() => setPublishPopup(false)} style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ ...card, width: '100%', maxWidth: '440px', background: 'rgba(18,20,28,0.99)' }}>
+            <h3 style={{ ...sectionTitle, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '9px' }}><Rocket size={17} color="var(--primary)" /> Connect Meta to publish?</h3>
+            <p style={{ ...sectionHint, marginBottom: '18px' }}>
+              You haven't connected a Meta ad account. Connect it to publish to a real account, or publish now in demo mode.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button onClick={connectMeta} style={{ ...btnPrimary, padding: '12px', justifyContent: 'center' }}>
+                <CheckCircle2 size={15} /> Connect Meta account
+              </button>
+              <button onClick={() => { setPublishPopup(false); publish(chosen); }} disabled={busy?.startsWith('publish')} style={{ ...btnGhost, padding: '12px', justifyContent: 'center' }}>
+                <Rocket size={15} /> Publish anyway (demo)
+              </button>
+              <button onClick={() => setPublishPopup(false)} style={{ ...btnGhost, padding: '10px', justifyContent: 'center', border: 'none' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── full review modal: the approved strategy, all in one place ── */}
       {whyOpen && (

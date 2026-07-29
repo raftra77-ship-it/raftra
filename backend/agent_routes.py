@@ -92,13 +92,15 @@ async def trigger_campaign(workspace_id: int, request: schemas.CampaignAgentTrig
     return {"status": "success", "message": "Campaign Manager agent pipeline triggered."}
 
 @router.post("/{workspace_id}/seo")
-async def trigger_seo(workspace_id: int, request: SEOTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
-    background_tasks.add_task(
-        run_seo_pipeline,
-        workspace_id=workspace_id,
-        target_url=request.target_url
-    )
-    return {"status": "success", "message": "SEO & GEO agent pipeline triggered."}
+async def trigger_seo(workspace_id: int, request: SEOTrigger, current_user: models.User = Depends(auth.get_current_user)):
+    import asyncio
+    from core.agent_status import is_running, register_task, reconcile_stale_running
+    reconcile_stale_running(workspace_id, "SEO")
+    if is_running(workspace_id, "SEO"):
+        raise HTTPException(status_code=409, detail="An audit is already running for this website.")
+    task = asyncio.create_task(run_seo_pipeline(workspace_id=workspace_id, target_url=request.target_url))
+    register_task(workspace_id, "SEO", task)
+    return {"status": "success", "message": "SEO agent pipeline triggered."}
 
 @router.post("/{workspace_id}/seo/publish")
 async def trigger_seo_publish(workspace_id: int, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
@@ -109,12 +111,14 @@ async def trigger_seo_publish(workspace_id: int, background_tasks: BackgroundTas
     return {"status": "success", "message": "SEO Publishing sequence triggered."}
 
 @router.post("/{workspace_id}/geo")
-async def trigger_geo(workspace_id: int, request: SEOTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
-    background_tasks.add_task(
-        run_geo_pipeline,
-        workspace_id=workspace_id,
-        target_url=request.target_url
-    )
+async def trigger_geo(workspace_id: int, request: SEOTrigger, current_user: models.User = Depends(auth.get_current_user)):
+    import asyncio
+    from core.agent_status import is_running, register_task, reconcile_stale_running
+    reconcile_stale_running(workspace_id, "GEO")
+    if is_running(workspace_id, "GEO"):
+        raise HTTPException(status_code=409, detail="An audit is already running for this website.")
+    task = asyncio.create_task(run_geo_pipeline(workspace_id=workspace_id, target_url=request.target_url))
+    register_task(workspace_id, "GEO", task)
     return {"status": "success", "message": "GEO agent pipeline triggered."}
 
 @router.post("/{workspace_id}/geo/publish")
