@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Activity, Users, MessageCircle, Heart, Zap, Sparkles, UserCheck, 
   ShieldCheck, CheckCircle2, Briefcase, TrendingUp, Search, 
-  Bot, DollarSign, Clock, ChevronRight, Send, Key
+  Bot, DollarSign, Clock, ChevronRight, Send
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -34,11 +34,6 @@ interface EnquiryItem {
 export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
   const [selectedSpecialistIndex, setSelectedSpecialistIndex] = useState<number>(0);
   
-  // Postiz Agent CLI State
-  const [postizApiKey, setPostizApiKey] = useState('postiz_sk_live_9a87f2e104bc8d7e');
-  const [isPostizConnected, setIsPostizConnected] = useState(true);
-  const [cliLogs, setCliLogs] = useState<string | null>(null);
-
   // Enquiry Modal state
   const [enquirySpecialist, setEnquirySpecialist] = useState<{id: string, name: string, price: string, basePrice: number} | null>(null);
   const [enquiryForm, setEnquiryForm] = useState({ name: '', email: '', phone: '', notes: '' });
@@ -48,23 +43,6 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 5000);
-  };
-
-  const handleSavePostizKey = () => {
-    if (!postizApiKey) {
-      showToast('Please enter a valid Postiz API Key.');
-      return;
-    }
-    setIsPostizConnected(true);
-    showToast('POSTIZ BRIDGE CONNECTED!\nRaftra AI is now ready to auto-publish across 30+ social networks.');
-  };
-
-  const handleRunPostizCli = () => {
-    setCliLogs(`POSTIZ AUTO-PUBLISHER BRIDGE ACTIVE\n` +
-      `✔ API Connection: Verified (30+ Platforms)\n` +
-      `✔ Auto-publishing enabled for Twitter/X, Instagram, LinkedIn, YouTube, TikTok & Reddit`
-    );
-    showToast('TEST EXECUTED SUCCESSFULLY!\nPostiz Auto-Publishing Bridge verified on 30+ social channels.');
   };
 
   // Specialist Roles Data
@@ -240,161 +218,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 2. POSTIZ MULTI-PLATFORM AUTO-PUBLISHER ENGINE */}
-      <div className="glow-card" style={{ padding: '36px', background: 'linear-gradient(135deg, rgba(255,76,226,0.07) 0%, rgba(12,12,18,0.98) 100%)', border: '1px solid rgba(255,76,226,0.3)', borderRadius: '24px' }}>
-        
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '28px' }}>
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(255,76,226,0.15)', borderRadius: '100px', border: '1px solid rgba(255,76,226,0.3)', marginBottom: '12px' }}>
-              <Zap size={14} color="#FF4CE2" />
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#FF4CE2', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                Multi-Platform Auto-Publisher
-              </span>
-            </div>
-            <h3 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 8px 0' }}>
-              What is Postiz Integration?
-            </h3>
-            <p style={{ color: '#b0b0cc', fontSize: '15px', maxWidth: '850px', margin: 0, lineHeight: 1.6 }}>
-              Postiz connects Raftra AI directly to 30+ social media networks. It acts as an instant bridge so AI can create, schedule, and auto-publish content everywhere with zero manual copy-pasting.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: '#00E676', padding: '6px 16px', borderRadius: '100px', fontSize: '12px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              <CheckCircle2 size={14} /> 30+ Platforms Ready
-            </span>
-          </div>
-        </div>
-
-        {/* 3 Core Explanation Cards (Spacious 3-Column Grid) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '24px', marginBottom: '32px' }}>
-          
-          {/* Card 1: Kya Connect Hoga? */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ width: '42px', height: '42px', background: 'rgba(124,117,255,0.15)', borderRadius: '12px', border: '1px solid rgba(124,117,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Share2Icon size={20} color="#7C75FF" />
-            </div>
-            <div>
-              <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                1. Kya Connect Hoga?
-              </div>
-              <h4 style={{ fontSize: '17px', color: '#fff', margin: '4px 0 8px 0', fontWeight: 600 }}>
-                30+ Social Networks at Once
-              </h4>
-              <p style={{ color: '#aaa', fontSize: '13px', lineHeight: 1.5, margin: 0 }}>
-                Twitter/X, Instagram, LinkedIn, YouTube, TikTok, Facebook, Reddit, Pinterest, Threads & 20+ more channels connected to a single AI hub.
-              </p>
-            </div>
-          </div>
-
-          {/* Card 2: Kese Hoga? */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ width: '42px', height: '42px', background: 'rgba(255,76,226,0.15)', borderRadius: '12px', border: '1px solid rgba(255,76,226,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Key size={20} color="#FF4CE2" />
-            </div>
-            <div>
-              <div style={{ fontSize: '12px', color: '#FF4CE2', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                2. Kese Hoga?
-              </div>
-              <h4 style={{ fontSize: '17px', color: '#fff', margin: '4px 0 8px 0', fontWeight: 600 }}>
-                1-Click API Bridge
-              </h4>
-              <p style={{ color: '#aaa', fontSize: '13px', lineHeight: 1.5, margin: 0 }}>
-                Enter your Postiz API Key below or click "Connect". Raftra AI automatically discovers your channels and handles technical publishing in the background.
-              </p>
-            </div>
-          </div>
-
-          {/* Card 3: Uska Effect Kya Hoga? */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ width: '42px', height: '42px', background: 'rgba(0,230,118,0.15)', borderRadius: '12px', border: '1px solid rgba(0,230,118,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TrendingUp size={20} color="#00E676" />
-            </div>
-            <div>
-              <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                3. Uska Effect Kya Hoga?
-              </div>
-              <h4 style={{ fontSize: '17px', color: '#fff', margin: '4px 0 8px 0', fontWeight: 600 }}>
-                10x Speed & 0 Manual Effort
-              </h4>
-              <p style={{ color: '#aaa', fontSize: '13px', lineHeight: 1.5, margin: 0 }}>
-                No more manual copy-pasting! AI publishes posts, reels, and comments automatically 24/7 across all accounts simultaneously.
-              </p>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Interactive Connection & Testing Bar */}
-        <div style={{ background: '#09090e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            <div>
-              <h5 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', fontWeight: 600 }}>
-                Postiz API Key Connection
-              </h5>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                {isPostizConnected ? '● Connected & Ready for Auto-Publishing' : 'Enter API Key to enable multi-platform publishing'}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', flex: 1, maxWidth: '500px' }}>
-              <input
-                type="password"
-                placeholder="postiz_sk_live_..."
-                value={postizApiKey}
-                onChange={e => setPostizApiKey(e.target.value)}
-                style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: 'var(--font-mono)' }}
-              />
-              <button
-                onClick={handleSavePostizKey}
-                style={{ background: '#FF4CE2', color: '#000', border: 'none', borderRadius: '100px', padding: '0 24px', fontWeight: 700, fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                {isPostizConnected ? 'Update Connection' : 'Connect Postiz'}
-              </button>
-            </div>
-          </div>
-
-          {/* Interactive Test Engine Toggle */}
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <button
-              onClick={handleRunPostizCli}
-              style={{ background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '10px 20px', borderRadius: '100px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <Zap size={15} /> Test Auto-Publishing Bridge
-            </button>
-
-            {cliLogs && (
-              <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.08)', padding: '6px 14px', borderRadius: '100px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(0,230,118,0.2)' }}>
-                <CheckCircle2 size={14} /> Bridge Verified: Auto-Publish Active on 30+ Social Networks
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Supported Channels Badges */}
-        <div style={{ marginTop: '24px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
-            Supported Channels (30+ Networks)
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {[
-              'Twitter / X', 'LinkedIn', 'Instagram', 'YouTube', 'Reddit', 'TikTok',
-              'Facebook', 'Threads', 'Bluesky', 'Pinterest', 'Telegram', 'Discord',
-              'Slack', 'Medium', 'Dev.to', 'Google My Business', 'Hashnode', 'WordPress',
-              'Dribbble', 'Mastodon', 'Twitch', 'Kick', 'Whop', 'Skool', 'Warpcast'
-            ].map((platform, idx) => (
-              <span key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '6px 14px', borderRadius: '100px', fontSize: '12px', color: '#e0e0e0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FF4CE2' }} />
-                {platform}
-              </span>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* 3. BRAND SOCIAL PRESENCE ANALYTICS */}
+      {/* 2. BRAND SOCIAL PRESENCE ANALYTICS */}
       <div>
         <h3 style={{ fontSize: '15px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
           <Activity size={18} color="var(--success)" /> Live Brand Social Performance
@@ -444,7 +268,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 4. HERO POSITIONING CARD: HIRE A RAFTRA SPECIALIST */}
+      {/* 3. HERO POSITIONING CARD: HIRE A RAFTRA SPECIALIST */}
       <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(124,117,255,0.1) 0%, rgba(10,10,14,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(124,117,255,0.2) 0%, transparent 70%)', pointerEvents: 'none' }} />
         
@@ -488,7 +312,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 5. SPECIALIST ROLES BREAKDOWN (WHAT RAFTRA AUTOMATES vs WHAT SPECIALIST DOES) */}
+      {/* 4. SPECIALIST ROLES BREAKDOWN (WHAT RAFTRA AUTOMATES vs WHAT SPECIALIST DOES) */}
       <div>
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0' }}>
@@ -607,7 +431,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 6. WHY HIRE THROUGH RAFTRA? SECTION WITH IMPROVED COLORS, SPACING & PADDING */}
+      {/* 5. WHY HIRE THROUGH RAFTRA? SECTION WITH IMPROVED COLORS, SPACING & PADDING */}
       <div className="glow-card" style={{ padding: '36px 32px', background: 'linear-gradient(180deg, #0f0f18 0%, #08080d 100%)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: '36px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(124,117,255,0.15)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '14px' }}>
@@ -760,7 +584,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       )}
 
-      {/* 7. ENQUIRY CREATION MODAL */}
+      {/* 6. ENQUIRY CREATION MODAL */}
       {enquirySpecialist && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
           <div className="glow-card" style={{ width: '480px', maxWidth: '90%', background: '#0a0a0c', padding: '32px', position: 'relative', borderRadius: '20px', border: '1px solid #7C75FF' }}>
@@ -827,7 +651,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
                 />
               </div>
 
-              <div style={{ background: 'rgba(124,117,255,0.08)', border: '1px solid rgba(124,117,255,0.2)', padding: '12px 16px', borderRadius: '10px', fontSize: '12px', color: '#b0b0cc', lineHeight: 1.4 }}>
+              <div style={{ background: 'rgba(124,117,255,0.08)', border: '1px solid rgba(124,117,255,0.2)', padding: '12px 16px', borderRadius: '100px', fontSize: '12px', color: '#b0b0cc', lineHeight: 1.4 }}>
                 <strong>RAFTRA VERIFIED GUARANTEE:</strong> Specialist will be assigned to your Raftra workspace within 24 hours of enquiry confirmation.
               </div>
 

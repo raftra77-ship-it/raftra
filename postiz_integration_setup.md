@@ -74,3 +74,15 @@ Raftra Social Hub (`WorkspaceSocial.tsx`) me iska setup is prakar live hai:
 
 ### Summary line for pitch:
 > *"Postiz integration lets Raftra AI act as your universal social media team — creating content once, and auto-publishing it across 30+ platforms instantly without any manual work."*
+
+
+┌─────────────────────────┐      ┌─────────────────────────┐      ┌─────────────────────────┐
+│  1. Connection Setup    │ ───► │  2. AI Content Engine   │ ───► │  3. Specialist Approval │
+│  (OAuth / Postiz Key)   │      │  (Reels, Posts, Drafts) │      │  (Strategy & Quality)   │
+└─────────────────────────┘      └─────────────────────────┘      └─────────────────────────┘
+                                                                               │
+                                                                               ▼
+┌─────────────────────────┐      ┌─────────────────────────┐      ┌─────────────────────────┐
+│ 5. Analytics & Auto DM  │ ◄─── │ 4. Auto-Publish Engine  │ ◄──────┘                         │
+│ (Reach, Replies <5sec)  │      │ (IG, YT, X, LinkedIn)   │                                 │
+└─────────────────────────┘      └─────────────────────────┘                                
