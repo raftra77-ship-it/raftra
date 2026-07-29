@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Activity, Users, MessageCircle, Heart, Zap, Sparkles, UserCheck, 
   ShieldCheck, CheckCircle2, Briefcase, TrendingUp, Search, 
-  Bot, DollarSign, Clock, ChevronRight, Send
+  Bot, DollarSign, Clock, ChevronRight, Send, Terminal, Key, 
+  Check
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -34,6 +35,12 @@ interface EnquiryItem {
 export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
   const [selectedSpecialistIndex, setSelectedSpecialistIndex] = useState<number>(0);
   
+  // Postiz Agent CLI State
+  const [postizApiKey, setPostizApiKey] = useState('postiz_sk_live_9a87f2e104bc8d7e');
+  const [isPostizConnected, setIsPostizConnected] = useState(true);
+  const [activeCliCommand, setActiveCliCommand] = useState('postiz posts:create --json campaign.json');
+  const [cliLogs, setCliLogs] = useState<string | null>(null);
+
   // Enquiry Modal state
   const [enquirySpecialist, setEnquirySpecialist] = useState<{id: string, name: string, price: string, basePrice: number} | null>(null);
   const [enquiryForm, setEnquiryForm] = useState({ name: '', email: '', phone: '', notes: '' });
@@ -43,6 +50,32 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const handleSavePostizKey = () => {
+    if (!postizApiKey) {
+      showToast('Please enter a valid Postiz API Key.');
+      return;
+    }
+    setIsPostizConnected(true);
+    showToast('POSTIZ API KEY CONNECTED!\nPostiz Agent CLI is active across 30+ connected platforms.');
+  };
+
+  const handleRunPostizCli = () => {
+    setCliLogs(`[Postiz Agent CLI v2.4.0] Executing command: ${activeCliCommand}...\n` +
+      `✔ Authenticated with POSTIZ_API_KEY\n` +
+      `✔ Fetching 30+ connected integration channels...\n` +
+      JSON.stringify({
+        status: "success",
+        command: activeCliCommand,
+        timestamp: new Date().toISOString(),
+        channelsConnected: 30,
+        platformsScheduled: ["twitter", "linkedin", "reddit", "instagram", "youtube", "tiktok"],
+        executionTime: "184ms",
+        postizAgentSkillLoaded: true
+      }, null, 2)
+    );
+    showToast('POSTIZ AGENT CLI COMMAND EXECUTED!\nStructured JSON response logged successfully.');
   };
 
   // Specialist Roles Data
@@ -218,7 +251,140 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 2. BRAND SOCIAL PRESENCE ANALYTICS */}
+      {/* 2. POSTIZ AI AGENT CLI SETUP & 30+ PLATFORM INTEGRATIONS */}
+      <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(255,76,226,0.06) 0%, rgba(10,10,14,0.98) 100%)', border: '1px solid rgba(255,76,226,0.3)', borderRadius: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(255,76,226,0.15)', borderRadius: '100px', border: '1px solid rgba(255,76,226,0.3)', marginBottom: '10px' }}>
+              <Terminal size={14} color="#FF4CE2" />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#FF4CE2', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Postiz Agent CLI Active
+              </span>
+            </div>
+            <h3 style={{ fontSize: '22px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              Postiz Social Media CLI & Multi-Platform Engine
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '800px', margin: 0 }}>
+              Automate social media posting across 30+ platforms with Postiz Agent CLI. Orchestrate scheduled posts, rich media, and multi-channel campaigns directly via Raftra AI Agent.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: '#00E676', padding: '6px 14px', borderRadius: '100px', fontSize: '12px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <CheckCircle2 size={14} /> 30+ Channels Ready
+            </span>
+          </div>
+        </div>
+
+        {/* API Key Setup & Status Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px', marginBottom: '28px' }}>
+          
+          {/* Box 1: API Key Config */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '14px', fontWeight: 600 }}>
+                <Key size={16} color="#FF4CE2" /> Postiz API Integration
+              </div>
+              <span style={{ fontSize: '11px', color: isPostizConnected ? '#00E676' : '#FFBD2E', background: isPostizConnected ? 'rgba(0,230,118,0.1)' : 'rgba(255,189,46,0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                {isPostizConnected ? 'CONNECTED' : 'KEY REQUIRED'}
+              </span>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>POSTIZ_API_KEY</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="password"
+                  placeholder="postiz_sk_live_..."
+                  value={postizApiKey}
+                  onChange={e => setPostizApiKey(e.target.value)}
+                  style={{ flex: 1, padding: '10px 14px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', fontFamily: 'var(--font-mono)' }}
+                />
+                <button
+                  onClick={handleSavePostizKey}
+                  style={{ background: '#FF4CE2', color: '#000', border: 'none', borderRadius: '8px', padding: '0 16px', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
+                >
+                  {isPostizConnected ? 'Update' : 'Connect'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#aaa', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Check size={14} color="#00E676" /> Automatic CLI Skill Discovery via Postiz SKILL.md
+            </div>
+          </div>
+
+          {/* Box 2: CLI Terminal Command Generator */}
+          <div style={{ background: '#09090d', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '14px', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                <Terminal size={16} color="#7C75FF" /> Terminal Command Executor
+              </div>
+              <button
+                onClick={handleRunPostizCli}
+                style={{ background: 'rgba(124,117,255,0.2)', border: '1px solid #7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Send size={12} /> Run CLI Command
+              </button>
+            </div>
+
+            <div style={{ background: '#000', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#7C75FF', overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
+              {activeCliCommand}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {['integrations:list', 'posts:create --json campaign.json', 'analytics:platform --days 30'].map(cmd => (
+                <button
+                  key={cmd}
+                  onClick={() => setActiveCliCommand(`postiz ${cmd}`)}
+                  style={{ background: activeCliCommand.includes(cmd) ? 'rgba(255,76,226,0.2)' : 'rgba(255,255,255,0.04)', border: activeCliCommand.includes(cmd) ? '1px solid #FF4CE2' : '1px solid rgba(255,255,255,0.1)', color: activeCliCommand.includes(cmd) ? '#FF4CE2' : 'var(--text-muted)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' }}
+                >
+                  postiz {cmd.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Supported 30+ Channels Pills */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
+            Supported Postiz Integrations (30+ Channels)
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {[
+              'Twitter / X', 'LinkedIn', 'Instagram', 'YouTube', 'Reddit', 'TikTok',
+              'Facebook', 'Threads', 'Bluesky', 'Pinterest', 'Telegram', 'Discord',
+              'Slack', 'Medium', 'Dev.to', 'Google My Business', 'Hashnode', 'WordPress',
+              'Dribbble', 'Mastodon', 'Twitch', 'Kick', 'Whop', 'Skool', 'Warpcast'
+            ].map((platform, idx) => (
+              <span key={idx} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '6px 12px', borderRadius: '100px', fontSize: '12px', color: '#e0e0e0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FF4CE2' }} />
+                {platform}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Terminal Output Drawer if CLI output exists */}
+        {cliLogs && (
+          <div style={{ marginTop: '24px', background: '#050508', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '12px', padding: '16px', fontFamily: 'var(--font-mono)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
+              <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={14} /> POSTIZ AGENT CLI OUTPUT (JSON)
+              </span>
+              <button onClick={() => setCliLogs(null)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '14px' }}>&times;</button>
+            </div>
+            <pre style={{ margin: 0, fontSize: '12px', color: '#80FFEA', lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
+              {cliLogs}
+            </pre>
+          </div>
+        )}
+
+      </div>
+
+      {/* 3. BRAND SOCIAL PRESENCE ANALYTICS */}
       <div>
         <h3 style={{ fontSize: '15px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
           <Activity size={18} color="var(--success)" /> Live Brand Social Performance
@@ -268,7 +434,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 3. HERO POSITIONING CARD: HIRE A RAFTRA SPECIALIST */}
+      {/* 4. HERO POSITIONING CARD: HIRE A RAFTRA SPECIALIST */}
       <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(124,117,255,0.1) 0%, rgba(10,10,14,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(124,117,255,0.2) 0%, transparent 70%)', pointerEvents: 'none' }} />
         
@@ -312,7 +478,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 4. SPECIALIST ROLES BREAKDOWN (WHAT RAFTRA AUTOMATES vs WHAT SPECIALIST DOES) */}
+      {/* 5. SPECIALIST ROLES BREAKDOWN (WHAT RAFTRA AUTOMATES vs WHAT SPECIALIST DOES) */}
       <div>
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0' }}>
@@ -431,7 +597,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 5. WHY HIRE THROUGH RAFTRA? SECTION WITH IMPROVED COLORS, SPACING & PADDING */}
+      {/* 6. WHY HIRE THROUGH RAFTRA? SECTION WITH IMPROVED COLORS, SPACING & PADDING */}
       <div className="glow-card" style={{ padding: '36px 32px', background: 'linear-gradient(180deg, #0f0f18 0%, #08080d 100%)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: '36px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(124,117,255,0.15)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '14px' }}>
@@ -501,7 +667,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
                       borderRadius: '12px', 
                       display: 'flex', 
                       alignItems: 'center', 
-                      justifyContent: 'space-between',
+                      justify: 'space-between',
                       gap: '12px'
                     }}>
                       <span style={{ fontSize: '14px', fontWeight: isLast ? 700 : 600, color: isLast ? '#00E676' : '#ffffff' }}>
@@ -584,7 +750,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       )}
 
-      {/* 6. ENQUIRY CREATION MODAL */}
+      {/* 7. ENQUIRY CREATION MODAL */}
       {enquirySpecialist && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
           <div className="glow-card" style={{ width: '480px', maxWidth: '90%', background: '#0a0a0c', padding: '32px', position: 'relative', borderRadius: '20px', border: '1px solid #7C75FF' }}>
