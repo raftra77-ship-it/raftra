@@ -183,3 +183,53 @@ async def publish_markdown(conn, title: str, body: str, subdir: str = "content")
         if pr.status_code not in (200, 201):
             raise RuntimeError(f"Committed the file but could not open PR: {pr.status_code} {pr.text[:200]}")
         return {"pr_url": pr.json().get("html_url"), "branch": new_branch, "path": path}
+
+
+async def commit_file_update(conn, path: str, new_content: str, commit_message: str,
+                             pr_title: str, pr_body: str) -> dict:
+    """Update an EXISTING repo file on a new branch and open a PR. Unlike publish_markdown
+    (which creates a new file), this needs the file's current SHA to update it in place.
+    Nothing lands on the live site until a human merges the PR. Returns {pr_url, branch, path}."""
+    import time
+    token = conn.access_token
+    repo = conn.repo_full_name
+    base_branch = conn.default_branch or "main"
+    new_branch = f"raftra/seo-fixes-{int(time.time())}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1) SHA of the base branch tip.
+        ref = await client.get(f"{API}/repos/{repo}/git/ref/heads/{base_branch}", headers=_headers(token))
+        if ref.status_code != 200:
+            raise RuntimeError(f"Could not read base branch '{base_branch}': {ref.status_code} {ref.text[:200]}")
+        base_sha = ref.json()["object"]["sha"]
+
+        # 2) Current SHA of the file being changed (required by the contents API to UPDATE it).
+        cur = await client.get(f"{API}/repos/{repo}/contents/{path}",
+                               headers=_headers(token), params={"ref": base_branch})
+        if cur.status_code != 200:
+            raise RuntimeError(f"Could not read file '{path}': {cur.status_code} {cur.text[:200]}")
+        file_sha = cur.json().get("sha")
+
+        # 3) Create the new branch.
+        mk = await client.post(f"{API}/repos/{repo}/git/refs", headers=_headers(token),
+                               json={"ref": f"refs/heads/{new_branch}", "sha": base_sha})
+        if mk.status_code not in (200, 201):
+            raise RuntimeError(f"Could not create branch: {mk.status_code} {mk.text[:200]}")
+
+        # 4) Commit the updated file onto the new branch.
+        put = await client.put(f"{API}/repos/{repo}/contents/{path}", headers=_headers(token), json={
+            "message": commit_message,
+            "content": base64.b64encode(new_content.encode("utf-8")).decode("ascii"),
+            "branch": new_branch,
+            "sha": file_sha,
+        })
+        if put.status_code not in (200, 201):
+            raise RuntimeError(f"Could not commit change: {put.status_code} {put.text[:200]}")
+
+        # 5) Open the pull request.
+        pr = await client.post(f"{API}/repos/{repo}/pulls", headers=_headers(token), json={
+            "title": pr_title, "head": new_branch, "base": base_branch, "body": pr_body,
+        })
+        if pr.status_code not in (200, 201):
+            raise RuntimeError(f"Committed the change but could not open PR: {pr.status_code} {pr.text[:200]}")
+        return {"pr_url": pr.json().get("html_url"), "branch": new_branch, "path": path}

@@ -756,7 +756,57 @@ const CompareModal: React.FC<{ workspaceId: number | null; onClose: () => void }
 const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey: string }> = ({ workspaceId, refreshKey }) => {
   const [items, setItems] = React.useState<any[]>([]);
   const [st, setSt] = React.useState<{ gh?: any; wp?: any; sh?: any }>({});
+  const [ghMap, setGhMap] = React.useState<any>(null);   // GitHub repo scan summary
   const [expanded, setExpanded] = React.useState<'gh' | 'wp' | 'sh' | null>(null);
+  const [applying, setApplying] = React.useState(false);
+  const [prResult, setPrResult] = React.useState<{ ok: boolean; msg: string; url?: string } | null>(null);
+
+  const applySeoFixes = async () => {
+    if (!workspaceId) return;
+    setApplying(true); setPrResult(null);
+    try {
+      const r = await fetch(`/api/connectors/github/${workspaceId}/apply-seo-fixes`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({}),
+      });
+      const d = await r.json();
+      if (r.ok && d.pr_url) setPrResult({ ok: true, msg: d.message || 'Pull request opened.', url: d.pr_url });
+      else setPrResult({ ok: false, msg: d.detail || 'Could not open the pull request.' });
+    } catch { setPrResult({ ok: false, msg: 'Could not reach the server.' }); }
+    setApplying(false);
+  };
+
+  // Shopify: preview the proposed SEO title/description, then apply (no PR — reviewed here).
+  const [shopPreview, setShopPreview] = React.useState<any>(null);
+  const [shopBusy, setShopBusy] = React.useState<'preview' | 'apply' | null>(null);
+  const [shopResult, setShopResult] = React.useState<{ ok: boolean; msg: string; url?: string } | null>(null);
+
+  const previewShopify = async () => {
+    if (!workspaceId) return;
+    setShopBusy('preview'); setShopResult(null); setShopPreview(null);
+    try {
+      const r = await fetch(`/api/connectors/shopify/${workspaceId}/apply-seo-fixes`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ dry_run: true }),
+      });
+      const d = await r.json();
+      if (r.ok && d.proposed) setShopPreview(d);
+      else setShopResult({ ok: false, msg: d.detail || 'Could not build a preview.' });
+    } catch { setShopResult({ ok: false, msg: 'Could not reach the server.' }); }
+    setShopBusy(null);
+  };
+
+  const applyShopify = async () => {
+    if (!workspaceId || !shopPreview) return;
+    setShopBusy('apply');
+    try {
+      const r = await fetch(`/api/connectors/shopify/${workspaceId}/apply-seo-fixes`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ page_id: shopPreview.page?.id }),
+      });
+      const d = await r.json();
+      if (r.ok) { setShopResult({ ok: true, msg: d.message || 'Updated in Shopify.', url: d.admin_url }); setShopPreview(null); }
+      else setShopResult({ ok: false, msg: d.detail || 'Could not update Shopify.' });
+    } catch { setShopResult({ ok: false, msg: 'Could not reach the server.' }); }
+    setShopBusy(null);
+  };
 
   React.useEffect(() => {
     if (!workspaceId) return;
@@ -767,7 +817,14 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
   const loadStatus = React.useCallback(() => {
     if (!workspaceId) return;
     const get = (p: string) => fetch(`/api/connectors/${p}/${workspaceId}/status`, { headers: authHeaders() }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-    Promise.all([get('github'), get('wordpress'), get('shopify')]).then(([gh, wp, sh]) => setSt({ gh, wp, sh }));
+    Promise.all([get('github'), get('wordpress'), get('shopify')]).then(([gh, wp, sh]) => {
+      setSt({ gh, wp, sh });
+      // If GitHub is connected to a repo, pull the saved scan so the status shows on the card.
+      if (gh?.connected && gh?.repo_full_name) {
+        fetch(`/api/connectors/github/${workspaceId}/repository-mapping`, { headers: authHeaders() })
+          .then(r => (r.ok ? r.json() : null)).then(d => setGhMap(d && d.scanned ? d : null)).catch(() => setGhMap(null));
+      } else setGhMap(null);
+    });
   }, [workspaceId]);
 
   React.useEffect(() => { loadStatus(); }, [loadStatus, refreshKey, expanded]);
@@ -814,13 +871,90 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                 {c.connected ? 'Connected' : 'Not Connected'}
               </span>
             </div>
-            {c.connected && c.url ? (
-              <a href={c.url} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', fontSize: '12.5px', fontWeight: 600, color: '#03121a', background: '#00ff9d', borderRadius: '8px', padding: '8px', textDecoration: 'none' }}>{c.openLabel}</a>
+            {c.connected ? (
+              // Connected: keep the quick "open" link, but also let the panel (with its
+              // scan-status box: framework, pages detected, ready-to-publish) be reopened.
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {c.url && (
+                  <a href={c.url} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', fontSize: '12.5px', fontWeight: 600, color: '#03121a', background: '#00ff9d', borderRadius: '8px', padding: '8px', textDecoration: 'none' }}>{c.openLabel}</a>
+                )}
+                <button onClick={() => setExpanded(e => (e === c.key ? null : c.key))}
+                  style={{ width: '100%', fontSize: '11.5px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '7px', cursor: 'pointer' }}>
+                  {expanded === c.key ? 'Hide details' : 'View status & details'}
+                </button>
+              </div>
             ) : (
               <button onClick={() => setExpanded(e => (e === c.key ? null : c.key))}
                 style={{ width: '100%', fontSize: '12.5px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}>
                 {expanded === c.key ? 'Close' : c.connectLabel}
               </button>
+            )}
+
+            {/* Always-visible scan summary for a connected GitHub repo (no click needed). */}
+            {c.key === 'gh' && c.connected && ghMap && (
+              <div style={{ marginTop: '9px', paddingTop: '9px', borderTop: '1px solid var(--border-color)', display: 'flex', flexWrap: 'wrap', gap: '4px 12px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                <span><b style={{ color: '#fff' }}>Framework:</b> {ghMap.framework || 'Unknown'}</span>
+                <span><b style={{ color: '#fff' }}>Pages:</b> {ghMap.pages_count ?? 0}</span>
+                <span style={{ color: ghMap.status === 'ready' ? '#00ff9d' : '#ffae00' }}>
+                  {ghMap.status === 'ready' ? 'Scanned — ready to apply changes' : `Scan ${ghMap.status || 'pending'}`}
+                </span>
+              </div>
+            )}
+
+            {/* Real auto-publish: apply the audit's on-page fixes as a GitHub pull request. */}
+            {c.key === 'gh' && c.connected && ghMap && ghMap.status === 'ready' && (
+              <div style={{ marginTop: '9px' }}>
+                <button onClick={applySeoFixes} disabled={applying}
+                  style={{ width: '100%', fontSize: '12px', fontWeight: 700, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '8px', padding: '9px', cursor: applying ? 'wait' : 'pointer', opacity: applying ? 0.7 : 1 }}>
+                  {applying ? 'Applying fixes & opening PR…' : 'Apply SEO fixes → open a PR'}
+                </button>
+                {prResult && (
+                  <div style={{ marginTop: '7px', fontSize: '11px', lineHeight: 1.5, color: prResult.ok ? '#00ff9d' : '#ff5c5c', background: prResult.ok ? 'rgba(0,255,157,0.08)' : 'rgba(255,92,92,0.08)', border: `1px solid ${prResult.ok ? 'rgba(0,255,157,0.3)' : 'rgba(255,92,92,0.3)'}`, borderRadius: '7px', padding: '8px 10px' }}>
+                    {prResult.msg}
+                    {prResult.url && <> <a href={prResult.url} target="_blank" rel="noreferrer" style={{ color: '#8B85FF', fontWeight: 700 }}>Review the pull request →</a></>}
+                  </div>
+                )}
+                <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
+                  Opens a pull request you review &amp; merge — nothing goes live automatically.
+                </p>
+              </div>
+            )}
+
+            {/* Shopify: preview the proposed SEO title/description, then apply via the Admin API. */}
+            {c.key === 'sh' && c.connected && (
+              <div style={{ marginTop: '9px' }}>
+                {!shopPreview ? (
+                  <button onClick={previewShopify} disabled={shopBusy === 'preview'}
+                    style={{ width: '100%', fontSize: '12px', fontWeight: 700, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '8px', padding: '9px', cursor: shopBusy ? 'wait' : 'pointer', opacity: shopBusy === 'preview' ? 0.7 : 1 }}>
+                    {shopBusy === 'preview' ? 'Preparing preview…' : 'Apply SEO fixes → preview'}
+                  </button>
+                ) : (
+                  <div style={{ fontSize: '11px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 11px' }}>
+                    <div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Proposed for <b style={{ color: '#fff' }}>{shopPreview.page?.title}</b>:</div>
+                    <div style={{ marginBottom: '4px' }}><b style={{ color: '#fff' }}>Title:</b> {shopPreview.proposed?.seo_title}</div>
+                    <div style={{ marginBottom: '8px' }}><b style={{ color: '#fff' }}>Description:</b> {shopPreview.proposed?.meta_description}</div>
+                    <div style={{ display: 'flex', gap: '7px' }}>
+                      <button onClick={applyShopify} disabled={shopBusy === 'apply'}
+                        style={{ flex: 1, fontSize: '11px', fontWeight: 700, color: '#03121a', background: '#00ff9d', border: 'none', borderRadius: '7px', padding: '8px', cursor: 'pointer' }}>
+                        {shopBusy === 'apply' ? 'Applying…' : 'Apply to Shopify'}
+                      </button>
+                      <button onClick={() => setShopPreview(null)} disabled={shopBusy === 'apply'}
+                        style={{ fontSize: '11px', color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '8px 12px', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {shopResult && (
+                  <div style={{ marginTop: '7px', fontSize: '11px', lineHeight: 1.5, color: shopResult.ok ? '#00ff9d' : '#ff5c5c', background: shopResult.ok ? 'rgba(0,255,157,0.08)' : 'rgba(255,92,92,0.08)', border: `1px solid ${shopResult.ok ? 'rgba(0,255,157,0.3)' : 'rgba(255,92,92,0.3)'}`, borderRadius: '7px', padding: '8px 10px' }}>
+                    {shopResult.msg}
+                    {shopResult.url && <> <a href={shopResult.url} target="_blank" rel="noreferrer" style={{ color: '#8B85FF', fontWeight: 700 }}>Open in Shopify →</a></>}
+                  </div>
+                )}
+                <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
+                  You review the proposed SEO here, then it writes to your store's page (reversible in Shopify).
+                </p>
+              </div>
             )}
           </div>
         ))}
@@ -837,9 +971,11 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
         );
       })()}
 
-      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(255,174,0,0.06)', border: '1px solid rgba(255,174,0,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
-        <b style={{ color: '#ffae00' }}>Manual Website Update:</b> Approved recommendations must currently be applied
-        manually inside your connected website platform. Automatic publishing will be available in a future update.
+      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(0,255,157,0.05)', border: '1px solid rgba(0,255,157,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+        <b style={{ color: '#00ff9d' }}>GitHub:</b> use <b>Apply SEO fixes → open a PR</b> above — the on-page fixes are committed
+        to a branch and opened as a pull request you review and merge (nothing goes live until you merge).
+        <b style={{ color: '#00ff9d' }}> Shopify:</b> use <b>Apply SEO fixes → preview</b> above — you review the proposed SEO title/description, then it updates the page via Shopify's API (reversible in the admin).
+        <b style={{ color: '#ffae00' }}> WordPress:</b> apply changes manually for now — automated publishing there is coming next.
       </div>
     </div>
   );

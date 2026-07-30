@@ -438,6 +438,116 @@ async def gh_publish_draft(workspace_id: int, body: PublishDraft, db: Session = 
     return {"status": "success", "pr_url": result["pr_url"], "message": f"Opened a pull request: {result['pr_url']}"}
 
 
+class ApplySeoFixesBody(BaseModel):
+    page_url: Optional[str] = None   # which scanned page to fix; defaults to the first editable page
+    dry_run: bool = False            # true = don't open a PR, just return the planned change
+
+
+def _collect_onpage_fixes(audit: dict) -> list:
+    """The audit recommendations that can be mechanically applied to a single HTML/template
+    file — metadata, head/technical tags, structured data, accessibility. Content-strategy
+    items (write more/better copy) are intentionally excluded: they can't be auto-applied."""
+    seo = audit.get("seo") or {}
+    applicable = {"Metadata", "Technical SEO", "Structured Data", "Accessibility"}
+    fixes = []
+    for c in seo.get("categories", []):
+        if c.get("name") in applicable and c.get("status") == "verified":
+            for r in (c.get("recommendations") or []):
+                fixes.append(f"{c['name']}: {r}")
+    return fixes[:12]
+
+
+async def _apply_fixes_to_file(file_content: str, fixes: list, file_path: str) -> str:
+    """Ask the LLM to apply the given SEO fixes to the file and return the FULL updated file.
+    Conservative on purpose: apply only the listed fixes, preserve everything else."""
+    import re as _re
+    from core.providers.llm_providers import GeminiProvider
+    system = (
+        "You are a precise web engineer applying specific on-page SEO fixes to a source file. "
+        "Apply ONLY the requested fixes. Preserve all existing content, structure, indentation, "
+        "scripts and functionality exactly. Never invent content or remove working code. "
+        "Return the COMPLETE updated file and nothing else — no explanations, no markdown fences."
+    )
+    prompt = (
+        f"File path: {file_path}\n\nFIXES TO APPLY:\n" + "\n".join(f"- {f}" for f in fixes) +
+        f"\n\nCURRENT FILE CONTENT:\n{file_content}\n\nReturn the full updated file only."
+    )
+    out = (await GeminiProvider().generate_text(prompt=prompt, system_prompt=system)).strip()
+    if out.startswith("```"):
+        out = _re.sub(r"^```[a-zA-Z0-9]*\n", "", out)
+        out = _re.sub(r"\n```\s*$", "", out)
+    return out.strip()
+
+
+@router.post("/github/{workspace_id}/apply-seo-fixes")
+async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
+                             db: Session = Depends(database.get_db),
+                             current_user: models.User = Depends(auth.get_current_user)):
+    """Apply the latest audit's on-page SEO fixes to the connected repo — as a PULL REQUEST
+    the user reviews and merges. Nothing is pushed to the live site directly."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_gh(workspace_id, db)
+    if not conn or not conn.access_token or not conn.repo_full_name:
+        raise HTTPException(status_code=400, detail="Connect GitHub and select a repository first.")
+
+    mapping = db.query(models.RepositoryMapping).filter(
+        models.RepositoryMapping.workspace_id == workspace_id).first()
+    if not mapping or mapping.status != "ready" or not mapping.pages:
+        raise HTTPException(status_code=409, detail="The repository hasn't been scanned yet — re-select it to scan.")
+
+    pages = [p for p in (mapping.pages or []) if p.get("file_path") and p.get("editable", True)]
+    if not pages:
+        raise HTTPException(status_code=409, detail="No editable page files were found in the repository scan.")
+    target = None
+    if body.page_url:
+        target = next((p for p in pages if p.get("url") == body.page_url), None)
+    target = target or pages[0]
+    file_path = target["file_path"]
+
+    rows = (db.query(models.SEOAudit)
+            .filter(models.SEOAudit.workspace_id == workspace_id)
+            .order_by(models.SEOAudit.created_at.desc()).all())
+    audit_row = next((r for r in rows if (r.keywords_data or {}).get("pipeline") == "SEO"
+                      and (r.keywords_data or {}).get("audit")), None)
+    if not audit_row:
+        raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
+    fixes = _collect_onpage_fixes((audit_row.keywords_data or {}).get("audit") or {})
+    if not fixes:
+        raise HTTPException(status_code=409, detail="The latest audit has no on-page fixes that can be auto-applied.")
+
+    content = await gh.get_file_content(conn.access_token, conn.repo_full_name, file_path, conn.default_branch or "main")
+    if content is None:
+        raise HTTPException(status_code=502, detail=f"Could not read {file_path} from the repository.")
+    if len(content) > 60000:
+        raise HTTPException(status_code=413, detail=f"{file_path} is too large to auto-edit safely — apply it manually.")
+
+    try:
+        new_content = await _apply_fixes_to_file(content, fixes, file_path)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not generate the fixed file: {e}")
+    if not new_content or new_content.strip() == content.strip():
+        raise HTTPException(status_code=422, detail="The audit fixes produced no change to this file.")
+
+    if body.dry_run:
+        return {"status": "preview", "file_path": file_path, "fixes": fixes,
+                "size_change": len(new_content) - len(content)}
+
+    try:
+        result = await gh.commit_file_update(
+            conn, file_path, new_content,
+            commit_message="Apply on-page SEO fixes (via Raftra)",
+            pr_title="[Raftra] Apply approved SEO fixes",
+            pr_body=("Automated on-page SEO fixes from your Raftra audit. **Review the diff and merge to publish.**\n\n"
+                     "Fixes applied:\n" + "\n".join(f"- {f}" for f in fixes)),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not open the pull request: {e}")
+
+    return {"status": "success", "pr_url": result["pr_url"], "branch": result["branch"],
+            "file_path": file_path, "fixes": fixes,
+            "message": f"Opened a pull request with {len(fixes)} fix(es) — review and merge to publish."}
+
+
 # ================================================================ Meta Ads
 @router.get("/meta/{workspace_id}/status")
 def meta_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -820,6 +930,92 @@ async def shop_publish_draft(workspace_id: int, body: PublishDraft, db: Session 
     db.commit()
     return {"status": "success", "admin_url": result["admin_url"],
             "message": "Created an unpublished Shopify article - review and publish it in Shopify."}
+
+
+class ApplyShopifySeoBody(BaseModel):
+    page_id: Optional[int] = None    # which page to optimize; defaults to the first page
+    dry_run: bool = False
+
+
+async def _generate_seo_meta(brand_context: str, page_title: str, metadata_recs: list) -> dict:
+    """Produce an improved SEO title (<=60) + meta description (<=155) from the brand context
+    and the audit's metadata findings. Returns {seo_title, meta_description}."""
+    import json as _json, re as _re
+    from core.providers.llm_providers import GeminiProvider
+    system = ("You write concise, compelling on-page SEO metadata. Return ONLY a JSON object: "
+              '{"seo_title": "<=60 characters", "meta_description": "120-155 characters"}. '
+              "No prose, no markdown fences.")
+    prompt = (f"Brand / page context:\n{brand_context}\n\nPage title: {page_title}\n\n"
+              "Audit findings to address:\n" + "\n".join(f"- {r}" for r in metadata_recs) +
+              "\n\nWrite the SEO title and meta description as JSON.")
+    out = (await GeminiProvider().generate_text(prompt=prompt, system_prompt=system)).strip()
+    out = _re.sub(r"^```[a-zA-Z0-9]*\n", "", out)
+    out = _re.sub(r"\n```\s*$", "", out)
+    try:
+        d = _json.loads(out)
+    except Exception:
+        d = {}
+    title = (d.get("seo_title") or "").strip()[:60]
+    desc = (d.get("meta_description") or "").strip()[:160]
+    if not title and not desc:
+        raise RuntimeError("The model did not return usable SEO metadata.")
+    return {"seo_title": title, "meta_description": desc}
+
+
+@router.post("/shopify/{workspace_id}/apply-seo-fixes")
+async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
+                               db: Session = Depends(database.get_db),
+                               current_user: models.User = Depends(auth.get_current_user)):
+    """Apply the audit's metadata fixes (SEO title + meta description) to a Shopify Page via the
+    Admin API. `dry_run` returns the proposal for review; a real call writes it. Since Shopify
+    has no pull request, the human review happens here in Raftra before anything is written."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_shop(workspace_id, db)
+    if not conn or not conn.access_token or not conn.shop_domain:
+        raise HTTPException(status_code=400, detail="Connect Shopify first.")
+
+    try:
+        pages = await shop.list_pages(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not list Shopify pages: {e}")
+    if not pages:
+        raise HTTPException(status_code=409, detail="This Shopify store has no Pages to optimize yet.")
+    target = None
+    if body.page_id:
+        target = next((p for p in pages if p.get("id") == body.page_id), None)
+    target = target or pages[0]
+
+    rows = (db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id)
+            .order_by(models.SEOAudit.created_at.desc()).all())
+    audit_row = next((r for r in rows if (r.keywords_data or {}).get("pipeline") == "SEO"
+                      and (r.keywords_data or {}).get("audit")), None)
+    if not audit_row:
+        raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
+    metadata_recs = [f for f in _collect_onpage_fixes((audit_row.keywords_data or {}).get("audit") or {})
+                     if f.startswith("Metadata")]
+    if not metadata_recs:
+        raise HTTPException(status_code=409, detail="The latest audit has no metadata fixes to apply.")
+
+    from core.brand_context import get_brand_context
+    brand = get_brand_context(workspace_id, query="SEO title and meta description")
+    try:
+        meta_seo = await _generate_seo_meta(brand, target.get("title", ""), metadata_recs)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not generate SEO metadata: {e}")
+
+    if body.dry_run:
+        return {"status": "preview",
+                "page": {"id": target["id"], "title": target["title"]},
+                "current": {"seo_title": target.get("seo_title"), "seo_description": target.get("seo_description")},
+                "proposed": meta_seo, "fixes": metadata_recs}
+
+    try:
+        result = await shop.update_page_seo(conn, target["id"], meta_seo["seo_title"], meta_seo["meta_description"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not update the Shopify page: {e}")
+    return {"status": "success", "admin_url": result["admin_url"],
+            "page": {"id": target["id"], "title": target["title"]}, "applied": meta_seo,
+            "message": "Updated the page's SEO title and meta description in Shopify."}
 
 
 @router.delete("/shopify/{workspace_id}")

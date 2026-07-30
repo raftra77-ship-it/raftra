@@ -99,6 +99,49 @@ async def list_blogs(conn) -> list:
             for b in res.json().get("blogs", [])]
 
 
+async def list_pages(conn) -> list:
+    """The store's Pages (About, Contact, etc.) — the resources whose SEO title/description
+    we can update with the current read_content/write_content scope."""
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.get(f"{_base(conn.shop_domain)}/pages.json",
+                               headers=_headers(conn.access_token), params={"limit": 250})
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not list Shopify pages: {res.status_code} {res.text[:200]}")
+    out = []
+    for p in res.json().get("pages", []):
+        out.append({
+            "id": p.get("id"),
+            "title": p.get("title", ""),
+            "handle": p.get("handle", ""),
+            "seo_title": p.get("metafields_global_title_tag"),
+            "seo_description": p.get("metafields_global_description_tag"),
+        })
+    return out
+
+
+async def update_page_seo(conn, page_id: int, title_tag: str, description_tag: str) -> dict:
+    """Set the SEO title tag + meta description on a Shopify Page via the Admin API.
+    These are the same fields as Shopify admin's 'Edit website SEO' box — reversible there.
+    Uses the metafields_global_* convenience fields (supported for pages/products/articles)."""
+    payload = {"page": {"id": page_id}}
+    if title_tag is not None:
+        payload["page"]["metafields_global_title_tag"] = title_tag
+    if description_tag is not None:
+        payload["page"]["metafields_global_description_tag"] = description_tag
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.put(f"{_base(conn.shop_domain)}/pages/{page_id}.json",
+                               headers=_headers(conn.access_token), json=payload)
+    if res.status_code not in (200, 201):
+        raise RuntimeError(f"Shopify SEO update failed: {res.status_code} {res.text[:200]}")
+    p = res.json().get("page", {})
+    return {
+        "page_id": p.get("id"),
+        "seo_title": p.get("metafields_global_title_tag"),
+        "seo_description": p.get("metafields_global_description_tag"),
+        "admin_url": f"https://{conn.shop_domain}/admin/pages/{page_id}",
+    }
+
+
 async def publish_markdown(conn, title: str, body: str, published: bool = False) -> dict:
     """Create a blog article from markdown. Unpublished by default — a human publishes it."""
     blog_id = getattr(conn, "blog_id", None)

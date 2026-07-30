@@ -126,7 +126,7 @@ export const GitHubPanel: React.FC<{ workspaceId: number | null }> = ({ workspac
               <>
                 <span><b style={{ color: '#fff' }}>Framework:</b> {mapping?.framework || 'Unknown'}</span>
                 <span><b style={{ color: '#fff' }}>Pages Detected:</b> {mapping?.pages_count ?? 0}</span>
-                <span style={{ color: '#22C55E' }}>Ready for AI Publishing</span>
+                <span style={{ color: '#22C55E' }}>Scanned — ready to apply changes</span>
               </>
             )}
         </div>
