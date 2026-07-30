@@ -22,9 +22,16 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
 
 REDIRECT_URI = f"{BACKEND_URL}/api/connectors/shopify/callback"
 API_VERSION = "2024-10"
-# read_content/write_content cover blog posts and pages.
-SCOPE = "read_content,write_content"
+# read_content/write_content cover blog posts and pages. read_themes/write_themes are
+# needed for theme-level SEO fixes (title/meta/canonical/OG/Twitter/JSON-LD tags live in
+# theme Liquid files, not in Page metafields) — added for that feature; existing connected
+# stores must reconnect to pick up the wider scope (Shopify requires re-auth on scope growth).
+SCOPE = "read_content,write_content,read_themes,write_themes"
 TIMEOUT = 30.0
+# Shopify's REST Admin API is limited to ~2 requests/second (leaky bucket). Theme
+# duplication makes many sequential asset calls, so each one is throttled to stay under
+# that — see duplicate_theme() below.
+_RATE_LIMIT_DELAY = 0.55
 
 
 def is_configured() -> bool:
@@ -140,6 +147,127 @@ async def update_page_seo(conn, page_id: int, title_tag: str, description_tag: s
         "seo_description": p.get("metafields_global_description_tag"),
         "admin_url": f"https://{conn.shop_domain}/admin/pages/{page_id}",
     }
+
+
+async def get_granted_scopes(conn) -> list:
+    """GET /admin/oauth/access_scopes.json — the scopes actually granted to this connection's
+    token, which can be narrower than the app's current SCOPE if the store connected before
+    a scope was added (e.g. before read_themes/write_themes existed). Used to detect
+    "needs to reconnect" rather than guessing from a failed theme call."""
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.get(f"https://{conn.shop_domain}/admin/oauth/access_scopes.json",
+                               headers=_headers(conn.access_token))
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not read granted scopes: {res.status_code} {res.text[:200]}")
+    return [s["handle"] for s in res.json().get("access_scopes", [])]
+
+
+async def list_themes(conn) -> list:
+    """GET /themes.json — every theme on the store, with its role. role == "main" is the
+    currently published (live) theme."""
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.get(f"{_base(conn.shop_domain)}/themes.json", headers=_headers(conn.access_token))
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not list Shopify themes: {res.status_code} {res.text[:200]}")
+    return [{"id": str(t["id"]), "name": t.get("name", ""), "role": t.get("role", "")}
+            for t in res.json().get("themes", [])]
+
+
+async def get_main_theme(conn) -> dict:
+    """The live theme visitors currently see — the one Auto Apply must NEVER write to."""
+    themes = await list_themes(conn)
+    main = next((t for t in themes if t["role"] == "main"), None)
+    if not main:
+        raise RuntimeError("Could not find a published (main) theme on this store.")
+    return main
+
+
+async def list_theme_assets(conn, theme_id: str) -> list:
+    """GET /themes/{id}/assets.json — every file path in a theme (Liquid, JSON, CSS, JS,
+    images...). Used both to know what to copy when duplicating, and to find SEO-relevant
+    template files."""
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.get(f"{_base(conn.shop_domain)}/themes/{theme_id}/assets.json",
+                               headers=_headers(conn.access_token))
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not list assets for theme {theme_id}: {res.status_code} {res.text[:200]}")
+    return [{"key": a["key"], "content_type": a.get("content_type")} for a in res.json().get("assets", [])]
+
+
+async def get_theme_asset(conn, theme_id: str, key: str) -> dict:
+    """GET one theme file's content. Text files come back as {"value": str}; binary files
+    (images, fonts) come back as {"attachment": base64 str} — both are returned as-is so the
+    caller can round-trip either kind without us needing to know which up front."""
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.get(f"{_base(conn.shop_domain)}/themes/{theme_id}/assets.json",
+                               headers=_headers(conn.access_token), params={"asset[key]": key})
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not read '{key}' from theme {theme_id}: {res.status_code} {res.text[:200]}")
+    asset = res.json().get("asset", {})
+    if "value" in asset:
+        return {"value": asset["value"]}
+    if "attachment" in asset:
+        return {"attachment": asset["attachment"]}
+    return {"value": ""}
+
+
+async def put_theme_asset(conn, theme_id: str, key: str, *, value: str = None, attachment: str = None) -> None:
+    """Write one file into a theme — creates it if missing, overwrites if present. Exactly
+    one of value (text) / attachment (base64, for binary files) must be given."""
+    payload = {"asset": {"key": key}}
+    if value is not None:
+        payload["asset"]["value"] = value
+    elif attachment is not None:
+        payload["asset"]["attachment"] = attachment
+    else:
+        raise ValueError("put_theme_asset requires either value or attachment.")
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.put(f"{_base(conn.shop_domain)}/themes/{theme_id}/assets.json",
+                               headers=_headers(conn.access_token), json=payload)
+    if res.status_code not in (200, 201):
+        raise RuntimeError(f"Could not write '{key}' to theme {theme_id}: {res.status_code} {res.text[:200]}")
+
+
+async def create_empty_theme(conn, name: str) -> dict:
+    """POST /themes.json with no src — Shopify creates a new theme from its default
+    (Dawn-based) starter. We immediately overwrite its assets with the live theme's own
+    files (see duplicate_theme), so what it started from doesn't matter. role defaults to
+    "unpublished" — it is never the live theme."""
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        res = await client.post(f"{_base(conn.shop_domain)}/themes.json",
+                                headers=_headers(conn.access_token), json={"theme": {"name": name}})
+    if res.status_code not in (200, 201):
+        raise RuntimeError(f"Could not create a new theme: {res.status_code} {res.text[:200]}")
+    t = res.json().get("theme", {})
+    return {"id": str(t["id"]), "name": t.get("name", ""), "role": t.get("role", "")}
+
+
+async def duplicate_theme(conn, source_theme_id: str, new_name: str,
+                          on_progress=None) -> str:
+    """The actual "duplicate" operation: create an empty theme, then copy every asset from
+    the source theme into it, one at a time, rate-limited to stay under Shopify's REST API
+    limit. Returns the new theme's id. Slow by nature (can be 100+ files) — callers should
+    run this as a background task, not block a request on it.
+
+    `on_progress(copied, total)` is called after each file, if given, so a caller can persist
+    progress (e.g. into ShopifyThemeDraft) for the frontend to poll.
+    """
+    import asyncio
+    new_theme = await create_empty_theme(conn, new_name)
+    new_id = new_theme["id"]
+
+    assets = await list_theme_assets(conn, source_theme_id)
+    total = len(assets)
+    for i, asset in enumerate(assets):
+        key = asset["key"]
+        await asyncio.sleep(_RATE_LIMIT_DELAY)
+        content = await get_theme_asset(conn, source_theme_id, key)
+        await asyncio.sleep(_RATE_LIMIT_DELAY)
+        await put_theme_asset(conn, new_id, key, **content)
+        if on_progress:
+            on_progress(i + 1, total)
+
+    return new_id
 
 
 async def publish_markdown(conn, title: str, body: str, published: bool = False) -> dict:

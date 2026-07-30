@@ -808,6 +808,77 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
     setShopBusy(null);
   };
 
+  // Theme-level SEO (canonical/OG/Twitter/JSON-LD live in Liquid, not Page metafields) —
+  // always applied to a duplicated DRAFT theme, never the live one. Human publishes the
+  // draft themselves in Shopify Admin; we never call Shopify's publish-theme API.
+  const [themeStatus, setThemeStatus] = React.useState<any>(null);
+
+  const loadThemeStatus = React.useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const r = await fetch(`/api/connectors/shopify/${workspaceId}/theme-status`, { headers: authHeaders() });
+      setThemeStatus(await r.json());
+    } catch { /* leave previous state */ }
+  }, [workspaceId]);
+
+  React.useEffect(() => { loadThemeStatus(); }, [loadThemeStatus, refreshKey]);
+
+  // Poll while a duplication is in progress (copying every theme file can take a few minutes).
+  React.useEffect(() => {
+    if (themeStatus?.draft?.status !== 'duplicating') return;
+    const t = setTimeout(loadThemeStatus, 4000);
+    return () => clearTimeout(t);
+  }, [themeStatus, loadThemeStatus]);
+
+  const reconnectShopifyForTheme = async () => {
+    if (!workspaceId || !st.sh?.shop_domain) return;
+    const r = await fetch(`/api/connectors/shopify/${workspaceId}/authorize`, {
+      method: 'POST', headers: authHeaders(), body: JSON.stringify({ shop: st.sh.shop_domain }),
+    });
+    const d = await r.json();
+    if (d.url) window.location.href = d.url;
+  };
+
+  const createDraftTheme = async () => {
+    if (!workspaceId) return;
+    await fetch(`/api/connectors/shopify/${workspaceId}/create-draft-theme`, { method: 'POST', headers: authHeaders() });
+    loadThemeStatus();
+  };
+
+  // WordPress: same preview-then-apply pattern as Shopify (no PR concept) — restricted to
+  // page title/content (fields WP core genuinely supports), never a guessed SEO-plugin field.
+  const [wpPreview, setWpPreview] = React.useState<any>(null);
+  const [wpBusy, setWpBusy] = React.useState<'preview' | 'apply' | null>(null);
+  const [wpResult, setWpResult] = React.useState<{ ok: boolean; msg: string; url?: string } | null>(null);
+
+  const previewWordPress = async () => {
+    if (!workspaceId) return;
+    setWpBusy('preview'); setWpResult(null); setWpPreview(null);
+    try {
+      const r = await fetch(`/api/connectors/wordpress/${workspaceId}/apply-seo-fixes`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ dry_run: true }),
+      });
+      const d = await r.json();
+      if (r.ok && d.proposed) setWpPreview(d);
+      else setWpResult({ ok: false, msg: d.detail || 'Could not build a preview.' });
+    } catch { setWpResult({ ok: false, msg: 'Could not reach the server.' }); }
+    setWpBusy(null);
+  };
+
+  const applyWordPress = async () => {
+    if (!workspaceId || !wpPreview) return;
+    setWpBusy('apply');
+    try {
+      const r = await fetch(`/api/connectors/wordpress/${workspaceId}/apply-seo-fixes`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ page_id: wpPreview.page?.id }),
+      });
+      const d = await r.json();
+      if (r.ok) { setWpResult({ ok: true, msg: d.message || 'Updated in WordPress.', url: d.edit_url }); setWpPreview(null); }
+      else setWpResult({ ok: false, msg: d.detail || 'Could not update WordPress.' });
+    } catch { setWpResult({ ok: false, msg: 'Could not reach the server.' }); }
+    setWpBusy(null);
+  };
+
   React.useEffect(() => {
     if (!workspaceId) return;
     fetch(`/api/workspaces/${workspaceId}/publishing-queue`, { headers: authHeaders() })
@@ -956,6 +1027,107 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                 </p>
               </div>
             )}
+
+            {/* Theme-level SEO: title/meta/canonical/OG/Twitter/JSON-LD live in Liquid theme
+                files, not Page metafields — always applied to a duplicated DRAFT theme, never
+                the live one. We never publish it; the human does that in Shopify Admin. */}
+            {c.key === 'sh' && c.connected && (
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border-color)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#fff', marginBottom: '7px' }}>
+                  Theme-Level SEO (canonical, OG, JSON-LD)
+                </div>
+                {!themeStatus ? (
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Loading…</span>
+                ) : !themeStatus.scope_ok ? (
+                  <>
+                    <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginBottom: '7px' }}>
+                      Reconnect to grant theme access — needed to edit site-wide SEO tags safely in a draft theme.
+                    </p>
+                    <button onClick={reconnectShopifyForTheme}
+                      style={{ width: '100%', fontSize: '11.5px', fontWeight: 700, color: '#03121a', background: '#ffae00', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}>
+                      Reconnect Shopify for Theme Access
+                    </button>
+                  </>
+                ) : !themeStatus.draft || themeStatus.draft.status === 'failed' ? (
+                  <>
+                    {themeStatus.draft?.status === 'failed' && (
+                      <div style={{ fontSize: '10.5px', color: '#ff5c5c', marginBottom: '7px' }}>
+                        Last attempt failed: {themeStatus.draft.error}
+                      </div>
+                    )}
+                    <button onClick={createDraftTheme}
+                      style={{ width: '100%', fontSize: '11.5px', fontWeight: 700, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}>
+                      Create Draft Theme
+                    </button>
+                  </>
+                ) : themeStatus.draft.status === 'duplicating' ? (
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Duplicating your live theme…{' '}
+                    {themeStatus.draft.assets_total
+                      ? `${themeStatus.draft.assets_copied}/${themeStatus.draft.assets_total} files`
+                      : 'starting…'}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '11px' }}>
+                    <div style={{ color: 'var(--text-secondary)', marginBottom: '7px' }}>
+                      Draft ready: <b style={{ color: '#fff' }}>{themeStatus.draft.draft_theme_name}</b>
+                    </div>
+                    <div style={{ display: 'flex', gap: '7px' }}>
+                      <a href={`https://${st.sh?.shop_domain}/?preview_theme_id=${themeStatus.draft.draft_theme_id}`}
+                        target="_blank" rel="noreferrer"
+                        style={{ flex: 1, textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#03121a', background: '#00ff9d', borderRadius: '7px', padding: '8px', textDecoration: 'none' }}>
+                        Review in Shopify →
+                      </a>
+                      <button onClick={createDraftTheme}
+                        style={{ fontSize: '11px', color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '8px 12px', cursor: 'pointer' }}>
+                        Re-create
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                      Publish this draft yourself in Shopify Admin → Online Store → Themes when you're happy with it.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* WordPress: same preview-then-apply pattern — restricted to page title/content
+                (fields WP core genuinely supports), never a guessed SEO-plugin field. */}
+            {c.key === 'wp' && c.connected && (
+              <div style={{ marginTop: '9px' }}>
+                {!wpPreview ? (
+                  <button onClick={previewWordPress} disabled={wpBusy === 'preview'}
+                    style={{ width: '100%', fontSize: '12px', fontWeight: 700, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '8px', padding: '9px', cursor: wpBusy ? 'wait' : 'pointer', opacity: wpBusy === 'preview' ? 0.7 : 1 }}>
+                    {wpBusy === 'preview' ? 'Preparing preview…' : 'Apply SEO fixes → preview'}
+                  </button>
+                ) : (
+                  <div style={{ fontSize: '11px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 11px' }}>
+                    <div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Proposed for <b style={{ color: '#fff' }}>{wpPreview.page?.title}</b>:</div>
+                    <div style={{ marginBottom: '4px' }}><b style={{ color: '#fff' }}>Title:</b> {wpPreview.proposed?.title}</div>
+                    <div style={{ marginBottom: '8px' }}><b style={{ color: '#fff' }}>Content:</b> updated (see WordPress after applying)</div>
+                    <div style={{ display: 'flex', gap: '7px' }}>
+                      <button onClick={applyWordPress} disabled={wpBusy === 'apply'}
+                        style={{ flex: 1, fontSize: '11px', fontWeight: 700, color: '#03121a', background: '#00ff9d', border: 'none', borderRadius: '7px', padding: '8px', cursor: 'pointer' }}>
+                        {wpBusy === 'apply' ? 'Applying…' : 'Apply to WordPress'}
+                      </button>
+                      <button onClick={() => setWpPreview(null)} disabled={wpBusy === 'apply'}
+                        style={{ fontSize: '11px', color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '8px 12px', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {wpResult && (
+                  <div style={{ marginTop: '7px', fontSize: '11px', lineHeight: 1.5, color: wpResult.ok ? '#00ff9d' : '#ff5c5c', background: wpResult.ok ? 'rgba(0,255,157,0.08)' : 'rgba(255,92,92,0.08)', border: `1px solid ${wpResult.ok ? 'rgba(0,255,157,0.3)' : 'rgba(255,92,92,0.3)'}`, borderRadius: '7px', padding: '8px 10px' }}>
+                    {wpResult.msg}
+                    {wpResult.url && <> <a href={wpResult.url} target="_blank" rel="noreferrer" style={{ color: '#8B85FF', fontWeight: 700 }}>Open in WordPress →</a></>}
+                  </div>
+                )}
+                <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
+                  Only page title/content are auto-edited — SEO meta tags need a plugin, so those stay manual.
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -975,7 +1147,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
         <b style={{ color: '#00ff9d' }}>GitHub:</b> use <b>Apply SEO fixes → open a PR</b> above — the on-page fixes are committed
         to a branch and opened as a pull request you review and merge (nothing goes live until you merge).
         <b style={{ color: '#00ff9d' }}> Shopify:</b> use <b>Apply SEO fixes → preview</b> above — you review the proposed SEO title/description, then it updates the page via Shopify's API (reversible in the admin).
-        <b style={{ color: '#ffae00' }}> WordPress:</b> apply changes manually for now — automated publishing there is coming next.
+        <b style={{ color: '#00ff9d' }}> WordPress:</b> use <b>Apply SEO fixes → preview</b> above — you review the proposed title/content, then it updates the page via the REST API (reversible in wp-admin). SEO meta tags need a plugin, so those stay manual.
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ import os
 import datetime
 import jwt
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -837,6 +837,118 @@ def shop_status(workspace_id: int, db: Session = Depends(database.get_db), curre
     }
 
 
+@router.get("/shopify/{workspace_id}/theme-status")
+async def shop_theme_status(workspace_id: int, db: Session = Depends(database.get_db),
+                            current_user: models.User = Depends(auth.get_current_user)):
+    """Whether this workspace's Shopify connection has theme access (read_themes/
+    write_themes — added after the original read_content/write_content scope, so
+    already-connected stores may not have it yet), and the current draft-theme
+    duplication status, if any."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_shop(workspace_id, db)
+    if not conn or not conn.access_token:
+        return {"connected": False, "scope_ok": False, "draft": None}
+    try:
+        granted = await shop.get_granted_scopes(conn)
+        scope_ok = "read_themes" in granted and "write_themes" in granted
+    except Exception:
+        scope_ok = False
+    draft = db.query(models.ShopifyThemeDraft).filter(models.ShopifyThemeDraft.workspace_id == workspace_id).first()
+    draft_out = None
+    if draft:
+        draft_out = {
+            "status": draft.status, "draft_theme_id": draft.draft_theme_id,
+            "draft_theme_name": draft.draft_theme_name, "live_theme_name": draft.live_theme_name,
+            "assets_copied": draft.assets_copied, "assets_total": draft.assets_total, "error": draft.error,
+        }
+    return {"connected": True, "scope_ok": scope_ok, "draft": draft_out}
+
+
+async def _run_theme_duplication(workspace_id: int, conn_id: int):
+    """Background task body: duplicate the live theme into a fresh, unpublished draft.
+    Owns its own DB session since the request that scheduled this has already returned."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        conn = db.query(models.ShopifyConnection).filter(models.ShopifyConnection.id == conn_id).first()
+        draft = db.query(models.ShopifyThemeDraft).filter(models.ShopifyThemeDraft.workspace_id == workspace_id).first()
+        if not conn or not draft:
+            return
+        try:
+            main_theme = await shop.get_main_theme(conn)
+            draft.live_theme_id = main_theme["id"]
+            draft.live_theme_name = main_theme["name"]
+            db.commit()
+
+            def on_progress(copied: int, total: int):
+                draft.assets_copied = copied
+                draft.assets_total = total
+                db.commit()
+
+            new_name = f"Raftra SEO Draft — {main_theme['name']}"
+            new_id = await shop.duplicate_theme(conn, main_theme["id"], new_name, on_progress=on_progress)
+            draft.draft_theme_id = new_id
+            draft.draft_theme_name = new_name
+            draft.status = "ready"
+            db.commit()
+        except Exception as e:
+            draft.status = "failed"
+            draft.error = str(e)
+            db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/shopify/{workspace_id}/create-draft-theme")
+async def shop_create_draft_theme(workspace_id: int, background_tasks: BackgroundTasks,
+                                  db: Session = Depends(database.get_db),
+                                  current_user: models.User = Depends(auth.get_current_user)):
+    """Kicks off duplicating the live theme into a new, unpublished draft theme — the ONLY
+    place theme-level SEO fixes are ever written; the live theme is never touched. Runs in
+    the background (copying every asset can take a few minutes) — poll /theme-status for
+    progress."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_shop(workspace_id, db)
+    if not conn or not conn.access_token:
+        raise HTTPException(status_code=400, detail="Connect Shopify first.")
+    try:
+        granted = await shop.get_granted_scopes(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not verify Shopify permissions: {e}")
+    if "read_themes" not in granted or "write_themes" not in granted:
+        raise HTTPException(status_code=403, detail="Reconnect Shopify to grant theme access (read_themes, write_themes).")
+
+    draft = db.query(models.ShopifyThemeDraft).filter(models.ShopifyThemeDraft.workspace_id == workspace_id).first()
+    if not draft:
+        draft = models.ShopifyThemeDraft(workspace_id=workspace_id)
+        db.add(draft)
+    draft.status = "duplicating"
+    draft.assets_copied = 0
+    draft.assets_total = 0
+    draft.error = None
+    draft.draft_theme_id = None
+    db.commit()
+
+    background_tasks.add_task(_run_theme_duplication, workspace_id, conn.id)
+    return {"status": "duplicating", "message": "Duplicating your live theme into a draft — this can take a few minutes."}
+
+
+@router.get("/shopify/{workspace_id}/draft-preview")
+def shop_draft_preview(workspace_id: int, db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """The real Shopify preview URL for the draft theme — renders the live storefront using
+    the draft theme's files, visible only via this link, without affecting what real
+    visitors see on the live theme."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_shop(workspace_id, db)
+    if not conn or not conn.shop_domain:
+        raise HTTPException(status_code=400, detail="Connect Shopify first.")
+    draft = db.query(models.ShopifyThemeDraft).filter(models.ShopifyThemeDraft.workspace_id == workspace_id).first()
+    if not draft or draft.status != "ready" or not draft.draft_theme_id:
+        raise HTTPException(status_code=409, detail="No ready draft theme yet — create one first.")
+    return {"preview_url": f"https://{conn.shop_domain}/?preview_theme_id={draft.draft_theme_id}"}
+
+
 @router.post("/shopify/{workspace_id}/authorize")
 def shop_authorize(workspace_id: int, body: ShopSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
@@ -1016,6 +1128,114 @@ async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
     return {"status": "success", "admin_url": result["admin_url"],
             "page": {"id": target["id"], "title": target["title"]}, "applied": meta_seo,
             "message": "Updated the page's SEO title and meta description in Shopify."}
+
+
+def _collect_content_fixes(audit: dict) -> list:
+    """Fixes that map to fields WordPress core genuinely supports without a plugin — page
+    title and body content. Restricted to the Content category only: Metadata-type fixes
+    (meta title/description) need a specific SEO plugin's custom field (Yoast, RankMath...)
+    whose presence we can't assume, so those stay manual for WordPress."""
+    seo = audit.get("seo") or {}
+    fixes = []
+    for c in seo.get("categories", []):
+        if c.get("name") == "Content" and c.get("status") == "verified":
+            for r in (c.get("recommendations") or []):
+                fixes.append(f"Content: {r}")
+    return fixes[:8]
+
+
+async def _apply_fixes_to_wp_page(current_title: str, current_content: str, fixes: list) -> dict:
+    """Ask the LLM to apply the given content-related SEO fixes to a WordPress page's title
+    and/or body. Returns {"title": str, "content": str}."""
+    import json as _json, re as _re
+    from core.providers.llm_providers import GeminiProvider
+    system = (
+        "You are a precise web editor applying specific on-page SEO fixes to a WordPress "
+        "page's title and body content (HTML). Apply ONLY the requested fixes. Preserve all "
+        "existing structure, links, and formatting not related to the fixes. Never invent "
+        "facts or remove working content. Return ONLY a JSON object: "
+        '{"title": "...", "content": "..."} — no prose, no markdown fences.'
+    )
+    prompt = (
+        f"Current title: {current_title}\n\nFIXES TO APPLY:\n" + "\n".join(f"- {f}" for f in fixes) +
+        f"\n\nCURRENT CONTENT (HTML):\n{current_content}\n\nReturn the updated title and content as JSON."
+    )
+    out = (await GeminiProvider().generate_text(prompt=prompt, system_prompt=system)).strip()
+    out = _re.sub(r"^```[a-zA-Z0-9]*\n", "", out)
+    out = _re.sub(r"\n```\s*$", "", out)
+    try:
+        d = _json.loads(out)
+    except Exception:
+        raise RuntimeError("The model did not return valid JSON for the page update.")
+    title = (d.get("title") or "").strip() or current_title
+    content = (d.get("content") or "").strip() or current_content
+    return {"title": title, "content": content}
+
+
+class ApplyWordPressSeoBody(BaseModel):
+    page_id: Optional[int] = None    # which page to fix; defaults to the first page
+    dry_run: bool = False
+
+
+@router.post("/wordpress/{workspace_id}/apply-seo-fixes")
+async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
+                             db: Session = Depends(database.get_db),
+                             current_user: models.User = Depends(auth.get_current_user)):
+    """Apply the latest audit's content/title fixes to a WordPress Page directly via the REST
+    API (dry_run previews first). Restricted to fields WP core genuinely supports — title and
+    body content — never a guessed SEO-plugin meta field. Since WordPress pages have no
+    pull-request concept, human review happens via the dry_run preview in Raftra, same as
+    Shopify."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_wp(workspace_id, db)
+    if not conn or not conn.app_password or not conn.site_url:
+        raise HTTPException(status_code=400, detail="Connect WordPress first.")
+
+    try:
+        pages = await wp.list_pages(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not list WordPress pages: {e}")
+    if not pages:
+        raise HTTPException(status_code=409, detail="This WordPress site has no Pages to optimize yet.")
+    target = None
+    if body.page_id:
+        target = next((p for p in pages if p.get("id") == body.page_id), None)
+    target = target or pages[0]
+
+    rows = (db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id)
+            .order_by(models.SEOAudit.created_at.desc()).all())
+    audit_row = next((r for r in rows if (r.keywords_data or {}).get("pipeline") == "SEO"
+                      and (r.keywords_data or {}).get("audit")), None)
+    if not audit_row:
+        raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
+    fixes = _collect_content_fixes((audit_row.keywords_data or {}).get("audit") or {})
+    if not fixes:
+        raise HTTPException(status_code=409, detail="The latest audit has no content fixes that can be auto-applied.")
+
+    try:
+        current = await wp.get_page_content(conn, target["id"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not read the WordPress page: {e}")
+
+    try:
+        updated = await _apply_fixes_to_wp_page(current["title"], current["content"], fixes)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not generate the updated page: {e}")
+
+    if updated["title"] == current["title"] and updated["content"].strip() == current["content"].strip():
+        raise HTTPException(status_code=422, detail="The audit fixes produced no change to this page.")
+
+    if body.dry_run:
+        return {"status": "preview", "page": {"id": target["id"], "title": target["title"]},
+                "current": current, "proposed": updated, "fixes": fixes}
+
+    try:
+        result = await wp.update_page_content(conn, target["id"], updated["title"], updated["content"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not update the WordPress page: {e}")
+    return {"status": "success", "edit_url": result["edit_url"], "link": result["link"],
+            "page": {"id": target["id"], "title": target["title"]}, "fixes": fixes,
+            "message": "Updated the page's title/content in WordPress."}
 
 
 @router.delete("/shopify/{workspace_id}")

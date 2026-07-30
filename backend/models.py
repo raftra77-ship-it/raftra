@@ -374,6 +374,33 @@ class ShopifyConnection(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class ShopifyThemeDraft(Base):
+    """A duplicated (unpublished) Shopify theme used as the safe place to apply theme-level
+    SEO fixes — the live theme (`live_theme_id`, stored only for reference) is never
+    written to. One draft per workspace; creating a new one replaces it.
+
+    Theme ids are stored as strings even though Shopify's REST API returns them as numbers:
+    they're identifiers we only ever interpolate into URLs, never do arithmetic on, and
+    modern Shopify resource ids routinely exceed Postgres's 32-bit INTEGER range.
+    """
+    __tablename__ = "shopify_theme_drafts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    live_theme_id = Column(String, nullable=True)
+    live_theme_name = Column(String, nullable=True)
+    draft_theme_id = Column(String, nullable=True)
+    draft_theme_name = Column(String, nullable=True)
+    status = Column(String, default="pending")   # pending | duplicating | ready | failed
+    assets_copied = Column(Integer, default=0)
+    assets_total = Column(Integer, default=0)
+    error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    workspace = relationship("Workspace")
+
+
 class WordPressConnection(Base):
     """Per-workspace WordPress connection. Uses an Application Password (WP 5.6+)
     rather than OAuth, which is what self-hosted sites support out of the box.

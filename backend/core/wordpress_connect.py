@@ -49,6 +49,61 @@ async def verify_connection(site_url: str, username: str, app_password: str) -> 
     return {"site_url": site_url, "name": info.get("name", ""), "site": title}
 
 
+async def list_pages(conn) -> list:
+    """Pages (About, Contact, etc.) whose title/content we can edit with the current
+    Application Password. Uses context=edit to get real (unrendered) fields. Returns
+    [{id, title, slug, link}]."""
+    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+        res = await client.get(_api(conn.site_url, "pages"), auth=_auth(conn),
+                               params={"per_page": 100, "context": "edit"})
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not list WordPress pages: {res.status_code} {res.text[:200]}")
+    out = []
+    for p in res.json():
+        title = p.get("title") or {}
+        out.append({
+            "id": p.get("id"),
+            "title": title.get("raw") or title.get("rendered", ""),
+            "slug": p.get("slug", ""),
+            "link": p.get("link", ""),
+        })
+    return out
+
+
+async def get_page_content(conn, page_id: int) -> dict:
+    """Raw (editable) title + content for one WP page — the source an on-page fix edits."""
+    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+        res = await client.get(f"{_api(conn.site_url, 'pages')}/{page_id}",
+                               auth=_auth(conn), params={"context": "edit"})
+    if res.status_code != 200:
+        raise RuntimeError(f"Could not read WordPress page {page_id}: {res.status_code} {res.text[:200]}")
+    data = res.json()
+    title = data.get("title") or {}
+    content = data.get("content") or {}
+    return {"title": title.get("raw", ""), "content": content.get("raw", "")}
+
+
+async def update_page_content(conn, page_id: int, title: str, content: str) -> dict:
+    """Update a WP page's title and/or content directly — this IS a live write (WordPress
+    pages have no pull-request concept). The caller must have already gotten human review
+    (e.g. via a dry_run preview) before calling this. Deliberately does NOT touch any
+    SEO-plugin meta field (title tag / meta description) — those require a specific plugin
+    (Yoast, RankMath, ...) whose presence we can't assume; only WP core's own title/content
+    fields are ever written here.
+    """
+    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+        res = await client.post(f"{_api(conn.site_url, 'pages')}/{page_id}",
+                                auth=_auth(conn), json={"title": title, "content": content})
+    if res.status_code not in (200, 201):
+        raise RuntimeError(f"WordPress page update failed: {res.status_code} {res.text[:200]}")
+    data = res.json()
+    return {
+        "page_id": data.get("id"),
+        "link": data.get("link"),
+        "edit_url": f"{conn.site_url.rstrip('/')}/wp-admin/post.php?post={page_id}&action=edit",
+    }
+
+
 async def publish_markdown(conn, title: str, body: str, status: str = "draft") -> dict:
     """Create a WordPress post from markdown. Draft by default — a human publishes it."""
     html = markdown_to_html(body)
