@@ -253,16 +253,21 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   };
 
   const groupedChats = chatMessages.reduce((acc, msg) => {
-    const wid = msg.workspace_id;
+    const wid = msg.workspace_id || 1;
+    const wname = msg.workspace_name || 'Brand Partner';
     if (!acc[wid]) {
-      acc[wid] = { name: msg.workspace_name || 'Brand', messages: [] };
+      acc[wid] = { name: wname, messages: [] };
     }
     acc[wid].messages.push(msg);
     return acc;
   }, {} as Record<number, { name: string, messages: any[] }>);
+
+  if (!groupedChats[1]) {
+    groupedChats[1] = { name: 'Brand Partner', messages: chatMessages };
+  }
   
-  const activeChats = Object.keys(groupedChats).map(k => ({ id: Number(k), ...groupedChats[Number(k)] }));
-  const currentChatMessages = groupedChats[chatWorkspaceId]?.messages || [];
+  const activeChats = Object.keys(groupedChats).map(k => ({ id: Number(k) || 1, ...groupedChats[Number(k) || 1] }));
+  const currentChatMessages = groupedChats[chatWorkspaceId]?.messages || chatMessages;
 
   return (
     <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', display: 'flex', fontFamily: 'var(--font-sans)' }}>
@@ -369,7 +374,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                     >
                       <div style={{ fontWeight: 500 }}>{chat.name}</div>
                       <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {chat.messages[chat.messages.length - 1].content}
+                        {chat.messages.length > 0 ? (chat.messages[chat.messages.length - 1]?.text || chat.messages[chat.messages.length - 1]?.content || 'Active discussion') : 'No messages'}
                       </div>
                     </div>
                   ))
