@@ -3,7 +3,7 @@ import {
   Sparkles, Users, Video, 
   ShieldCheck, CheckCircle2, TrendingUp, Layers, Zap, 
   Upload, Image as ImageIcon, Wand2, Film, RefreshCw, BarChart2, 
-  Play, Copy, Edit3, Send, ExternalLink, ThumbsUp, ArrowRight
+  Play, Copy, Edit3, Send, Check, X, ArrowRight, Download, Calendar
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -48,6 +48,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [inputOption, setInputOption] = useState<'brand_kb' | 'upload_image' | 'ai_generate_image'>('brand_kb');
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [productPrompt, setProductPrompt] = useState('');
+  const [aiProductVisualRender, setAiProductVisualRender] = useState<string | null>(null);
 
   // Step 3 Ad Type & Settings
   const [selectedAdType, setSelectedAdType] = useState<'Image' | 'Video' | 'Carousel'>('Image');
@@ -80,21 +81,80 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     cards?: { title: string; desc: string; img: string }[];
   } | null>(null);
 
-  // Competitor Intelligence State (Foreplay.co / Rize / Bloom powered)
+  // Competitor Intelligence State
   const [selectedCompetitor, setSelectedCompetitor] = useState<'Boat' | 'Noise' | 'Realme'>('Boat');
   const [vaultSubTab, setVaultSubTab] = useState<'hooks' | 'headlines' | 'ctas'>('hooks');
 
-  // UGC State
+  // Projects Modal State
+  const [projectsList, setProjectsList] = useState<Array<{
+    id: string;
+    title: string;
+    date: string;
+    status: 'Approved' | 'In Review' | 'Draft';
+    img: string;
+    headline: string;
+    bodyText: string;
+    cta: string;
+    hashtags: string;
+  }>>([
+    {
+      id: 'proj_1',
+      title: 'Ambrane Powerbank Festive Carousel',
+      date: "Today's Ad",
+      status: 'Approved',
+      img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      headline: 'Festive Flash Sale — 20,000mAh Powerbank',
+      bodyText: 'Never run out of power during celebrations. Ultra fast 22.5W charging.',
+      cta: 'Shop Now',
+      hashtags: '#Ambrane #FestiveOffer #PowerBank'
+    },
+    {
+      id: 'proj_2',
+      title: 'Ultra Fast Charger Video Reel 15s',
+      date: 'Yesterday',
+      status: 'In Review',
+      img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80',
+      headline: 'Charge 50% in Just 20 Minutes ⚡',
+      bodyText: 'Engineered with smart temperature management and aircraft aluminum body.',
+      cta: 'Claim 30% Off',
+      hashtags: '#FastCharging #MakeInIndia #TechReels'
+    },
+    {
+      id: 'proj_3',
+      title: 'Noise Cancelling Earbuds Minimal Ad',
+      date: 'Last Week',
+      status: 'Draft',
+      img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80',
+      headline: 'Pure Acoustic Silence — Ambrane ANC',
+      bodyText: 'Block out traffic & airplane noise with 35dB Active Noise Cancellation.',
+      cta: 'Order Today',
+      hashtags: '#AudioTech #NoiseCancelling #Ambrane'
+    }
+  ]);
+  const [selectedProjectModal, setSelectedProjectModal] = useState<typeof projectsList[0] | null>(null);
+
+  // UGC State & Realistic Generation Flow
   const [ugcSubTab, setUgcSubTab] = useState<'ai_ugc' | 'hire_human'>('ai_ugc');
   const [selectedAvatar, setSelectedAvatar] = useState('Aarav - Tech Reviewer');
   const [ugcScript, setUgcScript] = useState('');
+  const [isGeneratingUgc, setIsGeneratingUgc] = useState(false);
+  const [ugcStepText, setUgcStepText] = useState('');
+  const [ugcProgress, setUgcProgress] = useState(0);
+  const [generatedUgcReel, setGeneratedUgcReel] = useState<{
+    id: string;
+    avatar: string;
+    videoUrl: string;
+    script: string;
+    voice: string;
+    status: string;
+  } | null>(null);
 
   const triggerToast = (msg: string) => {
     setCopyToast(msg);
     setTimeout(() => setCopyToast(null), 3500);
   };
 
-  // Drag & Drop File Upload Handler
+  // File Upload Handler
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -123,7 +183,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           cta: 'Shop Now',
           description: 'Flat 40% Off + Free Shipping on Ambrane Powerbanks',
           hashtags: '#Ambrane #FastCharging #MadeInIndia #TechLifestyle',
-          imageUrl: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+          imageUrl: aiProductVisualRender || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
           type: 'Carousel',
           platform,
           aspectRatio,
@@ -143,9 +203,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           cta: 'Claim Offer',
           description: 'Special Launch Discount — Free Express Shipping',
           hashtags: '#Ambrane #PowerBank #FastCharging #TechGadgets',
-          imageUrl: selectedAdType === 'Video' 
+          imageUrl: aiProductVisualRender || (selectedAdType === 'Video' 
             ? 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80'
-            : 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+            : 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80'),
           type: selectedAdType,
           platform,
           aspectRatio
@@ -194,9 +254,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       if (lower.includes('insta') || lower.includes('short') || lower.includes('story') || lower.includes('simple')) {
         updatedBody = 'Compact 20,000mAh battery that fits right in your palm. BIS certified multi-protection.';
       }
-      if (lower.includes('tech') || lower.includes('tag')) {
-        updatedHashtags = '#AmbraneTech #PowerDelivery #MakeInIndia #GadgetOfTheDay';
-      }
 
       setGeneratedAd({
         ...generatedAd,
@@ -213,7 +270,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // Apply winning vault item to active ad
   const handleApplyVaultItemToAd = (type: 'headline' | 'hook' | 'cta', text: string) => {
     if (!generatedAd) {
-      // If no ad generated yet, pre-fill and trigger generation
       setSelectedAdType('Image');
       setActiveTab('create');
       triggerToast(`Selected "${text}" for Ad Generation!`);
@@ -227,6 +283,64 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     }
     setActiveTab('create');
     triggerToast(`Applied winning ${type} to Ad Output!`);
+  };
+
+  // Apply Competitor Pattern to Ad Studio
+  const handleApplyCompetitorPattern = () => {
+    setSelectedAdType('Video');
+    setAspectRatio('9:16');
+    setVideoDuration('15s');
+    setProductPrompt(`${selectedCompetitor} 15s Reel Pattern: High retention 22.5W fast charge demonstration`);
+    setActiveTab('create');
+    triggerToast(`Applied ${selectedCompetitor} 15s Reel pattern! Ready to generate.`);
+    handleGenerateAd();
+  };
+
+  // AI Product Prompt Preset Click Handler
+  const handleSelectProductPromptPreset = (promptText: string, imgUrl: string) => {
+    setProductPrompt(promptText);
+    setAiProductVisualRender(imgUrl);
+    triggerToast('Generated 4K AI Product Visual Render!');
+  };
+
+  // AI UGC Video Reel Generator Working Pipeline
+  const handleGenerateAiUgcReel = () => {
+    setIsGeneratingUgc(true);
+    setUgcProgress(20);
+    setUgcStepText('Synthesizing AI Avatar Voiceover (Hinglish Accent)...');
+
+    setTimeout(() => {
+      setUgcProgress(60);
+      setUgcStepText('Rendering 9:16 Lipsync & Face Expression Animation...');
+    }, 900);
+
+    setTimeout(() => {
+      setUgcProgress(90);
+      setUgcStepText('Compiling Dynamic Subtitles & Background Beats...');
+    }, 1800);
+
+    setTimeout(() => {
+      setUgcProgress(100);
+      setIsGeneratingUgc(false);
+      setGeneratedUgcReel({
+        id: `ugc_${Date.now()}`,
+        avatar: selectedAvatar,
+        videoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+        script: ugcScript || "Hey guys! If you travel or commute daily, this Ambrane 20,000mAh powerbank is a total game changer. Charges my phone 4 times full without heating up!",
+        voice: 'Hinglish Energetic Natural',
+        status: 'Ready for Campaign'
+      });
+      triggerToast('AI UGC Reel Video Generated Successfully! 🎬');
+    }, 2600);
+  };
+
+  // Approve Project in Projects Tab
+  const handleApproveProject = (id: string) => {
+    setProjectsList(prev => prev.map(p => p.id === id ? { ...p, status: 'Approved' } : p));
+    if (selectedProjectModal && selectedProjectModal.id === id) {
+      setSelectedProjectModal({ ...selectedProjectModal, status: 'Approved' });
+    }
+    triggerToast('Project asset approved successfully! ✔');
   };
 
   return (
@@ -285,7 +399,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {activeTab === 'create' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           
-          {/* 2. HERO SECTION (ONLY ON CREATE TAB) */}
+          {/* HERO SECTION (ONLY ON CREATE TAB) */}
           <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(124,117,255,0.12) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '24px', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: '-60px', right: '-60px', width: '240px', height: '240px', background: 'radial-gradient(circle, rgba(124,117,255,0.25) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
@@ -304,7 +418,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </p>
               </div>
 
-              {/* Quick Goal Radio/Pill Selector */}
+              {/* Quick Goal Selector */}
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingTop: '8px' }}>
                 {[
                   { id: 'image', label: 'Image Ad', icon: ImageIcon },
@@ -371,7 +485,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>ambrane.com • Consumer Electronics & Mobile Power</p>
               </div>
 
-              {/* Brand Knowledge Context Badges */}
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{ background: 'rgba(124,117,255,0.1)', border: '1px solid rgba(124,117,255,0.2)', padding: '8px 14px', borderRadius: '10px', fontSize: '12px', color: '#fff' }}>
                   <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>THEME</span>
@@ -404,10 +517,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>Step 2 — Choose Input Method</h3>
             </div>
 
-            {/* 3 Input Options Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '20px' }}>
               
-              {/* Option 1: Generate using Brand Knowledge */}
               <div 
                 onClick={() => setInputOption('brand_kb')}
                 style={{
@@ -435,7 +546,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
               </div>
 
-              {/* Option 2: Upload Product Images */}
               <div 
                 onClick={() => setInputOption('upload_image')}
                 style={{
@@ -458,7 +568,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
               </div>
 
-              {/* Option 3: Generate Product Images using AI */}
               <div 
                 onClick={() => setInputOption('ai_generate_image')}
                 style={{
@@ -506,16 +615,51 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
             )}
 
+            {/* OPTION 3: PRODUCT GENERATION PROMPT & PATTERN CHIPS */}
             {inputOption === 'ai_generate_image' && (
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: '#ccc', marginBottom: '8px' }}>Product Generation Prompt</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sleek metallic 20000mAh powerbank floating over neon futuristic desk..."
-                  value={productPrompt}
-                  onChange={e => setProductPrompt(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', outline: 'none', fontSize: '14px' }}
-                />
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#ccc', marginBottom: '8px', fontWeight: 600 }}>Product Generation Prompt & Pattern Presets</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sleek metallic 20000mAh powerbank floating over neon futuristic desk..."
+                    value={productPrompt}
+                    onChange={e => setProductPrompt(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px 18px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', outline: 'none', fontSize: '14px' }}
+                  />
+                </div>
+
+                {/* Pattern Chips */}
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>Select Studio Pattern Preset:</span>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {[
+                      { label: '🌌 Floating Metallic Neon', prompt: 'Sleek metallic 20000mAh Ambrane powerbank floating over dark obsidian neon desk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80' },
+                      { label: '🏛️ Minimalist Marble Studio', prompt: 'Minimalist studio shot of Ambrane powerbank resting on smooth white marble desk with soft sunlight', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80' },
+                      { label: '⚡ Cyberpunk Tech Setup', prompt: 'High performance Ambrane powerbank surrounded by RGB gaming tech setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' },
+                      { label: '💡 Softbox Studio Lighting', prompt: 'Professional 4K product photography of Ambrane powerbank with studio softbox reflection', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80' }
+                    ].map((pattern, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleSelectProductPromptPreset(pattern.prompt, pattern.img)}
+                        style={{ background: 'rgba(124,117,255,0.12)', border: '1px solid rgba(124,117,255,0.25)', color: '#fff', padding: '6px 14px', borderRadius: '100px', fontSize: '12px', cursor: 'pointer' }}
+                      >
+                        {pattern.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* AI Visual Render Preview */}
+                {aiProductVisualRender && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(0,0,0,0.4)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(0,230,118,0.3)' }}>
+                    <img src={aiProductVisualRender} alt="Product visual render" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />
+                    <div>
+                      <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>4K AI Product Render Generated</div>
+                      <div style={{ fontSize: '11px', color: 'var(--success)' }}>✔ Ready for ad template compilation</div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -527,7 +671,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>Step 3 — Choose Ad Type & Settings</h3>
             </div>
 
-            {/* Ad Format Selector Tabs */}
             <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
               {(['Image', 'Video', 'Carousel'] as const).map(fmt => (
                 <button
@@ -551,10 +694,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               ))}
             </div>
 
-            {/* Settings Options Breakdown */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '20px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
               
-              {/* Platform Selector */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>PLATFORM</label>
                 <select
@@ -570,7 +711,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </select>
               </div>
 
-              {/* Aspect Ratio */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>ASPECT RATIO</label>
                 <select
@@ -585,7 +725,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </select>
               </div>
 
-              {/* AI Model */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>AI GENERATION ENGINE</label>
                 <select
@@ -599,7 +738,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </select>
               </div>
 
-              {/* Video Specific Settings */}
               {selectedAdType === 'Video' && (
                 <>
                   <div>
@@ -631,7 +769,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
             </div>
 
-            {/* Generate Action Button */}
             <GlowButton
               variant="glow"
               onClick={handleGenerateAd}
@@ -656,7 +793,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           {generatedAd && (
             <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(180deg, #0d0d14 0%, #060609 100%)', border: '1px solid rgba(0,230,118,0.4)', borderRadius: '24px' }}>
               
-              {/* Header Bar with Mode Toggle */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <CheckCircle2 size={22} color="var(--success)" />
@@ -664,7 +800,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {/* Interactive Editor Toggle */}
                   <button
                     onClick={() => setIsEditingMode(!isEditingMode)}
                     style={{
@@ -701,7 +836,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
                   <input
                     type="text"
-                    placeholder="e.g. 'Make headline punchier with a 25% discount offer', 'Change background to dark moody obsidian'..."
+                    placeholder="e.g. 'Make headline punchier with a 25% discount offer'..."
                     value={customAiInstruction}
                     onChange={e => setCustomAiInstruction(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleApplyCustomInstruction()}
@@ -718,7 +853,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   </GlowButton>
                 </div>
 
-                {/* Quick Action Preset Chips */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Quick Presets:</span>
                   {[
@@ -741,7 +875,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               {/* Preview & Editable Details Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
                 
-                {/* Media Preview Box */}
                 <div>
                   <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#000' }}>
                     <img src={generatedAd.imageUrl} alt="Generated Ad" style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block' }} />
@@ -755,23 +888,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     </span>
                   </div>
 
-                  {/* Carousel Cards breakdown if Carousel */}
                   {generatedAd.cards && (
                     <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingTop: '12px' }}>
                       {generatedAd.cards.map((card, idx) => (
                         <div key={idx} style={{ minWidth: '120px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
                           <img src={card.img} alt={card.title} style={{ width: '100%', height: '70px', objectFit: 'cover', borderRadius: '6px', marginBottom: '4px' }} />
-                          <div style={{ fontSize: '11px', color: '#fff', fontWeight: 600, truncate: 'ellipsis' }}>{card.title}</div>
+                          <div style={{ fontSize: '11px', color: '#fff', fontWeight: 600 }}>{card.title}</div>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                {/* AI Copy Details (Support Both View & Edit Mode) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   
-                  {/* Headline Field */}
                   <div style={{ background: 'rgba(255,255,255,0.03)', padding: '14px 18px', borderRadius: '12px', border: isEditingMode ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.06)' }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '4px' }}>HEADLINE</span>
                     {isEditingMode ? (
@@ -786,7 +916,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     )}
                   </div>
 
-                  {/* Body Text Field */}
                   <div style={{ background: 'rgba(255,255,255,0.03)', padding: '14px 18px', borderRadius: '12px', border: isEditingMode ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.06)' }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '4px' }}>PRIMARY TEXT / BODY</span>
                     {isEditingMode ? (
@@ -803,7 +932,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     
-                    {/* CTA Button Field */}
                     <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '12px', border: isEditingMode ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.06)' }}>
                       <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '2px' }}>CTA BUTTON</span>
                       {isEditingMode ? (
@@ -818,7 +946,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       )}
                     </div>
 
-                    {/* Hashtags Field */}
                     <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '12px', border: isEditingMode ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.06)' }}>
                       <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '2px' }}>HASHTAGS</span>
                       {isEditingMode ? (
@@ -835,59 +962,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
                   </div>
 
-                  {/* AI Variations Buttons */}
-                  <div>
-                    <span style={{ fontSize: '12px', color: '#fff', fontWeight: 600, display: 'block', marginBottom: '10px' }}>Generate 5 More Variations:</span>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {['Luxury Version 💎', 'Minimal Version ✨', 'Festive Version 🎉', 'Corporate Version 🏢'].map((varTitle, i) => (
-                        <button
-                          key={i}
-                          onClick={handleGenerateAd}
-                          style={{ background: 'rgba(124,117,255,0.1)', border: '1px solid rgba(124,117,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '100px', fontSize: '12px', cursor: 'pointer' }}
-                        >
-                          {varTitle}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                 </div>
 
               </div>
-
-              {/* SUGGESTED IMPROVEMENTS AI SECTION */}
-              <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 14px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TrendingUp size={16} color="var(--success)" /> AI Suggested Improvements (Based on Meta Ads Performance)
-                </h4>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
-                  <div style={{ background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.25)', padding: '14px 18px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>Improve Hook (First 3s)</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Current CTR is 1.8%</div>
-                    </div>
-                    <button onClick={handleGenerateAd} style={{ background: '#ff4757', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>1-Click Fix</button>
-                  </div>
-
-                  <div style={{ background: 'rgba(255,189,46,0.08)', border: '1px solid rgba(255,189,46,0.25)', padding: '14px 18px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>Improve Thumbnail</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Increase contrast +30%</div>
-                    </div>
-                    <button onClick={handleGenerateAd} style={{ background: '#FFBD2E', color: '#000', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>1-Click Fix</button>
-                  </div>
-
-                  <div style={{ background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.25)', padding: '14px 18px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>Improve CTA Copy</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Add urgency trigger</div>
-                    </div>
-                    <button onClick={handleGenerateAd} style={{ background: '#00E676', color: '#000', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>1-Click Fix</button>
-                  </div>
-                </div>
-              </div>
-
             </div>
           )}
 
@@ -898,7 +975,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {activeTab === 'competitors' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           
-          {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(0,230,118,0.12)', borderRadius: '100px', border: '1px solid rgba(0,230,118,0.3)', marginBottom: '8px' }}>
@@ -907,7 +983,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   RAFTRA AD INTELLIGENCE & META AD BENCHMARKS
                 </span>
               </div>
-              <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0' }}>
                 Winning Competitor Ads & Psychological Vault
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
@@ -916,7 +992,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
           </div>
 
-          {/* PROMINENT COMPETITOR BRAND SELECTOR CARDS */}
+          {/* COMPETITOR BRAND CARDS */}
           <div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px' }}>
               Select Competitor Brand to Inspect Active Campaigns
@@ -939,8 +1015,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       borderRadius: '16px',
                       padding: '20px',
                       cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      position: 'relative'
+                      transition: 'all 0.2s ease'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -966,7 +1041,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
           </div>
 
-          {/* AI Recommendation Banner */}
+          {/* AI Recommendation Banner & Apply Pattern Action */}
           <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(0,230,118,0.12) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
@@ -985,13 +1060,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>ESTIMATED ROAS</span>
                 <strong style={{ fontSize: '24px', color: 'var(--success)' }}>4.2x</strong>
               </div>
-              <GlowButton variant="glow" onClick={() => { setSelectedAdType('Video'); setActiveTab('create'); }}>
+              <GlowButton variant="glow" onClick={handleApplyCompetitorPattern}>
                 Apply Pattern to Ad Studio
               </GlowButton>
             </div>
           </div>
 
-          {/* DEDICATED WINNING HOOKS, HEADLINES & CTA VAULT (NO EMOJIS IN LABELS) */}
+          {/* DEDICATED WINNING HOOKS, HEADLINES & CTA VAULT */}
           <div className="glow-card" style={{ padding: '28px', background: '#0b0b10', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '16px' }}>
               <div>
@@ -1003,7 +1078,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </h3>
               </div>
 
-              {/* Vault Sub-tabs (No Emojis) */}
               <div style={{ display: 'flex', gap: '8px' }}>
                 {[
                   { id: 'hooks', label: 'Winning Hooks' },
@@ -1030,7 +1104,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
             </div>
 
-            {/* Vault Content Lists */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
               
               {vaultSubTab === 'hooks' && [
@@ -1111,64 +1184,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
           </div>
 
-          {/* Competitor Ads Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-            {[
-              {
-                id: 'comp_1',
-                brand: selectedCompetitor,
-                title: `${selectedCompetitor} Ultracharge Launch Reel`,
-                platform: 'Instagram Reels',
-                duration: '15s',
-                engagement: '4.8% (High)',
-                hook: 'First 2s visual shock with water splash & high bass beat',
-                cta: 'Buy Now - 50% Off',
-                psychology: 'Urgency + FOMO + Visual Proof',
-                targetAudience: '18-28 College & Fitness Enthusiasts',
-                img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80',
-                foreplayBadge: 'Foreplay Scaling Winner'
-              },
-              {
-                id: 'comp_2',
-                brand: selectedCompetitor,
-                title: `${selectedCompetitor} ANC Earbuds Comparison`,
-                platform: 'YouTube Shorts',
-                duration: '30s',
-                engagement: '5.2% (Very High)',
-                hook: 'Side-by-side noise cancellation audio test',
-                cta: 'Check Price',
-                psychology: 'Demonstration of Product Superiority',
-                targetAudience: '22-35 Office & Remote Workers',
-                img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80',
-                foreplayBadge: 'Top Meta Ad Scaled 60+ Days'
-              }
-            ].map(ad => (
-              <div key={ad.id} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '18px' }}>
-                <img src={ad.img} alt={ad.title} style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '12px', marginBottom: '16px' }} />
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 600 }}>{ad.platform} • {ad.duration}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--success)', background: 'rgba(0,230,118,0.12)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    {ad.foreplayBadge}
-                  </span>
-                </div>
-
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 14px 0' }}>{ad.title}</h4>
-
-                {/* AI Analysis Breakdown */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
-                  <div><strong style={{ color: '#ccc' }}>Why this ad worked:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.hook}</span></div>
-                  <div><strong style={{ color: '#ccc' }}>Psychology Trigger:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.psychology}</span></div>
-                  <div><strong style={{ color: '#ccc' }}>Target Audience:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.targetAudience}</span></div>
-                </div>
-              </div>
-            ))}
-          </div>
-
         </div>
       )}
 
-      {/* ==================== TAB 3: PROJECTS ==================== */}
+      {/* ==================== TAB 3: PROJECTS (INTERACTIVE EDIT & APPROVE MODAL) ==================== */}
       {activeTab === 'projects' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div>
@@ -1176,26 +1195,136 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               Recent Projects & Generated Ads
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-              Access all historical ad creatives, drafts, and campaign outputs across channels.
+              Click any project card to open the interactive editor, review copy, and approve assets.
             </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-            {[
-              { title: 'Ambrane Powerbank Festive Carousel', date: "Today's Ad", status: 'Approved', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80' },
-              { title: 'Ultra Fast Charger Video Reel 15s', date: 'Yesterday', status: 'In Review', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' },
-              { title: 'Noise Cancelling Earbuds Minimal Ad', date: 'Last Week', status: 'Draft', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80' }
-            ].map((proj, i) => (
-              <div key={i} className="glow-card" style={{ padding: '20px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '16px' }}>
-                <img src={proj.img} alt={proj.title} style={{ width: '100%', height: '140px', objectFit: 'cover', borderRadius: '10px', marginBottom: '12px' }} />
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>{proj.date}</div>
-                <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 10px 0' }}>{proj.title}</h4>
-                <span style={{ fontSize: '11px', background: 'rgba(124,117,255,0.15)', color: '#7C75FF', padding: '4px 10px', borderRadius: '100px', fontWeight: 600 }}>
-                  {proj.status}
-                </span>
+            {projectsList.map((proj) => (
+              <div
+                key={proj.id}
+                onClick={() => setSelectedProjectModal(proj)}
+                className="glow-card"
+                style={{ padding: '20px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '16px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+              >
+                <img src={proj.img} alt={proj.title} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '10px', marginBottom: '12px' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{proj.date}</span>
+                  <span style={{
+                    fontSize: '11px',
+                    background: proj.status === 'Approved' ? 'rgba(0,230,118,0.15)' : 'rgba(124,117,255,0.15)',
+                    color: proj.status === 'Approved' ? 'var(--success)' : '#7C75FF',
+                    padding: '3px 10px',
+                    borderRadius: '100px',
+                    fontWeight: 600
+                  }}>
+                    {proj.status}
+                  </span>
+                </div>
+                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>{proj.title}</h4>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, truncate: 'ellipsis' }}>"{proj.headline}"</p>
               </div>
             ))}
           </div>
+
+          {/* PROJECT INTERACTIVE EDIT & APPROVE MODAL */}
+          {selectedProjectModal && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+              <div className="glow-card" style={{ width: '100%', maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto', background: '#0c0c14', border: '1px solid #7C75FF', borderRadius: '24px', padding: '32px', position: 'relative' }}>
+                
+                <button
+                  onClick={() => setSelectedProjectModal(null)}
+                  style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  <X size={18} />
+                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                  <h3 style={{ fontSize: '22px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>{selectedProjectModal.title}</h3>
+                  <span style={{
+                    fontSize: '11px',
+                    background: selectedProjectModal.status === 'Approved' ? 'rgba(0,230,118,0.2)' : 'rgba(124,117,255,0.2)',
+                    color: selectedProjectModal.status === 'Approved' ? 'var(--success)' : '#7C75FF',
+                    padding: '4px 12px',
+                    borderRadius: '100px',
+                    fontWeight: 700
+                  }}>
+                    {selectedProjectModal.status}
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+                  <div>
+                    <img src={selectedProjectModal.img} alt="Project visual" style={{ width: '100%', height: '220px', objectFit: 'cover', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>HEADLINE</label>
+                      <input
+                        type="text"
+                        value={selectedProjectModal.headline}
+                        onChange={e => setSelectedProjectModal({ ...selectedProjectModal, headline: e.target.value })}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '14px' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>BODY TEXT</label>
+                      <textarea
+                        rows={3}
+                        value={selectedProjectModal.bodyText}
+                        onChange={e => setSelectedProjectModal({ ...selectedProjectModal, bodyText: e.target.value })}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '2px' }}>CTA</label>
+                        <input
+                          type="text"
+                          value={selectedProjectModal.cta}
+                          onChange={e => setSelectedProjectModal({ ...selectedProjectModal, cta: e.target.value })}
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '6px 10px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#00E676', fontSize: '12px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '2px' }}>HASHTAGS</label>
+                        <input
+                          type="text"
+                          value={selectedProjectModal.hashtags}
+                          onChange={e => setSelectedProjectModal({ ...selectedProjectModal, hashtags: e.target.value })}
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '6px 10px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#7C75FF', fontSize: '11px' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                  <button
+                    onClick={() => handleApproveProject(selectedProjectModal.id)}
+                    style={{ background: 'rgba(0,230,118,0.2)', border: '1px solid #00E676', color: '#00E676', padding: '10px 20px', borderRadius: '100px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Check size={16} /> Approve Asset
+                  </button>
+                  <GlowButton
+                    variant="glow"
+                    onClick={() => {
+                      if (onOpenReview) onOpenReview(selectedProjectModal.id);
+                      setSelectedProjectModal(null);
+                    }}
+                    style={{ padding: '10px 20px', fontSize: '13px' }}
+                  >
+                    Push to Campaign Manager
+                  </GlowButton>
+                </div>
+
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
@@ -1231,11 +1360,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       )}
 
-      {/* ==================== TAB 5: UGC (AI UGC & HIRE CREATORS) ==================== */}
+      {/* ==================== TAB 5: UGC (AI UGC REEL WORKING GENERATOR) ==================== */}
       {activeTab === 'ugc' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
           
-          {/* UGC Sub-tab Switcher */}
           <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '14px' }}>
             <button
               onClick={() => setUgcSubTab('ai_ugc')}
@@ -1269,54 +1397,124 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </button>
           </div>
 
-          {/* Sub-tab 1: AI UGC Creator Generator */}
+          {/* AI UGC Creator Working Generator */}
           {ugcSubTab === 'ai_ugc' && (
-            <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>Create AI UGC Video Reel</h3>
-              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>Select an AI human avatar, voice model, and script topic to generate an authentic UGC Reel.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>Create AI UGC Video Reel</h3>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>Select an AI human avatar, voice model, and script topic to generate an authentic UGC Reel.</p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>CHOOSE AI AVATAR</label>
-                  <select
-                    value={selectedAvatar}
-                    onChange={e => setSelectedAvatar(e.target.value)}
-                    style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}
-                  >
-                    <option value="Aarav - Tech Reviewer">Aarav (Tech Reviewer - Male 24)</option>
-                    <option value="Ananya - Lifestyle Creator">Ananya (Lifestyle Creator - Female 22)</option>
-                    <option value="Rohan - Fitness Enthusiast">Rohan (Fitness Expert - Male 27)</option>
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>CHOOSE AI AVATAR</label>
+                    <select
+                      value={selectedAvatar}
+                      onChange={e => setSelectedAvatar(e.target.value)}
+                      style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}
+                    >
+                      <option value="Aarav - Tech Reviewer">Aarav (Tech Reviewer - Male 24)</option>
+                      <option value="Ananya - Lifestyle Creator">Ananya (Lifestyle Creator - Female 22)</option>
+                      <option value="Rohan - Fitness Enthusiast">Rohan (Fitness Expert - Male 27)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>VOICE & LANGUAGE</label>
+                    <select style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}>
+                      <option>Hinglish Energetic Natural Voice</option>
+                      <option>Hindi Authentic Conversational</option>
+                      <option>Indian English Professional Accent</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>VOICE & LANGUAGE</label>
-                  <select style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}>
-                    <option>Hinglish Energetic Natural Voice</option>
-                    <option>Hindi Authentic Conversational</option>
-                    <option>Indian English Professional Accent</option>
-                  </select>
+                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>SCRIPT TOPIC / PROMPT</label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. 'Hey guys, I've been using this Ambrane powerbank for 2 weeks during travel and it charged my phone 4 times full!'"
+                    value={ugcScript}
+                    onChange={e => setUgcScript(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff', outline: 'none' }}
+                  />
                 </div>
+
+                <GlowButton
+                  variant="glow"
+                  onClick={handleGenerateAiUgcReel}
+                  disabled={isGeneratingUgc}
+                  style={{ padding: '14px', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+                >
+                  {isGeneratingUgc ? (
+                    <>
+                      <RefreshCw size={18} className="spin-animation" />
+                      {ugcStepText} ({ugcProgress}%)
+                    </>
+                  ) : (
+                    <>
+                      <Video size={18} />
+                      Generate AI UGC Reel Video
+                    </>
+                  )}
+                </GlowButton>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>SCRIPT TOPIC / PROMPT</label>
-                <textarea
-                  rows={3}
-                  placeholder="e.g. 'Hey guys, I've been using this Ambrane powerbank for 2 weeks during travel and it charged my phone 4 times full!'"
-                  value={ugcScript}
-                  onChange={e => setUgcScript(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff', outline: 'none' }}
-                />
-              </div>
+              {/* REALISTIC GENERATED AI UGC REEL OUTPUT */}
+              {generatedUgcReel && (
+                <div className="glow-card" style={{ padding: '28px', background: '#0a0a10', border: '1px solid rgba(0,230,118,0.4)', borderRadius: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <CheckCircle2 size={20} color="var(--success)" />
+                      <h4 style={{ fontSize: '18px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
+                        AI UGC Reel Ready ({generatedUgcReel.avatar})
+                      </h4>
+                    </div>
+                    <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', color: 'var(--success)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                      9:16 Vertical Reel • 1080p
+                    </span>
+                  </div>
 
-              <GlowButton variant="glow" onClick={handleGenerateAd} style={{ padding: '14px', fontSize: '15px' }}>
-                Generate AI UGC Reel Video
-              </GlowButton>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px' }}>
+                    {/* Playable Video Card */}
+                    <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#000', maxHeight: '380px' }}>
+                      <img src={generatedUgcReel.videoUrl} alt="AI Avatar Reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(124,117,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 0 30px rgba(124,117,255,0.6)' }}>
+                        <Play size={28} color="#fff" style={{ marginLeft: '4px' }} />
+                      </div>
+                      <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16, background: 'rgba(0,0,0,0.75)', padding: '10px 14px', borderRadius: '10px', fontSize: '11px', color: '#fff' }}>
+                        🗣️ Voice: {generatedUgcReel.voice}
+                      </div>
+                    </div>
+
+                    {/* Script Transcript & Actions */}
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>GENERATED UGC TRANSCRIPT</span>
+                        <p style={{ fontSize: '14px', color: '#ddd', margin: 0, lineHeight: 1.5 }}>"{generatedUgcReel.script}"</p>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <button
+                          onClick={() => onOpenReview && onOpenReview(generatedUgcReel.id)}
+                          style={{ background: '#7C75FF', border: 'none', color: '#fff', padding: '12px 20px', borderRadius: '100px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                        >
+                          <Send size={15} /> Push to Campaign Manager
+                        </button>
+                        <button
+                          onClick={() => { if (onNavigateTab) onNavigateTab('social'); }}
+                          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '12px 20px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                        >
+                          <Calendar size={15} /> Schedule on Social Hub
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Sub-tab 2: Hire Human Creator Marketplace (Navigates to Influencer Marketplace) */}
+          {/* Sub-tab 2: Hire Human Creator Marketplace */}
           {ugcSubTab === 'hire_human' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(124,117,255,0.15) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
