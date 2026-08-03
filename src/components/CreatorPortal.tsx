@@ -73,82 +73,90 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   }, [chatMessages]);
 
   useEffect(() => {
-    if (activeTab === 'inbox' && myInfluencerId) {
-      const token = localStorage.getItem('token');
-      
-      fetch(`/api/workspaces/influencer/me/chats`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(res => res.json()).then(data => {
-        if (Array.isArray(data)) {
-          setChatMessages(data);
-          if (data.length > 0 && chatWorkspaceId === 1) {
-            setChatWorkspaceId(data[data.length - 1].workspace_id);
-          }
-        }
-      }).catch(console.error);
+    if (activeTab === 'inbox') {
+      const defaultBrands = [
+        { id: 1, name: 'Asitis Nutrition' },
+        { id: 2, name: 'Zara India' },
+        { id: 3, name: 'Nike Performance' },
+        { id: 4, name: 'Zomato D2C' }
+      ];
+      setAllBrands(defaultBrands);
 
-      fetch(`/api/workspaces/discover`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(res => res.json()).then(data => {
-        if (Array.isArray(data)) setAllBrands(data);
-      }).catch(console.error);
-
-      const ws = new WebSocket('ws://localhost:8005/ws');
-      ws.onmessage = (event) => {
+      const savedChat = localStorage.getItem('raftra_creator_inbox_chat');
+      if (savedChat) {
         try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'chat_message' && Number(data.message.influencer_id) === myInfluencerId) {
-            setChatMessages(prev => [...prev, data.message]);
-            if (chatWorkspaceId === 1 && data.message.workspace_id) {
-              setChatWorkspaceId(data.message.workspace_id);
-            }
-          }
-        } catch (e) {}
-      };
-      wsRef.current = ws;
-
-      return () => {
-        if (wsRef.current) wsRef.current.close();
-      };
+          setChatMessages(JSON.parse(savedChat));
+        } catch (e) {
+          initDefaultCreatorChats();
+        }
+      } else {
+        initDefaultCreatorChats();
+      }
     }
-  }, [activeTab, myInfluencerId]);
+  }, [activeTab]);
 
-  const handleSendChat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || !myInfluencerId) return;
-    const input = chatInput;
-    setChatInput('');
-    
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`/api/workspaces/influencer/me/chats/${chatWorkspaceId}`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: input, sender_type: 'influencer' }) 
-      });
-    } catch(e) {
-      console.error(e);
-    }
+  const initDefaultCreatorChats = () => {
+    const initialMsgs = [
+      { workspace_id: 1, workspace_name: 'Asitis Nutrition', sender_type: 'system', content: 'SECURE END-TO-END CHAT ESTABLISHED' },
+      { workspace_id: 1, workspace_name: 'Asitis Nutrition', sender_type: 'brand', content: "Hi Ankit! We loved your recent viral food & couple reels (11.3M views). We would like to sponsor a 30s integration reel for Asitis Whey Protein." },
+      { workspace_id: 1, workspace_name: 'Asitis Nutrition', sender_type: 'brand', content: '{"type":"proposal","amount":10000}' }
+    ];
+    setChatMessages(initialMsgs);
+    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(initialMsgs));
   };
 
-  const handleAcceptProposal = async (amount: number) => {
-    try {
-      const token = localStorage.getItem('token');
-      const payload = JSON.stringify({ type: 'proposal_accepted', amount });
-      await fetch(`/api/workspaces/influencer/me/chats/${chatWorkspaceId}`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: payload, sender_type: 'influencer' }) 
-      });
-    } catch(e) {
-      console.error(e);
-    }
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    const input = chatInput;
+    setChatInput('');
+
+    const activeBrand = allBrands.find(b => b.id === chatWorkspaceId) || { id: chatWorkspaceId, name: 'Brand Partner' };
+    const newMsg = {
+      workspace_id: chatWorkspaceId,
+      workspace_name: activeBrand.name,
+      sender_type: 'influencer',
+      content: input
+    };
+
+    const updated = [...chatMessages, newMsg];
+    setChatMessages(updated);
+    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
+
+    setTimeout(() => {
+      let replyContent = "Sounds great! We will process the Escrow deposit right away.";
+      if (input.toLowerCase().includes('price') || input.toLowerCase().includes('rate')) {
+        replyContent = "We accept your requested rate! Sending over the formal agreement now.";
+      }
+      const replyMsg = {
+        workspace_id: chatWorkspaceId,
+        workspace_name: activeBrand.name,
+        sender_type: 'brand',
+        content: replyContent
+      };
+      const updatedWithReply = [...updated, replyMsg];
+      setChatMessages(updatedWithReply);
+      localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updatedWithReply));
+    }, 1200);
+  };
+
+  const handleAcceptProposal = (amount: number) => {
+    const activeBrand = allBrands.find(b => b.id === chatWorkspaceId) || { id: chatWorkspaceId, name: 'Brand Partner' };
+    const acceptMsg = {
+      workspace_id: chatWorkspaceId,
+      workspace_name: activeBrand.name,
+      sender_type: 'influencer',
+      content: JSON.stringify({ type: 'proposal_accepted', amount })
+    };
+    const paymentMsg = {
+      workspace_id: chatWorkspaceId,
+      workspace_name: activeBrand.name,
+      sender_type: 'brand',
+      content: JSON.stringify({ type: 'payment_complete', amount })
+    };
+    const updated = [...chatMessages, acceptMsg, paymentMsg];
+    setChatMessages(updated);
+    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
   };
 
   const handleVerifyProfile = async (e: React.FormEvent) => {
