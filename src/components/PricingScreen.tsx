@@ -12,9 +12,10 @@ interface PricingScreenProps {
 }
 
 export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
-  const [activeCategory, setActiveCategory] = useState<'all' | 'creative' | 'campaign' | 'seo' | 'credits'>('all');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'bundles' | 'creative' | 'campaign' | 'seo' | 'credits'>('bundles');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'INR');
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   const handleCurrencyChange = (curr: 'INR' | 'USD') => {
     setCurrency(curr);
@@ -24,11 +25,51 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   const formatPrice = (inrMonthly: number, usdMonthly: number, inrAnnual?: number) => {
     if (billingCycle === 'annual') {
       const price = inrAnnual || inrMonthly * 10;
-      if (currency === 'USD') return `$${Math.round(usdMonthly * 10)}/yr`;
+      if (currency === 'USD') return `$${Math.round(usdMonthly * 10).toLocaleString()}/yr`;
       return `₹${price.toLocaleString('en-IN')}/yr`;
     }
-    if (currency === 'USD') return `$${usdMonthly}/mo`;
+    if (currency === 'USD') return `$${usdMonthly.toLocaleString()}/mo`;
     return `₹${inrMonthly.toLocaleString('en-IN')}/mo`;
+  };
+
+  const getCardStyle = (cardId: string, isPopular = false) => {
+    const isHovered = hoveredCard === cardId;
+    const isAnyHovered = hoveredCard !== null;
+
+    let opacity = 1;
+    if (isAnyHovered && !isHovered) {
+      opacity = 0.65;
+    }
+
+    return {
+      padding: '32px 28px',
+      background: isHovered
+        ? 'linear-gradient(180deg, rgba(20,20,32,0.98) 0%, rgba(10,10,18,0.98) 100%)'
+        : isPopular 
+          ? 'linear-gradient(180deg, rgba(124,117,255,0.12) 0%, rgba(12,12,18,0.95) 100%)'
+          : 'rgba(255, 255, 255, 0.03)',
+      backdropFilter: 'blur(16px)',
+      border: isHovered 
+        ? '2px solid #7C75FF' 
+        : isPopular 
+          ? '1px solid rgba(124,117,255,0.5)' 
+          : '1px solid rgba(255,255,255,0.08)',
+      borderRadius: '24px',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      justifyContent: 'space-between' as const,
+      position: 'relative' as const,
+      boxShadow: isHovered
+        ? '0 20px 50px rgba(124,117,255,0.35)'
+        : isPopular 
+          ? '0 10px 30px rgba(124,117,255,0.15)' 
+          : '0 8px 32px rgba(0,0,0,0.3)',
+      transform: isHovered ? 'translateY(-8px) scale(1.02)' : 'translateY(0)',
+      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      opacity,
+      zIndex: isHovered ? 20 : isPopular ? 10 : 1,
+      overflow: 'visible' as const
+    };
   };
 
   return (
@@ -47,11 +88,11 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </div>
           
           <h1 style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', fontWeight: 800, lineHeight: 1.2 }}>
-            Transparent AI Credit Pricing.<br/>No Hidden Token Fees.
+            Complete AI Marketing Suites.<br/>No Hidden Token Fees.
           </h1>
 
           <p style={{ fontSize: '17px', color: 'var(--text-secondary)', maxWidth: '720px', margin: '0 auto', lineHeight: 1.5 }}>
-            Pick modular growth tools tailored for your brand or agency. AI Credits are only consumed during active AI generation & editing.
+            Unlock all growth features with discounted All-in-One Suites or choose modular tools tailored for your brand.
           </p>
         </motion.div>
 
@@ -95,7 +136,8 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         {/* CATEGORY NAV TABS */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '50px' }}>
           {[
-            { id: 'all', label: 'All Pricing Modules' },
+            { id: 'bundles', label: '🚀 All-in-One Combined Suites ⭐' },
+            { id: 'all', label: 'All Individual Modules' },
             { id: 'creative', label: '🎨 Creative Studio' },
             { id: 'campaign', label: '📢 Campaign Manager' },
             { id: 'seo', label: '🔍 SEO & GEO' },
@@ -105,14 +147,15 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               key={tab.id}
               onClick={() => setActiveCategory(tab.id as any)}
               style={{
-                background: activeCategory === tab.id ? 'rgba(124,117,255,0.2)' : 'rgba(255,255,255,0.03)',
+                background: activeCategory === tab.id ? 'linear-gradient(90deg, #7C75FF 0%, #5A52FF 100%)' : 'rgba(255,255,255,0.03)',
                 border: activeCategory === tab.id ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
-                color: activeCategory === tab.id ? '#fff' : 'var(--text-secondary)',
+                color: '#fff',
                 padding: '10px 22px',
                 borderRadius: '100px',
                 fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer'
+                fontWeight: activeCategory === tab.id ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
               }}
             >
               {tab.label}
@@ -120,57 +163,128 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           ))}
         </div>
 
-        {/* STRATEGIC FEATURED BUNDLE: CAMPAIGN MANAGER + CREATIVE STUDIO PRO */}
-        {(activeCategory === 'all' || activeCategory === 'creative' || activeCategory === 'campaign') && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="glow-card" 
-            style={{ 
-              padding: '36px', 
-              background: 'linear-gradient(135deg, rgba(124,117,255,0.2) 0%, rgba(10,10,16,0.95) 100%)', 
-              border: '2px solid #7C75FF', 
-              borderRadius: '24px', 
-              marginBottom: '60px',
-              position: 'relative',
-              boxShadow: '0 10px 40px rgba(124,117,255,0.25)'
-            }}
-          >
-            <span style={{ position: 'absolute', top: '-14px', left: '36px', background: 'linear-gradient(90deg, #7C75FF 0%, #00E676 100%)', color: '#000', padding: '6px 16px', borderRadius: '100px', fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em' }}>
-              ⭐ RECOMMENDED GROWTH BUNDLE (SAVE 30%)
-            </span>
+        {/* ==================== SECTION 0: COMBINED ALL-IN-ONE SUITES (STARTUP, GROWTH, ENTERPRISE) ==================== */}
+        {(activeCategory === 'bundles' || activeCategory === 'all') && (
+          <div style={{ marginBottom: '80px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
+                BEST VALUE COMBINED SUITES
+              </div>
+              <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+                Raftra All-in-One Growth Packages
+              </h2>
+              <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                Get Creative Studio, Campaign Manager, SEO & GEO, Social Hub, and Analytics in one single discounted plan.
+              </p>
+            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '24px' }}>
-              <div style={{ maxWidth: '750px' }}>
-                <h2 style={{ fontSize: '28px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
-                  Campaign Manager + Creative Studio Pro Bundle
-                </h2>
-                <p style={{ fontSize: '15px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.5 }}>
-                  The complete end-to-end AI Marketing Operating System. Includes 20,000 monthly AI credits, full AI Creative Studio generation, Meta & Google automated publishing, and Claude AI strategy recommendations.
-                </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
+              
+              {/* Startup All-in-One */}
+              <div
+                onMouseEnter={() => setHoveredCard('combo_startup')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('combo_startup', false)}
+              >
+                <div>
+                  <div style={{ display: 'inline-block', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, marginBottom: '16px' }}>
+                    SOLO FOUNDERS & EARLY STARTUPS
+                  </div>
 
-                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '13px', color: '#ddd' }}>
-                  <span>✓ <strong>20,000 AI Credits</strong> / month</span>
-                  <span>✓ <strong>Creative Studio Pro</strong> (Image, Video & UGC)</span>
-                  <span>✓ <strong>Campaign Manager</strong> (Meta & Google Publishing)</span>
-                  <span>✓ <strong>Claude AI Strategy Engine</strong></span>
+                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Startup Suite</h3>
+                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(9999, 119, 99999)}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '24px', background: 'rgba(124,117,255,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                    15,000 AI Credits / month
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px', color: '#ddd' }}>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Creative Studio Pro</strong> (Image, Video & UGC)</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Campaign Manager</strong> (Meta & Google Publishing)</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>SEO & GEO Starter</strong> (Weekly Audits & Visibility)</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Social Hub Workspace</strong> & Influencer Access</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Marketing & SEO Analytics</strong> Included</li>
+                  </ul>
                 </div>
+
+                <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
+                  Get Startup Suite
+                </button>
               </div>
 
-              <div style={{ textAlign: 'right', minWidth: '220px' }}>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>BUNDLE PRICE</div>
-                <div style={{ fontSize: '38px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', margin: '4px 0 12px 0' }}>
-                  {formatPrice(6999, 79, 69999)}
+              {/* Growth All-in-One ⭐ (Most Popular & Recommended) */}
+              <div
+                onMouseEnter={() => setHoveredCard('combo_growth')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('combo_growth', true)}
+              >
+                {/* Clean Non-Cutting Badge */}
+                <div style={{ background: 'linear-gradient(90deg, #7C75FF 0%, #00E676 100%)', color: '#000', padding: '6px 16px', borderRadius: '100px', fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', alignSelf: 'flex-start', marginBottom: '16px' }}>
+                  ⭐ MOST POPULAR & RECOMMENDED BUNDLE
                 </div>
-                <GlowButton variant="glow" onClick={onComplete} style={{ width: '100%', padding: '14px 28px', fontSize: '15px' }}>
-                  Get Growth Bundle
+
+                <div>
+                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Growth Suite</h3>
+                  <div style={{ fontSize: '38px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(19999, 239, 199999)}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, marginBottom: '24px', background: 'rgba(0,230,118,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                    40,000 AI Credits / month
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px', color: '#ddd' }}>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Creative Studio Business</strong> (Team & Batch Renders)</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Campaign Manager</strong> (Meta + Google + Claude Recs)</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>SEO & GEO Growth</strong> (1-Click CMS & AI Blogs)</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Social Hub & Auto DMs</strong> + Creator Marketplace</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Priority Fast GPU Queue</strong> & Team Collaboration</li>
+                  </ul>
+                </div>
+
+                <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '32px', padding: '16px', fontSize: '15px' }}>
+                  Get Growth Suite
                 </GlowButton>
               </div>
+
+              {/* Enterprise All-in-One */}
+              <div
+                onMouseEnter={() => setHoveredCard('combo_enterprise')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('combo_enterprise', false)}
+              >
+                <div>
+                  <div style={{ display: 'inline-block', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', color: '#FFBD2E', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, marginBottom: '16px' }}>
+                    LARGE AGENCIES & ENTERPRISE
+                  </div>
+
+                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Enterprise Suite</h3>
+                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(49999, 599, 499999)}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#FFBD2E', fontWeight: 700, marginBottom: '24px', background: 'rgba(255,189,46,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                    100,000 AI Credits / month
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px', color: '#ddd' }}>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Everything in Growth Suite</strong></li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Managed SEO & Dedicated Specialist</strong> (Backlinks & PR)</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Dedicated GPU Cluster</strong> & Custom AI Models</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Custom API Access</strong> & Private Infrastructure</li>
+                    <li style={{ display: 'flex', gap: '10px' }}><Check size={18} color="var(--success)" /> <strong>Dedicated Account Manager</strong> & 24/7 SLA</li>
+                  </ul>
+                </div>
+
+                <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
+                  Contact Enterprise Sales
+                </button>
+              </div>
+
             </div>
-          </motion.div>
+          </div>
         )}
 
-        {/* SECTION 1: CREATIVE STUDIO PLANS */}
+        {/* ==================== SECTION 1: CREATIVE STUDIO PLANS ==================== */}
         {(activeCategory === 'all' || activeCategory === 'creative') && (
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
@@ -181,7 +295,11 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
               
               {/* Starter */}
-              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div
+                onMouseEnter={() => setHoveredCard('cs_starter')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('cs_starter')}
+              >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Starter</div>
                   <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
@@ -206,12 +324,16 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </div>
 
               {/* Pro */}
-              <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(180deg, rgba(124,117,255,0.12) 0%, #0d0d14 100%)', border: '2px solid #7C75FF', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
-                <span style={{ position: 'absolute', top: '-12px', right: 24, background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800 }}>
-                  ⭐ MOST POPULAR
-                </span>
-
+              <div
+                onMouseEnter={() => setHoveredCard('cs_pro')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('cs_pro', true)}
+              >
                 <div>
+                  <div style={{ background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800, display: 'inline-block', marginBottom: '10px' }}>
+                    ⭐ POPULAR CREATIVE TIER
+                  </div>
+
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Pro</div>
                   <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
                     {formatPrice(2499, 29, 24999)}
@@ -236,7 +358,11 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </div>
 
               {/* Business */}
-              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div
+                onMouseEnter={() => setHoveredCard('cs_business')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('cs_business')}
+              >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Business</div>
                   <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
@@ -263,7 +389,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </div>
         )}
 
-        {/* SECTION 2: CAMPAIGN MANAGER */}
+        {/* ==================== SECTION 2: CAMPAIGN MANAGER ==================== */}
         {(activeCategory === 'all' || activeCategory === 'campaign') && (
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
@@ -271,37 +397,43 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>📢 Campaign Manager</h2>
             </div>
 
-            <div className="glow-card" style={{ padding: '36px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '28px' }}>
-              <div style={{ maxWidth: '750px' }}>
-                <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
-                  {formatPrice(4999, 59, 49999)}
-                </div>
-                <p style={{ fontSize: '15px', color: 'var(--text-secondary)', margin: '0 0 20px 0', lineHeight: 1.5 }}>
-                  Automate ad creation, audience targeting, Meta & Google publishing, and real-time performance optimization with Claude AI.
-                </p>
+            <div
+              onMouseEnter={() => setHoveredCard('cm_standalone')}
+              onMouseLeave={() => setHoveredCard(null)}
+              style={getCardStyle('cm_standalone')}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '28px', width: '100%' }}>
+                <div style={{ maxWidth: '750px' }}>
+                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(4999, 59, 49999)}
+                  </div>
+                  <p style={{ fontSize: '15px', color: 'var(--text-secondary)', margin: '0 0 20px 0', lineHeight: 1.5 }}>
+                    Automate ad creation, audience targeting, Meta & Google publishing, and real-time performance optimization with Claude AI.
+                  </p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', fontSize: '13px', color: '#ccc' }}>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Campaign Builder</div>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Campaign Suggestions</div>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Audience Research Engine</div>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Budget Planner & Allocation</div>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Meta Ads Automated Publishing</div>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Google Ads Automated Publishing</div>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> OAuth 2.0 Account Integrations</div>
-                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude AI Optimization Recs</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', fontSize: '13px', color: '#ccc' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Campaign Builder</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Campaign Suggestions</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Audience Research Engine</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Budget Planner & Allocation</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Meta Ads Automated Publishing</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Google Ads Automated Publishing</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> OAuth 2.0 Account Integrations</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude AI Optimization Recs</div>
+                  </div>
                 </div>
-              </div>
 
-              <div style={{ minWidth: '220px' }}>
-                <GlowButton variant="glow" onClick={onComplete} style={{ width: '100%', padding: '16px 32px', fontSize: '15px' }}>
-                  Get Campaign Manager
-                </GlowButton>
+                <div style={{ minWidth: '220px' }}>
+                  <GlowButton variant="glow" onClick={onComplete} style={{ width: '100%', padding: '16px 32px', fontSize: '15px' }}>
+                    Get Campaign Manager
+                  </GlowButton>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* SECTION 3: SEO & GEO PLANS */}
+        {/* ==================== SECTION 3: SEO & GEO PLANS ==================== */}
         {(activeCategory === 'all' || activeCategory === 'seo') && (
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
@@ -312,7 +444,11 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
               
               {/* Starter */}
-              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div
+                onMouseEnter={() => setHoveredCard('seo_starter')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('seo_starter')}
+              >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Starter</div>
                   <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
@@ -335,12 +471,16 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </div>
 
               {/* Growth */}
-              <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(180deg, rgba(124,117,255,0.12) 0%, #0d0d14 100%)', border: '2px solid #7C75FF', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
-                <span style={{ position: 'absolute', top: '-12px', right: 24, background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800 }}>
-                  ⭐ MOST POPULAR
-                </span>
-
+              <div
+                onMouseEnter={() => setHoveredCard('seo_growth')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('seo_growth', true)}
+              >
                 <div>
+                  <div style={{ background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800, display: 'inline-block', marginBottom: '10px' }}>
+                    ⭐ POPULAR SEO TIER
+                  </div>
+
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Growth</div>
                   <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
                     {formatPrice(14999, 179, 149999)}
@@ -362,7 +502,11 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </div>
 
               {/* Managed SEO */}
-              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div
+                onMouseEnter={() => setHoveredCard('seo_managed')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('seo_managed')}
+              >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Managed SEO</div>
                   <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
@@ -387,42 +531,57 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </div>
         )}
 
-        {/* SECTION 4: INCLUDED MODULES & MARKETPLACE */}
+        {/* ==================== SECTION 4: INCLUDED MODULES & MARKETPLACE ==================== */}
         <div style={{ marginBottom: '80px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
           
-          {/* Social Hub */}
-          <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px' }}>
-            <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>INCLUDED FREE</div>
-            <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📱 Social Hub</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
-              Includes Social Workspace, Editorial Calendar, Content Planning, Team Collaboration, and Notifications.
-            </p>
+          <div
+            onMouseEnter={() => setHoveredCard('inc_social')}
+            onMouseLeave={() => setHoveredCard(null)}
+            style={getCardStyle('inc_social')}
+          >
+            <div>
+              <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>INCLUDED FREE</div>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📱 Social Hub</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
+                Includes Social Workspace, Editorial Calendar, Content Planning, Team Collaboration, and Notifications.
+              </p>
+            </div>
             <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 600 }}>Option to Hire Specialist (20% Raftra Commission)</div>
           </div>
 
-          {/* Influencer Marketplace */}
-          <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px' }}>
-            <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>FREE TO USE</div>
-            <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>🤝 Influencer Marketplace</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
-              Creator Discovery, Live Chat, Campaign Briefs, Proposals, and Deliverable Tracking.
-            </p>
+          <div
+            onMouseEnter={() => setHoveredCard('inc_influencer')}
+            onMouseLeave={() => setHoveredCard(null)}
+            style={getCardStyle('inc_influencer')}
+          >
+            <div>
+              <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>FREE TO USE</div>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>🤝 Influencer Marketplace</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
+                Creator Discovery, Live Chat, Campaign Briefs, Proposals, and Deliverable Tracking.
+              </p>
+            </div>
             <div style={{ fontSize: '12px', color: 'var(--success)', fontWeight: 600 }}>10% Platform Fee on completed deals</div>
           </div>
 
-          {/* Analytics */}
-          <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px' }}>
-            <div style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>MODULE INCLUDED</div>
-            <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📈 Analytics & Insights</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
-              Included free with purchased modules (Marketing ROAS/CPA + SEO Prompt Tracking & Rankings).
-            </p>
+          <div
+            onMouseEnter={() => setHoveredCard('inc_analytics')}
+            onMouseLeave={() => setHoveredCard(null)}
+            style={getCardStyle('inc_analytics')}
+          >
+            <div>
+              <div style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>MODULE INCLUDED</div>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📈 Analytics & Insights</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
+                Included free with purchased modules (Marketing ROAS/CPA + SEO Prompt Tracking & Rankings).
+              </p>
+            </div>
             <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600 }}>0 AI Credits Consumed</div>
           </div>
 
         </div>
 
-        {/* SECTION 5: TRANSPARENT AI CREDIT CONSUMPTION TABLE & REFILLS */}
+        {/* ==================== SECTION 5: AI CREDIT CONSUMPTION TABLE & TOP-UPS ==================== */}
         <div className="glow-card" style={{ padding: '36px', background: '#0b0b10', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '24px', marginBottom: '60px' }}>
           
           <div style={{ textAlign: 'center', marginBottom: '32px' }}>
@@ -440,7 +599,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '40px' }}>
             
-            {/* Image */}
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: '#7C75FF', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ImageIcon size={16} /> 🖼 Image Generation
@@ -453,7 +611,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </div>
             </div>
 
-            {/* Video */}
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: '#00E676', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Video size={16} /> 🎥 Video Generation
@@ -466,7 +623,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </div>
             </div>
 
-            {/* AI UGC */}
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: 'violet', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Users2 size={16} /> 🎭 AI UGC & Voice
@@ -479,7 +635,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </div>
             </div>
 
-            {/* Editing */}
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: '#FFBD2E', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Sparkles size={16} /> ✨ AI Photo Editing
@@ -494,7 +649,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
           </div>
 
-          {/* ADDITIONAL CREDIT REFILL PACKS */}
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '28px', textAlign: 'center' }}>
             <h4 style={{ fontSize: '18px', color: '#fff', margin: '0 0 16px 0', fontFamily: 'var(--font-heading)' }}>
               Buy Additional Credit Top-Ups (Refill Anytime)
