@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   Sparkles, Check, 
   Image as ImageIcon, Video, 
-  Users2, ShieldCheck
+  Users2, ShieldCheck, Layers, BarChart3, Search, Wand2
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
@@ -42,17 +42,18 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
     }
 
     return {
-      padding: '32px 28px',
+      padding: '36px 30px',
       background: isHovered
-        ? 'linear-gradient(180deg, rgba(20,20,32,0.98) 0%, rgba(10,10,18,0.98) 100%)'
+        ? 'linear-gradient(180deg, rgba(18,18,28,0.96) 0%, rgba(8,8,14,0.96) 100%)'
         : isPopular 
-          ? 'linear-gradient(180deg, rgba(124,117,255,0.12) 0%, rgba(12,12,18,0.95) 100%)'
-          : 'rgba(255, 255, 255, 0.03)',
-      backdropFilter: 'blur(16px)',
+          ? 'linear-gradient(180deg, rgba(124,117,255,0.14) 0%, rgba(10,10,16,0.92) 100%)'
+          : 'rgba(255, 255, 255, 0.025)',
+      backdropFilter: 'blur(20px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
       border: isHovered 
         ? '2px solid #7C75FF' 
         : isPopular 
-          ? '1px solid rgba(124,117,255,0.5)' 
+          ? '1px solid rgba(124,117,255,0.45)' 
           : '1px solid rgba(255,255,255,0.08)',
       borderRadius: '24px',
       display: 'flex',
@@ -60,9 +61,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
       justifyContent: 'space-between' as const,
       position: 'relative' as const,
       boxShadow: isHovered
-        ? '0 20px 50px rgba(124,117,255,0.35)'
+        ? '0 24px 60px rgba(124,117,255,0.35)'
         : isPopular 
-          ? '0 10px 30px rgba(124,117,255,0.15)' 
+          ? '0 12px 36px rgba(124,117,255,0.18)' 
           : '0 8px 32px rgba(0,0,0,0.3)',
       transform: isHovered ? 'translateY(-8px) scale(1.02)' : 'translateY(0)',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -73,8 +74,13 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0f', color: '#fff', padding: '60px 20px 100px 20px', fontFamily: 'var(--font-sans)', overflowY: 'auto' }}>
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', background: '#08080c', color: '#fff', padding: '60px 20px 100px 20px', fontFamily: 'var(--font-sans)', overflowY: 'auto', position: 'relative' }}>
+      
+      {/* FLOWY AMBIENT BACKGROUND GLOW ORBS */}
+      <div style={{ position: 'fixed', top: '-150px', left: '20%', width: '650px', height: '650px', background: 'radial-gradient(circle, rgba(124,117,255,0.15) 0%, transparent 70%)', filter: 'blur(90px)', pointerEvents: 'none', zIndex: 0 }} />
+      <div style={{ position: 'fixed', bottom: '-150px', right: '20%', width: '650px', height: '650px', background: 'radial-gradient(circle, rgba(0,230,118,0.12) 0%, transparent 70%)', filter: 'blur(90px)', pointerEvents: 'none', zIndex: 0 }} />
+
+      <div style={{ maxWidth: '1400px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
         
         {/* HEADER HERO */}
         <motion.div
@@ -115,7 +121,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </button>
           </div>
 
-          {/* Billing Cycle Toggle */}
+          {/* Billing Cycle Toggle (NO EMOJIS) */}
           <div style={{ background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center' }}>
             <button 
               onClick={() => setBillingCycle('monthly')}
@@ -133,37 +139,45 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
         </div>
 
-        {/* CATEGORY NAV TABS */}
+        {/* CATEGORY NAV TABS (NO EMOJIS) */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '50px' }}>
           {[
-            { id: 'bundles', label: '🚀 All-in-One Combined Suites ⭐' },
-            { id: 'all', label: 'All Individual Modules' },
-            { id: 'creative', label: '🎨 Creative Studio' },
-            { id: 'campaign', label: '📢 Campaign Manager' },
-            { id: 'seo', label: '🔍 SEO & GEO' },
-            { id: 'credits', label: '💳 AI Credits Breakdown' }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveCategory(tab.id as any)}
-              style={{
-                background: activeCategory === tab.id ? 'linear-gradient(90deg, #7C75FF 0%, #5A52FF 100%)' : 'rgba(255,255,255,0.03)',
-                border: activeCategory === tab.id ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
-                color: '#fff',
-                padding: '10px 22px',
-                borderRadius: '100px',
-                fontSize: '14px',
-                fontWeight: activeCategory === tab.id ? 700 : 500,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+            { id: 'bundles', label: 'All-in-One Combined Suites', icon: Layers },
+            { id: 'all', label: 'All Individual Modules', icon: Wand2 },
+            { id: 'creative', label: 'Creative Studio', icon: ImageIcon },
+            { id: 'campaign', label: 'Campaign Manager', icon: BarChart3 },
+            { id: 'seo', label: 'SEO & GEO', icon: Search },
+            { id: 'credits', label: 'AI Credits Breakdown', icon: Sparkles }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isSelected = activeCategory === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveCategory(tab.id as any)}
+                style={{
+                  background: isSelected ? 'linear-gradient(90deg, #7C75FF 0%, #5A52FF 100%)' : 'rgba(255,255,255,0.03)',
+                  border: isSelected ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  padding: '10px 22px',
+                  borderRadius: '100px',
+                  fontSize: '14px',
+                  fontWeight: isSelected ? 700 : 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Icon size={15} color={isSelected ? '#fff' : 'var(--text-muted)'} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* ==================== SECTION 0: COMBINED ALL-IN-ONE SUITES (STARTUP, GROWTH, ENTERPRISE) ==================== */}
+        {/* ==================== COMBINED ALL-IN-ONE SUITES (INCREASED PRICING & GLASSMORPHISM) ==================== */}
         {(activeCategory === 'bundles' || activeCategory === 'all') && (
           <div style={{ marginBottom: '80px' }}>
             <div style={{ textAlign: 'center', marginBottom: '40px' }}>
@@ -192,11 +206,11 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </div>
 
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Startup Suite</h3>
-                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
-                    {formatPrice(9999, 119, 99999)}
+                  <div style={{ fontSize: '38px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(14999, 179, 149999)}
                   </div>
                   <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '24px', background: 'rgba(124,117,255,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    15,000 AI Credits / month
+                    25,000 AI Credits / month
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px', color: '#ddd' }}>
@@ -213,24 +227,23 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 </button>
               </div>
 
-              {/* Growth All-in-One ⭐ (Most Popular & Recommended) */}
+              {/* Growth All-in-One (Most Popular & Recommended) */}
               <div
                 onMouseEnter={() => setHoveredCard('combo_growth')}
                 onMouseLeave={() => setHoveredCard(null)}
                 style={getCardStyle('combo_growth', true)}
               >
-                {/* Clean Non-Cutting Badge */}
                 <div style={{ background: 'linear-gradient(90deg, #7C75FF 0%, #00E676 100%)', color: '#000', padding: '6px 16px', borderRadius: '100px', fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em', alignSelf: 'flex-start', marginBottom: '16px' }}>
-                  ⭐ MOST POPULAR & RECOMMENDED BUNDLE
+                  MOST POPULAR & RECOMMENDED BUNDLE
                 </div>
 
                 <div>
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Growth Suite</h3>
-                  <div style={{ fontSize: '38px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
-                    {formatPrice(19999, 239, 199999)}
+                  <div style={{ fontSize: '40px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(29999, 359, 299999)}
                   </div>
                   <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, marginBottom: '24px', background: 'rgba(0,230,118,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    40,000 AI Credits / month
+                    60,000 AI Credits / month
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px', color: '#ddd' }}>
@@ -259,11 +272,11 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </div>
 
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Enterprise Suite</h3>
-                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
-                    {formatPrice(49999, 599, 499999)}
+                  <div style={{ fontSize: '38px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(79999, 959, 799999)}
                   </div>
                   <div style={{ fontSize: '12px', color: '#FFBD2E', fontWeight: 700, marginBottom: '24px', background: 'rgba(255,189,46,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    100,000 AI Credits / month
+                    150,000 AI Credits / month
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px', color: '#ddd' }}>
@@ -289,7 +302,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 1</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>🎨 Creative Studio (Credit Based)</h2>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Creative Studio (Credit Based)</h2>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
@@ -331,7 +344,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               >
                 <div>
                   <div style={{ background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800, display: 'inline-block', marginBottom: '10px' }}>
-                    ⭐ POPULAR CREATIVE TIER
+                    POPULAR CREATIVE TIER
                   </div>
 
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Pro</div>
@@ -394,7 +407,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 2</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>📢 Campaign Manager</h2>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Campaign Manager</h2>
             </div>
 
             <div
@@ -438,7 +451,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 3</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>🔍 SEO & GEO Search Engine Optimization</h2>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>SEO & GEO Search Engine Optimization</h2>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
@@ -478,7 +491,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               >
                 <div>
                   <div style={{ background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800, display: 'inline-block', marginBottom: '10px' }}>
-                    ⭐ POPULAR SEO TIER
+                    POPULAR SEO TIER
                   </div>
 
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Growth</div>
@@ -541,7 +554,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           >
             <div>
               <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>INCLUDED FREE</div>
-              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📱 Social Hub</h3>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>Social Hub</h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
                 Includes Social Workspace, Editorial Calendar, Content Planning, Team Collaboration, and Notifications.
               </p>
@@ -556,7 +569,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           >
             <div>
               <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>FREE TO USE</div>
-              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>🤝 Influencer Marketplace</h3>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>Influencer Marketplace</h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
                 Creator Discovery, Live Chat, Campaign Briefs, Proposals, and Deliverable Tracking.
               </p>
@@ -571,7 +584,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           >
             <div>
               <div style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>MODULE INCLUDED</div>
-              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📈 Analytics & Insights</h3>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>Analytics & Insights</h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
                 Included free with purchased modules (Marketing ROAS/CPA + SEO Prompt Tracking & Rankings).
               </p>
@@ -601,7 +614,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: '#7C75FF', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ImageIcon size={16} /> 🖼 Image Generation
+                <ImageIcon size={16} /> Image Generation
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Generate Image Ad</span><strong>20 Credits</strong></div>
@@ -613,7 +626,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: '#00E676', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Video size={16} /> 🎥 Video Generation
+                <Video size={16} /> Video Generation
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>15 sec Video Ad</span><strong>120 Credits</strong></div>
@@ -625,7 +638,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: 'violet', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Users2 size={16} /> 🎭 AI UGC & Voice
+                <Users2 size={16} /> AI UGC & Voice
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>AI UGC Image</span><strong>40 Credits</strong></div>
@@ -637,7 +650,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <h4 style={{ fontSize: '15px', color: '#FFBD2E', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles size={16} /> ✨ AI Photo Editing
+                <Sparkles size={16} /> AI Photo Editing
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Background Remove</span><strong>2 Credits</strong></div>
