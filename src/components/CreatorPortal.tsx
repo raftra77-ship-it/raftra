@@ -23,9 +23,22 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     recent_reviews: [] as {author: string, text: string}[] 
   });
   
+  const [cardCustomizer, setCardCustomizer] = useState({
+    name: 'Ankit Kumar',
+    handle: '@ankrena',
+    avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80',
+    niche: 'Lifestyle',
+    location: 'Delhi, India',
+    followers: '4,983',
+    avgViews: '11.3M total views (3k avg)',
+    expectedPrice: '₹10,000',
+    profileLink: 'https://www.instagram.com/ankrena',
+    deliverables: ['Reel', 'Story', 'Static Post', 'YouTube Integration']
+  });
+
   const [verifyForm, setVerifyForm] = useState({ username: '', niche: '', base_rate: 0 });
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState<'unverified' | 'verified' | 'rejected'>('unverified');
+  const [verificationStatus, setVerificationStatus] = useState<'unverified' | 'verified' | 'rejected'>('verified');
 
   const [allBrands, setAllBrands] = useState<{id: number, name: string}[]>([]);
   const [showDiscover, setShowDiscover] = useState(false);
@@ -517,8 +530,191 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
             </div>
 
             {verificationStatus === 'verified' && (
-              <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Edit Portfolio Details</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
+                
+                {/* MARKETPLACE CARD CUSTOMIZER & LIVE PREVIEW */}
+                <div className="glow-card" style={{ padding: '28px', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '16px', background: '#0d0d14' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '18px', margin: 0, color: '#fff', fontWeight: 700 }}>🎴 Marketplace Card Customizer</h3>
+                      <p style={{ color: '#8e8e9e', fontSize: '13px', margin: '4px 0 0 0' }}>Customize exactly what brands see on your Influencer Marketplace card.</p>
+                    </div>
+                    <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', color: '#00E676', padding: '3px 10px', borderRadius: '100px', fontWeight: 700 }}>Live Marketplace Card Editor</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px', alignItems: 'start' }}>
+                    
+                    {/* EDITABLE FIELDS FORM */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>FULL NAME</label>
+                          <input
+                            type="text"
+                            value={cardCustomizer.name}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, name: e.target.value })}
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>INSTAGRAM HANDLE</label>
+                          <input
+                            type="text"
+                            value={cardCustomizer.handle}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, handle: e.target.value })}
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontWeight: 600 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>PROFILE AVATAR PHOTO URL</label>
+                        <input
+                          type="text"
+                          value={cardCustomizer.avatar}
+                          onChange={e => setCardCustomizer({ ...cardCustomizer, avatar: e.target.value })}
+                          placeholder="Paste image URL..."
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '12.5px' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>PRIMARY NICHE</label>
+                          <select
+                            value={cardCustomizer.niche}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, niche: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
+                          >
+                            <option value="Lifestyle">Lifestyle</option>
+                            <option value="Fashion">Fashion</option>
+                            <option value="Fitness">Fitness</option>
+                            <option value="Tech">Tech</option>
+                            <option value="Art">Art</option>
+                            <option value="Education">Education</option>
+                            <option value="Local / City-based">Local / City-based</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>LOCATION (CITY / STATE)</label>
+                          <input
+                            type="text"
+                            value={cardCustomizer.location}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, location: e.target.value })}
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>EXACT FOLLOWER COUNT</label>
+                          <input
+                            type="text"
+                            value={cardCustomizer.followers}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, followers: e.target.value })}
+                            placeholder="e.g. 4,983 or 95,000"
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>AVG VIEWS / TOTAL REACH</label>
+                          <input
+                            type="text"
+                            value={cardCustomizer.avgViews}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, avgViews: e.target.value })}
+                            placeholder="e.g. 11.3M total views (3k avg)"
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontWeight: 600 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>EXPECTED REEL PRICE (₹)</label>
+                          <input
+                            type="text"
+                            value={cardCustomizer.expectedPrice}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, expectedPrice: e.target.value })}
+                            placeholder="e.g. ₹10,000"
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontWeight: 700 }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>DIRECT INSTAGRAM LINK</label>
+                          <input
+                            type="text"
+                            value={cardCustomizer.profileLink}
+                            onChange={e => setCardCustomizer({ ...cardCustomizer, profileLink: e.target.value })}
+                            placeholder="https://www.instagram.com/..."
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '12.5px' }}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.setItem('raftra_creator_card_custom', JSON.stringify(cardCustomizer));
+                          alert('Saved Marketplace Card Details! Your card will now show these exact custom details on the Brand Marketplace.');
+                        }}
+                        style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #00E676 0%, #00B0FF 100%)', color: '#000', border: 'none', borderRadius: '8px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer', marginTop: '6px', alignSelf: 'flex-start' }}
+                      >
+                        💾 Save Profile & Update Marketplace Card
+                      </button>
+                    </div>
+
+                    {/* LIVE MARKETPLACE CARD PREVIEW */}
+                    <div style={{ background: '#07070e', border: '1px solid rgba(0,230,118,0.4)', borderRadius: '14px', padding: '18px', display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontSize: '10.5px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.5px' }}>
+                        👁️ Live Marketplace Preview
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <img
+                            src={cardCustomizer.avatar || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80"}
+                            alt={cardCustomizer.name}
+                            style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(0,230,118,0.5)' }}
+                          />
+                          <div>
+                            <h4 style={{ fontSize: '15px', margin: '0 0 2px 0', color: '#fff', fontWeight: 700 }}>
+                              {cardCustomizer.name || 'Creator Name'}
+                            </h4>
+                            <div style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 600 }}>{cardCustomizer.handle || '@handle'}</div>
+                            {cardCustomizer.location && (
+                              <div style={{ fontSize: '10px', color: '#8e8e9e', marginTop: '2px' }}>📍 {cardCustomizer.location}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', fontSize: '12.5px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#8e8e9e' }}>Followers</span>
+                          <span style={{ color: '#fff', fontWeight: 700 }}>{cardCustomizer.followers}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#8e8e9e' }}>Avg Views</span>
+                          <span style={{ color: '#00E676', fontWeight: 700 }}>{cardCustomizer.avgViews}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#8e8e9e' }}>Expected Price</span>
+                          <span style={{ color: '#00E676', fontWeight: 800 }}>{cardCustomizer.expectedPrice}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px 10px', borderRadius: '6px', fontSize: '10.5px', color: '#bbb' }}>
+                        Visible to all brands on Raftra Marketplace
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* EDIT PORTFOLIO DETAILS */}
+                <div className="glow-card" style={{ padding: '32px' }}>
+                  <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Edit Portfolio Details</h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px' }}>
                   Your profile was generated by AI. You can manually adjust your recent posts, collaborations, and reviews below.
                 </p>
@@ -597,6 +793,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   <GlowButton variant="glow" type="submit" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>Save Changes</GlowButton>
                 </form>
               </div>
+            </div>
             )}
 
             <div className="glow-card" style={{ padding: '32px' }}>

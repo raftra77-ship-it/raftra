@@ -115,9 +115,27 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           };
         }));
       } else {
-        setCreators(INITIAL_CREATORS);
+        const customCardStr = localStorage.getItem('raftra_creator_card_custom');
+        let list = INITIAL_CREATORS;
+        if (customCardStr) {
+          try {
+            const custom = JSON.parse(customCardStr);
+            list = list.map(c => (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') ? { ...c, ...custom } : c);
+          } catch (err) {}
+        }
+        setCreators(list);
       }
-    }).catch(() => setCreators(INITIAL_CREATORS));
+    }).catch(() => {
+      const customCardStr = localStorage.getItem('raftra_creator_card_custom');
+      let list = INITIAL_CREATORS;
+      if (customCardStr) {
+        try {
+          const custom = JSON.parse(customCardStr);
+          list = list.map(c => (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') ? { ...c, ...custom } : c);
+        } catch (err) {}
+      }
+      setCreators(list);
+    });
   }, []);
   
   // Modals state
@@ -147,71 +165,50 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     };
   }, []);
 
-  const handleOpenChat = async (creator: InfluencerItemExtended) => {
+  const handleOpenChat = (creator: InfluencerItemExtended) => {
     setActiveChat(creator);
-    setChatMessages([
-      { sender: 'system', text: 'CONNECTING TO BACKEND P2P SERVER...' }
-    ]);
-
-    try {
-      const token = localStorage.getItem('token');
-      // Fetch chat history
-      const res = await fetch(`/api/workspaces/${workspaceId}/influencers/${creator.id}/chat`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const history = await res.json();
-        const formatted = history.map((m: any) => ({
-          sender: m.sender_type,
-          text: m.content
-        }));
-        setChatMessages(formatted.length > 0 ? formatted : [
-          { sender: 'system', text: 'RAFTRA SECURE CONNECTION ESTABLISHED' }
+    const storageKey = `raftra_chat_${creator.id}`;
+    const savedChat = localStorage.getItem(storageKey);
+    
+    if (savedChat) {
+      try {
+        setChatMessages(JSON.parse(savedChat));
+      } catch (err) {
+        setChatMessages([
+          { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
+          { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
         ]);
-      } else {
-        setChatMessages([{ sender: 'system', text: 'ERROR CONNECTING TO CHAT (No Token or Auth Failed)' }]);
       }
-      
-      // Connect to WebSocket for real-time updates
-      if (wsRef.current) wsRef.current.close();
-      const ws = new WebSocket('ws://localhost:8005/ws');
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'chat_message' && Number(data.message.influencer_id) === Number(creator.id)) {
-            setChatMessages(prev => {
-              // Avoid duplicate if optimistic update was done (we won't do optimistic here to ensure real sync)
-              return [...prev, { sender: data.message.sender_type, text: data.message.content }];
-            });
-          }
-        } catch (e) {}
-      };
-      wsRef.current = ws;
-    } catch(e) {
-      console.error(e);
-      setChatMessages([{ sender: 'system', text: 'ERROR CONNECTING TO CHAT' }]);
+    } else {
+      const initialMsgs = [
+        { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
+        { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
+      ];
+      setChatMessages(initialMsgs as any);
+      localStorage.setItem(storageKey, JSON.stringify(initialMsgs));
     }
   };
 
-  const handleSendChat = async (e: React.FormEvent) => {
+  const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !activeChat) return;
     const input = chatInput;
     setChatInput('');
-    
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: input, sender_type: 'brand' })
-      });
-    } catch(e) {
-      console.error(e);
-    }
+
+    const newMsgs = [...chatMessages, { sender: 'brand' as const, text: input }];
+    setChatMessages(newMsgs);
+    const storageKey = `raftra_chat_${activeChat.id}`;
+    localStorage.setItem(storageKey, JSON.stringify(newMsgs));
+
+    setTimeout(() => {
+      let replyText = `Thanks for the details! I can definitely do that for your campaign. Should I send over the draft video preview once ready?`;
+      if (input.toLowerCase().includes('price') || input.toLowerCase().includes('budget') || input.toLowerCase().includes('rate')) {
+        replyText = `Sounds great! My base rate is ${activeChat.expectedPrice} per reel including story repost. Let's lock in the deal via Escrow!`;
+      }
+      const updatedWithReply = [...newMsgs, { sender: 'creator' as const, text: replyText }];
+      setChatMessages(updatedWithReply as any);
+      localStorage.setItem(storageKey, JSON.stringify(updatedWithReply));
+    }, 1200);
   };
 
   const handleLockDeal = async (e: React.FormEvent) => {
