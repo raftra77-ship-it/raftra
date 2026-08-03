@@ -11,6 +11,7 @@ export interface InfluencerItemExtended {
   avatar?: string;
   platform: 'Facebook' | 'Instagram' | 'YouTube';
   niche: string;
+  allNiches?: string[];
   category: 'Nano' | 'Micro' | 'Macro';
   expectedPrice: string;
   deliverables: string[];
@@ -35,6 +36,7 @@ const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[])
   avatar: item.avatar,
   platform: item.platform || 'Instagram',
   niche: item.niche,
+  allNiches: item.allNiches || [item.niche],
   category: item.category || 'Micro',
   expectedPrice: item.expectedPrice,
   deliverables: item.deliverables || ['Reel', 'Story'],
@@ -54,6 +56,7 @@ const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[])
 export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceId}) => {
   const [creators, setCreators] = useState<InfluencerItemExtended[]>([]);
   const [filterNiche, setFilterNiche] = useState('All');
+  const [filterFollowers, setFilterFollowers] = useState('All');
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -153,9 +156,31 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const filteredCreators = filterNiche === 'All'
-    ? creators
-    : creators.filter(c => c.niche === filterNiche);
+  const filteredCreators = creators.filter(c => {
+    let nicheMatch = true;
+    if (filterNiche !== 'All') {
+      const selected = filterNiche.toLowerCase();
+      const primary = (c.niche || '').toLowerCase();
+      const all = (c.allNiches || []).map(n => n.toLowerCase());
+      nicheMatch = primary.includes(selected) || all.some(n => n.includes(selected));
+    }
+
+    let followerMatch = true;
+    if (filterFollowers !== 'All') {
+      const cat = (c.category || '').toLowerCase();
+      const fStr = (c.followers || '').replace(/,/g, '').toLowerCase();
+      
+      if (filterFollowers === 'Nano') {
+        followerMatch = cat === 'nano' || (!fStr.includes('k') && !fStr.includes('m') && parseFloat(fStr) < 10000) || (fStr.includes('k') && parseFloat(fStr) < 10);
+      } else if (filterFollowers === 'Micro') {
+        followerMatch = cat === 'micro' || (fStr.includes('k') && parseFloat(fStr) >= 10 && parseFloat(fStr) < 100) || (!fStr.includes('k') && !fStr.includes('m') && parseFloat(fStr) >= 10000 && parseFloat(fStr) < 100000);
+      } else if (filterFollowers === 'Macro') {
+        followerMatch = cat === 'macro' || fStr.includes('m') || (fStr.includes('k') && parseFloat(fStr) >= 100) || (!fStr.includes('k') && !fStr.includes('m') && parseFloat(fStr) >= 100000);
+      }
+    }
+
+    return nicheMatch && followerMatch;
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -276,30 +301,63 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       </div>
 
       {/* Filters row */}
-      <div className="glow-card" style={{ padding: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Search size={14} /> FILTER BY NICHE:
-        </span>
-        {['All', 'Local / City-based', 'Fashion', 'Fitness', 'Lifestyle', 'Art', 'Education', 'Tech'].map((niche) => (
-          <button
-            key={niche}
-            onClick={() => setFilterNiche(niche)}
-            style={{
-              padding: '6px 16px',
-              fontSize: '12px',
-              background: filterNiche === niche ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255,255,255,0.02)',
-              border: '1px solid',
-              borderColor: filterNiche === niche ? '#00E676' : 'var(--border)',
-              borderRadius: '20px',
-              color: filterNiche === niche ? '#00E676' : 'var(--text-secondary)',
-              fontWeight: filterNiche === niche ? 700 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            {niche}
-          </button>
-        ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div className="glow-card" style={{ padding: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '130px', fontWeight: 700 }}>
+            <Search size={14} color="#00E676" /> FILTER BY NICHE:
+          </span>
+          {['All', 'Local / City-based', 'Fashion', 'Fitness', 'Lifestyle', 'Art', 'Education', 'Tech', 'Food', 'Couple Reels'].map((niche) => (
+            <button
+              key={niche}
+              onClick={() => setFilterNiche(niche)}
+              style={{
+                padding: '6px 14px',
+                fontSize: '12px',
+                background: filterNiche === niche ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255,255,255,0.02)',
+                border: '1px solid',
+                borderColor: filterNiche === niche ? '#00E676' : 'var(--border)',
+                borderRadius: '20px',
+                color: filterNiche === niche ? '#00E676' : 'var(--text-secondary)',
+                fontWeight: filterNiche === niche ? 700 : 400,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {niche}
+            </button>
+          ))}
+        </div>
+
+        <div className="glow-card" style={{ padding: '14px 16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '130px', fontWeight: 700 }}>
+            ⚡ FOLLOWERS:
+          </span>
+          {[
+            { id: 'All', label: 'All Creators' },
+            { id: 'Nano', label: 'Nano (< 10k)' },
+            { id: 'Micro', label: 'Micro (10k - 100k)' },
+            { id: 'Macro', label: 'Macro (100k+)' }
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setFilterFollowers(item.id)}
+              style={{
+                padding: '6px 16px',
+                fontSize: '12px',
+                background: filterFollowers === item.id ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.02)',
+                border: '1px solid',
+                borderColor: filterFollowers === item.id ? '#5A52FF' : 'var(--border)',
+                borderRadius: '20px',
+                color: filterFollowers === item.id ? '#fff' : 'var(--text-secondary)',
+                fontWeight: filterFollowers === item.id ? 700 : 400,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Influencers grid */}
