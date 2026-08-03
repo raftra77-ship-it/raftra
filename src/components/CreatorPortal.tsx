@@ -120,11 +120,42 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(initialMsgs));
   };
 
+  const isAntiBypassViolation = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    const phoneRegex = /(?:\+91[\-\s]?)?[6-9]\d{9}|\b\d{10}\b|\b\d{5}[\s\-]\d{5}\b/;
+    if (phoneRegex.test(text)) return true;
+
+    const keywords = [
+      'whatsapp', 'wa.me', 'call me', 'text me', 'my number', 'phone number', 'contact number',
+      'instagram', 'insta dm', 'dm me', 'telegram', 'personal chat', 'personal number',
+      'off platform', 'off-platform', 'gpay', 'paytm', 'phonepe', 'upi'
+    ];
+    return keywords.some(kw => lower.includes(kw));
+  };
+
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
     const input = chatInput;
     setChatInput('');
+
+    const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
+
+    // Anti-Bypass Guard
+    if (isAntiBypassViolation(input)) {
+      const violationMsg = {
+        sender: 'system' as const,
+        sender_type: 'system',
+        text: '🚨 CHAT BLOCKED: Anti-Bypass Policy Violation Detected! Exchanging phone numbers, social handles, or attempting off-platform contact is strictly prohibited. Your account has been reported.',
+        content: '🚨 CHAT BLOCKED: Anti-Bypass Policy Violation Detected! Exchanging phone numbers, social handles, or attempting off-platform contact is strictly prohibited. Your account has been reported.'
+      };
+      const blockedMsgs = [...currentMsgs, { sender: 'creator' as const, sender_type: 'influencer', text: input, content: input }, violationMsg];
+      setChatMessages(blockedMsgs as any);
+      localStorage.setItem(creatorStorageKey, JSON.stringify(blockedMsgs));
+      localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(blockedMsgs));
+      window.dispatchEvent(new Event('storage'));
+      return;
+    }
 
     const newMsg = {
       sender: 'creator' as const,
@@ -133,7 +164,6 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       content: input
     };
 
-    const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
     const updated = [...currentMsgs, newMsg];
     setChatMessages(updated);
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));

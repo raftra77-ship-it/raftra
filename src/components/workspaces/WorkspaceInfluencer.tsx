@@ -222,6 +222,19 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     }
   };
 
+  const isAntiBypassViolation = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    const phoneRegex = /(?:\+91[\-\s]?)?[6-9]\d{9}|\b\d{10}\b|\b\d{5}[\s\-]\d{5}\b/;
+    if (phoneRegex.test(text)) return true;
+
+    const keywords = [
+      'whatsapp', 'wa.me', 'call me', 'text me', 'my number', 'phone number', 'contact number',
+      'instagram', 'insta dm', 'dm me', 'telegram', 'personal chat', 'personal number',
+      'off platform', 'off-platform', 'gpay', 'paytm', 'phonepe', 'upi'
+    ];
+    return keywords.some(kw => lower.includes(kw));
+  };
+
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !activeChat) return;
@@ -230,16 +243,36 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
     const storageKey = `raftra_chat_${activeChat.id}`;
     const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
+
+    // Anti-Bypass Policy Check
+    if (isAntiBypassViolation(input)) {
+      const violationMsg = {
+        sender: 'system' as const,
+        text: '🚨 CHAT BLOCKED: Anti-Bypass Policy Violation Detected! Exchanging phone numbers, Instagram handles, or off-platform contact is strictly prohibited. Your account has been reported.'
+      };
+      const blockedMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }, violationMsg];
+      setChatMessages(blockedMsgs as any);
+      localStorage.setItem(storageKey, JSON.stringify(blockedMsgs));
+      window.dispatchEvent(new Event('storage'));
+      return;
+    }
+
     const newMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }];
     setChatMessages(newMsgs);
     localStorage.setItem(storageKey, JSON.stringify(newMsgs));
     window.dispatchEvent(new Event('storage'));
 
-    // Automatically forward the Web Chat message to Creator's WhatsApp number!
+    // Silent background webhook dispatch to Creator's WhatsApp notification endpoint
     if (activeChat.phone) {
-      const cleanPhone = activeChat.phone.replace(/\D/g, '');
-      const waText = encodeURIComponent(`[Raftra Brand Web Chat for @${activeChat.handle || activeChat.name}]:\n\n"${input}"\n\nReply directly here or on your Creator Portal Inbox!`);
-      window.open(`https://wa.me/91${cleanPhone}?text=${waText}`, '_blank');
+      fetch('/api/workspaces/influencer/whatsapp-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: activeChat.phone,
+          handle: activeChat.handle,
+          message: input
+        })
+      }).catch(() => {});
     }
   };
 
@@ -255,13 +288,6 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     setChatMessages(updated as any);
     localStorage.setItem(storageKey, JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
-
-    // Forward deal proposal to Creator's WhatsApp!
-    if (activeChat.phone) {
-      const cleanPhone = activeChat.phone.replace(/\D/g, '');
-      const waText = encodeURIComponent(`🚨 [Raftra Brand Escrow Deal Offer]:\nBrand has proposed a formal collaboration deal of ₹${price.toLocaleString()} for your profile @${activeChat.handle || activeChat.name}!\n\nOpen your Creator Portal to accept the deal.`);
-      window.open(`https://wa.me/91${cleanPhone}?text=${waText}`, '_blank');
-    }
     
     try {
       const token = localStorage.getItem('token');
