@@ -350,8 +350,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Expected Price</span>
-                <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
-                  <DollarSign size={14} color="#00E676" /> {creator.expectedPrice}
+                <span style={{ color: '#00E676', fontWeight: 700 }}>
+                  {creator.expectedPrice}
                 </span>
               </div>
               
