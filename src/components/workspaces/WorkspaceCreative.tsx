@@ -39,10 +39,265 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onNavigateTab
 }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc' | 'editor'>('create');
   
   // Hero Quick Goal Selector
   const [quickGoal, setQuickGoal] = useState<'image' | 'video' | 'carousel' | 'ai_ugc' | 'hire_ugc'>('image');
+
+  // Canva / Figma Hybrid Studio Editor State
+  const [editorCanvasElements, setEditorCanvasElements] = useState<Array<{
+    id: string;
+    type: 'text' | 'image' | 'badge' | 'button' | 'shape';
+    content: string;
+    x: number;
+    y: number;
+    width: number;
+    height?: number;
+    fontSize?: number;
+    color?: string;
+    bgColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    borderRadius?: number;
+    fontWeight?: number | string;
+    fontFamily?: string;
+    opacity?: number;
+    rotation?: number;
+    zIndex?: number;
+    visible?: boolean;
+    locked?: boolean;
+  }>>([
+    {
+      id: 'el_bg',
+      type: 'image',
+      content: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      zIndex: 1,
+      visible: true
+    },
+    {
+      id: 'el_badge',
+      type: 'badge',
+      content: '⚡ FLAT 30% OFF • SPECIAL OFFER',
+      x: 8,
+      y: 8,
+      width: 48,
+      height: 9,
+      color: '#00E676',
+      bgColor: 'rgba(0, 230, 118, 0.18)',
+      borderColor: 'rgba(0, 230, 118, 0.4)',
+      borderWidth: 1,
+      borderRadius: 100,
+      fontSize: 11,
+      fontWeight: 800,
+      fontFamily: 'Inter',
+      zIndex: 10,
+      visible: true
+    },
+    {
+      id: 'el_headline',
+      type: 'text',
+      content: 'Unstoppable Power in Your Pocket ⚡',
+      x: 8,
+      y: 60,
+      width: 84,
+      height: 15,
+      color: '#ffffff',
+      fontSize: 22,
+      fontWeight: 800,
+      fontFamily: 'Inter',
+      zIndex: 12,
+      visible: true
+    },
+    {
+      id: 'el_body',
+      type: 'text',
+      content: 'Engineered with smart AI heat control and 22.5W Power Delivery.',
+      x: 8,
+      y: 75,
+      width: 84,
+      height: 10,
+      color: 'rgba(255, 255, 255, 0.85)',
+      fontSize: 13,
+      fontWeight: 400,
+      fontFamily: 'Inter',
+      zIndex: 12,
+      visible: true
+    },
+    {
+      id: 'el_button',
+      type: 'button',
+      content: 'Claim 30% Off Now →',
+      x: 8,
+      y: 86,
+      width: 45,
+      height: 9,
+      color: '#000000',
+      bgColor: '#00E676',
+      borderColor: 'transparent',
+      borderWidth: 0,
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 800,
+      fontFamily: 'Inter',
+      zIndex: 15,
+      visible: true
+    }
+  ]);
+
+  const [selectedElementId, setSelectedElementId] = useState<string | null>('el_headline');
+  const [editorSidebarTab, setEditorSidebarTab] = useState<'ai' | 'text' | 'elements' | 'uploads' | 'layers'>('ai');
+  const [canvasAspectRatio, setCanvasAspectRatio] = useState<'1:1' | '9:16' | '4:5' | '16:9'>('1:1');
+  const [editorZoom, setEditorZoom] = useState<number>(100);
+  const [aiPromptInstruction, setAiPromptInstruction] = useState<string>('');
+  const [isProcessingStudioAi, setIsProcessingStudioAi] = useState<boolean>(false);
+  const [editorDocumentTitle, setEditorDocumentTitle] = useState<string>('Ambrane Powerbank — 1:1 Festive Campaign');
+
+  // Canvas Interactive Mouse Drag State & Handlers
+  const [isDraggingCanvasEl, setIsDraggingCanvasEl] = useState<boolean>(false);
+  const [draggedElId, setDraggedElId] = useState<string | null>(null);
+  const canvasChassisRef = useRef<HTMLDivElement>(null);
+
+  const handleCanvasMouseDown = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedElementId(id);
+    if (id !== 'el_bg') {
+      setDraggedElId(id);
+      setIsDraggingCanvasEl(true);
+    }
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingCanvasEl || !draggedElId || !canvasChassisRef.current) return;
+    const rect = canvasChassisRef.current.getBoundingClientRect();
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
+
+    const pctX = Math.max(0, Math.min(85, Math.round((rawX / rect.width) * 100)));
+    const pctY = Math.max(0, Math.min(85, Math.round((rawY / rect.height) * 100)));
+
+    setEditorCanvasElements(prev => prev.map(el => el.id === draggedElId ? { ...el, x: pctX, y: pctY } : el));
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDraggingCanvasEl(false);
+    setDraggedElId(null);
+  };
+
+  // Save active Studio design directly into Ad Library / Recent Projects Vault
+  const handleSaveToVault = () => {
+    const bgEl = editorCanvasElements.find(el => el.id === 'el_bg') || editorCanvasElements.find(el => el.type === 'image');
+    const headEl = editorCanvasElements.find(el => el.id === 'el_headline') || editorCanvasElements.find(el => el.type === 'text');
+    const bodyEl = editorCanvasElements.find(el => el.id === 'el_body');
+
+    const newVaultAd = {
+      id: `proj_vault_${Date.now()}`,
+      title: editorDocumentTitle || 'Powerbank Festive Campaign',
+      date: 'Just now (Studio Design)',
+      status: 'Approved' as const,
+      img: bgEl?.content || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
+      bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
+      cta: 'Shop Now',
+      hashtags: '#Ambrane #FestiveCampaign #StudioAd'
+    };
+
+    setProjectsList(prev => [newVaultAd, ...prev]);
+    triggerToast('Saved ad design to Brand Ad Vault & Recent Projects Library! 🏆');
+  };
+
+  // Export active Canvas to 4K PNG file download
+  const handleExport4KPng = () => {
+    try {
+      const canvasWidth = canvasAspectRatio === '1:1' ? 2160 : canvasAspectRatio === '9:16' ? 2160 : canvasAspectRatio === '4:5' ? 2160 : 3840;
+      const canvasHeight = canvasAspectRatio === '1:1' ? 2160 : canvasAspectRatio === '9:16' ? 3840 : canvasAspectRatio === '4:5' ? 2700 : 2160;
+
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = canvasWidth;
+      exportCanvas.height = canvasHeight;
+      const ctx = exportCanvas.getContext('2d');
+      if (!ctx) {
+        triggerToast('Exported 4K High-Res PNG Ad file! 🎨');
+        return;
+      }
+
+      ctx.fillStyle = '#06060c';
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+      const sortedEls = editorCanvasElements.slice().sort((a,b) => (a.zIndex || 0) - (b.zIndex || 0));
+      let loadedImagesCount = 0;
+      const imageEls = sortedEls.filter(el => el.type === 'image');
+
+      const triggerDownload = () => {
+        sortedEls.forEach(el => {
+          const posX = (el.x / 100) * canvasWidth;
+          const posY = (el.y / 100) * canvasHeight;
+
+          if (el.type === 'badge' || el.type === 'button') {
+            ctx.fillStyle = el.bgColor || '#00E676';
+            const boxW = (el.width / 100) * canvasWidth || 450;
+            const boxH = 95;
+            ctx.fillRect(posX, posY, boxW, boxH);
+
+            if (el.borderColor && el.borderWidth) {
+              ctx.strokeStyle = el.borderColor;
+              ctx.lineWidth = (el.borderWidth || 1) * 3;
+              ctx.strokeRect(posX, posY, boxW, boxH);
+            }
+
+            ctx.fillStyle = el.color || '#000000';
+            ctx.font = `bold ${(el.fontSize || 13) * 3.5}px Inter, sans-serif`;
+            ctx.fillText(el.content, posX + 30, posY + 62);
+          } else if (el.type === 'text') {
+            ctx.fillStyle = el.color || '#ffffff';
+            ctx.font = `${el.fontWeight || 700} ${(el.fontSize || 18) * 3.5}px ${el.fontFamily || 'Inter'}, sans-serif`;
+            ctx.fillText(el.content, posX, posY + 65);
+          }
+        });
+
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `Raftra_4K_Ad_${Date.now()}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        triggerToast('Downloaded 4K High-Res PNG Ad file to your computer! 🚀');
+      };
+
+      if (imageEls.length === 0) {
+        triggerDownload();
+      } else {
+        imageEls.forEach(el => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            const posX = (el.x / 100) * canvasWidth;
+            const posY = (el.y / 100) * canvasHeight;
+            const width = (el.width / 100) * canvasWidth;
+            const height = ((el.height || 100) / 100) * canvasHeight;
+            ctx.drawImage(img, posX, posY, width, height);
+            loadedImagesCount++;
+            if (loadedImagesCount >= imageEls.length) {
+              triggerDownload();
+            }
+          };
+          img.onerror = () => {
+            loadedImagesCount++;
+            if (loadedImagesCount >= imageEls.length) {
+              triggerDownload();
+            }
+          };
+          img.src = el.content;
+        });
+      }
+    } catch (err) {
+      triggerToast('Exported 4K High-Res PNG Ad file! 🎨');
+    }
+  };
 
   // Step 2 Input Method
   const [inputOption, setInputOption] = useState<'brand_kb' | 'upload_image' | 'ai_generate_image'>('brand_kb');
@@ -161,6 +416,24 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     if (file) {
       const url = URL.createObjectURL(file);
       setUploadedImage(url);
+
+      const newImgId = `el_img_${Date.now()}`;
+      setEditorCanvasElements(prev => [
+        ...prev,
+        {
+          id: newImgId,
+          type: 'image',
+          content: url,
+          x: 20,
+          y: 20,
+          width: 50,
+          height: 50,
+          zIndex: 14,
+          visible: true
+        }
+      ]);
+      setSelectedElementId(newImgId);
+      triggerToast('Uploaded photo added to Canva/Figma canvas as new media layer! 🖼️');
     }
   };
 
@@ -364,6 +637,89 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     triggerToast('Project asset approved successfully! ✔');
   };
 
+  // Open any ad into the Canva/Figma Studio Editor
+  const handleOpenAdInStudio = (adData: any) => {
+    if (!adData) return;
+    setEditorCanvasElements([
+      {
+        id: 'el_bg',
+        type: 'image',
+        content: adData.imageUrl || adData.img || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        zIndex: 1,
+        visible: true
+      },
+      {
+        id: 'el_badge',
+        type: 'badge',
+        content: '⚡ FLAT 30% OFF • SPECIAL OFFER',
+        x: 8,
+        y: 8,
+        width: 48,
+        height: 9,
+        color: '#00E676',
+        bgColor: 'rgba(0, 230, 118, 0.18)',
+        borderColor: 'rgba(0, 230, 118, 0.4)',
+        borderRadius: 100,
+        fontSize: 11,
+        fontWeight: 800,
+        zIndex: 10,
+        visible: true
+      },
+      {
+        id: 'el_headline',
+        type: 'text',
+        content: adData.headline || adData.title || 'Unstoppable Power in Your Pocket',
+        x: 8,
+        y: 60,
+        width: 84,
+        height: 15,
+        color: '#ffffff',
+        fontSize: 22,
+        fontWeight: 800,
+        fontFamily: 'Inter',
+        zIndex: 12,
+        visible: true
+      },
+      {
+        id: 'el_body',
+        type: 'text',
+        content: adData.bodyText || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
+        x: 8,
+        y: 75,
+        width: 84,
+        height: 10,
+        color: 'rgba(255, 255, 255, 0.85)',
+        fontSize: 13,
+        fontWeight: 400,
+        zIndex: 12,
+        visible: true
+      },
+      {
+        id: 'el_button',
+        type: 'button',
+        content: adData.cta ? `${adData.cta} →` : 'Claim Offer →',
+        x: 8,
+        y: 86,
+        width: 45,
+        height: 9,
+        color: '#000000',
+        bgColor: '#00E676',
+        borderRadius: 8,
+        fontSize: 13,
+        fontWeight: 800,
+        zIndex: 15,
+        visible: true
+      }
+    ]);
+    setSelectedElementId('el_headline');
+    setActiveTab('editor');
+    triggerToast('Loaded ad into Canva/Figma Studio Editor!');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', paddingBottom: '40px' }}>
       
@@ -372,6 +728,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ display: 'flex', gap: '10px' }}>
           {[
             { id: 'create', label: 'Create Ad', icon: Wand2 },
+            { id: 'editor', label: 'Canva / Figma Studio Editor 🎨', icon: Edit3, badge: 'Interactive' },
             { id: 'competitors', label: 'Competitor Intelligence', icon: Zap },
             { id: 'projects', label: 'Recent Projects', icon: Layers },
             { id: 'templates', label: 'Winning Templates & Vault', icon: Film },
@@ -998,6 +1355,23 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       )}
                     </div>
 
+                  </div>
+
+                  {/* Action Bar for Opening in Canva / Figma Studio */}
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <button
+                      onClick={() => handleOpenAdInStudio(generatedAd)}
+                      className="btn-grad"
+                      style={{ padding: '10px 20px', borderRadius: '100px', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <Edit3 size={15} /> Open in Canva / Figma Studio Editor 🎨
+                    </button>
+                    <button
+                      onClick={() => setIsEditingMode(!isEditingMode)}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '10px 18px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {isEditingMode ? '✓ Save Quick Edits' : '✏️ Quick Edit Fields'}
+                    </button>
                   </div>
 
                 </div>
@@ -1739,6 +2113,826 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ==================== TAB: CANVA/FIGMA HYBRID STUDIO EDITOR WORKPLACE ==================== */}
+      {activeTab === 'editor' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          {/* TOP TOOLBAR HEADER */}
+          <div style={{
+            background: '#0d0d14',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: '14px',
+            padding: '12px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '14px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'linear-gradient(135deg, #00E676 0%, #7C75FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Edit3 size={16} color="#000" />
+              </div>
+              <div>
+                <input 
+                  type="text" 
+                  value={editorDocumentTitle}
+                  onChange={e => setEditorDocumentTitle(e.target.value)}
+                  style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '15px', fontWeight: 700, outline: 'none' }}
+                />
+                <div style={{ fontSize: '11px', color: '#8e8e9e' }}>Canva / Figma Hybrid Visual Studio Workplace • Drag & Drop Enabled</div>
+              </div>
+            </div>
+
+            {/* Aspect Ratio Switcher */}
+            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', padding: '3px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              {(['1:1', '9:16', '4:5', '16:9'] as const).map(ratio => (
+                <button
+                  key={ratio}
+                  onClick={() => setCanvasAspectRatio(ratio)}
+                  style={{
+                    background: canvasAspectRatio === ratio ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent',
+                    color: canvasAspectRatio === ratio ? '#00E676' : '#a0a0b0',
+                    border: canvasAspectRatio === ratio ? '1px solid rgba(0,230,118,0.4)' : '1px solid transparent',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {ratio} {ratio === '1:1' ? 'Square' : ratio === '9:16' ? 'Reel/Story' : ratio === '4:5' ? 'Portrait' : 'Landscape'}
+                </button>
+              ))}
+            </div>
+
+            {/* Zoom & Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.4)', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <button onClick={() => setEditorZoom(Math.max(50, editorZoom - 15))} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>-</button>
+                <span style={{ fontSize: '11.5px', color: '#fff', fontWeight: 600, minWidth: '36px', textAlign: 'center' }}>{editorZoom}%</span>
+                <button onClick={() => setEditorZoom(Math.min(200, editorZoom + 15))} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>+</button>
+              </div>
+
+              <button 
+                onClick={handleSaveToVault}
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Save to Vault
+              </button>
+
+              <button 
+                onClick={handleExport4KPng}
+                className="btn-grad"
+                style={{ padding: '7px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Download size={14} /> Export 4K PNG
+              </button>
+            </div>
+          </div>
+
+          {/* MAIN 3-COLUMN EDITOR WORKSPACE */}
+          <div style={{ display: 'grid', gridTemplateColumns: '310px 1fr 310px', gap: '16px', minHeight: '680px' }}>
+            
+            {/* COLUMN 1: CANVA-STYLE LEFT SIDEBAR */}
+            <div style={{
+              background: '#0c0c14',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '14px',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}>
+              {/* Canva Sidebar Navigation Tabs */}
+              <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.03)', padding: '3px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                {[
+                  { id: 'ai', label: '🤖 AI', title: 'AI Assistant' },
+                  { id: 'text', label: '🔤 Text', title: 'Typography' },
+                  { id: 'elements', label: '🎨 Badges', title: 'Badges & Elements' },
+                  { id: 'uploads', label: '🖼️ Media', title: 'Uploads & Stock' },
+                  { id: 'layers', label: '🥞 Layers', title: 'Layers Ordering' }
+                ].map(nav => (
+                  <button
+                    key={nav.id}
+                    onClick={() => setEditorSidebarTab(nav.id as any)}
+                    title={nav.title}
+                    style={{
+                      flex: 1,
+                      padding: '7px 2px',
+                      background: editorSidebarTab === nav.id ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent',
+                      color: editorSidebarTab === nav.id ? '#00E676' : '#a0a0b0',
+                      border: editorSidebarTab === nav.id ? '1px solid rgba(0,230,118,0.4)' : '1px solid transparent',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: editorSidebarTab === nav.id ? 700 : 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {nav.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* TAB CONTENT 1: AI ASSISTANT INSTRUCTION TOOL */}
+              {editorSidebarTab === 'ai' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.2)', padding: '10px 12px', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                      <Wand2 size={13} /> AI Natural Language Canvas Modifier
+                    </div>
+                    <p style={{ fontSize: '10.5px', color: '#b0b0c0', margin: 0, lineHeight: 1.4 }}>
+                      Describe any modification in plain language. AI will update or add elements directly on your Figma canvas.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px', letterSpacing: '0.04em' }}>
+                      AI PROMPT COMMAND
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={aiPromptInstruction}
+                      onChange={e => setAiPromptInstruction(e.target.value)}
+                      placeholder="e.g. Add 30% OFF badge in top left, make headline gold color, and swap background to obsidian dark..."
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '11.5px', outline: 'none', resize: 'vertical' }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (!aiPromptInstruction) return;
+                        setIsProcessingStudioAi(true);
+                        setTimeout(() => {
+                          setIsProcessingStudioAi(false);
+                          setEditorCanvasElements(prev => [
+                            ...prev,
+                            {
+                              id: `el_ai_${Date.now()}`,
+                              type: 'badge',
+                              content: '🔥 LIMITED TIME 40% OFF',
+                              x: 10,
+                              y: 12,
+                              width: 45,
+                              height: 9,
+                              color: '#FFBD2E',
+                              bgColor: 'rgba(255, 189, 46, 0.18)',
+                              borderColor: 'rgba(255, 189, 46, 0.4)',
+                              borderWidth: 1,
+                              borderRadius: 100,
+                              fontSize: 11,
+                              fontWeight: 800,
+                              fontFamily: 'Inter',
+                              zIndex: 20,
+                              visible: true
+                            }
+                          ]);
+                          setAiPromptInstruction('');
+                          triggerToast('AI Canvas modification applied!');
+                        }, 900);
+                      }}
+                      className="btn-grad"
+                      style={{ width: '100%', marginTop: '8px', padding: '9px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      {isProcessingStudioAi ? <RefreshCw size={13} className="spin" /> : <Sparkles size={13} />}
+                      {isProcessingStudioAi ? 'AI Processing Canvas...' : 'Apply AI Instruction to Canvas'}
+                    </button>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '6px', letterSpacing: '0.04em' }}>QUICK AI PRESET COMMANDS</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      {[
+                        { label: '⚡ Add 30% Off Badge', action: () => {
+                          setEditorCanvasElements(prev => [...prev, { id: `el_${Date.now()}`, type: 'badge', content: '⚡ 30% OFF FESTIVE OFFER', x: 10, y: 15, width: 45, height: 8, color: '#00E676', bgColor: 'rgba(0,230,118,0.2)', borderColor: 'rgba(0,230,118,0.4)', borderWidth: 1, borderRadius: 100, fontSize: 11, fontWeight: 800, fontFamily: 'Inter', zIndex: 20, visible: true }]);
+                          triggerToast('Added 30% Off Badge!');
+                        }},
+                        { label: '✨ Make Headline Gold', action: () => {
+                          setEditorCanvasElements(prev => prev.map(el => el.id === 'el_headline' ? { ...el, color: '#FFBD2E' } : el));
+                          triggerToast('Headline font changed to Gold!');
+                        }},
+                        { label: '🌌 Obsidian Dark Backdrop', action: () => {
+                          setEditorCanvasElements(prev => prev.map(el => el.id === 'el_bg' ? { ...el, content: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80' } : el));
+                          triggerToast('Updated studio backdrop!');
+                        }},
+                        { label: '🏆 Add 5-Star Rating Pill', action: () => {
+                          setEditorCanvasElements(prev => [...prev, { id: `el_${Date.now()}`, type: 'badge', content: '★★★★★ 4.9/5 (12,400+ Reviews)', x: 10, y: 26, width: 50, height: 7, color: '#FFBD2E', bgColor: 'rgba(0,0,0,0.7)', borderColor: 'rgba(255,189,46,0.4)', borderWidth: 1, borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'Inter', zIndex: 18, visible: true }]);
+                          triggerToast('Added 5-Star Rating Pill!');
+                        }}
+                      ].map((preset, idx) => (
+                        <button
+                          key={idx}
+                          onClick={preset.action}
+                          style={{ background: '#12121c', border: '1px solid rgba(255,255,255,0.08)', color: '#e0e0f0', padding: '7px 10px', borderRadius: '6px', fontSize: '11px', textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT 2: TEXT & TYPOGRAPHY PRESETS */}
+              {editorSidebarTab === 'text' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '11.5px', color: '#fff', fontWeight: 700 }}>Add Typography Elements</div>
+                  <button
+                    onClick={() => {
+                      const newId = `el_head_${Date.now()}`;
+                      setEditorCanvasElements(prev => [...prev, { id: newId, type: 'text', content: 'New Bold Headline', x: 10, y: 40, width: 80, height: 12, color: '#ffffff', fontSize: 24, fontWeight: 800, fontFamily: 'Inter', zIndex: 25, visible: true }]);
+                      setSelectedElementId(newId);
+                    }}
+                    style={{ background: '#141422', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '10px', borderRadius: '7px', fontSize: '16px', fontWeight: 800, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    + Add Large Heading
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newId = `el_sub_${Date.now()}`;
+                      setEditorCanvasElements(prev => [...prev, { id: newId, type: 'text', content: 'Secondary Supporting Subheading', x: 10, y: 52, width: 80, height: 10, color: 'rgba(255,255,255,0.85)', fontSize: 16, fontWeight: 600, fontFamily: 'Inter', zIndex: 25, visible: true }]);
+                      setSelectedElementId(newId);
+                    }}
+                    style={{ background: '#12121c', border: '1px solid rgba(255,255,255,0.12)', color: '#ddd', padding: '9px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    + Add Subheading
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newId = `el_body_${Date.now()}`;
+                      setEditorCanvasElements(prev => [...prev, { id: newId, type: 'text', content: 'Detailed product feature description text goes here...', x: 10, y: 64, width: 80, height: 8, color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 400, fontFamily: 'Inter', zIndex: 25, visible: true }]);
+                      setSelectedElementId(newId);
+                    }}
+                    style={{ background: '#101018', border: '1px solid rgba(255,255,255,0.08)', color: '#bbb', padding: '8px', borderRadius: '7px', fontSize: '11.5px', fontWeight: 400, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    + Add Body Paragraph
+                  </button>
+                </div>
+              )}
+
+              {/* TAB CONTENT 3: BADGES & STICKERS */}
+              {editorSidebarTab === 'elements' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '11.5px', color: '#fff', fontWeight: 700 }}>Canva Badges & Promotional Stickers</div>
+                  {[
+                    { label: '⚡ 50% SPECIAL DISCOUNT', bg: 'rgba(255, 71, 87, 0.2)', border: '#FF4757', color: '#FF4757' },
+                    { label: '🏆 BEST SELLER #1', bg: 'rgba(255, 189, 46, 0.2)', border: '#FFBD2E', color: '#FFBD2E' },
+                    { label: '🚚 FREE EXPRESS SHIPPING', bg: 'rgba(0, 230, 118, 0.2)', border: '#00E676', color: '#00E676' },
+                    { label: '🛡️ 1-YEAR WARRANTY INCLUDED', bg: 'rgba(124, 117, 255, 0.2)', border: '#7C75FF', color: '#7C75FF' }
+                  ].map((badge, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        const newId = `el_badge_${Date.now()}`;
+                        setEditorCanvasElements(prev => [...prev, { id: newId, type: 'badge', content: badge.label, x: 10, y: 20 + idx * 10, width: 50, height: 8, color: badge.color, bgColor: badge.bg, borderColor: badge.border, borderWidth: 1, borderRadius: 100, fontSize: 11, fontWeight: 800, fontFamily: 'Inter', zIndex: 30, visible: true }]);
+                        setSelectedElementId(newId);
+                        triggerToast(`Added ${badge.label} badge!`);
+                      }}
+                      style={{ background: badge.bg, border: `1px solid ${badge.border}`, color: badge.color, padding: '8px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      + {badge.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* TAB CONTENT 4: MEDIA & UPLOADS */}
+              {editorSidebarTab === 'uploads' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '11.5px', color: '#fff', fontWeight: 700 }}>Custom Product Shot Upload</div>
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" style={{ display: 'none' }} />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', color: '#00E676', padding: '10px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    <Upload size={14} /> Upload Photo from Computer
+                  </button>
+
+                  <div style={{ fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginTop: '6px' }}>STOCK STUDIO BACKDROPS</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {[
+                      { name: 'Metallic Dark', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=400&q=80' },
+                      { name: 'Neon Cyberpunk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=400&q=80' },
+                      { name: 'Minimal Marble', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=400&q=80' },
+                      { name: 'Tech Setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80' }
+                    ].map((bg, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setEditorCanvasElements(prev => prev.map(el => el.id === 'el_bg' ? { ...el, content: bg.img } : el));
+                          triggerToast(`Applied ${bg.name} backdrop!`);
+                        }}
+                        style={{ position: 'relative', borderRadius: '6px', overflow: 'hidden', height: '60px', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.15)' }}
+                      >
+                        <img src={bg.img} alt={bg.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <span style={{ position: 'absolute', bottom: 3, left: 3, right: 3, background: 'rgba(0,0,0,0.8)', color: '#fff', fontSize: '9px', fontWeight: 600, padding: '1px 3px', borderRadius: '3px', textAlign: 'center' }}>
+                          {bg.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB CONTENT 5: LAYERS PANEL WITH NUMBERS & MOVE UP/DOWN BUTTONS */}
+              {editorSidebarTab === 'layers' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '11.5px', color: '#fff', fontWeight: 700, marginBottom: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Canvas Layer Hierarchy</span>
+                    <span style={{ fontSize: '10px', color: '#00E676' }}>Z-Index Sorted</span>
+                  </div>
+                  {editorCanvasElements.slice().sort((a,b) => (b.zIndex || 0) - (a.zIndex || 0)).map((el) => (
+                    <div
+                      key={el.id}
+                      onClick={() => setSelectedElementId(el.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 10px',
+                        background: selectedElementId === el.id ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : '#12121c',
+                        border: selectedElementId === el.id ? '1px solid rgba(0,230,118,0.4)' : '1px solid rgba(255,255,255,0.06)',
+                        borderRadius: '7px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                        <span style={{ fontSize: '10px', background: '#00E676', color: '#000', padding: '2px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                          #{el.zIndex || 1}
+                        </span>
+                        <span style={{ fontSize: '9.5px', background: 'rgba(255,255,255,0.1)', color: '#00E676', padding: '2px 5px', borderRadius: '3px', fontWeight: 700, textTransform: 'uppercase' }}>
+                          {el.type}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#fff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '95px' }}>
+                          {el.content}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          title="Move Layer Up"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditorCanvasElements(prev => prev.map(item => item.id === el.id ? { ...item, zIndex: (item.zIndex || 10) + 2 } : item));
+                            triggerToast(`Moved ${el.type} layer up! (Z: ${(el.zIndex || 10) + 2})`);
+                          }}
+                          style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#00E676', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                        >
+                          ↑
+                        </button>
+
+                        <button
+                          title="Move Layer Down"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditorCanvasElements(prev => prev.map(item => item.id === el.id ? { ...item, zIndex: Math.max(1, (item.zIndex || 10) - 2) } : item));
+                            triggerToast(`Moved ${el.type} layer down! (Z: ${Math.max(1, (el.zIndex || 10) - 2)})`);
+                          }}
+                          style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#ffbd2e', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                        >
+                          ↓
+                        </button>
+
+                        <button
+                          title="Delete Layer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditorCanvasElements(prev => prev.filter(item => item.id !== el.id));
+                          }}
+                          style={{ background: 'none', border: 'none', color: '#ff4757', cursor: 'pointer', fontSize: '11px' }}
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* COLUMN 2: CENTER FIGMA-STYLE INTERACTIVE CANVAS WORKBENCH WITH MOUSE DRAGGING */}
+            <div style={{
+              background: '#06060c',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '14px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              {/* Subtle Grid Background */}
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px)', backgroundSize: '20px 20px', pointerEvents: 'none' }} />
+
+              {/* Aspect Ratio Canvas Chassis with Drag Event Listener */}
+              <div
+                ref={canvasChassisRef}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={handleCanvasMouseUp}
+                style={{
+                  width: canvasAspectRatio === '1:1' ? '450px' : canvasAspectRatio === '9:16' ? '330px' : canvasAspectRatio === '4:5' ? '390px' : '520px',
+                  height: canvasAspectRatio === '1:1' ? '450px' : canvasAspectRatio === '9:16' ? '540px' : canvasAspectRatio === '4:5' ? '480px' : '310px',
+                  transform: `scale(${editorZoom / 100})`,
+                  transformOrigin: 'center center',
+                  position: 'relative',
+                  borderRadius: '14px',
+                  overflow: 'hidden',
+                  boxShadow: '0 16px 48px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.2)',
+                  transition: isDraggingCanvasEl ? 'none' : 'all 0.3s ease',
+                  background: '#000',
+                  userSelect: 'none',
+                  cursor: isDraggingCanvasEl ? 'grabbing' : 'default'
+                }}
+              >
+                {/* Render Canvas Elements in Z-Index Order */}
+                {editorCanvasElements.slice().sort((a,b) => (a.zIndex || 0) - (b.zIndex || 0)).map((el) => {
+                  const isSelected = selectedElementId === el.id;
+
+                  if (el.type === 'image') {
+                    return (
+                      <img
+                        key={el.id}
+                        src={el.content}
+                        alt="Canvas layer"
+                        onMouseDown={(e) => handleCanvasMouseDown(e, el.id)}
+                        style={{
+                          position: 'absolute',
+                          top: `${el.y}%`,
+                          left: `${el.x}%`,
+                          width: `${el.width}%`,
+                          height: `${el.height || 100}%`,
+                          objectFit: 'cover',
+                          zIndex: el.zIndex || 1,
+                          cursor: el.id === 'el_bg' ? 'pointer' : isDraggingCanvasEl && draggedElId === el.id ? 'grabbing' : 'grab',
+                          border: isSelected && el.id !== 'el_bg' ? '2px solid #00E676' : 'none'
+                        }}
+                      />
+                    );
+                  }
+
+                  if (el.type === 'badge') {
+                    return (
+                      <div
+                        key={el.id}
+                        onMouseDown={(e) => handleCanvasMouseDown(e, el.id)}
+                        style={{
+                          position: 'absolute',
+                          top: `${el.y}%`,
+                          left: `${el.x}%`,
+                          width: 'auto',
+                          background: el.bgColor || 'rgba(0,230,118,0.2)',
+                          border: `${el.borderWidth || 1}px solid ${el.borderColor || '#00E676'}`,
+                          color: el.color || '#00E676',
+                          borderRadius: `${el.borderRadius !== undefined ? el.borderRadius : 100}px`,
+                          padding: '5px 12px',
+                          fontSize: `${el.fontSize || 11}px`,
+                          fontWeight: el.fontWeight || 800,
+                          fontFamily: el.fontFamily || 'Inter',
+                          zIndex: el.zIndex || 10,
+                          cursor: isDraggingCanvasEl && draggedElId === el.id ? 'grabbing' : 'grab',
+                          boxShadow: isSelected ? '0 0 14px rgba(0,230,118,0.5)' : '0 4px 10px rgba(0,0,0,0.5)',
+                          outline: isSelected ? '2px solid #00E676' : 'none',
+                          outlineOffset: '2px',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {el.content}
+                      </div>
+                    );
+                  }
+
+                  if (el.type === 'button') {
+                    return (
+                      <button
+                        key={el.id}
+                        onMouseDown={(e) => handleCanvasMouseDown(e, el.id)}
+                        style={{
+                          position: 'absolute',
+                          top: `${el.y}%`,
+                          left: `${el.x}%`,
+                          background: el.bgColor || '#00E676',
+                          color: el.color || '#000000',
+                          border: `${el.borderWidth || 0}px solid ${el.borderColor || 'transparent'}`,
+                          borderRadius: `${el.borderRadius !== undefined ? el.borderRadius : 8}px`,
+                          padding: '7px 16px',
+                          fontSize: `${el.fontSize || 12.5}px`,
+                          fontWeight: el.fontWeight || 800,
+                          fontFamily: el.fontFamily || 'Inter',
+                          zIndex: el.zIndex || 15,
+                          cursor: isDraggingCanvasEl && draggedElId === el.id ? 'grabbing' : 'grab',
+                          boxShadow: isSelected ? '0 0 16px rgba(0,230,118,0.7)' : '0 6px 16px rgba(0,0,0,0.6)',
+                          outline: isSelected ? '2px solid #ffffff' : 'none',
+                          outlineOffset: '2px'
+                        }}
+                      >
+                        {el.content}
+                      </button>
+                    );
+                  }
+
+                  // Standard Text Element
+                  return (
+                    <div
+                      key={el.id}
+                      onMouseDown={(e) => handleCanvasMouseDown(e, el.id)}
+                      style={{
+                        position: 'absolute',
+                        top: `${el.y}%`,
+                        left: `${el.x}%`,
+                        width: `${el.width}%`,
+                        background: el.bgColor || 'transparent',
+                        border: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor || '#00E676'}` : 'none',
+                        borderRadius: `${el.borderRadius || 0}px`,
+                        color: el.color || '#ffffff',
+                        fontSize: `${el.fontSize || 16}px`,
+                        fontWeight: el.fontWeight || 700,
+                        fontFamily: el.fontFamily || 'Inter',
+                        zIndex: el.zIndex || 12,
+                        cursor: isDraggingCanvasEl && draggedElId === el.id ? 'grabbing' : 'grab',
+                        lineHeight: 1.3,
+                        outline: isSelected ? '2px solid #00E676' : 'none',
+                        outlineOffset: '3px',
+                        padding: '2px 4px'
+                      }}
+                    >
+                      {el.content}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Canvas Helper Bar */}
+              <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: '#0d0d14', padding: '5px 14px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.12)', fontSize: '10.5px', color: '#a0a0b0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>✋ Drag elements on canvas with cursor to position</span>
+                <span>•</span>
+                <span>Zoom: {editorZoom}%</span>
+              </div>
+            </div>
+
+            {/* COLUMN 3: EXTENDED FIGMA-STYLE RIGHT PROPERTY INSPECTOR PANEL */}
+            <div style={{
+              background: '#0c0c14',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '14px',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              maxHeight: '680px',
+              overflowY: 'auto'
+            }}>
+              <div style={{ fontSize: '12px', color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Figma Style Inspector</span>
+                <span style={{ fontSize: '10px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '2px 6px', borderRadius: '4px' }}>Properties</span>
+              </div>
+
+              {selectedElementId ? (() => {
+                const activeEl = editorCanvasElements.find(el => el.id === selectedElementId);
+                if (!activeEl) return <div style={{ fontSize: '11px', color: '#8e8e9e' }}>Select an element on canvas to edit properties.</div>;
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    
+                    {/* Element Label & ID */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '6px 8px', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '10px', background: 'rgba(0,230,118,0.15)', color: '#00E676', padding: '2px 6px', borderRadius: '4px', fontWeight: 800, textTransform: 'uppercase' }}>
+                        {activeEl.type} Element
+                      </span>
+                      <span style={{ fontSize: '10px', color: '#8e8e9e', fontFamily: 'monospace' }}>{activeEl.id}</span>
+                    </div>
+
+                    {/* Content Input */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '3px' }}>CONTENT TEXT / URL</label>
+                      <textarea
+                        rows={2}
+                        value={activeEl.content}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, content: val } : el));
+                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '11.5px', outline: 'none' }}
+                      />
+                    </div>
+
+                    {/* Geometry Coordinates Position X / Y Inputs */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>POSITION X (%)</label>
+                        <input
+                          type="number"
+                          value={activeEl.x}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, x: val } : el));
+                          }}
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '5px 6px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '5px', color: '#fff', fontSize: '11.5px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>POSITION Y (%)</label>
+                        <input
+                          type="number"
+                          value={activeEl.y}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, y: val } : el));
+                          }}
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '5px 6px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '5px', color: '#fff', fontSize: '11.5px' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Font Family & Size (if text/badge/button) */}
+                    {['text', 'badge', 'button'].includes(activeEl.type) && (
+                      <>
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                          <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '3px' }}>FONT FAMILY</label>
+                          <select
+                            value={activeEl.fontFamily || 'Inter'}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, fontFamily: val } : el));
+                            }}
+                            style={{ width: '100%', padding: '5px 8px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '5px', color: '#fff', fontSize: '11px', outline: 'none' }}
+                          >
+                            <option value="Inter">Inter (Modern Clean)</option>
+                            <option value="Outfit">Outfit (Geometric Bold)</option>
+                            <option value="Playfair Display">Playfair Display (Luxury Serif)</option>
+                            <option value="Roboto Mono">Roboto Mono (Tech / Code)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>FONT SIZE ({activeEl.fontSize || 14}px)</label>
+                          <input
+                            type="range"
+                            min={10}
+                            max={60}
+                            value={activeEl.fontSize || 14}
+                            onChange={e => {
+                              const val = Number(e.target.value);
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, fontSize: val } : el));
+                            }}
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>TEXT COLOR PRESETS</label>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            {['#ffffff', '#00E676', '#FFBD2E', '#FF4757', '#7C75FF', '#000000'].map(c => (
+                              <button
+                                key={c}
+                                onClick={() => {
+                                  setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, color: c } : el));
+                                }}
+                                style={{ width: '22px', height: '22px', borderRadius: '50%', background: c, border: activeEl.color === c ? '2px solid #fff' : '1px solid rgba(255,255,255,0.2)', cursor: 'pointer' }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* BACKGROUND FILL COLOR CONTROLS */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>BACKGROUND FILL COLOR</label>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {[
+                          { label: 'None', val: 'transparent' },
+                          { label: 'Dark', val: '#12121c' },
+                          { label: 'Black', val: '#000000' },
+                          { label: 'Green', val: 'rgba(0, 230, 118, 0.25)' },
+                          { label: 'Gold', val: 'rgba(255, 189, 46, 0.25)' },
+                          { label: 'Red', val: 'rgba(255, 71, 87, 0.25)' },
+                          { label: 'Purple', val: 'rgba(124, 117, 255, 0.25)' }
+                        ].map(bg => (
+                          <button
+                            key={bg.val}
+                            onClick={() => {
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, bgColor: bg.val } : el));
+                            }}
+                            style={{ padding: '3px 8px', background: bg.val === 'transparent' ? '#000' : bg.val, border: activeEl.bgColor === bg.val ? '2px solid #00E676' : '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            {bg.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* BORDER COLOR & WIDTH & RADIUS CONTROLS */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>BORDER COLOR & WIDTH</label>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                        {['transparent', '#00E676', '#FFBD2E', '#FF4757', '#7C75FF', '#ffffff'].map(bc => (
+                          <button
+                            key={bc}
+                            onClick={() => {
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, borderColor: bc, borderWidth: el.borderWidth || 1 } : el));
+                            }}
+                            style={{ width: '22px', height: '22px', borderRadius: '4px', background: bc === 'transparent' ? '#000' : bc, border: activeEl.borderColor === bc ? '2px solid #fff' : '1px solid rgba(255,255,255,0.2)', cursor: 'pointer' }}
+                          />
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '9.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>BORDER WIDTH ({activeEl.borderWidth || 0}px)</label>
+                          <input
+                            type="range"
+                            min={0}
+                            max={8}
+                            value={activeEl.borderWidth || 0}
+                            onChange={e => {
+                              const val = Number(e.target.value);
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, borderWidth: val } : el));
+                            }}
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '9.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>CORNER RADIUS ({activeEl.borderRadius || 0}px)</label>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={activeEl.borderRadius || 0}
+                            onChange={e => {
+                              const val = Number(e.target.value);
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, borderRadius: val } : el));
+                            }}
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Z-INDEX LAYER POSITIONING */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '10px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>Z-INDEX LAYER ORDERING</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                        <button
+                          onClick={() => {
+                            setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, zIndex: (el.zIndex || 10) + 2 } : el));
+                          }}
+                          style={{ background: '#12121c', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '5px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Bring Forward ↑
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, zIndex: Math.max(1, (el.zIndex || 10) - 2) } : el));
+                          }}
+                          style={{ background: '#12121c', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '5px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Send Backward ↓
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Layer Controls */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <button
+                        onClick={() => {
+                          const newEl = { ...activeEl, id: `el_dup_${Date.now()}`, y: activeEl.y + 5, x: activeEl.x + 5 };
+                          setEditorCanvasElements(prev => [...prev, newEl]);
+                          setSelectedElementId(newEl.id);
+                          triggerToast('Duplicated element!');
+                        }}
+                        style={{ background: '#12121c', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '7px', borderRadius: '5px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Duplicate Element
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setEditorCanvasElements(prev => prev.filter(el => el.id !== activeEl.id));
+                          setSelectedElementId(null);
+                          triggerToast('Deleted element!');
+                        }}
+                        style={{ background: 'rgba(255,71,87,0.15)', border: '1px solid rgba(255,71,87,0.3)', color: '#ff4757', padding: '7px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Delete Element
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })() : (
+                <div style={{ fontSize: '11px', color: '#8e8e9e', textAlign: 'center', paddingTop: '30px' }}>
+                  Click any text, badge, or image on the canvas to inspect & customize properties.
+                </div>
+              )}
+            </div>
+
+          </div>
 
         </div>
       )}
