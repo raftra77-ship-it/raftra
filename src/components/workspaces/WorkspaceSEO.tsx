@@ -1,6 +1,243 @@
-import React, { useState } from 'react';
-import { Globe, Check, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Globe, Check, ExternalLink, TrendingUp, ChevronDown, GitBranch, ShoppingBag, PenSquare } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
+import { GitHubPanel } from './GitHubPanel';
+import { ShopifyPanel } from './ShopifyPanel';
+import { WordPressPanel } from './WordPressPanel';
+import { SearchConsolePanel } from './SearchConsolePanel';
+import { GA4Panel } from './GA4Panel';
+import { SEOAgencyReportModal, type RunStatus } from '../SEOAgencyReportModal';
+
+function authHeaders(): Record<string, string> {
+  const t = localStorage.getItem('token');
+  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+const IDLE_RUN: RunStatus = { status: 'idle', running: false, stages: [], stages_done: [], current_stage: null, started_at: null, target_url: null };
+
+// Polls run-status continuously (fast while running, slow otherwise) so the report reflects
+// the real backend state — including a run started from another tab.
+function useRunStatus(workspaceId: number | null | undefined, pipeline: 'SEO' | 'GEO'): [RunStatus, () => void] {
+  const [status, setStatus] = useState<RunStatus>(IDLE_RUN);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = () => {
+      fetch(`/api/workspaces/${workspaceId}/seo/run-status?pipeline=${pipeline}`, { headers: authHeaders() })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (!alive) return;
+          if (d) setStatus(d);
+          const delay = d && (d.status === 'running' || d.status === 'queued') ? 2500 : 8000;
+          timer = setTimeout(poll, delay);
+        })
+        .catch(() => { if (alive) timer = setTimeout(poll, 6000); });
+    };
+    poll();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [workspaceId, pipeline, nonce]);
+
+  return [status, () => setNonce(n => n + 1)];
+}
+
+// Month-over-month comparison card — reads the /seo/comparison endpoint and shows the deltas
+// between the two most recent runs (the "monthly analysis" view).
+const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    setLoading(true);
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/seo/comparison?pipeline=SEO`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setData(d))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [workspaceId]);
+
+  if (!workspaceId) return null;
+
+  const arrow = (dir?: string) =>
+    dir === 'improved' ? { s: '▲', c: '#00ff9d' } :
+    dir === 'worsened' ? { s: '▼', c: '#ff5c5c' } : { s: '–', c: 'var(--text-muted)' };
+  const disp = (v: any) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : (v ?? '—'));
+
+  return (
+    <div className="glow-card">
+      <h3 style={{ fontSize: '16px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Month-over-Month Change (SEO)
+      </h3>
+      {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>}
+      {!loading && (!data || data.runs_available === 0) && (
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+          No runs yet — run the SEO pipeline to start building history.
+        </p>
+      )}
+      {!loading && data && data.runs_available === 1 && (
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+          First run recorded. The comparison appears automatically after the next run.
+        </p>
+      )}
+      {!loading && data && data.runs_available > 1 && (
+        <>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            {new Date(data.previous_run.date).toLocaleDateString()} → {new Date(data.current_run.date).toLocaleDateString()}
+            {'  ·  Score '}{data.previous_run.score} → <b style={{ color: '#fff' }}>{data.current_run.score}</b>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {data.changes.map((c: any) => {
+              const a = arrow(c.direction);
+              return (
+                <div key={c.metric} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{c.metric}</span>
+                  <span style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{disp(c.previous)} → {disp(c.current)}</span>
+                    <span style={{ color: a.c, fontWeight: 600, minWidth: '48px', textAlign: 'right' }}>
+                      {a.s}{typeof c.delta === 'number' ? ` ${c.delta > 0 ? '+' : ''}${c.delta}` : ''}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Explainer beside the Integration panel, so the audit column doesn't feel empty.
+const ExplainerCard: React.FC = () => {
+  const steps = [
+    { n: 1, t: 'Run the pipeline', d: 'We crawl your live site and audit it for Google SEO + AI search (GEO).' },
+    { n: 2, t: 'Real, measured fixes', d: 'Every suggestion comes from your actual page — nothing is invented.' },
+    { n: 3, t: 'Human review', d: 'Approve, edit, or reject each suggestion below. Nothing auto-applies.' },
+    { n: 4, t: 'Make the changes', d: 'Open GitHub / Shopify / WordPress on the right and apply the approved fixes.' },
+    { n: 5, t: 'Re-run & track', d: 'Deploy, then re-run to watch your scores improve over time.' },
+  ];
+  return (
+    <div className="glow-card">
+      <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Globe size={16} style={{ color: '#00ff9d' }} /> How SEO + GEO works here
+      </h3>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 16px' }}>
+        The workflow, from audit to live changes.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {steps.map(s => (
+          <div key={s.n} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <span style={{ flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.35)', color: '#00ff9d', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
+            <span>
+              <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600, color: '#fff' }}>{s.t}</span>
+              <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{s.d}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Compact status-only summary of every platform connection. Full connect/manage controls
+// live on the Integrations page (sidebar) — this card exists so the user always sees, at a
+// glance, why GitHub/WordPress/Shopify/Search Console/Analytics matter here, without the
+// full connector UI crowding the main SEO page.
+const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIntegrations?: () => void }> = ({ workspaceId, onManageIntegrations }) => {
+  const [st, setSt] = useState<{ gh?: any; wp?: any; sh?: any; gsc?: any }>({});
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    const h: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const get = (url: string) => fetch(url, { headers: h }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    Promise.all([
+      get(`/api/connectors/github/${workspaceId}/status`),
+      get(`/api/connectors/wordpress/${workspaceId}/status`),
+      get(`/api/connectors/shopify/${workspaceId}/status`),
+      get(`/api/connectors/search-console/${workspaceId}/status`),
+    ]).then(([gh, wp, sh, gsc]) => setSt({ gh, wp, sh, gsc }));
+  }, [workspaceId]);
+
+  const rows = [
+    { key: 'gh', name: 'GitHub', Icon: GitBranch, connected: !!st.gh?.connected },
+    { key: 'wp', name: 'WordPress', Icon: PenSquare, connected: !!st.wp?.connected },
+    { key: 'sh', name: 'Shopify', Icon: ShoppingBag, connected: !!st.sh?.connected },
+    { key: 'gsc', name: 'Google Search Console', Icon: Globe, connected: !!st.gsc?.connected },
+    { key: 'ga4', name: 'Google Analytics', Icon: TrendingUp, connected: !!(st.gsc?.connected && st.gsc?.ga4_property_id) },
+  ];
+
+  const badge = (connected: boolean) => (
+    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap',
+      color: connected ? '#00ff9d' : 'var(--text-secondary)', background: connected ? 'rgba(0,255,157,0.1)' : 'rgba(255,255,255,0.05)',
+      border: `1px solid ${connected ? 'rgba(0,255,157,0.35)' : 'var(--border-color)'}` }}>
+      {connected ? 'Connected' : 'Not Connected'}
+    </span>
+  );
+
+  return (
+    <div className="glow-card">
+      <h3 style={{ fontSize: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <ExternalLink size={16} style={{ color: '#00ff9d' }} /> Connected Platforms
+      </h3>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+        These are the platforms used to pull real data and apply approved fixes.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {rows.map(({ key, name, Icon, connected }) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '9px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
+              <Icon size={14} style={{ color: connected ? '#00ff9d' : 'var(--text-muted)', flexShrink: 0 }} />
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+            </span>
+            {badge(connected)}
+          </div>
+        ))}
+      </div>
+
+      <button onClick={onManageIntegrations}
+        style={{ width: '100%', marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', cursor: 'pointer' }}>
+        <ExternalLink size={14} /> Manage Integrations
+      </button>
+    </div>
+  );
+};
+
+// The "connect your website & data" hub — reuses the already-built connector panels, each of
+// which shows its own connect / "keys missing" placeholder state.
+const ConnectSection: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
+  const [open, setOpen] = useState(true);
+  const wid = workspaceId ?? null;
+  return (
+    <div className="glow-card">
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 0, color: '#fff' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', fontWeight: 600 }}>
+          <Globe size={16} style={{ color: '#00ff9d' }} /> Connect your website &amp; data sources
+        </span>
+        <ChevronDown size={18} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', color: 'var(--text-secondary)' }} />
+      </button>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '6px 0 0' }}>
+        Publish approved changes to your site, and pull in real Google rankings + traffic. Connect what you have — the rest stay as placeholders until keys are added.
+      </p>
+      {open && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginTop: '16px' }}>
+          <GitHubPanel workspaceId={wid} />
+          <ShopifyPanel workspaceId={wid} />
+          <WordPressPanel workspaceId={wid} />
+          <SearchConsolePanel workspaceId={wid} />
+          <GA4Panel workspaceId={wid} />
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface BlogDraft {
   id: string;
@@ -11,26 +248,84 @@ interface BlogDraft {
 }
 
 interface WorkspaceSEOProps {
-  blogs: BlogDraft[];
-  onOpenReview: (itemId: string) => void;
+  blogs?: BlogDraft[];
+  onOpenReview?: (itemId: string) => void;
   seoAgent?: any;
   geoAgent?: any;
-  onTriggerSEO: (url: string) => void;
-  onTriggerGEO: (url: string) => void;
+  onTriggerSEO?: (url: string) => void;
+  onTriggerGEO?: (url: string) => void;
+  workspaceId?: number | null;
+  siteUrl?: string; // the website already connected to this workspace (from onboarding) — audits target this by default, not a placeholder
+  onManageIntegrations?: () => void; // navigates to the sidebar's Integrations tab
 }
 
-export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview, seoAgent, geoAgent, onTriggerSEO, onTriggerGEO }) => {
-  const [targetUrl, setTargetUrl] = useState('https://example.com');
-  const [rankings] = useState([
-    { engine: 'Google Search index', score: 82, trend: '+4%' },
-    { engine: 'ChatGPT / OpenAI index', score: 68, trend: '+12%' },
-    { engine: 'Claude AI Citation Graph', score: 71, trend: '+2%' },
-    { engine: 'Gemini Search Citation', score: 59, trend: '+8%' },
-    { engine: 'Perplexity Engine Citation', score: 64, trend: '+15%' },
-  ]);
+export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl, onManageIntegrations }) => {
+  const [targetUrl, setTargetUrl] = useState('');
+  const [urlEditedByUser, setUrlEditedByUser] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  // Default the audit target to the site already connected to this workspace — siteUrl
+  // arrives asynchronously (brand profile fetch), so pick it up once it loads. Never
+  // overwrite a URL the user has deliberately typed themselves.
+  useEffect(() => {
+    if (!siteUrl || urlEditedByUser) return;
+    const normalized = /^https?:\/\//i.test(siteUrl) ? siteUrl : `https://${siteUrl}`;
+    setTargetUrl(normalized);
+  }, [siteUrl, urlEditedByUser]);
+  const [toast, setToast] = useState<{ msg: string; pipeline?: 'SEO' | 'GEO' } | null>(null);
+
+  // Real connector status (already-existing endpoint) — used only to show a status badge
+  // on the audit report. Future audits will combine this data with Firecrawl + SEO
+  // analysis; for now this is a badge only, nothing extra is fetched.
+  const [gscConnected, setGscConnected] = useState(false);
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch(`/api/connectors/search-console/${workspaceId}/status`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null)).then(d => setGscConnected(!!d?.connected)).catch(() => {});
+  }, [workspaceId]);
+
+  // One live run-status per pipeline — the single source of truth for both the pipeline
+  // graph highlighting below and the combined report modal. SEO and GEO stay two fully
+  // independent pipelines (separate trigger, separate single-flight state, separate
+  // scoring) but always render into the ONE report modal — never a second report.
+  const [seoRun, refreshSeoRun] = useRunStatus(workspaceId, 'SEO');
+  const [geoRun, refreshGeoRun] = useRunStatus(workspaceId, 'GEO');
+  const seoRunning = seoRun.status === 'running' || seoRun.status === 'queued';
+  const geoRunning = geoRun.status === 'running' || geoRun.status === 'queued';
+
+  const flash = (msg: string, ok = true) => { if (!ok) setToast({ msg }); };
+
+  const triggerPipeline = async (pipeline: 'SEO' | 'GEO', url: string) => {
+    if (!url.trim()) return;
+    try {
+      const r = await fetch(`/api/agents/${workspaceId}/${pipeline.toLowerCase()}`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),
+      });
+      if (r.ok) {
+        (pipeline === 'SEO' ? refreshSeoRun : refreshGeoRun)();
+        setReportOpen(true); // the report updates live instead of the user having to go find it
+      } else if (r.status === 409) {
+        setToast({ msg: 'An audit is already running for this website.', pipeline });
+        (pipeline === 'SEO' ? refreshSeoRun : refreshGeoRun)();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        setToast({ msg: d.detail || 'Could not start the audit.' });
+      }
+    } catch { setToast({ msg: 'Could not start the audit.' }); }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+      {toast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 7000, display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(24,26,34,0.98)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '10px', padding: '13px 16px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', maxWidth: '360px' }}>
+          <span style={{ fontSize: '13px', color: '#fff', flex: 1 }}>{toast.msg}</span>
+          {toast.pipeline && (
+            <button onClick={() => { setToast(null); setReportOpen(true); }} style={{ fontSize: '12px', fontWeight: 700, color: '#ffae00', background: 'rgba(255,174,0,0.1)', border: '1px solid rgba(255,174,0,0.4)', borderRadius: '7px', padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap' }}>View Running Audit</button>
+          )}
+          <button onClick={() => setToast(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0, fontSize: '14px' }}>✕</button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>SEO + GEO/AEO Dominance</h2>
@@ -39,20 +334,26 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={targetUrl}
-            onChange={(e) => setTargetUrl(e.target.value)}
+            onChange={(e) => { setTargetUrl(e.target.value); setUrlEditedByUser(true); }}
             placeholder="Target URL..."
             style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px', width: '200px' }}
           />
-          <GlowButton variant="glow" onClick={() => onTriggerSEO(targetUrl)}>
-            Run SEO Pipeline
+          <button onClick={() => setReportOpen(true)}
+            style={{ fontSize: '12.5px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 15px', cursor: 'pointer' }}>
+            View Report
+          </button>
+          <GlowButton variant="glow" disabled={seoRunning}
+            onClick={() => seoRunning ? setToast({ msg: 'An audit is already running for this website.', pipeline: 'SEO' }) : triggerPipeline('SEO', targetUrl)}
+            style={seoRunning ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+            {seoRunning ? 'SEO Running…' : 'Run SEO Pipeline'}
           </GlowButton>
         </div>
       </div>
 
-      {/* SEO & GEO Pipelines */}
+      {/* SEO & GEO Pipelines — clicking any node opens/focuses the one combined report below */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '10px' }}>
         {/* SEO Pipeline */}
         <div className="glow-card" style={{ padding: '20px', background: 'rgba(0, 255, 157, 0.01)', border: '1px solid rgba(0, 255, 157, 0.08)' }}>
@@ -71,12 +372,13 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
               'Publishing Agent',
               'Reporting Agent'
             ].map((node, idx, arr) => {
-              const isActive = seoAgent?.task?.includes(node);
-              const isCompleted = seoAgent?.result === 'COMPLETED' || (seoAgent?.task && !isActive && arr.indexOf(seoAgent.task.replace('Running Node: ', '')) > idx);
+              const isActive = seoRunning && seoRun.current_stage === node;
+              const isCompleted = seoRun.stages_done.includes(node);
 
               return (
               <div key={node} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{
+                <div onClick={() => setReportOpen(true)} style={{
+                  cursor: 'pointer',
                   background: isActive ? 'rgba(0, 255, 157, 0.2)' : isCompleted ? 'rgba(0, 255, 157, 0.05)' : 'rgba(255, 255, 255, 0.02)',
                   border: isActive ? '1px solid var(--success)' : isCompleted ? '1px solid rgba(0, 255, 157, 0.5)' : '1px solid var(--border-color)',
                   borderRadius: '4px',
@@ -106,8 +408,10 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
             <h3 style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
               AEO / GEO CITATIONS PIPELINE GRAPH
             </h3>
-            <GlowButton variant="glow" onClick={() => onTriggerGEO(targetUrl)} style={{ fontSize: '11px', padding: '4px 12px' }}>
-              Run GEO Pipeline
+            <GlowButton variant="glow" disabled={geoRunning}
+              onClick={() => geoRunning ? setToast({ msg: 'An audit is already running for this website.', pipeline: 'GEO' }) : triggerPipeline('GEO', targetUrl)}
+              style={{ fontSize: '11px', padding: '4px 12px', ...(geoRunning ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
+              {geoRunning ? 'GEO Running…' : 'Run GEO Pipeline'}
             </GlowButton>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
@@ -119,13 +423,15 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
               'Authority Agent',
               'Knowledge Graph Agent',
               'Optimization Agent',
+              'Reporting',
             ].map((node, idx, arr) => {
-              const isActive = geoAgent?.task?.includes(node);
-              const isCompleted = geoAgent?.result === 'COMPLETED' || (geoAgent?.task && !isActive && arr.indexOf(geoAgent.task.replace('Running Node: ', '')) > idx);
-              
+              const isActive = geoRunning && geoRun.current_stage === node;
+              const isCompleted = geoRun.stages_done.includes(node);
+
               return (
               <div key={node} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{
+                <div onClick={() => setReportOpen(true)} style={{
+                  cursor: 'pointer',
                   background: isActive ? 'rgba(90, 82, 255, 0.2)' : isCompleted ? 'rgba(0, 255, 157, 0.1)' : 'rgba(90, 82, 255, 0.05)',
                   border: `1px solid ${isActive ? '#5a52ff' : isCompleted ? '#00ff9d' : 'var(--accent)'}`,
                   borderRadius: '4px',
@@ -147,104 +453,40 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ blogs, onOpenReview,
         </div>
       </div>
 
-      <div className="workspace-grid-split">
-        {/* Left Side: SEO Crawl & AEO Citation Indexes */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Explainer card beside the Integration Connections panel */}
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ flex: '2 1 460px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <ExplainerCard />
+          {/* Search Console + GA4 are analytics/tracking sources — they feed the month-over-month tracking below. */}
           <div className="glow-card">
-            <h3 style={{ fontSize: '16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Globe size={16} style={{ color: '#00ff9d' }} />
-              Answer Engine Citation (AEO) Index
+            <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Search Console &amp; Analytics
             </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {rankings.map((rank) => (
-                <div key={rank.engine} style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', fontSize: '13px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{rank.engine}</span>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <span style={{ fontWeight: 600 }}>{rank.score}% visibility</span>
-                    <span style={{ color: 'var(--success)', fontWeight: 600 }}>{rank.trend}</span>
-                  </div>
-                </div>
-              ))}
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+              Connect Google Search Console &amp; GA4 to pull real rankings, clicks and traffic — this powers the performance tracking below.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              <SearchConsolePanel workspaceId={workspaceId ?? null} onRunAudit={() => triggerPipeline('SEO', targetUrl)} />
+              <GA4Panel workspaceId={workspaceId ?? null} />
             </div>
           </div>
-
-          <div className="glow-card">
-            <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>AEO Recommendation Engine</h3>
-            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px' }}>
-              <h4 style={{ fontSize: '13px', color: '#ffae00', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                Schema & Entity Gap Detected
-              </h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                Claude AI mentions your product, but lacks structured links to your API documentation page. Add Schema Graph headers to boost entity-level citation confidence by 18%.
-              </p>
-            </div>
-          </div>
+          <SeoComparisonCard workspaceId={workspaceId} />
         </div>
-
-        {/* Right Side: Blog / Blog generation list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <h3 style={{ fontSize: '16px' }}>Blog & Content Generator Queue</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {blogs.map((blog) => (
-              <div
-                key={blog.id}
-                className="glow-card"
-                style={{
-                  padding: '20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px',
-                  borderColor: blog.status === 'pending_review' ? 'var(--warning)' : 'var(--border-color)',
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: '10px',
-                      fontFamily: 'var(--font-mono)',
-                      background: 'rgba(90, 82, 255, 0.1)',
-                      color: 'var(--accent)',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      marginRight: '8px',
-                    }}
-                  >
-                    KEYWORDS: {blog.keywords}
-                  </span>
-                  <h4 style={{ fontSize: '15px', marginTop: '8px', color: '#fff' }}>{blog.title}</h4>
-                </div>
-
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{blog.excerpt}</p>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    borderTop: '1px solid var(--border-color)',
-                    paddingTop: '12px',
-                  }}
-                >
-                  <span style={{ fontSize: '11px', color: blog.status === 'published' ? 'var(--success)' : 'var(--warning)' }}>
-                    {blog.status === 'published' ? 'PUBLISHED' : 'PENDING APPROVAL'}
-                  </span>
-
-                  {blog.status === 'pending_review' ? (
-                    <GlowButton variant="glow" onClick={() => onOpenReview(blog.id)} style={{ padding: '6px 14px', fontSize: '11px' }}>
-                      Review Post
-                    </GlowButton>
-                  ) : (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Check size={12} /> Published to Site <ExternalLink size={10} />
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+          <ConnectedPlatformsCard workspaceId={workspaceId} onManageIntegrations={onManageIntegrations} />
         </div>
       </div>
+
+      <SEOAgencyReportModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        workspaceId={workspaceId ?? null}
+        seoRun={seoRun}
+        geoRun={geoRun}
+        onRunRequested={triggerPipeline}
+        flash={flash}
+        gscConnected={gscConnected}
+      />
     </div>
   );
 };
