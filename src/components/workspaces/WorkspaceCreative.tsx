@@ -296,6 +296,27 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     handleGenerateAd();
   };
 
+  // Apply Specific Individual Competitor Ad Pattern to Ad Studio
+  const handleApplySingleCompetitorAdPattern = (ad: {
+    title: string;
+    type: 'Image' | 'Video' | 'Carousel';
+    platform: 'Instagram' | 'Facebook' | 'Google' | 'Amazon' | 'Flipkart';
+    aspectRatio: '1:1' | '9:16' | '4:5' | '16:9';
+    headline: string;
+    bodyText: string;
+    cta: string;
+    roas: string;
+  }) => {
+    setSelectedAdType(ad.type);
+    setPlatform(ad.platform);
+    setAspectRatio(ad.aspectRatio);
+    if (ad.type === 'Video') setVideoDuration('15s');
+    setProductPrompt(`Pattern derived from ${selectedCompetitor} winner "${ad.title}" (${ad.roas})`);
+    setActiveTab('create');
+    triggerToast(`Applied "${ad.title}" pattern (${ad.roas}) to Ad Studio! Generating ad...`);
+    handleGenerateAd();
+  };
+
   // AI Product Prompt Preset Click Handler
   const handleSelectProductPromptPreset = (promptText: string, imgUrl: string) => {
     setProductPrompt(promptText);
@@ -1181,6 +1202,141 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
               ))}
 
+            </div>
+          </div>
+
+          {/* INDIVIDUAL TOP-PERFORMING COMPETITOR ADS GRID WITH RETURNS & ANALYSIS */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#00E676', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '2px' }}>
+                  ACTIVE SCALING AD LIBRARY
+                </div>
+                <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
+                  Top Scaling Ads for {selectedCompetitor} (Individual Returns & Analysis)
+                </h3>
+              </div>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Click "Apply This Ad Pattern" on any ad to clone into Ad Studio
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+              {[
+                {
+                  id: 'comp_ad_1',
+                  title: `${selectedCompetitor} 15s Fast Charge Reel`,
+                  type: 'Video' as const,
+                  platform: 'Instagram' as const,
+                  aspectRatio: '9:16' as const,
+                  duration: '15s',
+                  statusBadge: 'Scaled 75+ Days',
+                  roas: '4.8x ROAS',
+                  spend: '₹14.2L Spend',
+                  impressions: '3.4M Impr.',
+                  ctr: '5.2% CTR',
+                  headline: 'Charge 50% in 20 Mins ⚡',
+                  bodyText: 'Never carry a dead phone again during travel or work.',
+                  cta: 'Buy Now - 50% Off',
+                  hook: '0-2s visual water splash & battery pulse animation drop',
+                  psychology: 'Fear of dead phone + Instant charging visual proof',
+                  targetAudience: '18-28 College, Travel & Tech Enthusiasts',
+                  img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80'
+                },
+                {
+                  id: 'comp_ad_2',
+                  title: `${selectedCompetitor} Metallic Power Carousel`,
+                  type: 'Carousel' as const,
+                  platform: 'Facebook' as const,
+                  aspectRatio: '1:1' as const,
+                  duration: '5 Slides',
+                  statusBadge: 'Scaled 45+ Days',
+                  roas: '4.5x ROAS',
+                  spend: '₹9.8L Spend',
+                  impressions: '2.1M Impr.',
+                  ctr: '4.7% CTR',
+                  headline: 'Aircraft Aluminum Metallic Finish',
+                  bodyText: '20,000mAh Lithium Polymer battery with 9 layers of protection.',
+                  cta: 'Shop Now',
+                  hook: 'Slide 1 high contrast metallic texture cutout with glowing specs',
+                  psychology: 'Premium aesthetics + BIS safety certification trust',
+                  targetAudience: '22-35 Working Professionals & Engineers',
+                  img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80'
+                },
+                {
+                  id: 'comp_ad_3',
+                  title: `${selectedCompetitor} Flash Sale & 30% Off Offer`,
+                  type: 'Image' as const,
+                  platform: 'Instagram' as const,
+                  aspectRatio: '4:5' as const,
+                  duration: 'Static Shot',
+                  statusBadge: 'Scaled 60+ Days',
+                  roas: '5.1x ROAS',
+                  spend: '₹18.4L Spend',
+                  impressions: '4.8M Impr.',
+                  ctr: '6.2% CTR',
+                  headline: 'FLAT 30% OFF — Limited Launch Stock',
+                  bodyText: 'Compact 22.5W Power Delivery charger with free express shipping.',
+                  cta: 'Claim Discount Today',
+                  hook: 'High contrast red discount badge with glowing price strike-through',
+                  psychology: 'Direct offer incentive + Impulse purchase urgency',
+                  targetAudience: '18-35 Price Sensitive E-commerce Buyers',
+                  img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80'
+                }
+              ].map(ad => (
+                <div key={ad.id} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
+                  
+                  <div>
+                    {/* Header Row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 600 }}>{ad.platform} • {ad.type} ({ad.duration})</span>
+                      <span style={{ fontSize: '11px', color: 'var(--success)', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.25)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                        {ad.statusBadge}
+                      </span>
+                    </div>
+
+                    {/* Image & Key Return Metrics Overlay */}
+                    <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px' }}>
+                      <img src={ad.img} alt={ad.title} style={{ width: '100%', height: '170px', objectFit: 'cover', display: 'block' }} />
+                      
+                      {/* Metric Badges */}
+                      <div style={{ position: 'absolute', bottom: 10, left: 10, right: 10, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', padding: '8px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '9px' }}>RETURN</span>
+                          <strong style={{ color: 'var(--success)', fontSize: '14px' }}>{ad.roas}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '9px' }}>ACTIVE SPEND</span>
+                          <strong style={{ color: '#fff' }}>{ad.spend}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '9px' }}>CTR</span>
+                          <strong style={{ color: '#7C75FF' }}>{ad.ctr}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <h4 style={{ fontSize: '17px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>{ad.title}</h4>
+
+                    {/* Deep Analysis Breakdown */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div><strong style={{ color: '#ccc' }}>Visual Hook:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.hook}</span></div>
+                      <div><strong style={{ color: '#ccc' }}>Psychology:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.psychology}</span></div>
+                      <div><strong style={{ color: '#ccc' }}>Audience:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.targetAudience}</span></div>
+                    </div>
+                  </div>
+
+                  {/* Individual Apply Action Button */}
+                  <GlowButton
+                    variant="glow"
+                    onClick={() => handleApplySingleCompetitorAdPattern(ad)}
+                    style={{ width: '100%', padding: '12px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    <Wand2 size={15} /> Apply This Ad Pattern to Studio
+                  </GlowButton>
+
+                </div>
+              ))}
             </div>
           </div>
 
