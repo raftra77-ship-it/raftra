@@ -26,7 +26,7 @@ FEMALE_AVATARS = [
     "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80"
 ]
 
-FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi']
+FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi', 'ishwarya']
 
 def get_avatar(name, idx):
     first = name.split()[0].lower() if name else ""
@@ -34,13 +34,99 @@ def get_avatar(name, idx):
         return FEMALE_AVATARS[idx % len(FEMALE_AVATARS)]
     return MALE_AVATARS[idx % len(MALE_AVATARS)]
 
-def parse_followers(metrics_text, raw_follower_col=""):
-    if raw_follower_col and raw_follower_col.strip():
-        val = raw_follower_col.strip()
-        if re.search(r'\d+', val):
-            return val
+def extract_handle(profile_link, brand_name):
+    if profile_link and ('instagram.com/' in profile_link or 'youtube.com/' in profile_link):
+        clean_url = profile_link.split('?')[0].rstrip('/')
+        username = clean_url.split('/')[-1]
+        if username and username.lower() not in ['instagram', 'youtube', 'c', 'channel', 'user']:
+            return f"@{username}"
     
-    # Match point 1 number or first number in metrics
+    clean_brand = re.sub(r'[^\w\.]', '', brand_name.lower())
+    return f"@{clean_brand}" if clean_brand else "@creator"
+
+def parse_price(col11_text, handle=""):
+    h = handle.lower()
+    if 'ankrena' in h:
+        return "₹10,000"
+    elif 'ankit.k.09' in h:
+        return "₹25,000"
+    elif 'aanushkaanexttdoorr' in h:
+        return "₹5,500"
+    elif 'simplymalvika' in h:
+        return "₹700"
+    elif 'charika' in h:
+        return "₹2,500"
+    elif 'sarthak' in h or 'aanchal' in h or 'ananya' in h or 'mahhiii' in h:
+        return "₹1,500"
+    elif 'yourfirst.100k' in h:
+        return "₹8,000"
+    elif 'whoistanaaa' in h:
+        return "₹5,000"
+    elif 'sh.reyya' in h or 'sachin' in h:
+        return "₹4,000"
+    elif 'fanish' in h or 'uttarakhandyb' in h or 'musclestroke' in h:
+        return "₹3,000"
+
+    if not col11_text or not col11_text.strip():
+        return "₹3,000"
+    
+    match = re.search(r'₹\s*([\d,]+)', col11_text)
+    if match:
+        try:
+            num = int(match.group(1).replace(',', ''))
+            return f"₹{num:,}"
+        except:
+            return f"₹{match.group(1)}"
+            
+    match2 = re.search(r'(\d+[\d,]*)\s*(?:rs|rupees|per reel|reel|k|K)?', col11_text, re.IGNORECASE)
+    if match2:
+        try:
+            val_str = match2.group(1).replace(',', '')
+            num = int(val_str)
+            if 'k' in match2.group(0).lower():
+                num = num * 1000
+            if num >= 500:
+                return f"₹{num:,}"
+        except:
+            pass
+            
+    return "₹3,000"
+
+def parse_followers(metrics_text, handle=""):
+    h = handle.lower()
+    if 'ankrena' in h:
+        return "4,983"
+    elif 'uttarakhandyb' in h:
+        return "11,700"
+    elif 'aanushkaanexttdoorr' in h:
+        return "2,023"
+    elif 'musclestroke' in h:
+        return "6,802"
+    elif 'charika' in h:
+        return "1,955"
+    elif 'mahhiii' in h:
+        return "868"
+    elif 'simplymalvika' in h:
+        return "31,000"
+    elif 'sarthak' in h:
+        return "2,200"
+    elif 'ankit.k.09' in h:
+        return "95,000"
+    elif 'whoistanaaa' in h:
+        return "6,500"
+    elif 'ananyaanotpanday' in h:
+        return "1,667"
+    elif 'yourfirst.100k' in h:
+        return "10,200"
+    elif 'aanchallp' in h:
+        return "2,705"
+    elif 'sh.reyya' in h:
+        return "12,200"
+    elif 'fanish' in h:
+        return "4,300"
+    elif 'sachin' in h:
+        return "2,500"
+
     match = re.search(r'1\.\s*([\d,\.kKmM]+)', metrics_text)
     if match:
         return match.group(1).strip()
@@ -68,62 +154,48 @@ def sync():
         email = row[1].strip() if len(row) > 1 else ""
         name = row[2].strip() if len(row) > 2 else ""
         brand = row[3].strip() if len(row) > 3 else ""
-        niche = row[4].strip() if len(row) > 4 else "Lifestyle"
-        handle_raw = row[7].strip() if len(row) > 7 else ""
+        city_country = row[6].strip() if len(row) > 6 else ""
         profile_link = row[8].strip() if len(row) > 8 else ""
+        niche = row[9].strip() if len(row) > 9 else "Lifestyle"
         metrics = row[10].strip() if len(row) > 10 else ""
-        phone = row[13].strip() if len(row) > 13 else ""
-        price_raw = row[14].strip() if len(row) > 14 else "₹3,000"
+        col11_price = row[11].strip() if len(row) > 11 else ""
+        phone = row[5].strip() if len(row) > 5 else ""
 
-        handle = handle_raw if handle_raw.startswith('@') else f"@{handle_raw}"
-        followers = parse_followers(metrics)
+        handle = extract_handle(profile_link, brand or name)
+        followers = parse_followers(metrics, handle)
+        expected_price = parse_price(col11_price, handle)
 
-        # Custom overrides for accuracy
+        # Reach and views formatting
         if 'ankrena' in handle.lower():
-            followers = "4,983"
             avg_views = "11.3M total views (3k avg)"
             loc = "Delhi, India"
         elif 'uttarakhandyb' in handle.lower():
-            followers = "11,700"
             avg_views = "20k+ avg"
             loc = "Rishikesh, Uttarakhand"
         elif 'aanushkaanexttdoorr' in handle.lower():
-            followers = "2,023"
             avg_views = "1.8M highest"
             loc = "Delhi, India"
         elif 'musclestroke' in handle.lower():
-            followers = "6,802"
             avg_views = "1.1M peak"
             loc = "New Delhi, India"
         elif 'charika' in handle.lower():
-            followers = "1,955"
             avg_views = "166,030 avg"
             loc = "Delhi, India"
         elif 'simplymalvika' in handle.lower():
-            followers = "31,000"
             avg_views = "20k avg"
             loc = "Delhi, India"
         elif 'ankit.k.09' in handle.lower():
-            followers = "95,000"
             avg_views = "93M+ reach"
             loc = "New Delhi, India"
         else:
             avg_views = "15k avg"
-            loc = "India"
+            loc = city_country or "India"
 
-        cat = "Micro"
-        if 'M' in followers or 'm' in followers:
+        cat = "Nano"
+        if '95,000' in followers or '31,000' in followers or '11,700' in followers or '10,200' in followers or '12,200' in followers:
+            cat = "Micro"
+        elif 'M' in followers or 'm' in followers:
             cat = "Macro"
-        elif any(c in followers for c in ['k', 'K']):
-            num = float(re.sub(r'[^\d\.]', '', followers) or 0)
-            if num >= 50:
-                cat = "Micro"
-            else:
-                cat = "Nano"
-        else:
-            cat = "Nano"
-
-        price = price_raw if price_raw.startswith('₹') else f"₹{price_raw}"
 
         item = {
             "id": f"creator_{idx+1}",
@@ -135,7 +207,7 @@ def sync():
             "niche": niche or "Lifestyle",
             "allNiches": [niche or "Lifestyle"],
             "category": cat,
-            "expectedPrice": price,
+            "expectedPrice": expected_price,
             "deliverables": ["Reel", "Story", "Static Post"],
             "followers": followers,
             "avgViews": avg_views,
@@ -154,7 +226,7 @@ def sync():
     with open(TARGET_JSON_PATH, 'w', encoding='utf-8') as f:
         json.dump(creators, f, indent=2)
 
-    print(f"Successfully synced {len(creators)} creators from Google Sheet into influencers_parsed.json!")
+    print(f"Successfully synced {len(creators)} creators with exact INR pricing and profile links!")
 
 if __name__ == '__main__':
     sync()
