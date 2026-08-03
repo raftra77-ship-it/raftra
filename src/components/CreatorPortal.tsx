@@ -139,25 +139,6 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
-
-    setTimeout(() => {
-      let replyContent = "Sounds great! We will process the Escrow deposit right away.";
-      if (input.toLowerCase().includes('price') || input.toLowerCase().includes('rate')) {
-        replyContent = "We accept your requested rate! Sending over the formal agreement now.";
-      }
-      const replyMsg = {
-        sender: 'brand' as const,
-        sender_type: 'brand',
-        text: replyContent,
-        content: replyContent
-      };
-      const latest = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(updated));
-      const updatedWithReply = [...latest, replyMsg];
-      setChatMessages(updatedWithReply);
-      localStorage.setItem(creatorStorageKey, JSON.stringify(updatedWithReply));
-      localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updatedWithReply));
-      window.dispatchEvent(new Event('storage'));
-    }, 1200);
   };
 
   const handleAcceptProposal = (amount: number) => {
