@@ -39,34 +39,30 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
     let opacity = 1;
     if (isAnyHovered && !isHovered) {
-      opacity = 0.65;
+      opacity = 0.85;
     }
 
     return {
       padding: '36px 30px',
       background: isHovered
-        ? 'linear-gradient(180deg, #12121c 0%, #000000 100%)'
-        : isPopular 
-          ? 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(10,10,16,0.92) 100%)'
-          : 'rgba(20, 20, 32, 0.65)',
+        ? 'linear-gradient(180deg, #202034 0%, #000000 100%)'
+        : 'linear-gradient(180deg, #141422 0%, #05050a 100%)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
       border: isHovered 
-        ? '2px solid rgba(255, 255, 255, 0.45)' 
+        ? '2px solid rgba(255, 255, 255, 0.65)' 
         : isPopular 
-          ? '1px solid rgba(255, 255, 255, 0.25)' 
-          : '1px solid rgba(255,255,255,0.08)',
+          ? '1.5px solid rgba(0, 230, 118, 0.5)' 
+          : '1px solid rgba(255, 255, 255, 0.28)',
       borderRadius: '24px',
       display: 'flex',
       flexDirection: 'column' as const,
       justifyContent: 'space-between' as const,
       position: 'relative' as const,
       boxShadow: isHovered
-        ? '0 24px 60px rgba(0, 0, 0, 0.95), 0 0 30px rgba(0, 0, 0, 0.9)'
-        : isPopular 
-          ? '0 12px 36px rgba(0,0,0,0.6)' 
-          : '0 8px 32px rgba(0,0,0,0.37)',
-      transform: isHovered ? 'translateY(-8px) scale(1.02)' : 'translateY(0)',
+        ? '0 28px 70px rgba(0, 0, 0, 0.98), 0 0 40px rgba(0, 0, 0, 0.9)'
+        : '0 16px 48px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+      transform: isHovered ? 'translateY(-6px) scale(1.02)' : 'translateY(0)',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       opacity,
       zIndex: isHovered ? 20 : isPopular ? 10 : 1,
@@ -102,24 +98,43 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </p>
         </motion.div>
 
-        {/* CURRENCY & BILLING TOGGLES */}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: '24px', marginBottom: '44px' }}>
+        {/* CURRENCY & BILLING TOGGLES (ULTRA-MODERN MINIMAL SEGMENTED CONTROL) */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          flexWrap: 'wrap', 
+          gap: '24px', 
+          maxWidth: '960px', 
+          margin: '0 auto 44px auto', 
+          padding: '0 12px' 
+        }}>
           
           {/* Currency Toggle */}
-          <div style={{ background: 'rgba(16,16,24,0.9)', padding: '6px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center' }}>
+          <div style={{ 
+            background: 'rgba(255, 255, 255, 0.03)', 
+            backdropFilter: 'blur(16px)', 
+            WebkitBackdropFilter: 'blur(16px)', 
+            padding: '4px', 
+            borderRadius: '12px', 
+            border: '1px solid rgba(255, 255, 255, 0.08)', 
+            display: 'flex', 
+            alignItems: 'center',
+            gap: '4px'
+          }}>
             <button 
               onClick={() => handleCurrencyChange('INR')}
               style={{ 
-                background: currency === 'INR' ? '#000000' : 'transparent', 
-                color: currency === 'INR' ? '#ffffff' : 'rgba(255,255,255,0.6)', 
-                border: currency === 'INR' ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent', 
-                padding: '10px 24px', 
-                borderRadius: '100px', 
-                fontSize: '15px', 
+                background: currency === 'INR' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent', 
+                color: currency === 'INR' ? '#00E676' : '#ffffff', 
+                border: currency === 'INR' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent', 
+                padding: '8px 20px', 
+                borderRadius: '8px', 
+                fontSize: '13.5px', 
                 fontWeight: currency === 'INR' ? 700 : 500, 
                 cursor: 'pointer',
-                boxShadow: currency === 'INR' ? '0 4px 16px rgba(0,0,0,0.8)' : 'none',
-                transition: 'all 0.2s ease'
+                boxShadow: currency === 'INR' ? '0 4px 14px rgba(0, 230, 118, 0.15)' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
             >
               INR (₹)
@@ -127,66 +142,85 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             <button 
               onClick={() => handleCurrencyChange('USD')}
               style={{ 
-                background: currency === 'USD' ? '#000000' : 'transparent', 
-                color: currency === 'USD' ? '#ffffff' : 'rgba(255,255,255,0.6)', 
-                border: currency === 'USD' ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent', 
-                padding: '10px 24px', 
-                borderRadius: '100px', 
-                fontSize: '15px', 
+                background: currency === 'USD' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent', 
+                color: currency === 'USD' ? '#00E676' : '#ffffff', 
+                border: currency === 'USD' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent', 
+                padding: '8px 20px', 
+                borderRadius: '8px', 
+                fontSize: '13.5px', 
                 fontWeight: currency === 'USD' ? 700 : 500, 
                 cursor: 'pointer',
-                boxShadow: currency === 'USD' ? '0 4px 16px rgba(0,0,0,0.8)' : 'none',
-                transition: 'all 0.2s ease'
+                boxShadow: currency === 'USD' ? '0 4px 14px rgba(0, 230, 118, 0.15)' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
             >
               USD ($)
             </button>
           </div>
 
-          {/* Billing Cycle Toggle */}
-          <div style={{ background: 'rgba(16,16,24,0.9)', padding: '6px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center' }}>
-            <button 
-              onClick={() => setBillingCycle('monthly')}
-              style={{ 
-                background: billingCycle === 'monthly' ? '#000000' : 'transparent', 
-                color: billingCycle === 'monthly' ? '#ffffff' : 'rgba(255,255,255,0.6)', 
-                border: billingCycle === 'monthly' ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent', 
-                padding: '10px 26px', 
-                borderRadius: '100px', 
-                fontSize: '15px', 
-                fontWeight: billingCycle === 'monthly' ? 700 : 500, 
-                cursor: 'pointer',
-                boxShadow: billingCycle === 'monthly' ? '0 4px 16px rgba(0,0,0,0.8)' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              Monthly Billing
-            </button>
-            <button 
-              onClick={() => setBillingCycle('annual')}
-              style={{ 
-                background: billingCycle === 'annual' ? '#000000' : 'transparent', 
-                color: billingCycle === 'annual' ? '#ffffff' : 'rgba(255,255,255,0.6)', 
-                border: billingCycle === 'annual' ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent', 
-                padding: '10px 26px', 
-                borderRadius: '100px', 
-                fontSize: '15px', 
-                fontWeight: billingCycle === 'annual' ? 700 : 500, 
-                cursor: 'pointer', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                boxShadow: billingCycle === 'annual' ? '0 4px 16px rgba(0,0,0,0.8)' : 'none',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              Annual Billing <span style={{ background: 'linear-gradient(90deg, #00E676 0%, #00B0FF 100%)', color: '#0a0a0f', fontSize: '11px', padding: '4px 10px', borderRadius: '100px', fontWeight: 800, letterSpacing: '0.04em', boxShadow: '0 0 12px rgba(0,230,118,0.4)' }}>2 MONTHS FREE</span>
-            </button>
+          {/* Billing Cycle Toggle with Interactive Slider Switch */}
+          <div 
+            onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'annual' : 'monthly')}
+            style={{ 
+              background: 'rgba(255, 255, 255, 0.03)', 
+              backdropFilter: 'blur(16px)', 
+              WebkitBackdropFilter: 'blur(16px)', 
+              padding: '6px 18px', 
+              borderRadius: '100px', 
+              border: '1px solid rgba(255, 255, 255, 0.1)', 
+              display: 'flex', 
+              alignItems: 'center',
+              gap: '14px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <span style={{ 
+              fontSize: '13.5px', 
+              fontWeight: billingCycle === 'monthly' ? 700 : 500, 
+              color: billingCycle === 'monthly' ? '#00E676' : '#ffffff',
+              transition: 'all 0.2s ease'
+            }}>
+              Monthly
+            </span>
+
+            {/* Toggle Switch Pill */}
+            <div style={{
+              width: '46px',
+              height: '24px',
+              background: billingCycle === 'annual' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '100px',
+              border: billingCycle === 'annual' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255, 255, 255, 0.18)',
+              position: 'relative',
+              padding: '2px',
+              boxShadow: billingCycle === 'annual' ? '0 4px 12px rgba(0, 230, 118, 0.15)' : 'none',
+              transition: 'all 0.25s ease'
+            }}>
+              <div style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                background: billingCycle === 'annual' ? '#00E676' : '#ffffff',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                transform: billingCycle === 'annual' ? 'translateX(22px)' : 'translateX(0px)',
+                transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+              }} />
+            </div>
+
+            <span style={{ 
+              fontSize: '13.5px', 
+              fontWeight: billingCycle === 'annual' ? 700 : 500, 
+              color: billingCycle === 'annual' ? '#00E676' : '#ffffff',
+              transition: 'all 0.2s ease'
+            }}>
+              Yearly
+            </span>
           </div>
 
         </div>
 
-        {/* CATEGORY NAV TABS (PURE DARK BLACK SELECTED THEME - WHITE TEXT) */}
+        {/* CATEGORY NAV TABS (SELECTION GREEN - NON SELECTION PURE WHITE) */}
         <div style={{ 
           display: 'flex', 
           justifyContent: 'center', 
@@ -219,9 +253,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   backdropFilter: 'blur(16px)',
                   WebkitBackdropFilter: 'blur(16px)',
                   border: isSelected 
-                    ? '1px solid rgba(255, 255, 255, 0.35)' 
+                    ? '1px solid rgba(0, 230, 118, 0.4)' 
                     : '1px solid rgba(255, 255, 255, 0.08)',
-                  color: isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.65)',
+                  color: isSelected ? '#00E676' : '#ffffff',
                   padding: '8px 14px',
                   borderRadius: '100px',
                   fontSize: '12.5px',
@@ -232,12 +266,12 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   gap: '6px',
                   whiteSpace: 'nowrap',
                   boxShadow: isSelected 
-                    ? '0 6px 20px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.2)' 
+                    ? '0 4px 16px rgba(0, 230, 118, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1)' 
                     : '0 2px 8px rgba(0,0,0,0.2)',
                   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
               >
-                <Icon size={14} color={isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.5)'} />
+                <Icon size={14} color={isSelected ? '#00E676' : '#ffffff'} />
                 <span>{tab.label}</span>
               </button>
             );
@@ -276,7 +310,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <div style={{ fontSize: '38px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
                     {formatPrice(15999, 189, 159999)}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '24px', background: 'rgba(124,117,255,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.85)', fontWeight: 700, marginBottom: '24px', background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.15)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
                     25,000 AI Credits / month
                   </div>
 
@@ -367,7 +401,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         {activeCategory === 'dual' && (
           <div style={{ marginBottom: '80px' }}>
             <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-              <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
+              <div style={{ fontSize: '12px', color: '#ffffff', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
                 HEAVILY DISCOUNTED DUAL MODULE PACKS
               </div>
               <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
@@ -387,14 +421,14 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 style={getCardStyle('dual_creative_campaign')}
               >
                 <div>
-                  <div style={{ display: 'inline-block', background: 'rgba(124,117,255,0.15)', color: '#7C75FF', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, marginBottom: '16px' }}>
+                  <div style={{ display: 'inline-block', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#ffffff', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, marginBottom: '16px' }}>
                     CREATIVE STUDIO + CAMPAIGN MANAGER
                   </div>
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Ads & Media Dual Pack</h3>
                   <div style={{ fontSize: '38px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
                     {formatPrice(7999, 99, 79999)}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                  <div style={{ fontSize: '12px', color: '#ffffff', fontWeight: 700, marginBottom: '20px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
                     20,000 AI Credits / month
                   </div>
 

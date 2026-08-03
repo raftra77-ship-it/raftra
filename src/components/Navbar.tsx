@@ -283,10 +283,10 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           white-space: nowrap;
         }
         .creator-portal-btn:hover {
-          background: rgba(90, 82, 255, 0.15);
-          border-color: rgba(90, 82, 255, 0.4);
+          background: #000000;
+          border-color: rgba(255, 255, 255, 0.4);
           color: #ffffff;
-          box-shadow: 0 0 15px rgba(90, 82, 255, 0.3);
+          box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
         }
       `}</style>
     </motion.nav>

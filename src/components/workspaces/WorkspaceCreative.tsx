@@ -369,13 +369,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       
       {/* 1. TOP NAVIGATION TABS */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
           {[
-            { id: 'create', label: 'Create', icon: Wand2 },
-            { id: 'competitors', label: 'Competitor Intelligence ⭐', icon: BarChart2, badge: 'Ad Vault' },
-            { id: 'projects', label: 'Projects', icon: Layers },
-            { id: 'templates', label: 'Templates', icon: Copy },
-            { id: 'ugc', label: 'UGC', icon: Video }
+            { id: 'create', label: 'Create Ad', icon: Wand2 },
+            { id: 'competitors', label: 'Competitor Intelligence', icon: Zap },
+            { id: 'projects', label: 'Recent Projects', icon: Layers },
+            { id: 'templates', label: 'Winning Templates & Vault', icon: Film },
+            { id: 'ugc', label: 'AI UGC Ads', icon: Video }
           ].map(tab => {
             const Icon = tab.icon;
             const isSelected = activeTab === tab.id;
@@ -384,21 +384,28 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 style={{
-                  background: isSelected ? 'linear-gradient(135deg, rgba(124,117,255,0.2) 0%, rgba(90,82,255,0.08) 100%)' : 'rgba(255,255,255,0.03)',
-                  border: isSelected ? '1px solid #7C75FF' : '1px solid var(--border)',
+                  background: isSelected 
+                    ? 'linear-gradient(180deg, #222232 0%, #0d0d15 100%)' 
+                    : 'rgba(255,255,255,0.03)',
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
+                  border: isSelected 
+                    ? '1px solid rgba(255, 255, 255, 0.35)' 
+                    : '1px solid rgba(255,255,255,0.08)',
                   borderRadius: '100px',
                   padding: '10px 20px',
-                  color: isSelected ? '#fff' : 'var(--text-secondary)',
+                  color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.65)',
                   cursor: 'pointer',
                   fontSize: '14px',
-                  fontWeight: isSelected ? 600 : 500,
+                  fontWeight: isSelected ? 700 : 500,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
+                  boxShadow: isSelected ? '0 4px 16px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.15)' : 'none',
                   transition: 'all 0.2s ease'
                 }}
               >
-                <Icon size={15} color={isSelected ? '#7C75FF' : 'var(--text-muted)'} />
+                <Icon size={15} color={isSelected ? '#ffffff' : 'rgba(255,255,255,0.45)'} />
                 <span>{tab.label}</span>
                 {tab.badge && (
                   <span style={{ fontSize: '10px', background: 'rgba(0,230,118,0.2)', color: 'var(--success)', border: '1px solid rgba(0,230,118,0.3)', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
@@ -465,9 +472,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                         }
                       }}
                       style={{
-                        background: isSelected ? '#7C75FF' : 'rgba(255,255,255,0.05)',
-                        color: isSelected ? '#ffffff' : 'var(--text-secondary)',
-                        border: isSelected ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
+                        background: isSelected 
+                          ? 'linear-gradient(180deg, #222232 0%, #0d0d15 100%)' 
+                          : 'rgba(255,255,255,0.05)',
+                        color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.65)',
+                        border: isSelected 
+                          ? '1px solid rgba(255, 255, 255, 0.35)' 
+                          : '1px solid rgba(255,255,255,0.1)',
                         borderRadius: '100px',
                         padding: '10px 18px',
                         fontSize: '13px',
@@ -476,6 +487,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
+                        boxShadow: isSelected ? '0 4px 16px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.15)' : 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >
@@ -701,9 +713,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     flex: 1,
                     padding: '14px',
                     borderRadius: '12px',
-                    background: selectedAdType === fmt ? '#7C75FF' : 'rgba(255,255,255,0.03)',
-                    color: selectedAdType === fmt ? '#fff' : 'var(--text-secondary)',
-                    border: selectedAdType === fmt ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
+                    background: selectedAdType === fmt 
+                      ? 'linear-gradient(180deg, #222232 0%, #0d0d15 100%)' 
+                      : 'rgba(255,255,255,0.03)',
+                    color: selectedAdType === fmt ? '#ffffff' : 'rgba(255,255,255,0.65)',
+                    border: selectedAdType === fmt 
+                      ? '1px solid rgba(255, 255, 255, 0.35)' 
+                      : '1px solid rgba(255,255,255,0.1)',
+                    boxShadow: selectedAdType === fmt ? '0 4px 16px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.15)' : 'none',
                     fontSize: '15px',
                     fontWeight: 600,
                     cursor: 'pointer',

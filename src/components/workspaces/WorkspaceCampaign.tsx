@@ -433,7 +433,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{preset.description}</div>
                       </div>
-                      <button style={{ padding: '4px 10px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                      <button style={{ padding: '4px 10px', background: '#000000', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.25)', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
                         Use AI Preset
                       </button>
                     </div>

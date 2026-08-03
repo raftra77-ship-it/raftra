@@ -333,23 +333,28 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
                 key={role.id}
                 onClick={() => setSelectedSpecialistIndex(idx)}
                 style={{
-                  background: isSelected ? 'rgba(124,117,255,0.2)' : 'rgba(255,255,255,0.03)',
-                  border: isSelected ? '1px solid #7C75FF' : '1px solid var(--border)',
+                  background: isSelected 
+                    ? 'linear-gradient(180deg, #222232 0%, #0d0d15 100%)' 
+                    : 'rgba(255,255,255,0.03)',
+                  border: isSelected 
+                    ? '1px solid rgba(255, 255, 255, 0.35)' 
+                    : '1px solid rgba(255,255,255,0.08)',
                   borderRadius: '12px',
                   padding: '12px 18px',
-                  color: isSelected ? '#fff' : 'var(--text-secondary)',
+                  color: isSelected ? '#fff' : 'rgba(255,255,255,0.65)',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '10px',
                   whiteSpace: 'nowrap',
+                  boxShadow: isSelected ? '0 4px 16px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.15)' : 'none',
                   transition: 'all 0.2s ease'
                 }}
               >
-                <Icon size={16} color={isSelected ? role.color : 'var(--text-muted)'} />
+                <Icon size={16} color={isSelected ? '#ffffff' : 'rgba(255,255,255,0.45)'} />
                 <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '14px', fontWeight: isSelected ? 600 : 500 }}>{role.title}</div>
-                  <div style={{ fontSize: '11px', color: isSelected ? '#7C75FF' : 'var(--text-muted)' }}>{role.price}</div>
+                  <div style={{ fontSize: '14px', fontWeight: isSelected ? 700 : 500 }}>{role.title}</div>
+                  <div style={{ fontSize: '11px', color: isSelected ? '#00E676' : 'var(--text-muted)' }}>{role.price}</div>
                 </div>
               </button>
             );
