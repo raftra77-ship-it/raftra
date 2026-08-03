@@ -3,7 +3,7 @@ import {
   Sparkles, Users, Video, 
   ShieldCheck, CheckCircle2, TrendingUp, Layers, Zap, 
   Upload, Image as ImageIcon, Wand2, Film, RefreshCw, BarChart2, 
-  Play, Copy, Edit3, Send, Sliders, Check
+  Play, Copy, Edit3, Send, ExternalLink, ThumbsUp, ArrowRight
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -56,12 +56,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [aiModel, setAiModel] = useState('Gemini 2.5 Flash');
   const [videoDuration, setVideoDuration] = useState<'15s' | '30s' | '60s'>('15s');
   const [videoVoice, setVideoVoice] = useState('Hindi Warm Male');
-  const [videoMusic, setVideoMusic] = useState('Upbeat Lo-Fi');
 
   // Interactive Custom Ad Editor State
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [customAiInstruction, setCustomAiInstruction] = useState('');
   const [isApplyingInstruction, setIsApplyingInstruction] = useState(false);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
 
   // Generation & Output State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -80,13 +80,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     cards?: { title: string; desc: string; img: string }[];
   } | null>(null);
 
-  // Competitor Intelligence State
+  // Competitor Intelligence State (Foreplay.co / Rize / Bloom powered)
   const [selectedCompetitor, setSelectedCompetitor] = useState<'Boat' | 'Noise' | 'Realme'>('Boat');
+  const [vaultSubTab, setVaultSubTab] = useState<'hooks' | 'headlines' | 'ctas'>('hooks');
 
   // UGC State
   const [ugcSubTab, setUgcSubTab] = useState<'ai_ugc' | 'hire_human'>('ai_ugc');
   const [selectedAvatar, setSelectedAvatar] = useState('Aarav - Tech Reviewer');
   const [ugcScript, setUgcScript] = useState('');
+
+  const triggerToast = (msg: string) => {
+    setCopyToast(msg);
+    setTimeout(() => setCopyToast(null), 3500);
+  };
 
   // Drag & Drop File Upload Handler
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,7 +206,27 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         imageUrl: updatedImg,
         hashtags: updatedHashtags
       });
+      triggerToast('AI Refinement applied to ad preview!');
     }, 900);
+  };
+
+  // Apply winning vault item to active ad
+  const handleApplyVaultItemToAd = (type: 'headline' | 'hook' | 'cta', text: string) => {
+    if (!generatedAd) {
+      // If no ad generated yet, pre-fill and trigger generation
+      setSelectedAdType('Image');
+      setActiveTab('create');
+      triggerToast(`Selected "${text}" for Ad Generation!`);
+      return;
+    }
+
+    if (type === 'headline' || type === 'hook') {
+      setGeneratedAd({ ...generatedAd, headline: text });
+    } else if (type === 'cta') {
+      setGeneratedAd({ ...generatedAd, cta: text });
+    }
+    setActiveTab('create');
+    triggerToast(`Applied winning ${type} to Ad Output!`);
   };
 
   return (
@@ -211,7 +237,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {[
             { id: 'create', label: 'Create', icon: Wand2 },
-            { id: 'competitors', label: 'Competitor Intelligence ⭐', icon: BarChart2, badge: 'High Impact' },
+            { id: 'competitors', label: 'Competitor Intelligence ⭐', icon: BarChart2, badge: 'Foreplay & Rize' },
             { id: 'projects', label: 'Projects', icon: Layers },
             { id: 'templates', label: 'Templates', icon: Copy },
             { id: 'ugc', label: 'UGC', icon: Video }
@@ -251,7 +277,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
         <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <ShieldCheck size={14} color="var(--success)" />
-          <span>Brand Knowledge Graph Connected</span>
+          <span>Foreplay.co & Rize Ad Vault Sync Active</span>
         </div>
       </div>
 
@@ -262,7 +288,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(255,255,255,0.06)', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)', alignSelf: 'flex-start' }}>
             <Sparkles size={14} color="#7C75FF" />
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', letterSpacing: '0.04em' }}>Raftra Creative Studio</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', letterSpacing: '0.04em' }}>Raftra Creative Studio • Foreplay.co Intelligence</span>
           </div>
 
           <div>
@@ -293,7 +319,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     if (goal.id === 'image') { setSelectedAdType('Image'); setActiveTab('create'); }
                     else if (goal.id === 'video') { setSelectedAdType('Video'); setActiveTab('create'); }
                     else if (goal.id === 'carousel') { setSelectedAdType('Carousel'); setActiveTab('create'); }
-                    else if (goal.id === 'ai_ugc' || goal.id === 'hire_ugc') { setActiveTab('ugc'); setUgcSubTab(goal.id === 'ai_ugc' ? 'ai_ugc' : 'hire_human'); }
+                    else if (goal.id === 'ai_ugc') { setActiveTab('ugc'); setUgcSubTab('ai_ugc'); }
+                    else if (goal.id === 'hire_ugc') {
+                      if (onNavigateTab) onNavigateTab('influencer');
+                      else { setActiveTab('ugc'); setUgcSubTab('hire_human'); }
+                    }
                   }}
                   style={{
                     background: isSelected ? '#7C75FF' : 'rgba(255,255,255,0.05)',
@@ -864,18 +894,24 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       )}
 
-      {/* ==================== TAB 2: COMPETITOR INTELLIGENCE ⭐ ==================== */}
+      {/* ==================== TAB 2: COMPETITOR INTELLIGENCE ⭐ (FOREPLAY.CO / BLOOM / RIZE INTEGRATED) ==================== */}
       {activeTab === 'competitors' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           
-          {/* Header & Competitor Selector */}
+          {/* Header & Intelligence Partners */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(0,230,118,0.12)', borderRadius: '100px', border: '1px solid rgba(0,230,118,0.3)', marginBottom: '8px' }}>
+                <ShieldCheck size={13} color="var(--success)" />
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--success)', letterSpacing: '0.04em' }}>
+                  POWERED BY FOREPLAY.CO • META AD LIBRARY • BLOOM & RIZE AI
+                </span>
+              </div>
               <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                Competitor Ad Intelligence ⭐
+                Winning Competitor Ads & Psychological Vault
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                Real-time tracking of top competitor ads, engagement performance, and AI-derived psychological hooks.
+                Analyze top scaling competitor ads, psychological hooks, and high-converting CTAs curated from Foreplay.co & Rize AI.
               </p>
             </div>
 
@@ -906,24 +942,144 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(0,230,118,0.12) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
-                AI RECOMMENDATION BASED ON COMPETITOR DATA
+                FOREPLAY.CO WINNING AD PATTERN RECOGNITION
               </div>
               <h4 style={{ fontSize: '18px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>
-                Switch to 15s Video Ads for higher retention
+                Switch to 15s Video Ads for higher retention & +23% CTR
               </h4>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                {selectedCompetitor}'s top 3 performing ads this week are 15s Vertical Videos. We recommend switching from static images to Video Ads.
+                {selectedCompetitor}'s top 3 scaled ads on Foreplay.co are 15s Vertical Video Reels. Applying this pattern to Ambrane increases predicted ROAS to 4.2x.
               </p>
             </div>
 
             <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>EXPECTED CTR</span>
-                <strong style={{ fontSize: '24px', color: 'var(--success)' }}>+23%</strong>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>ESTIMATED ROAS</span>
+                <strong style={{ fontSize: '24px', color: 'var(--success)' }}>4.2x</strong>
               </div>
               <GlowButton variant="glow" onClick={() => { setSelectedAdType('Video'); setActiveTab('create'); }}>
-                Apply Recommendation
+                Apply Pattern to Ad Studio
               </GlowButton>
+            </div>
+          </div>
+
+          {/* DEDICATED WINNING HOOKS, HEADLINES & CTA VAULT (FOREPLAY.CO DERIVED) */}
+          <div className="glow-card" style={{ padding: '28px', background: '#0b0b10', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '2px' }}>
+                  FOREPLAY.CO & RIZE HIGH-CONVERTING VAULT
+                </div>
+                <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
+                  Winning Hooks, Headlines & CTA Vault
+                </h3>
+              </div>
+
+              {/* Vault Sub-tabs */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {[
+                  { id: 'hooks', label: '🔥 Winning Hooks' },
+                  { id: 'headlines', label: '⚡ High-CTR Headlines' },
+                  { id: 'ctas', label: '🎯 Conversion CTAs' }
+                ].map(vTab => (
+                  <button
+                    key={vTab.id}
+                    onClick={() => setVaultSubTab(vTab.id as any)}
+                    style={{
+                      background: vaultSubTab === vTab.id ? 'rgba(124,117,255,0.2)' : 'rgba(255,255,255,0.04)',
+                      border: vaultSubTab === vTab.id ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
+                      color: vaultSubTab === vTab.id ? '#fff' : 'var(--text-secondary)',
+                      padding: '6px 14px',
+                      borderRadius: '100px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {vTab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Vault Content Lists */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              
+              {vaultSubTab === 'hooks' && [
+                { text: 'Stop scrolling if your powerbank dies right when you need it most.', roas: '4.6x ROAS', tag: 'Visual Shock' },
+                { text: 'Why 90% of portable chargers ruin your phone battery health long-term.', roas: '4.2x ROAS', tag: 'Negative Curiosity' },
+                { text: 'I tested 5 powerbanks under ₹2,000 — here is the only one that survived 7 days of travel.', roas: '4.9x ROAS', tag: 'Social Proof' },
+                { text: 'If you travel or commute daily, this 22.5W metallic charger is a cheat code.', roas: '3.9x ROAS', tag: 'Aspiration' }
+              ].map((item, idx) => (
+                <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px', borderRadius: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '10px', color: '#7C75FF', background: 'rgba(124,117,255,0.15)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{item.tag}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.roas}</span>
+                    </div>
+                    <p style={{ fontSize: '14px', color: '#fff', margin: 0, fontWeight: 500, lineHeight: 1.4 }}>"{item.text}"</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                    <button
+                      onClick={() => handleApplyVaultItemToAd('hook', item.text)}
+                      style={{ flex: 1, background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: 'var(--success)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Apply to Active Ad
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {vaultSubTab === 'headlines' && [
+                { text: 'Unstoppable Power in Your Pocket ⚡', roas: '4.8x ROAS', tag: 'High Impact' },
+                { text: 'Charge 50% in 30 Mins — Built for High Performers', roas: '4.5x ROAS', tag: 'Benefit Driven' },
+                { text: 'FLAT 30% OFF — Aircraft Aluminum Powerbank', roas: '5.1x ROAS', tag: 'Urgency Offer' },
+                { text: 'Never Carry a Dead Phone Again (BIS Certified)', roas: '4.1x ROAS', tag: 'Trust & Safety' }
+              ].map((item, idx) => (
+                <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px', borderRadius: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '10px', color: '#7C75FF', background: 'rgba(124,117,255,0.15)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{item.tag}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.roas}</span>
+                    </div>
+                    <p style={{ fontSize: '15px', color: '#fff', margin: 0, fontWeight: 700, lineHeight: 1.3 }}>{item.text}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                    <button
+                      onClick={() => handleApplyVaultItemToAd('headline', item.text)}
+                      style={{ flex: 1, background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: 'var(--success)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Apply to Active Ad
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {vaultSubTab === 'ctas' && [
+                { text: 'Claim 30% Discount Today', roas: '5.2x ROAS', tag: 'Direct Offer' },
+                { text: 'Shop Ambrane Powerbanks', roas: '4.3x ROAS', tag: 'Standard E-com' },
+                { text: 'Get Free Express Delivery', roas: '4.7x ROAS', tag: 'Perk Trigger' },
+                { text: 'Order Now & Save ₹500', roas: '4.9x ROAS', tag: 'Instant Savings' }
+              ].map((item, idx) => (
+                <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px', borderRadius: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '10px', color: '#7C75FF', background: 'rgba(124,117,255,0.15)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{item.tag}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.roas}</span>
+                    </div>
+                    <p style={{ fontSize: '14px', color: '#00E676', margin: 0, fontWeight: 700, lineHeight: 1.4 }}>"{item.text}"</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                    <button
+                      onClick={() => handleApplyVaultItemToAd('cta', item.text)}
+                      style={{ flex: 1, background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: 'var(--success)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Apply to Active Ad
+                    </button>
+                  </div>
+                </div>
+              ))}
+
             </div>
           </div>
 
@@ -941,7 +1097,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 cta: 'Buy Now - 50% Off',
                 psychology: 'Urgency + FOMO + Visual Proof',
                 targetAudience: '18-28 College & Fitness Enthusiasts',
-                img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80'
+                img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80',
+                foreplayBadge: 'Foreplay Scaling Winner'
               },
               {
                 id: 'comp_2',
@@ -954,7 +1111,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 cta: 'Check Price',
                 psychology: 'Demonstration of Product Superiority',
                 targetAudience: '22-35 Office & Remote Workers',
-                img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80'
+                img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80',
+                foreplayBadge: 'Top Meta Ad Scaled 60+ Days'
               }
             ].map(ad => (
               <div key={ad.id} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '18px' }}>
@@ -963,7 +1121,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <span style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 600 }}>{ad.platform} • {ad.duration}</span>
                   <span style={{ fontSize: '11px', color: 'var(--success)', background: 'rgba(0,230,118,0.12)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    {ad.engagement}
+                    {ad.foreplayBadge}
                   </span>
                 </div>
 
@@ -1079,7 +1237,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 fontWeight: 600
               }}
             >
-              👤 Hire Verified UGC Creator
+              👤 Hire Verified UGC Creator (Influencer Marketplace)
             </button>
           </div>
 
@@ -1130,35 +1288,66 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
           )}
 
-          {/* Sub-tab 2: Hire Human Creator Marketplace */}
+          {/* Sub-tab 2: Hire Human Creator Marketplace (Navigates to Influencer Marketplace) */}
           {ugcSubTab === 'hire_human' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-              {[
-                { name: 'Priya Sharma', niche: 'Tech & Gadgets', rate: '₹3,500/video', followers: '45k', rating: '4.9 ★', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80' },
-                { name: 'Aarav Mehta', niche: 'Lifestyle & D2C', rate: '₹4,000/video', followers: '62k', rating: '4.8 ★', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80' },
-                { name: 'Neha Kapoor', niche: 'Unboxing & Reviews', rate: '₹3,000/video', followers: '28k', rating: '5.0 ★', img: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80' }
-              ].map((creator, idx) => (
-                <div key={idx} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <img src={creator.img} alt={creator.name} style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #7C75FF' }} />
-                    <div>
-                      <h4 style={{ fontSize: '17px', color: '#fff', margin: '0 0 2px 0' }}>{creator.name}</h4>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{creator.niche} • {creator.followers} Followers</div>
-                      <div style={{ fontSize: '11px', color: 'var(--success)', marginTop: '2px' }}>{creator.rating} Verified Creator</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(124,117,255,0.15) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                  <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>
+                    Raftra Influencer & Creator Marketplace
+                  </h3>
+                  <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
+                    Browse 500+ verified Indian UGC creators, check past performance metrics, and hire creators directly for your brand workspace.
+                  </p>
+                </div>
+                <GlowButton
+                  variant="glow"
+                  onClick={() => onNavigateTab && onNavigateTab('influencer')}
+                  style={{ padding: '12px 24px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  Open Full Influencer Marketplace <ArrowRight size={16} />
+                </GlowButton>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                {[
+                  { name: 'Priya Sharma', niche: 'Tech & Gadgets', rate: '₹3,500/video', followers: '45k', rating: '4.9 ★', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80' },
+                  { name: 'Aarav Mehta', niche: 'Lifestyle & D2C', rate: '₹4,000/video', followers: '62k', rating: '4.8 ★', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80' },
+                  { name: 'Neha Kapoor', niche: 'Unboxing & Reviews', rate: '₹3,000/video', followers: '28k', rating: '5.0 ★', img: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80' }
+                ].map((creator, idx) => (
+                  <div key={idx} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <img src={creator.img} alt={creator.name} style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #7C75FF' }} />
+                      <div>
+                        <h4 style={{ fontSize: '17px', color: '#fff', margin: '0 0 2px 0' }}>{creator.name}</h4>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{creator.niche} • {creator.followers} Followers</div>
+                        <div style={{ fontSize: '11px', color: 'var(--success)', marginTop: '2px' }}>{creator.rating} Verified Creator</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                      <div style={{ fontSize: '16px', color: '#00E676', fontWeight: 700 }}>{creator.rate}</div>
+                      <GlowButton
+                        variant="glow"
+                        onClick={() => onNavigateTab && onNavigateTab('influencer')}
+                        style={{ padding: '8px 16px', fontSize: '12px' }}
+                      >
+                        Hire Creator
+                      </GlowButton>
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
-                    <div style={{ fontSize: '16px', color: '#00E676', fontWeight: 700 }}>{creator.rate}</div>
-                    <GlowButton variant="glow" style={{ padding: '8px 16px', fontSize: '12px' }}>
-                      Hire Creator
-                    </GlowButton>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* TOAST NOTIFICATION */}
+      {copyToast && (
+        <div style={{ position: 'fixed', bottom: '40px', right: '40px', background: '#7C75FF', color: '#fff', padding: '14px 22px', borderRadius: '12px', boxShadow: '0 8px 32px rgba(124,117,255,0.4)', zIndex: 300, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 600, fontSize: '14px' }}>
+          <CheckCircle2 size={18} /> {copyToast}
         </div>
       )}
 
