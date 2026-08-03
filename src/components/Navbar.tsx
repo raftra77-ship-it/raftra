@@ -238,15 +238,11 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
       >
         <button 
           onClick={() => {
-            if (onOpenCreatorPortal) {
-              onOpenCreatorPortal();
-            } else {
-              navigate('/creator-dashboard');
-            }
+            window.open('https://docs.google.com/forms/d/e/1FAIpQLSe8SaOeW1zHgpDQprgkMoKQGOqqEHv3pSrqskUPTDYpBsB_Nw/viewform?usp=sharing&ouid=100579727126475993109', '_blank');
           }}
           className="creator-portal-btn"
         >
-          Creator Portal
+          Creator Onboarding
         </button>
         <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 20px', fontSize: '13.5px', whiteSpace: 'nowrap' }}>
           Login

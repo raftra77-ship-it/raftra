@@ -740,97 +740,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
       </footer>
       {/* Creator Portal Modal */}
       {showCreatorPortal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div className="glow-card" style={{ width: '450px', background: '#0a0a0c', padding: '30px', position: 'relative' }}>
-            <button onClick={() => {setShowCreatorPortal(false); setCreatorPortalState('form');}} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
+          <div className="glow-card" style={{ width: '460px', background: '#0a0a0c', padding: '32px', position: 'relative', border: '1px solid rgba(0, 230, 118, 0.4)', borderRadius: '20px' }}>
+            <button onClick={() => setShowCreatorPortal(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
             
-            <h3 style={{ fontSize: '20px', color: '#fff', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <UserPlus size={20} color="var(--primary)" /> Creator Portal
+            <h3 style={{ fontSize: '22px', color: '#fff', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700 }}>
+              <UserPlus size={22} color="#00E676" /> Creator Onboarding
             </h3>
 
-            {creatorPortalState === 'form' && (
-              <form style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>
-                  Register to connect with brands, or remove your profile from the Raftra Influencer Marketplace.
-                </p>
-                <div className="form-group">
-                  <label>Social Handle</label>
-                  <input type="text" placeholder="@username" value={creatorForm.handle} onChange={e => setCreatorForm({...creatorForm, handle: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label>Email</label>
-                    <input type="email" placeholder="Email" value={creatorForm.email} onChange={e => setCreatorForm({...creatorForm, email: e.target.value})} required style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }} />
-                  </div>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label>Password</label>
-                    <input type="password" placeholder="Password" value={creatorForm.password} onChange={e => setCreatorForm({...creatorForm, password: e.target.value})} required style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Niche / Category</label>
-                  <input type="text" placeholder="e.g. Finance, Tech, Fashion" value={creatorForm.niche} onChange={e => setCreatorForm({...creatorForm, niche: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                </div>
-                <div className="form-group">
-                  <label>Expected Price (per post)</label>
-                  <input type="text" placeholder="e.g. 5000" value={creatorForm.price} onChange={e => setCreatorForm({...creatorForm, price: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                </div>
-                <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                  <GlowButton onClick={(e) => handleCreatorSubmit(e, 'add')} variant="glow" style={{ flex: 1, padding: '14px' }}>
-                    Register & Scan
-                  </GlowButton>
-                  <button onClick={(e) => handleCreatorSubmit(e, 'remove')} style={{ padding: '14px', background: 'rgba(255, 50, 50, 0.1)', border: '1px solid rgba(255, 50, 50, 0.3)', color: '#ff6b6b', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
-                    Remove Profile
-                  </button>
-                </div>
-              </form>
-            )}
+            <p style={{ color: '#aaa', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
+              Fill out the official <strong>Raftra Creator Onboarding Form</strong> to list your profile, verify your metrics, and start receiving brand sponsorship deals.
+            </p>
 
-            {creatorPortalState === 'scanning' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <ShieldAlert size={48} color="var(--primary)" className="spin-animation" style={{ animation: 'spin 2s linear infinite' }} />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Audience Verification in progress...</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Scanning for bot networks and fake follower ratios.</p>
-              </div>
-            )}
-
-            {creatorPortalState === 'success' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <CheckCircle2 size={48} color="var(--success)" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Verification Passed!</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Your profile has been listed on the Influencer Marketplace. Brands can now send you direct match requests.</p>
-                <GlowButton variant="glow" onClick={() => {
-                  setShowCreatorPortal(false); 
-                  setCreatorPortalState('form');
-                  navigate('/login');
-                }} style={{ marginTop: '16px' }}>Go to Login</GlowButton>
-              </div>
-            )}
-
-            {creatorPortalState === 'error' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <ShieldAlert size={48} color="var(--warning)" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Verification Failed</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Profile not found on Instagram. Please check your handle and try again.</p>
-                <GlowButton variant="glow" onClick={() => setCreatorPortalState('form')} style={{ marginTop: '16px' }}>Try Again</GlowButton>
-              </div>
-            )}
-
-            {creatorPortalState === 'removing' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <UserMinus size={48} color="#ff6b6b" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Processing Removal...</h4>
-              </div>
-            )}
-
-            {creatorPortalState === 'removed' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <CheckCircle2 size={48} color="var(--success)" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Profile Removed</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Your profile and all data has been permanently removed from the Raftra Influencer Marketplace.</p>
-                <GlowButton variant="glow" onClick={() => {setShowCreatorPortal(false); setCreatorPortalState('form');}} style={{ marginTop: '16px' }}>Close Portal</GlowButton>
-              </div>
-            )}
+            <button
+              onClick={() => {
+                window.open('https://docs.google.com/forms/d/e/1FAIpQLSe8SaOeW1zHgpDQprgkMoKQGOqqEHv3pSrqskUPTDYpBsB_Nw/viewform?usp=sharing&ouid=100579727126475993109', '_blank');
+                setShowCreatorPortal(false);
+              }}
+              style={{ width: '100%', padding: '16px', background: 'linear-gradient(135deg, #00E676 0%, #00B0FF 100%)', color: '#000', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0, 230, 118, 0.3)' }}
+            >
+              📋 Open Creator Onboarding Form
+            </button>
           </div>
         </div>
       )}
