@@ -25,6 +25,7 @@ import {
   BarChart3,
   Share2,
   Users2,
+  CheckCircle2,
   Zap,
   Search,
   Bell,
@@ -1402,7 +1403,7 @@ export function BrandDashboard() {
                   <div className="attention-list">
                     {priorities.length === 0 ? (
                       <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
-                        <CheckCircle size={22} style={{ color: 'var(--success)', marginBottom: '8px' }} />
+                        <CheckCircle2 size={22} style={{ color: 'var(--success)', marginBottom: '8px' }} />
                         <p style={{ fontSize: '12px' }}>AI Priorities resolved. Network optimized.</p>
                       </div>
                     ) : (
