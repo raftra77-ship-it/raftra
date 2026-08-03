@@ -432,9 +432,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
 
       {/* Problem Section (Bento Grid Redesign) */}
       <section id="problem" className="section-container" style={{ scrollMarginTop: '100px' }}>
-        <span className="section-tag">THE PROBLEM</span>
-        <h2 className="section-title">Fragmented Tools Are Killing Your Growth</h2>
-        <p className="section-desc">Managing separate tools for ads, SEO, social media, and analytics wastes thousands of dollars and breaks your brand consistency.</p>
+        <span className="section-tag" style={{ color: '#FF4757', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+          THE FRICTION
+        </span>
+        <h2 className="section-title" style={{ fontSize: '52px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
+          Fragmented Tools Are Killing Your Growth
+        </h2>
+        <p className="section-desc" style={{ fontSize: '19px', color: 'rgba(255,255,255,0.7)', maxWidth: '680px' }}>Managing separate tools for ads, SEO, social media, and analytics wastes thousands of dollars and breaks your brand consistency.</p>
 
         <div className="bento-grid" style={{ marginTop: '40px' }}>
           {/* Bento Hero Problem Card (Span 7) */}
@@ -500,9 +504,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
 
       {/* Solution Section (Asymmetric Bento Grid Redesign) */}
       <section id="solution" className="section-container" style={{ scrollMarginTop: '100px' }}>
-        <span className="section-tag">THE SOLUTIONS</span>
-        <h2 className="section-title">Meet Raftra AI. The Unified Growth Suite.</h2>
-        <p className="section-desc">Six specialized AI workspaces operating as a coordinated growth network to replace your entire marketing stack.</p>
+        <span className="section-tag" style={{ color: '#00E676', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+          THE SOLUTIONS
+        </span>
+        <h2 className="section-title" style={{ fontSize: '52px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
+          Meet Raftra AI. The Unified Growth Suite.
+        </h2>
+        <p className="section-desc" style={{ fontSize: '19px', color: 'rgba(255,255,255,0.7)', maxWidth: '680px' }}>Six specialized AI workspaces operating as a coordinated growth network to replace your entire marketing stack.</p>
 
         <div className="bento-grid" style={{ marginTop: '40px' }}>
           {/* Bento Hero Showcase Card (Span 8) */}
