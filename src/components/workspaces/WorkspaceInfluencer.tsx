@@ -15,6 +15,7 @@ export interface InfluencerItemExtended {
   expectedPrice: string;
   deliverables: string[];
   followers: string;
+  avgViews?: string;
   location?: string;
   email?: string;
   phone?: string;
@@ -38,6 +39,7 @@ const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[])
   expectedPrice: item.expectedPrice,
   deliverables: item.deliverables || ['Reel', 'Story'],
   followers: item.followers,
+  avgViews: item.avgViews,
   location: item.location,
   email: item.email,
   phone: item.phone,
@@ -326,11 +328,19 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, marginBottom: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Followers</span>
-                <span style={{ color: '#fff', fontWeight: 600 }}>{creator.followers}</span>
+                <span style={{ color: '#fff', fontWeight: 700 }}>{creator.followers}</span>
               </div>
+              {creator.avgViews && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
+                  <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Activity size={13} /> {creator.avgViews}
+                  </span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
                 <span style={{ color: creator.fakeFollowerScore < 5 ? '#00E676' : 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
