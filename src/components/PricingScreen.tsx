@@ -1,122 +1,19 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Check, Zap, Star, Shield, Building2, Coins, Image as ImageIcon, Video, Database, Target, FileText, BarChart3, Calendar, Users2 } from 'lucide-react';
+import { 
+  Sparkles, Check, 
+  Image as ImageIcon, Video, 
+  Users2, ShieldCheck
+} from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
 interface PricingScreenProps {
   onComplete: () => void;
 }
 
-const PRICING_PLANS = [
-  {
-    name: 'FREE',
-    basePrice: 0,
-    description: 'Perfect for trying the platform. Learn the ropes.',
-    target: 'Students & Freelancers',
-    features: [
-      '1 Brand Workspace',
-      '50 AI Credits / month',
-      '2 Knowledge Base Files',
-      'Demo Analytics & Campaigns'
-    ],
-    buttonText: 'Start Free',
-    isPopular: false,
-    color: 'var(--text-secondary)'
-  },
-  {
-    name: 'STARTER',
-    basePrice: 1499,
-    description: 'For solo founders & small creators.',
-    target: 'Solo Founders',
-    features: [
-      '2 Brand Workspaces',
-      '5,000 AI Credits / month',
-      'Analytics & Campaign AI',
-      'Basic Creative Studio'
-    ],
-    buttonText: 'Get Starter',
-    isPopular: false,
-    color: '#4facfe'
-  },
-  {
-    name: 'GROWTH',
-    basePrice: 4999,
-    description: 'Most customers should buy this.',
-    target: 'Startups & SMBs',
-    features: [
-      '10 Brand Workspaces',
-      '25,000 AI Credits / month',
-      'Social Hub & Auto DMs',
-      'Influencer Discovery'
-    ],
-    buttonText: 'Get Growth',
-    isPopular: true,
-    color: 'var(--primary)'
-  },
-  {
-    name: 'PRO',
-    basePrice: 9999,
-    description: 'For marketing agencies.',
-    target: 'Agencies',
-    features: [
-      'Unlimited Brands',
-      '75,000 AI Credits / month',
-      'Auto Kill Ads Optimization',
-      'AI Influencer Negotiation'
-    ],
-    buttonText: 'Get Pro',
-    isPopular: false,
-    color: '#ff0844'
-  },
-  {
-    name: 'BUSINESS',
-    basePrice: 24999,
-    description: 'For scaling agencies and large brands.',
-    target: 'Scaling Agencies',
-    features: [
-      '250,000 AI Credits / month',
-      'Dedicated Fast GPU Queue',
-      'Multi-Agent Workflows',
-      'Priority Priority Support'
-    ],
-    buttonText: 'Get Business',
-    isPopular: false,
-    color: 'var(--warning)'
-  },
-  {
-    name: 'ENTERPRISE',
-    basePrice: -1,
-    description: 'Custom infrastructure & private agents.',
-    target: 'Enterprise',
-    features: [
-      'Unlimited Everything',
-      'Dedicated Infrastructure',
-      'Custom AI Models',
-      'SLA & On-premise'
-    ],
-    buttonText: 'Contact Sales',
-    isPopular: false,
-    color: 'var(--success)'
-  }
-];
-
-const CREDIT_COSTS = [
-  { action: 'AI Chat', cost: 1, icon: <Sparkles size={16} /> },
-  { action: 'Knowledge Query', cost: 2, icon: <Database size={16} /> },
-  { action: 'Ad Copy', cost: 5, icon: <Sparkles size={16} /> },
-  { action: 'SEO/GEO Opt.', cost: 8, icon: <Target size={16} /> },
-  { action: 'Long Strategy', cost: 10, icon: <FileText size={16} /> },
-  { action: 'Analytics Report', cost: 12, icon: <BarChart3 size={16} /> },
-  { action: 'Campaign Plan', cost: 15, icon: <Zap size={16} /> },
-  { action: 'Social Calendar', cost: 20, icon: <Calendar size={16} /> },
-  { action: 'Image Generation', cost: 30, icon: <ImageIcon size={16} /> },
-  { action: 'Influencer Audit', cost: 60, icon: <Users2 size={16} /> },
-  { action: 'Short Video', cost: 150, icon: <Video size={16} /> },
-  { action: 'Long Video', cost: 300, icon: <Video size={16} /> },
-];
-
 export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly' | 'yearly'>('monthly');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'creative' | 'campaign' | 'seo' | 'credits'>('all');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'INR');
 
   const handleCurrencyChange = (curr: 'INR' | 'USD') => {
@@ -124,190 +21,507 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
     localStorage.setItem('currency', curr);
   };
 
-  const getPrice = (basePriceINR: number) => {
-    if (basePriceINR === 0) return currency === 'INR' ? '₹0' : '$0';
-    if (basePriceINR === -1) return currency === 'INR' ? '₹75,000+' : '$999+';
-
-    let discountedPriceINR = basePriceINR;
-    if (billingCycle === 'quarterly') {
-      discountedPriceINR = Math.floor(basePriceINR * 0.9);
-    } else if (billingCycle === 'yearly') {
-      discountedPriceINR = Math.floor(basePriceINR * 0.8);
+  const formatPrice = (inrMonthly: number, usdMonthly: number, inrAnnual?: number) => {
+    if (billingCycle === 'annual') {
+      const price = inrAnnual || inrMonthly * 10;
+      if (currency === 'USD') return `$${Math.round(usdMonthly * 10)}/yr`;
+      return `₹${price.toLocaleString('en-IN')}/yr`;
     }
-
-    if (currency === 'USD') {
-      const priceUSD = Math.round(discountedPriceINR / 83);
-      return '$' + priceUSD.toLocaleString();
-    }
-    return '₹' + discountedPriceINR.toLocaleString('en-IN');
-  };
-
-  const getBillingText = () => {
-    if (billingCycle === 'monthly') return '/mo';
-    if (billingCycle === 'quarterly') return '/mo (Billed Quarterly)';
-    if (billingCycle === 'yearly') return '/mo (Billed Annually)';
+    if (currency === 'USD') return `$${usdMonthly}/mo`;
+    return `₹${inrMonthly.toLocaleString('en-IN')}/mo`;
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'transparent', padding: '60px 20px', overflowY: 'auto', fontFamily: 'var(--font-sans)' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0f', color: '#fff', padding: '60px 20px 100px 20px', fontFamily: 'var(--font-sans)', overflowY: 'auto' }}>
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         
+        {/* HEADER HERO */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.5 }}
           style={{ textAlign: 'center', marginBottom: '40px' }}
         >
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: 'rgba(90,82,255,0.1)', borderRadius: '100px', border: '1px solid rgba(90,82,255,0.2)', marginBottom: '16px', color: 'var(--primary)', fontWeight: 600, fontSize: '12px' }}>
-            <Sparkles size={14} /> RAFTRA AI MARKETING OS
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(124,117,255,0.12)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '16px', color: '#7C75FF', fontWeight: 600, fontSize: '13px' }}>
+            <Sparkles size={14} /> RAFTRA MARKETING OPERATING SYSTEM
           </div>
-          <h2 style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', letterSpacing: '-0.02em' }}>
-            Sell Marketing Capacity.<br/>Not "AI Messages".
-          </h2>
-          <p style={{ fontSize: '18px', color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto' }}>
-            Stop counting tokens. Focus on how many ads, videos, and campaigns you can generate. Choose the tier that matches your ambition.
+          
+          <h1 style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', fontWeight: 800, lineHeight: 1.2 }}>
+            Transparent AI Credit Pricing.<br/>No Hidden Token Fees.
+          </h1>
+
+          <p style={{ fontSize: '17px', color: 'var(--text-secondary)', maxWidth: '720px', margin: '0 auto', lineHeight: 1.5 }}>
+            Pick modular growth tools tailored for your brand or agency. AI Credits are only consumed during active AI generation & editing.
           </p>
         </motion.div>
 
-        {/* Currency Toggle */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '100px', display: 'flex', alignItems: 'center', border: '1px solid var(--border)' }}>
-            <button 
-              onClick={() => handleCurrencyChange('USD')}
-              style={{ background: currency === 'USD' ? 'var(--primary)' : 'transparent', color: currency === 'USD' ? '#fff' : 'var(--text-secondary)', border: 'none', padding: '6px 16px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
-            >
-              USD ($)
-            </button>
+        {/* CURRENCY & BILLING TOGGLES */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: '20px', marginBottom: '40px' }}>
+          
+          {/* Currency Toggle */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center' }}>
             <button 
               onClick={() => handleCurrencyChange('INR')}
-              style={{ background: currency === 'INR' ? 'var(--primary)' : 'transparent', color: currency === 'INR' ? '#fff' : 'var(--text-secondary)', border: 'none', padding: '6px 16px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+              style={{ background: currency === 'INR' ? '#7C75FF' : 'transparent', color: '#fff', border: 'none', padding: '6px 18px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
             >
               INR (₹)
             </button>
+            <button 
+              onClick={() => handleCurrencyChange('USD')}
+              style={{ background: currency === 'USD' ? '#7C75FF' : 'transparent', color: '#fff', border: 'none', padding: '6px 18px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+            >
+              USD ($)
+            </button>
           </div>
-        </div>
 
-        {/* Billing Toggle */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '60px' }}>
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '100px', display: 'flex', alignItems: 'center', border: '1px solid var(--border)' }}>
+          {/* Billing Cycle Toggle */}
+          <div style={{ background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center' }}>
             <button 
               onClick={() => setBillingCycle('monthly')}
-              style={{ background: billingCycle === 'monthly' ? 'var(--primary)' : 'transparent', color: billingCycle === 'monthly' ? '#fff' : 'var(--text-secondary)', border: 'none', padding: '8px 24px', borderRadius: '100px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+              style={{ background: billingCycle === 'monthly' ? '#7C75FF' : 'transparent', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
             >
-              Monthly
+              Monthly Billing
             </button>
             <button 
-              onClick={() => setBillingCycle('quarterly')}
-              style={{ background: billingCycle === 'quarterly' ? 'var(--primary)' : 'transparent', color: billingCycle === 'quarterly' ? '#fff' : 'var(--text-secondary)', border: 'none', padding: '8px 24px', borderRadius: '100px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={() => setBillingCycle('annual')}
+              style={{ background: billingCycle === 'annual' ? '#7C75FF' : 'transparent', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              Quarterly <span style={{ background: billingCycle === 'quarterly' ? 'rgba(255,255,255,0.2)' : 'rgba(90,82,255,0.2)', color: billingCycle === 'quarterly' ? '#fff' : 'var(--primary)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px' }}>SAVE 10%</span>
-            </button>
-            <button 
-              onClick={() => setBillingCycle('yearly')}
-              style={{ background: billingCycle === 'yearly' ? 'var(--primary)' : 'transparent', color: billingCycle === 'yearly' ? '#fff' : 'var(--text-secondary)', border: 'none', padding: '8px 24px', borderRadius: '100px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              Yearly <span style={{ background: billingCycle === 'yearly' ? 'rgba(255,255,255,0.2)' : 'rgba(90,82,255,0.2)', color: billingCycle === 'yearly' ? '#fff' : 'var(--primary)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px' }}>SAVE 20%</span>
+              Annual Billing <span style={{ background: 'rgba(0,230,118,0.2)', color: 'var(--success)', fontSize: '10px', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>2 MONTHS FREE</span>
             </button>
           </div>
+
         </div>
 
-        {/* Pricing Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px', marginBottom: '80px', alignItems: 'stretch' }}>
-          {PRICING_PLANS.map((plan, i) => (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: i * 0.1 }}
-              key={plan.name} 
-              className="glow-card" 
-              style={{ 
-                padding: '32px', 
-                display: 'flex', 
-                flexDirection: 'column', 
-                minHeight: '420px', 
-                position: 'relative',
-                overflow: 'visible',
-                background: plan.isPopular ? 'linear-gradient(180deg, rgba(90, 82, 255, 0.08) 0%, rgba(10, 10, 12, 0.9) 100%)' : 'rgba(20,20,20,0.4)',
-                border: plan.isPopular ? '1px solid var(--primary)' : '1px solid var(--border)',
-                transform: plan.isPopular ? 'scale(1.02)' : 'scale(1)',
-                zIndex: plan.isPopular ? 10 : 1
+        {/* CATEGORY NAV TABS */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '50px' }}>
+          {[
+            { id: 'all', label: 'All Pricing Modules' },
+            { id: 'creative', label: '🎨 Creative Studio' },
+            { id: 'campaign', label: '📢 Campaign Manager' },
+            { id: 'seo', label: '🔍 SEO & GEO' },
+            { id: 'credits', label: '💳 AI Credits Breakdown' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveCategory(tab.id as any)}
+              style={{
+                background: activeCategory === tab.id ? 'rgba(124,117,255,0.2)' : 'rgba(255,255,255,0.03)',
+                border: activeCategory === tab.id ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
+                color: activeCategory === tab.id ? '#fff' : 'var(--text-secondary)',
+                padding: '10px 22px',
+                borderRadius: '100px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer'
               }}
             >
-              {plan.isPopular && (
-                <div style={{ position: 'absolute', top: '-14px', left: '50%', transform: 'translateX(-50%)', background: 'var(--primary)', color: '#fff', padding: '6px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', boxShadow: '0 0 20px rgba(90,82,255,0.4)' }}>
-                  MOST POPULAR
-                </div>
-              )}
-              
-              <div style={{ marginBottom: '24px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: plan.color, letterSpacing: '0.1em', marginBottom: '12px' }}>{plan.name}</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '42px', fontWeight: 800, color: '#fff', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
-                    {getPrice(plan.basePrice)}
-                  </span>
-                  {plan.basePrice > 0 && <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{getBillingText()}</span>}
-                </div>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>{plan.description}</p>
-                <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Users2 size={14} /> <i>Target: {plan.target}</i>
-                </div>
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {plan.features.map(f => (
-                    <li key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', fontSize: '14px', color: '#e0e0e0', lineHeight: 1.4 }}>
-                      <Check size={18} style={{ color: plan.color, flexShrink: 0, marginTop: '2px' }} />
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div style={{ marginTop: '32px' }}>
-                <GlowButton variant={plan.isPopular ? 'glow' : 'secondary'} onClick={onComplete} style={{ width: '100%', padding: '16px', fontSize: '15px', fontWeight: 600 }}>
-                  {plan.buttonText}
-                </GlowButton>
-              </div>
-            </motion.div>
+              {tab.label}
+            </button>
           ))}
         </div>
 
-        {/* Credit System Section */}
-        <div className="glow-card" style={{ padding: '40px', background: 'rgba(10,10,12,0.8)', marginBottom: '60px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-            <h3 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '12px' }}>
-              The Universal AI Credit System
-            </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '16px', maxWidth: '600px', margin: '0 auto' }}>
-              Instead of limiting arbitrary "messages", everything consumes transparent credits. Only pay for what you actually use.
-            </p>
-          </div>
+        {/* STRATEGIC FEATURED BUNDLE: CAMPAIGN MANAGER + CREATIVE STUDIO PRO */}
+        {(activeCategory === 'all' || activeCategory === 'creative' || activeCategory === 'campaign') && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glow-card" 
+            style={{ 
+              padding: '36px', 
+              background: 'linear-gradient(135deg, rgba(124,117,255,0.2) 0%, rgba(10,10,16,0.95) 100%)', 
+              border: '2px solid #7C75FF', 
+              borderRadius: '24px', 
+              marginBottom: '60px',
+              position: 'relative',
+              boxShadow: '0 10px 40px rgba(124,117,255,0.25)'
+            }}
+          >
+            <span style={{ position: 'absolute', top: '-14px', left: '36px', background: 'linear-gradient(90deg, #7C75FF 0%, #00E676 100%)', color: '#000', padding: '6px 16px', borderRadius: '100px', fontSize: '11px', fontWeight: 800, letterSpacing: '0.06em' }}>
+              ⭐ RECOMMENDED GROWTH BUNDLE (SAVE 30%)
+            </span>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
-            {CREDIT_COSTS.map(cost => (
-              <div key={cost.action} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#fff', fontSize: '14px' }}>
-                  <div style={{ color: 'var(--primary)' }}>{cost.icon}</div>
-                  {cost.action}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: 700, color: 'var(--accent)' }}>
-                  <Coins size={14} /> {cost.cost}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '24px' }}>
+              <div style={{ maxWidth: '750px' }}>
+                <h2 style={{ fontSize: '28px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+                  Campaign Manager + Creative Studio Pro Bundle
+                </h2>
+                <p style={{ fontSize: '15px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+                  The complete end-to-end AI Marketing Operating System. Includes 20,000 monthly AI credits, full AI Creative Studio generation, Meta & Google automated publishing, and Claude AI strategy recommendations.
+                </p>
+
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '13px', color: '#ddd' }}>
+                  <span>✓ <strong>20,000 AI Credits</strong> / month</span>
+                  <span>✓ <strong>Creative Studio Pro</strong> (Image, Video & UGC)</span>
+                  <span>✓ <strong>Campaign Manager</strong> (Meta & Google Publishing)</span>
+                  <span>✓ <strong>Claude AI Strategy Engine</strong></span>
                 </div>
               </div>
-            ))}
-          </div>
 
-          <div style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Need more capacity? Refill anytime:</div>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                <span style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', fontSize: '13px', color: '#fff' }}>5k Credits = ₹499</span>
-                <span style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', fontSize: '13px', color: '#fff' }}>20k Credits = ₹1,499</span>
-                <span style={{ padding: '8px 16px', background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.3)', borderRadius: '20px', fontSize: '13px', color: 'var(--primary)', fontWeight: 600 }}>100k Credits = ₹5,499 (Best Value)</span>
+              <div style={{ textAlign: 'right', minWidth: '220px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>BUNDLE PRICE</div>
+                <div style={{ fontSize: '38px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', margin: '4px 0 12px 0' }}>
+                  {formatPrice(6999, 79, 69999)}
+                </div>
+                <GlowButton variant="glow" onClick={onComplete} style={{ width: '100%', padding: '14px 28px', fontSize: '15px' }}>
+                  Get Growth Bundle
+                </GlowButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* SECTION 1: CREATIVE STUDIO PLANS */}
+        {(activeCategory === 'all' || activeCategory === 'creative') && (
+          <div style={{ marginBottom: '80px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 1</div>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>🎨 Creative Studio (Credit Based)</h2>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+              
+              {/* Starter */}
+              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Starter</div>
+                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(999, 12, 9999)}
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
+                    5,000 AI Credits / month
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Image Ads Generation</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Product Photography Renders</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Basic Ad Copy & Photo Editing</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Carousel Ads Framework</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Brand Knowledge Base Sync</li>
+                  </ul>
+                </div>
+
+                <button onClick={onComplete} style={{ marginTop: '28px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '12px', borderRadius: '100px', fontWeight: 600, cursor: 'pointer' }}>
+                  Select Starter
+                </button>
+              </div>
+
+              {/* Pro */}
+              <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(180deg, rgba(124,117,255,0.12) 0%, #0d0d14 100%)', border: '2px solid #7C75FF', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
+                <span style={{ position: 'absolute', top: '-12px', right: 24, background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800 }}>
+                  ⭐ MOST POPULAR
+                </span>
+
+                <div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Pro</div>
+                  <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(2499, 29, 24999)}
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 700, marginBottom: '20px', background: 'rgba(0,230,118,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
+                    15,000 AI Credits / month
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Everything in Starter</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> 15s / 30s / 60s AI Video Ads</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI UGC Video Reels & Avatars</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Advanced In-Place Ad Editing</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Premium Imagen 3 & Claude Models</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Faster GPU Generation Queue</li>
+                  </ul>
+                </div>
+
+                <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '28px', padding: '14px' }}>
+                  Get Creative Pro
+                </GlowButton>
+              </div>
+
+              {/* Business */}
+              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Business</div>
+                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                    {formatPrice(4999, 59, 49999)}
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
+                    40,000 AI Credits / month
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Everything in Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Multi-Member Team Access</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Priority Dedicated Generation</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Higher Usage & Batch Renders</li>
+                  </ul>
+                </div>
+
+                <button onClick={onComplete} style={{ marginTop: '28px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '12px', borderRadius: '100px', fontWeight: 600, cursor: 'pointer' }}>
+                  Select Business
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 2: CAMPAIGN MANAGER */}
+        {(activeCategory === 'all' || activeCategory === 'campaign') && (
+          <div style={{ marginBottom: '80px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 2</div>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>📢 Campaign Manager</h2>
+            </div>
+
+            <div className="glow-card" style={{ padding: '36px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '28px' }}>
+              <div style={{ maxWidth: '750px' }}>
+                <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                  {formatPrice(4999, 59, 49999)}
+                </div>
+                <p style={{ fontSize: '15px', color: 'var(--text-secondary)', margin: '0 0 20px 0', lineHeight: 1.5 }}>
+                  Automate ad creation, audience targeting, Meta & Google publishing, and real-time performance optimization with Claude AI.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', fontSize: '13px', color: '#ccc' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Campaign Builder</div>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Campaign Suggestions</div>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Audience Research Engine</div>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Budget Planner & Allocation</div>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Meta Ads Automated Publishing</div>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Google Ads Automated Publishing</div>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> OAuth 2.0 Account Integrations</div>
+                  <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude AI Optimization Recs</div>
+                </div>
+              </div>
+
+              <div style={{ minWidth: '220px' }}>
+                <GlowButton variant="glow" onClick={onComplete} style={{ width: '100%', padding: '16px 32px', fontSize: '15px' }}>
+                  Get Campaign Manager
+                </GlowButton>
               </div>
             </div>
           </div>
+        )}
+
+        {/* SECTION 3: SEO & GEO PLANS */}
+        {(activeCategory === 'all' || activeCategory === 'seo') && (
+          <div style={{ marginBottom: '80px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 3</div>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>🔍 SEO & GEO Search Engine Optimization</h2>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+              
+              {/* Starter */}
+              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Starter</div>
+                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
+                    {formatPrice(4999, 59, 49999)}
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Weekly SEO Audit</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Weekly GEO Audit</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Optimization Recommendations</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Prompt Tracking Engine</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Search Visibility Tracking</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Competitor SEO Overview</li>
+                  </ul>
+                </div>
+
+                <button onClick={onComplete} style={{ marginTop: '28px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '12px', borderRadius: '100px', fontWeight: 600, cursor: 'pointer' }}>
+                  Select SEO Starter
+                </button>
+              </div>
+
+              {/* Growth */}
+              <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(180deg, rgba(124,117,255,0.12) 0%, #0d0d14 100%)', border: '2px solid #7C75FF', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
+                <span style={{ position: 'absolute', top: '-12px', right: 24, background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800 }}>
+                  ⭐ MOST POPULAR
+                </span>
+
+                <div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Growth</div>
+                  <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
+                    {formatPrice(14999, 179, 149999)}
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Everything in Starter +</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> GSC & GA4 Real-time Integration</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> WordPress / Shopify / GitHub Connect</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> One-Click CMS Publishing</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Blog & Landing Page Writer</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> FAQ Schema & Entity Optimization</li>
+                  </ul>
+                </div>
+
+                <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '28px', padding: '14px' }}>
+                  Get SEO Growth
+                </GlowButton>
+              </div>
+
+              {/* Managed SEO */}
+              <div className="glow-card" style={{ padding: '32px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Managed SEO</div>
+                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
+                    {formatPrice(29999, 359, 299999)}
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Everything in Growth +</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Dedicated SEO & GEO Specialist</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Backlink Outreach & Guest Posting</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Digital PR & Authority Building</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Weekly Strategy Calls & Planning</li>
+                  </ul>
+                </div>
+
+                <button onClick={onComplete} style={{ marginTop: '28px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '12px', borderRadius: '100px', fontWeight: 600, cursor: 'pointer' }}>
+                  Get Managed SEO
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 4: INCLUDED MODULES & MARKETPLACE */}
+        <div style={{ marginBottom: '80px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+          
+          {/* Social Hub */}
+          <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>INCLUDED FREE</div>
+            <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📱 Social Hub</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
+              Includes Social Workspace, Editorial Calendar, Content Planning, Team Collaboration, and Notifications.
+            </p>
+            <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 600 }}>Option to Hire Specialist (20% Raftra Commission)</div>
+          </div>
+
+          {/* Influencer Marketplace */}
+          <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>FREE TO USE</div>
+            <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>🤝 Influencer Marketplace</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
+              Creator Discovery, Live Chat, Campaign Briefs, Proposals, and Deliverable Tracking.
+            </p>
+            <div style={{ fontSize: '12px', color: 'var(--success)', fontWeight: 600 }}>10% Platform Fee on completed deals</div>
+          </div>
+
+          {/* Analytics */}
+          <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px' }}>
+            <div style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>MODULE INCLUDED</div>
+            <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>📈 Analytics & Insights</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.4 }}>
+              Included free with purchased modules (Marketing ROAS/CPA + SEO Prompt Tracking & Rankings).
+            </p>
+            <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600 }}>0 AI Credits Consumed</div>
+          </div>
+
+        </div>
+
+        {/* SECTION 5: TRANSPARENT AI CREDIT CONSUMPTION TABLE & REFILLS */}
+        <div className="glow-card" style={{ padding: '36px', background: '#0b0b10', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '24px', marginBottom: '60px' }}>
+          
+          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(0,230,118,0.12)', borderRadius: '100px', border: '1px solid rgba(0,230,118,0.3)', marginBottom: '8px' }}>
+              <ShieldCheck size={13} color="var(--success)" />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--success)' }}>HOW AI CREDITS WORK</span>
+            </div>
+            <h3 style={{ fontSize: '28px', color: '#fff', margin: '0 0 8px 0', fontFamily: 'var(--font-heading)' }}>
+              Transparent AI Credit Consumption Table
+            </h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '650px', margin: '0 auto', lineHeight: 1.5 }}>
+              AI Credits are ONLY consumed when generating or editing media. Dashboards, analytics, publishing, campaign management, and reports DO NOT consume credits.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+            
+            {/* Image */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <h4 style={{ fontSize: '15px', color: '#7C75FF', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ImageIcon size={16} /> 🖼 Image Generation
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Generate Image Ad</span><strong>20 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Generate Premium Image</span><strong>35 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Product Photography</span><strong>25 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Carousel Card</span><strong>15 / card</strong></div>
+              </div>
+            </div>
+
+            {/* Video */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <h4 style={{ fontSize: '15px', color: '#00E676', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Video size={16} /> 🎥 Video Generation
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>15 sec Video Ad</span><strong>120 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>30 sec Video Ad</span><strong>220 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>60 sec Video Ad</span><strong>380 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>AI Product Video</span><strong>180 Credits</strong></div>
+              </div>
+            </div>
+
+            {/* AI UGC */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <h4 style={{ fontSize: '15px', color: 'violet', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users2 size={16} /> 🎭 AI UGC & Voice
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>AI UGC Image</span><strong>40 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>AI UGC Video (15s)</span><strong>250 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>AI UGC Video (30s)</span><strong>420 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>AI Voiceover</span><strong>20 Credits</strong></div>
+              </div>
+            </div>
+
+            {/* Editing */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <h4 style={{ fontSize: '15px', color: '#FFBD2E', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={16} /> ✨ AI Photo Editing
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Background Remove</span><strong>2 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Background Replace</span><strong>5 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Object Add / Remove</span><strong>5-8 Credits</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Upscale & Face Enhance</span><strong>4-5 Credits</strong></div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* ADDITIONAL CREDIT REFILL PACKS */}
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '28px', textAlign: 'center' }}>
+            <h4 style={{ fontSize: '18px', color: '#fff', margin: '0 0 16px 0', fontFamily: 'var(--font-heading)' }}>
+              Buy Additional Credit Top-Ups (Refill Anytime)
+            </h4>
+
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              {[
+                { credits: '5,000 Credits', inr: '₹999', usd: '$12' },
+                { credits: '10,000 Credits', inr: '₹1,799', usd: '$22' },
+                { credits: '25,000 Credits', inr: '₹3,999', usd: '$48' },
+                { credits: '50,000 Credits', inr: '₹6,999', usd: '$84', badge: 'Best Value' }
+              ].map((pack, idx) => (
+                <div key={idx} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '14px 20px', minWidth: '180px', position: 'relative' }}>
+                  {pack.badge && (
+                    <span style={{ position: 'absolute', top: '-10px', right: '12px', background: '#00E676', color: '#000', fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px' }}>
+                      {pack.badge}
+                    </span>
+                  )}
+                  <div style={{ fontSize: '14px', color: '#fff', fontWeight: 700 }}>{pack.credits}</div>
+                  <div style={{ fontSize: '16px', color: '#7C75FF', fontWeight: 800, marginTop: '4px' }}>
+                    {currency === 'USD' ? pack.usd : pack.inr}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
 
       </div>
