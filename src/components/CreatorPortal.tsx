@@ -72,6 +72,20 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  const creatorStorageKey = 'raftra_chat_creator_11';
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if ((e.key === creatorStorageKey || e.key === 'raftra_creator_inbox_chat') && e.newValue) {
+        try {
+          setChatMessages(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'inbox') {
       const defaultBrands = [
@@ -82,7 +96,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       ];
       setAllBrands(defaultBrands);
 
-      const savedChat = localStorage.getItem('raftra_creator_inbox_chat');
+      const savedChat = localStorage.getItem(creatorStorageKey) || localStorage.getItem('raftra_creator_inbox_chat');
       if (savedChat) {
         try {
           setChatMessages(JSON.parse(savedChat));
@@ -97,11 +111,12 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   const initDefaultCreatorChats = () => {
     const initialMsgs = [
-      { workspace_id: 1, workspace_name: 'Asitis Nutrition', sender_type: 'system', content: 'SECURE END-TO-END CHAT ESTABLISHED' },
-      { workspace_id: 1, workspace_name: 'Asitis Nutrition', sender_type: 'brand', content: "Hi Ankit! We loved your recent viral food & couple reels (11.3M views). We would like to sponsor a 30s integration reel for Asitis Whey Protein." },
-      { workspace_id: 1, workspace_name: 'Asitis Nutrition', sender_type: 'brand', content: '{"type":"proposal","amount":10000}' }
+      { sender: 'system', text: 'SECURE END-TO-END CHAT ESTABLISHED' },
+      { sender: 'brand', text: "Hi Ankit! We loved your recent viral food & couple reels (11.3M views). We would like to sponsor a 30s integration reel for Asitis Whey Protein." },
+      { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 10000 }) }
     ];
     setChatMessages(initialMsgs);
+    localStorage.setItem(creatorStorageKey, JSON.stringify(initialMsgs));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(initialMsgs));
   };
 
@@ -111,17 +126,19 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     const input = chatInput;
     setChatInput('');
 
-    const activeBrand = allBrands.find(b => b.id === chatWorkspaceId) || { id: chatWorkspaceId, name: 'Brand Partner' };
     const newMsg = {
-      workspace_id: chatWorkspaceId,
-      workspace_name: activeBrand.name,
+      sender: 'creator' as const,
       sender_type: 'influencer',
+      text: input,
       content: input
     };
 
-    const updated = [...chatMessages, newMsg];
+    const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
+    const updated = [...currentMsgs, newMsg];
     setChatMessages(updated);
+    localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
 
     setTimeout(() => {
       let replyContent = "Sounds great! We will process the Escrow deposit right away.";
@@ -129,34 +146,39 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         replyContent = "We accept your requested rate! Sending over the formal agreement now.";
       }
       const replyMsg = {
-        workspace_id: chatWorkspaceId,
-        workspace_name: activeBrand.name,
+        sender: 'brand' as const,
         sender_type: 'brand',
+        text: replyContent,
         content: replyContent
       };
-      const updatedWithReply = [...updated, replyMsg];
+      const latest = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(updated));
+      const updatedWithReply = [...latest, replyMsg];
       setChatMessages(updatedWithReply);
+      localStorage.setItem(creatorStorageKey, JSON.stringify(updatedWithReply));
       localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updatedWithReply));
+      window.dispatchEvent(new Event('storage'));
     }, 1200);
   };
 
   const handleAcceptProposal = (amount: number) => {
-    const activeBrand = allBrands.find(b => b.id === chatWorkspaceId) || { id: chatWorkspaceId, name: 'Brand Partner' };
     const acceptMsg = {
-      workspace_id: chatWorkspaceId,
-      workspace_name: activeBrand.name,
+      sender: 'creator' as const,
       sender_type: 'influencer',
+      text: JSON.stringify({ type: 'proposal_accepted', amount }),
       content: JSON.stringify({ type: 'proposal_accepted', amount })
     };
     const paymentMsg = {
-      workspace_id: chatWorkspaceId,
-      workspace_name: activeBrand.name,
+      sender: 'brand' as const,
       sender_type: 'brand',
+      text: JSON.stringify({ type: 'payment_complete', amount }),
       content: JSON.stringify({ type: 'payment_complete', amount })
     };
-    const updated = [...chatMessages, acceptMsg, paymentMsg];
+    const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
+    const updated = [...currentMsgs, acceptMsg, paymentMsg];
     setChatMessages(updated);
+    localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
   };
 
   const handleVerifyProfile = async (e: React.FormEvent) => {
@@ -364,19 +386,21 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   
                   <div className="chat-messages" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {currentChatMessages.map((msg: any, i: number) => {
-                      if (msg.sender_type === 'system') {
+                      const contentStr = msg.text || msg.content || '';
+                      const isSystem = msg.sender === 'system' || msg.sender_type === 'system';
+                      if (isSystem) {
                         return (
                           <div key={i} style={{ textAlign: 'center', margin: '8px 0' }}>
                             <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: '12px' }}>
-                              {msg.content}
+                              {contentStr}
                             </span>
                           </div>
                         );
                       }
                       let parsedContent = null;
                       try {
-                        if (msg.content.trim().startsWith('{')) {
-                          parsedContent = JSON.parse(msg.content);
+                        if (typeof contentStr === 'string' && contentStr.trim().startsWith('{')) {
+                          parsedContent = JSON.parse(contentStr);
                         }
                       } catch (e) {}
 
@@ -420,11 +444,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                         );
                       }
 
-                      const isMe = msg.sender_type === 'influencer';
+                      const isMe = msg.sender === 'creator' || msg.sender_type === 'influencer';
                       return (
                         <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
-                            {isMe ? 'You' : (groupedChats[chatWorkspaceId]?.name || 'Brand')}
+                            {isMe ? 'You' : (groupedChats[chatWorkspaceId]?.name || 'Brand Partner')}
                           </div>
                           <div style={{ 
                             background: isMe ? 'rgba(90, 82, 255, 0.15)' : 'rgba(255,255,255,0.05)', 
@@ -433,7 +457,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                             borderRadius: isMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
                             fontSize: '14px', lineHeight: 1.5
                           }}>
-                            {msg.content}
+                            {contentStr}
                           </div>
                         </div>
                       );

@@ -185,10 +185,18 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (wsRef.current) wsRef.current.close();
+    if (!activeChat) return;
+    const storageKey = `raftra_chat_${activeChat.id}`;
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === storageKey && e.newValue) {
+        try {
+          setChatMessages(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
     };
-  }, []);
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [activeChat]);
 
   const handleOpenChat = (creator: InfluencerItemExtended) => {
     setActiveChat(creator);
@@ -220,19 +228,23 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     const input = chatInput;
     setChatInput('');
 
-    const newMsgs = [...chatMessages, { sender: 'brand' as const, text: input }];
-    setChatMessages(newMsgs);
     const storageKey = `raftra_chat_${activeChat.id}`;
+    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
+    const newMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }];
+    setChatMessages(newMsgs);
     localStorage.setItem(storageKey, JSON.stringify(newMsgs));
+    window.dispatchEvent(new Event('storage'));
 
     setTimeout(() => {
       let replyText = `Thanks for the details! I can definitely do that for your campaign. Should I send over the draft video preview once ready?`;
       if (input.toLowerCase().includes('price') || input.toLowerCase().includes('budget') || input.toLowerCase().includes('rate')) {
         replyText = `Sounds great! My base rate is ${activeChat.expectedPrice} per reel including story repost. Let's lock in the deal via Escrow!`;
       }
-      const updatedWithReply = [...newMsgs, { sender: 'creator' as const, text: replyText }];
+      const latest = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(newMsgs));
+      const updatedWithReply = [...latest, { sender: 'creator' as const, text: replyText }];
       setChatMessages(updatedWithReply as any);
       localStorage.setItem(storageKey, JSON.stringify(updatedWithReply));
+      window.dispatchEvent(new Event('storage'));
     }, 1200);
   };
 
@@ -240,6 +252,14 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     e.preventDefault();
     if (!finalPrice || isNaN(Number(finalPrice)) || !activeChat) return;
     const price = parseFloat(finalPrice);
+    const storageKey = `raftra_chat_${activeChat.id}`;
+    
+    const proposalMsg = { sender: 'brand' as const, text: JSON.stringify({ type: 'proposal', amount: price }) };
+    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
+    const updated = [...currentMsgs, proposalMsg];
+    setChatMessages(updated as any);
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
     
     try {
       const token = localStorage.getItem('token');
