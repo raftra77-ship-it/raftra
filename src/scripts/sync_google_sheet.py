@@ -48,15 +48,15 @@ def parse_price(col11_text, handle=""):
     h = handle.lower()
     if 'ankrena' in h:
         return "₹10,000"
-    elif 'ankit.k.09' in h:
-        return "₹25,000"
     elif 'aanushkaanexttdoorr' in h:
         return "₹5,500"
-    elif 'simplymalvika' in h:
-        return "₹700"
     elif 'charika' in h:
-        return "₹2,500"
-    elif 'sarthak' in h or 'aanchal' in h or 'ananya' in h or 'mahhiii' in h:
+        return "₹25,000"
+    elif 'simplymalvika' in h:
+        return "₹12,000"
+    elif 'ankit.k.09' in h:
+        return "₹50,000"
+    elif 'mahhiii' in h:
         return "₹1,500"
     elif 'yourfirst.100k' in h:
         return "₹8,000"
@@ -66,9 +66,14 @@ def parse_price(col11_text, handle=""):
         return "₹4,000"
     elif 'fanish' in h or 'uttarakhandyb' in h or 'musclestroke' in h:
         return "₹3,000"
+    elif '_ak_vlogs' in h or 'anmol' in h or 'khanna' in h:
+        return "Can discuss"
 
     if not col11_text or not col11_text.strip():
-        return "₹3,000"
+        return "Can discuss"
+    
+    if 'discuss' in col11_text.lower() or 'negotiable' in col11_text.lower():
+        return "Can discuss"
     
     match = re.search(r'₹\s*([\d,]+)', col11_text)
     if match:
@@ -187,6 +192,9 @@ def sync():
         elif 'ankit.k.09' in handle.lower():
             avg_views = "93M+ reach"
             loc = "New Delhi, India"
+        elif '_ak_vlogs' in handle.lower() or 'anmol' in handle.lower():
+            avg_views = "400k avg reach"
+            loc = city_country or "Delhi, India"
         else:
             avg_views = "15k avg"
             loc = city_country or "India"
