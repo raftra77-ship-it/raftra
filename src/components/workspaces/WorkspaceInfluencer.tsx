@@ -454,20 +454,10 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               {creator.profileLink && (
                 <button
                   onClick={() => window.open(creator.profileLink, '_blank')}
-                  style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                  style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  <ExternalLink size={13} /> Profile
+                  <ExternalLink size={14} /> Profile
                 </button>
-              )}
-              {creator.phone && (
-                <a
-                  href={`https://wa.me/91${creator.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${creator.name}! Reaching out from Raftra Brand Marketplace for a brand collab.`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ padding: '10px 12px', background: 'rgba(37, 211, 102, 0.12)', border: '1px solid rgba(37, 211, 102, 0.4)', borderRadius: '8px', color: '#25D366', fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', textDecoration: 'none' }}
-                >
-                  💬 WhatsApp
-                </a>
               )}
             </div>
           </div>
@@ -488,32 +478,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   <div style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}><BadgeCheck size={12} /> Verified Creator</div>
                 </div>
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {activeChat.phone && (
-                  <a
-                    href={`https://wa.me/91${activeChat.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${activeChat.name}! Reaching out from Raftra Brand Marketplace regarding a collaboration for your account ${activeChat.handle}.`)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      padding: '6px 14px',
-                      background: 'rgba(37, 211, 102, 0.15)',
-                      border: '1px solid #25D366',
-                      borderRadius: '20px',
-                      color: '#25D366',
-                      fontWeight: 700,
-                      fontSize: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      textDecoration: 'none'
-                    }}
-                  >
-                    💬 WhatsApp Chat
-                  </a>
-                )}
-                <button onClick={() => setActiveChat(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '24px' }}>&times;</button>
-              </div>
+              <button onClick={() => setActiveChat(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '24px' }}>&times;</button>
             </div>
 
             {/* Raftra AI Policy Banner */}
