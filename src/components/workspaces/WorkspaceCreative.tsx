@@ -237,7 +237,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {[
             { id: 'create', label: 'Create', icon: Wand2 },
-            { id: 'competitors', label: 'Competitor Intelligence ⭐', icon: BarChart2, badge: 'Foreplay & Rize' },
+            { id: 'competitors', label: 'Competitor Intelligence ⭐', icon: BarChart2, badge: 'Ad Vault' },
             { id: 'projects', label: 'Projects', icon: Layers },
             { id: 'templates', label: 'Templates', icon: Copy },
             { id: 'ugc', label: 'UGC', icon: Video }
@@ -277,7 +277,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
         <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <ShieldCheck size={14} color="var(--success)" />
-          <span>Foreplay.co & Rize Ad Vault Sync Active</span>
+          <span>Raftra Ad Intelligence Vault Sync Active</span>
         </div>
       </div>
 
@@ -288,7 +288,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(255,255,255,0.06)', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)', alignSelf: 'flex-start' }}>
             <Sparkles size={14} color="#7C75FF" />
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', letterSpacing: '0.04em' }}>Raftra Creative Studio • Foreplay.co Intelligence</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', letterSpacing: '0.04em' }}>Raftra Creative Studio • AI Ad Intelligence</span>
           </div>
 
           <div>
@@ -894,47 +894,75 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       )}
 
-      {/* ==================== TAB 2: COMPETITOR INTELLIGENCE ⭐ (FOREPLAY.CO / BLOOM / RIZE INTEGRATED) ==================== */}
+      {/* ==================== TAB 2: COMPETITOR INTELLIGENCE ⭐ ==================== */}
       {activeTab === 'competitors' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           
-          {/* Header & Intelligence Partners */}
+          {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(0,230,118,0.12)', borderRadius: '100px', border: '1px solid rgba(0,230,118,0.3)', marginBottom: '8px' }}>
                 <ShieldCheck size={13} color="var(--success)" />
                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--success)', letterSpacing: '0.04em' }}>
-                  POWERED BY FOREPLAY.CO • META AD LIBRARY • BLOOM & RIZE AI
+                  RAFTRA AD INTELLIGENCE & META AD BENCHMARKS
                 </span>
               </div>
               <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 Winning Competitor Ads & Psychological Vault
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                Analyze top scaling competitor ads, psychological hooks, and high-converting CTAs curated from Foreplay.co & Rize AI.
+                Analyze top scaling competitor ads, psychological hooks, and high-converting CTAs tracked across active market campaigns.
               </p>
             </div>
+          </div>
 
-            {/* Select Competitor Tabs */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {(['Boat', 'Noise', 'Realme'] as const).map(comp => (
-                <button
-                  key={comp}
-                  onClick={() => setSelectedCompetitor(comp)}
-                  style={{
-                    background: selectedCompetitor === comp ? '#7C75FF' : 'rgba(255,255,255,0.05)',
-                    color: selectedCompetitor === comp ? '#fff' : 'var(--text-secondary)',
-                    border: selectedCompetitor === comp ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
-                    padding: '8px 18px',
-                    borderRadius: '100px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 600
-                  }}
-                >
-                  {comp} Ads
-                </button>
-              ))}
+          {/* PROMINENT COMPETITOR BRAND SELECTOR CARDS */}
+          <div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px' }}>
+              Select Competitor Brand to Inspect Active Campaigns
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+              {[
+                { id: 'Boat', name: 'Boat Electronics', category: 'Audio & Wearables', activeAds: '14 Active Ads Tracked', engagement: '4.8% Avg Engagement', status: 'Market Leader' },
+                { id: 'Noise', name: 'Noise Audio & Smartwatches', category: 'Fitness & Smart Tech', activeAds: '18 Active Ads Tracked', engagement: '5.2% Avg Engagement', status: 'Scaling Fast' },
+                { id: 'Realme', name: 'Realme Tech & Power Accessories', category: 'Electronics & Power', activeAds: '11 Active Ads Tracked', engagement: '4.4% Avg Engagement', status: 'Consistent CTR' }
+              ].map(comp => {
+                const isSelected = selectedCompetitor === comp.id;
+                return (
+                  <div
+                    key={comp.id}
+                    onClick={() => setSelectedCompetitor(comp.id as any)}
+                    style={{
+                      background: isSelected ? 'linear-gradient(135deg, rgba(124,117,255,0.18) 0%, rgba(90,82,255,0.06) 100%)' : 'rgba(255,255,255,0.02)',
+                      border: isSelected ? '2px solid #7C75FF' : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '16px',
+                      padding: '20px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      position: 'relative'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '11px', color: isSelected ? '#7C75FF' : 'var(--text-muted)', fontWeight: 700 }}>{comp.category}</span>
+                      <span style={{ fontSize: '10px', background: isSelected ? 'rgba(0,230,118,0.2)' : 'rgba(255,255,255,0.06)', color: isSelected ? 'var(--success)' : 'var(--text-muted)', padding: '2px 8px', borderRadius: '100px', fontWeight: 600 }}>
+                        {comp.status}
+                      </span>
+                    </div>
+
+                    <h4 style={{ fontSize: '18px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>{comp.name}</h4>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <BarChart2 size={13} color="#7C75FF" /> {comp.activeAds}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <TrendingUp size={13} color="var(--success)" /> {comp.engagement}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -942,13 +970,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(0,230,118,0.12) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
-                FOREPLAY.CO WINNING AD PATTERN RECOGNITION
+                WINNING AD PATTERN RECOGNITION
               </div>
               <h4 style={{ fontSize: '18px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>
                 Switch to 15s Video Ads for higher retention & +23% CTR
               </h4>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                {selectedCompetitor}'s top 3 scaled ads on Foreplay.co are 15s Vertical Video Reels. Applying this pattern to Ambrane increases predicted ROAS to 4.2x.
+                {selectedCompetitor}'s top 3 scaled ads are 15s Vertical Video Reels. Applying this pattern to Ambrane increases predicted ROAS to 4.2x.
               </p>
             </div>
 
@@ -963,24 +991,24 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
           </div>
 
-          {/* DEDICATED WINNING HOOKS, HEADLINES & CTA VAULT (FOREPLAY.CO DERIVED) */}
+          {/* DEDICATED WINNING HOOKS, HEADLINES & CTA VAULT (NO EMOJIS IN LABELS) */}
           <div className="glow-card" style={{ padding: '28px', background: '#0b0b10', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '16px' }}>
               <div>
                 <div style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '2px' }}>
-                  FOREPLAY.CO & RIZE HIGH-CONVERTING VAULT
+                  HIGH-CONVERTING AD VAULT
                 </div>
                 <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
                   Winning Hooks, Headlines & CTA Vault
                 </h3>
               </div>
 
-              {/* Vault Sub-tabs */}
+              {/* Vault Sub-tabs (No Emojis) */}
               <div style={{ display: 'flex', gap: '8px' }}>
                 {[
-                  { id: 'hooks', label: '🔥 Winning Hooks' },
-                  { id: 'headlines', label: '⚡ High-CTR Headlines' },
-                  { id: 'ctas', label: '🎯 Conversion CTAs' }
+                  { id: 'hooks', label: 'Winning Hooks' },
+                  { id: 'headlines', label: 'High-CTR Headlines' },
+                  { id: 'ctas', label: 'Conversion CTAs' }
                 ].map(vTab => (
                   <button
                     key={vTab.id}
@@ -989,9 +1017,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       background: vaultSubTab === vTab.id ? 'rgba(124,117,255,0.2)' : 'rgba(255,255,255,0.04)',
                       border: vaultSubTab === vTab.id ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
                       color: vaultSubTab === vTab.id ? '#fff' : 'var(--text-secondary)',
-                      padding: '6px 14px',
+                      padding: '8px 18px',
                       borderRadius: '100px',
-                      fontSize: '12px',
+                      fontSize: '13px',
                       fontWeight: 600,
                       cursor: 'pointer'
                     }}
