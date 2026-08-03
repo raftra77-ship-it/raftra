@@ -2,16 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
+import parsedCreatorsData from '../../data/influencers_parsed.json';
+
 export interface InfluencerItemExtended {
   id: string;
   name: string;
   handle: string;
+  avatar?: string;
   platform: 'Facebook' | 'Instagram' | 'YouTube';
   niche: string;
   category: 'Nano' | 'Micro' | 'Macro';
   expectedPrice: string;
   deliverables: string[];
   followers: string;
+  location?: string;
+  email?: string;
+  phone?: string;
+  profileLink?: string;
   fakeFollowerScore: number; // 0-100, lower is better
   rating: number;
   reviewsCount: number;
@@ -20,14 +27,27 @@ export interface InfluencerItemExtended {
   recentPosts?: {url: string, type: string}[];
 }
 
-const INITIAL_CREATORS: InfluencerItemExtended[] = [
-  { id: '1', name: 'Sneha Roy', handle: '@snehastyles', platform: 'Instagram', niche: 'Fashion & Lifestyle', category: 'Micro', expectedPrice: '₹15,000', deliverables: ['UGC Video', 'Story', 'Static Post'], followers: '45k', fakeFollowerScore: 2, rating: 4.8, reviewsCount: 34, recentWorks: ['Nykaa', 'FabIndia'], topComments: [{author: 'Brand Rep, Nykaa', text: 'Beautiful aesthetic and perfectly aligned with our brand voice.'}] },
-  { id: '2', name: 'Vikram Malhotra', handle: '@vikramtech', platform: 'YouTube', niche: 'SaaS Tech', category: 'Macro', expectedPrice: '₹45,000', deliverables: ['Dedicated Video', 'Community Post'], followers: '250k', fakeFollowerScore: 4, rating: 4.9, reviewsCount: 120, recentWorks: ['Zoho', 'Razorpay Review'], topComments: [{author: 'Growth Lead, Razorpay', text: 'Extremely clear technical breakdown. The audience loved the tutorial format.'}] },
-  { id: '3', name: 'Ananya Patel', handle: '@ananyafit', platform: 'Instagram', niche: 'Health & Fitness', category: 'Nano', expectedPrice: '₹8,000', deliverables: ['UGC Video'], followers: '8k', fakeFollowerScore: 1, rating: 4.5, reviewsCount: 12, recentWorks: ['Cult.fit', 'Fast&Up'], topComments: [{author: 'Campaign Manager, Cult.fit', text: 'Her fitness content is incredibly authentic. Our CPA dropped by 30%.'}] },
-  { id: '4', name: 'Rohan Gupta', handle: '@rohangaming', platform: 'YouTube', niche: 'Gaming & Tech', category: 'Macro', expectedPrice: '₹65,000', deliverables: ['Sponsored Video', 'Community Reel'], followers: '520k', fakeFollowerScore: 3, rating: 4.9, reviewsCount: 88, recentWorks: ['Asus ROG', 'Krafton India', 'Logitech G'], topComments: [{author: 'Brand Lead, Asus', text: 'Insane retention rate and high conversion on promo codes.'}] },
-  { id: '5', name: 'Meera Kapoor', handle: '@meeraglow', platform: 'Instagram', niche: 'Beauty & Skincare', category: 'Micro', expectedPrice: '₹22,000', deliverables: ['Reel Tutorial', 'Story Swipe-Up', 'Unboxing Post'], followers: '95k', fakeFollowerScore: 2, rating: 4.9, reviewsCount: 45, recentWorks: ['Mamaearth', 'Plum Goodness', 'Minimalist'], topComments: [{author: 'Influencer Lead, Minimalist', text: 'Super detailed ingredient breakdown. Her audience trusts her reviews completely.'}] },
-  { id: '6', name: 'Arjun Mehta', handle: '@arjun_d2c', platform: 'Facebook', niche: 'D2C Lifestyle', category: 'Micro', expectedPrice: '₹18,000', deliverables: ['Review Video', 'Static Carousel'], followers: '62k', fakeFollowerScore: 2, rating: 4.7, reviewsCount: 28, recentWorks: ['The Man Company', 'Bombay Shaving Co'], topComments: [{author: 'Growth Manager, Man Co', text: 'Delivered high ROAS on father day festive campaign.'}] },
-];
+const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[]).map(item => ({
+  id: item.id,
+  name: item.name,
+  handle: item.handle,
+  avatar: item.avatar,
+  platform: item.platform || 'Instagram',
+  niche: item.niche,
+  category: item.category || 'Micro',
+  expectedPrice: item.expectedPrice,
+  deliverables: item.deliverables || ['Reel', 'Story'],
+  followers: item.followers,
+  location: item.location,
+  email: item.email,
+  phone: item.phone,
+  profileLink: item.profileLink,
+  fakeFollowerScore: item.fakeFollowerScore || 2,
+  rating: item.rating || 4.8,
+  reviewsCount: item.reviewsCount || 20,
+  recentWorks: item.recentWorks || ['D2C Brand Collab'],
+  topComments: item.topComments
+}));
 
 export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceId}) => {
   const [creators, setCreators] = useState<InfluencerItemExtended[]>([]);
@@ -257,18 +277,19 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Search size={14} /> FILTER BY NICHE:
         </span>
-        {['All', 'SaaS Tech', 'Health & Fitness', 'Fashion & Lifestyle', 'Lifestyle'].map((niche) => (
+        {['All', 'Local / City-based', 'Fashion', 'Fitness', 'Lifestyle', 'Art', 'Education', 'Tech'].map((niche) => (
           <button
             key={niche}
             onClick={() => setFilterNiche(niche)}
             style={{
               padding: '6px 16px',
               fontSize: '12px',
-              background: filterNiche === niche ? 'rgba(90, 82, 255, 0.15)' : 'rgba(255,255,255,0.02)',
+              background: filterNiche === niche ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255,255,255,0.02)',
               border: '1px solid',
-              borderColor: filterNiche === niche ? 'var(--primary)' : 'var(--border)',
+              borderColor: filterNiche === niche ? '#00E676' : 'var(--border)',
               borderRadius: '20px',
-              color: filterNiche === niche ? '#fff' : 'var(--text-secondary)',
+              color: filterNiche === niche ? '#00E676' : 'var(--text-secondary)',
+              fontWeight: filterNiche === niche ? 700 : 400,
               cursor: 'pointer',
               transition: 'all 0.2s'
             }}
@@ -285,12 +306,19 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <img src={"https://ui-avatars.com/api/?name=" + creator.name.replace(' ', '+') + "&background=random&color=fff&size=48"} alt={creator.name} style={{ borderRadius: '50%' }} />
+                <img
+                  src={creator.avatar || ("https://ui-avatars.com/api/?name=" + creator.name.replace(' ', '+') + "&background=random&color=fff&size=48")}
+                  alt={creator.name}
+                  style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)' }}
+                />
                 <div>
                   <h4 style={{ fontSize: '16px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px', color: '#fff' }}>
-                    {creator.name} <BadgeCheck size={14} color="var(--primary)" />
+                    {creator.name} <BadgeCheck size={14} color="#00E676" />
                   </h4>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{creator.handle}</div>
+                  <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 600 }}>{creator.handle}</div>
+                  {creator.location && (
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>📍 {creator.location}</div>
+                  )}
                 </div>
               </div>
               <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
@@ -305,14 +333,14 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
-                <span style={{ color: creator.fakeFollowerScore < 5 ? 'var(--success)' : 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: creator.fakeFollowerScore < 5 ? '#00E676' : 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <ShieldAlert size={14} /> {creator.fakeFollowerScore}%
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Expected Price</span>
-                <span style={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
-                  <DollarSign size={14} color="var(--success)" /> {creator.expectedPrice}
+                <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                  <DollarSign size={14} color="#00E676" /> {creator.expectedPrice}
                 </span>
               </div>
               
@@ -320,7 +348,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>AVAILABLE FOR:</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {creator.deliverables.map(d => (
-                    <span key={d} style={{ fontSize: '10px', background: 'rgba(90, 82, 255, 0.1)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(90, 82, 255, 0.2)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span key={d} style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.1)', color: '#00E676', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(0, 230, 118, 0.2)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       {d.includes('Video') ? <Video size={10} /> : <ImageIcon size={10} />} {d}
                     </span>
                   ))}
@@ -332,9 +360,14 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               <GlowButton variant="glow" onClick={() => handleOpenChat(creator)} style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
                 <MessageCircle size={14} /> Negotiate
               </GlowButton>
-              <button onClick={() => setViewProfile(creator)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <ExternalLink size={14} /> Profile
-              </button>
+              {creator.profileLink && (
+                <button
+                  onClick={() => window.open(creator.profileLink, '_blank')}
+                  style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <ExternalLink size={14} /> Profile
+                </button>
+              )}
             </div>
           </div>
         ))}
