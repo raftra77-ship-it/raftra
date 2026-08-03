@@ -224,15 +224,25 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
   const isAntiBypassViolation = (text: string): boolean => {
     const lower = text.toLowerCase();
-    const phoneRegex = /(?:\+91[\-\s]?)?[6-9]\d{9}|\b\d{10}\b|\b\d{5}[\s\-]\d{5}\b/;
-    if (phoneRegex.test(text)) return true;
+    
+    // Obfuscated / spaced out phone numbers check (e.g. 9 8 7 6 5 4 3 2 1 0 or 9876543210)
+    const normalizedDigits = text.replace(/[^0-9]/g, '');
+    if (normalizedDigits.length >= 10 && /[6-9]\d{9}/.test(normalizedDigits)) {
+      return true;
+    }
 
-    const keywords = [
-      'whatsapp', 'wa.me', 'call me', 'text me', 'my number', 'phone number', 'contact number',
-      'instagram', 'insta dm', 'dm me', 'telegram', 'personal chat', 'personal number',
-      'off platform', 'off-platform', 'gpay', 'paytm', 'phonepe', 'upi'
+    // Hinglish, English, WhatsApp, Instagram DM, and personal chat keywords
+    const bypassKeywords = [
+      'whatsapp', 'watsapp', 'whatapp', 'whatsaap', 'wa.me', 'wa ', 'wp ', 'wpp',
+      'instagram', 'insta', 'ig dm', 'insta dm', 'dm me', 'dm pe', 'inbox me', 'inbox pe', 'direct msg', 'direct message',
+      'personal chat', 'personal msg', 'personal message', 'personal number', 'personal pe',
+      'baat kare', 'baat karte', 'baat karle', 'baat karo', 'call me', 'call kar', 'call pe',
+      'text me', 'my number', 'phone number', 'phn no', 'contact no', 'mobile no', 'number de',
+      'number send', 'number pe', 'outside chat', 'off platform', 'off-platform',
+      'gpay', 'google pay', 'paytm', 'phonepe', 'upi id', 'direct payment', 'bank transfer'
     ];
-    return keywords.some(kw => lower.includes(kw));
+
+    return bypassKeywords.some(kw => lower.includes(kw));
   };
 
   const handleSendChat = (e: React.FormEvent) => {
