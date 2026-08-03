@@ -281,77 +281,77 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       </div>
 
-      {/* 2. HERO SECTION */}
-      <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(124,117,255,0.12) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '24px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: '-60px', right: '-60px', width: '240px', height: '240px', background: 'radial-gradient(circle, rgba(124,117,255,0.25) 0%, transparent 70%)', pointerEvents: 'none' }} />
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', zIndex: 1 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(255,255,255,0.06)', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)', alignSelf: 'flex-start' }}>
-            <Sparkles size={14} color="#7C75FF" />
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', letterSpacing: '0.04em' }}>Raftra Creative Studio • AI Ad Intelligence</span>
-          </div>
-
-          <div>
-            <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', color: '#ffffff', margin: '0 0 10px 0', lineHeight: 1.3, fontWeight: 700 }}>
-              Create high-converting ads powered by your brand knowledge, competitor intelligence, and AI.
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0, maxWidth: '850px', lineHeight: 1.5 }}>
-              What would you like to create today? Select your campaign format below to initiate the AI generation pipeline.
-            </p>
-          </div>
-
-          {/* Quick Goal Radio/Pill Selector */}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingTop: '8px' }}>
-            {[
-              { id: 'image', label: 'Image Ad', icon: ImageIcon },
-              { id: 'video', label: 'Video Ad', icon: Film },
-              { id: 'carousel', label: 'Carousel Ad', icon: Layers },
-              { id: 'ai_ugc', label: 'AI UGC Ad', icon: Wand2 },
-              { id: 'hire_ugc', label: 'Hire UGC Creator', icon: Users }
-            ].map(goal => {
-              const Icon = goal.icon;
-              const isSelected = quickGoal === goal.id;
-              return (
-                <button
-                  key={goal.id}
-                  onClick={() => {
-                    setQuickGoal(goal.id as any);
-                    if (goal.id === 'image') { setSelectedAdType('Image'); setActiveTab('create'); }
-                    else if (goal.id === 'video') { setSelectedAdType('Video'); setActiveTab('create'); }
-                    else if (goal.id === 'carousel') { setSelectedAdType('Carousel'); setActiveTab('create'); }
-                    else if (goal.id === 'ai_ugc') { setActiveTab('ugc'); setUgcSubTab('ai_ugc'); }
-                    else if (goal.id === 'hire_ugc') {
-                      if (onNavigateTab) onNavigateTab('influencer');
-                      else { setActiveTab('ugc'); setUgcSubTab('hire_human'); }
-                    }
-                  }}
-                  style={{
-                    background: isSelected ? '#7C75FF' : 'rgba(255,255,255,0.05)',
-                    color: isSelected ? '#ffffff' : 'var(--text-secondary)',
-                    border: isSelected ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '100px',
-                    padding: '10px 18px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <Icon size={15} />
-                  <span>{goal.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
       {/* ==================== TAB 1: CREATE FLOW ==================== */}
       {activeTab === 'create' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          
+          {/* 2. HERO SECTION (ONLY ON CREATE TAB) */}
+          <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(124,117,255,0.12) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '24px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: '-60px', right: '-60px', width: '240px', height: '240px', background: 'radial-gradient(circle, rgba(124,117,255,0.25) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', zIndex: 1 }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(255,255,255,0.06)', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)', alignSelf: 'flex-start' }}>
+                <Sparkles size={14} color="#7C75FF" />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', letterSpacing: '0.04em' }}>Raftra Creative Studio • AI Ad Intelligence</span>
+              </div>
+
+              <div>
+                <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', color: '#ffffff', margin: '0 0 10px 0', lineHeight: 1.3, fontWeight: 700 }}>
+                  Create high-converting ads powered by your brand knowledge, competitor intelligence, and AI.
+                </h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0, maxWidth: '850px', lineHeight: 1.5 }}>
+                  What would you like to create today? Select your campaign format below to initiate the AI generation pipeline.
+                </p>
+              </div>
+
+              {/* Quick Goal Radio/Pill Selector */}
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingTop: '8px' }}>
+                {[
+                  { id: 'image', label: 'Image Ad', icon: ImageIcon },
+                  { id: 'video', label: 'Video Ad', icon: Film },
+                  { id: 'carousel', label: 'Carousel Ad', icon: Layers },
+                  { id: 'ai_ugc', label: 'AI UGC Ad', icon: Wand2 },
+                  { id: 'hire_ugc', label: 'Hire UGC Creator', icon: Users }
+                ].map(goal => {
+                  const Icon = goal.icon;
+                  const isSelected = quickGoal === goal.id;
+                  return (
+                    <button
+                      key={goal.id}
+                      onClick={() => {
+                        setQuickGoal(goal.id as any);
+                        if (goal.id === 'image') { setSelectedAdType('Image'); setActiveTab('create'); }
+                        else if (goal.id === 'video') { setSelectedAdType('Video'); setActiveTab('create'); }
+                        else if (goal.id === 'carousel') { setSelectedAdType('Carousel'); setActiveTab('create'); }
+                        else if (goal.id === 'ai_ugc') { setActiveTab('ugc'); setUgcSubTab('ai_ugc'); }
+                        else if (goal.id === 'hire_ugc') {
+                          if (onNavigateTab) onNavigateTab('influencer');
+                          else { setActiveTab('ugc'); setUgcSubTab('hire_human'); }
+                        }
+                      }}
+                      style={{
+                        background: isSelected ? '#7C75FF' : 'rgba(255,255,255,0.05)',
+                        color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                        border: isSelected ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '100px',
+                        padding: '10px 18px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Icon size={15} />
+                      <span>{goal.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
           
           {/* STEP 1: CHOOSE BRAND */}
           <div className="glow-card" style={{ padding: '24px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '18px' }}>
