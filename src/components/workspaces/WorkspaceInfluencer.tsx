@@ -234,6 +234,13 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     setChatMessages(newMsgs);
     localStorage.setItem(storageKey, JSON.stringify(newMsgs));
     window.dispatchEvent(new Event('storage'));
+
+    // Automatically forward the Web Chat message to Creator's WhatsApp number!
+    if (activeChat.phone) {
+      const cleanPhone = activeChat.phone.replace(/\D/g, '');
+      const waText = encodeURIComponent(`[Raftra Brand Web Chat for @${activeChat.handle || activeChat.name}]:\n\n"${input}"\n\nReply directly here or on your Creator Portal Inbox!`);
+      window.open(`https://wa.me/91${cleanPhone}?text=${waText}`, '_blank');
+    }
   };
 
   const handleLockDeal = async (e: React.FormEvent) => {
@@ -248,6 +255,13 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     setChatMessages(updated as any);
     localStorage.setItem(storageKey, JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
+
+    // Forward deal proposal to Creator's WhatsApp!
+    if (activeChat.phone) {
+      const cleanPhone = activeChat.phone.replace(/\D/g, '');
+      const waText = encodeURIComponent(`🚨 [Raftra Brand Escrow Deal Offer]:\nBrand has proposed a formal collaboration deal of ₹${price.toLocaleString()} for your profile @${activeChat.handle || activeChat.name}!\n\nOpen your Creator Portal to accept the deal.`);
+      window.open(`https://wa.me/91${cleanPhone}?text=${waText}`, '_blank');
+    }
     
     try {
       const token = localStorage.getItem('token');
