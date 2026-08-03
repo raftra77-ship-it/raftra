@@ -269,6 +269,10 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             Discover verified creators, negotiate deals securely, and track campaign ROI.
           </p>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(0, 230, 118, 0.08)', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '100px', fontSize: '12px', color: '#00E676', fontWeight: 600 }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00E676', display: 'inline-block', boxShadow: '0 0 8px #00E676' }}></span>
+          Google Sheet Live Auto-Synced
+        </div>
       </div>
 
       {/* Filters row */}
