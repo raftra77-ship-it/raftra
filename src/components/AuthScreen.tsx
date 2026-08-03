@@ -121,7 +121,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         </div>
 
         {/* Brand vs Creator Toggle */}
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '16px' }}>
           <button 
             type="button"
             onClick={() => setIsCreator(false)}
@@ -135,6 +135,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
             Creator
           </button>
         </div>
+
+        {isCreator && (
+          <div style={{ background: 'rgba(0, 230, 118, 0.08)', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '18px', fontSize: '12px', color: '#00E676', lineHeight: 1.5 }}>
+            🔑 <strong>Creator Access:</strong> Login using your registered Email / Handle and your <strong>Phone Number</strong> as password.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {isSignUp && (
@@ -151,18 +157,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
             </div>
           )}
           <div className="form-group">
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>Email Address</label>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>
+              {isCreator ? 'Email Address or Instagram Handle' : 'Email Address'}
+            </label>
             <input 
-              type="email" 
+              type="text" 
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ width: '100%', padding: '14px 16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', outline: 'none', transition: 'border-color 0.2s' }}
-              placeholder="you@company.com"
+              placeholder={isCreator ? 'e.g. uttarakhandybdigital@gmail.com or @ankrena' : 'you@company.com'}
             />
           </div>
           <div className="form-group">
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>Password</label>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: '500' }}>
+              {isCreator ? 'Password (WhatsApp Phone Number)' : 'Password'}
+            </label>
             <div style={{ position: 'relative' }}>
               <Lock size={18} color="var(--text-secondary)" style={{ position: 'absolute', left: '16px', top: '14px' }} />
               <input 
@@ -171,7 +181,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ width: '100%', padding: '14px 16px 14px 44px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', outline: 'none', transition: 'border-color 0.2s' }}
-                placeholder="••••••••"
+                placeholder={isCreator ? 'e.g. 7579176831 or 8368813838' : '••••••••'}
               />
             </div>
           </div>
