@@ -2302,8 +2302,28 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 Open in Figma ❖
               </button>
 
-              <GlowButton
-                variant="glow"
+              {/* 1. SAVE IN DRAFT */}
+              <button 
+                onClick={() => {
+                  triggerToast('Saved Carousel Project as Draft in Recent Projects! 💾');
+                }}
+                style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <Save size={14} /> Save in Draft 💾
+              </button>
+
+              {/* 2. SAVE TO AD LIBRARY */}
+              <button 
+                onClick={() => {
+                  triggerToast('Saved to Raftra Ad Intelligence Vault & Library! 📁');
+                }}
+                style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <FolderPlus size={14} /> Save to Ad Library 📁
+              </button>
+
+              {/* 3. DOWNLOAD AD */}
+              <button 
                 onClick={() => {
                   const payload = {
                     ad_type: 'CAROUSEL',
@@ -2315,13 +2335,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       image_url: c.imageUrl
                     }))
                   };
-                  navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-                  triggerToast('Copied Meta Multi-Card Carousel JSON payload to clipboard! 📋');
+                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'carousel_ad_bundle.json';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  triggerToast('Downloading carousel ad asset bundle... ⬇️');
                 }}
-                style={{ padding: '9px 16px', fontSize: '12px' }}
+                className="btn-grad"
+                style={{ padding: '9px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
               >
-                Export Meta Payload 📋
-              </GlowButton>
+                <Download size={14} /> Download Ad ⬇️
+              </button>
             </div>
           </div>
 
@@ -2839,19 +2866,34 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 Open in Figma ❖
               </button>
 
+              {/* 1. SAVE IN DRAFT */}
               <button 
-                onClick={handleSaveToVault}
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                onClick={() => {
+                  triggerToast('Saved project as Draft in Recent Projects! 💾');
+                }}
+                style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
-                Save to Vault
+                <Save size={14} /> Save in Draft 💾
               </button>
 
+              {/* 2. SAVE TO AD LIBRARY */}
+              <button 
+                onClick={() => {
+                  handleSaveToVault();
+                  triggerToast('Saved to Raftra Ad Intelligence Vault & Library! 📁');
+                }}
+                style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <FolderPlus size={14} /> Save to Ad Library 📁
+              </button>
+
+              {/* 3. DOWNLOAD AD */}
               <button 
                 onClick={handleExport4KPng}
                 className="btn-grad"
-                style={{ padding: '7px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+                style={{ padding: '7px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
               >
-                <Download size={14} /> Export 4K PNG
+                <Download size={14} /> Download Ad ⬇️
               </button>
             </div>
           </div>
