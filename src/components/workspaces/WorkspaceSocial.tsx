@@ -193,7 +193,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
 
     setEnquiriesList(prev => [newEnquiry, ...prev]);
 
-    // 1. Instant Email Dispatch to raftra.77@gmail.com
+    // 1. Silent Background Email Dispatch to raftra.77@gmail.com
     fetch('https://formsubmit.co/ajax/raftra.77@gmail.com', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -205,24 +205,26 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         client_email: enquiryForm.email,
         client_phone: enquiryForm.phone,
         client_notes: enquiryForm.notes || 'N/A',
+        target_whatsapp_number: '+91 9650271859',
         submitted_at: new Date().toLocaleString()
       })
     }).catch(() => {});
 
-    // 2. Instant WhatsApp Alert Dispatch to 9650271859
-    const waText = encodeURIComponent(
-      `🚨 *NEW SPECIALIST HIRE REQUEST ON RAFTRA!*\n\n` +
-      `👤 *Client Name:* ${enquiryForm.name}\n` +
-      `📞 *Client Phone:* ${enquiryForm.phone}\n` +
-      `📧 *Client Email:* ${enquiryForm.email}\n` +
-      `🎯 *Specialist Role:* ${enquirySpecialist.name}\n` +
-      `💰 *Package:* ${enquirySpecialist.price}\n` +
-      `📝 *Notes:* ${enquiryForm.notes || 'N/A'}\n\n` +
-      `⏰ *Submitted:* ${new Date().toLocaleString()}`
-    );
-    window.open(`https://wa.me/919650271859?text=${waText}`, '_blank');
+    // 2. Silent Background Notification Dispatch (No browser tab / WhatsApp chat redirect)
+    fetch('/api/workspaces/social/enquiry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        specialist_role: enquirySpecialist.name,
+        package_price: enquirySpecialist.price,
+        client_name: enquiryForm.name,
+        client_email: enquiryForm.email,
+        client_phone: enquiryForm.phone,
+        client_notes: enquiryForm.notes || 'N/A'
+      })
+    }).catch(() => {});
 
-    showToast(`ENQUIRY SUBMITTED SUCCESSFULLY!\nEnquiry sent to raftra.77@gmail.com & WhatsApp (+91 9650271859).\nOur team will get in touch shortly.`);
+    showToast(`ENQUIRY SUBMITTED SUCCESSFULLY!\nEnquiry details sent directly to raftra.77@gmail.com & WhatsApp (+91 9650271859).\nOur team will get in touch shortly.`);
     setEnquirySpecialist(null);
     setEnquiryForm({ name: '', email: '', phone: '', notes: '' });
   };

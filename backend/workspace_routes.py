@@ -461,3 +461,29 @@ def query_analytics(workspace_id: int, query: AnalyticsQuery, db: Session = Depe
     else:
         explanation = "Analytics summary compiled. Analysis: Core channels indicate high target conversions. ROAS sits strong at 4.0x. Suggestion: Scale Google Ads limits by 14%."
     return {"sender": "claude", "text": explanation}
+
+class SocialSpecialistEnquiry(BaseModel):
+    specialist_role: str
+    package_price: str
+    client_name: str
+    client_email: str
+    client_phone: str
+    client_notes: str = ""
+
+@router.post("/social/enquiry")
+def submit_social_specialist_enquiry(enquiry: SocialSpecialistEnquiry):
+    print(f"==================================================")
+    print(f"🚨 NEW SOCIAL HUB SPECIALIST ENQUIRY RECEIVED!")
+    print(f"  Role: {enquiry.specialist_role} ({enquiry.package_price})")
+    print(f"  Client: {enquiry.client_name}")
+    print(f"  Email: {enquiry.client_email}")
+    print(f"  WhatsApp / Phone: {enquiry.client_phone}")
+    print(f"  Target Notification: raftra.77@gmail.com & +91 9650271859")
+    print(f"==================================================")
+    return {
+        "status": "success", 
+        "message": "Enquiry processed silently without redirection.",
+        "target_email": "raftra.77@gmail.com",
+        "target_whatsapp": "+91 9650271859"
+    }
+

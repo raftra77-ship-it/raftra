@@ -97,50 +97,100 @@ def parse_price(col11_text, handle=""):
             
     return "₹3,000"
 
-def parse_followers(metrics_text, handle=""):
+def parse_followers(metrics_text, handle="", name=""):
     h = handle.lower()
-    if 'ankrena' in h:
-        return "4,983"
-    elif 'uttarakhandyb' in h:
-        return "11,700"
-    elif 'aanushkaanexttdoorr' in h:
-        return "2,023"
-    elif 'musclestroke' in h:
-        return "6,802"
-    elif 'charika' in h:
-        return "1,955"
-    elif 'mahhiii' in h:
-        return "868"
-    elif 'simplymalvika' in h:
-        return "31,000"
-    elif 'sarthak' in h:
-        return "2,200"
-    elif 'ankit.k.09' in h:
-        return "95,000"
-    elif 'whoistanaaa' in h:
-        return "6,500"
-    elif 'ananyaanotpanday' in h:
-        return "1,667"
-    elif 'yourfirst.100k' in h:
-        return "10,200"
-    elif 'aanchallp' in h:
-        return "2,705"
-    elif 'sh.reyya' in h:
-        return "12,200"
-    elif 'fanish' in h:
-        return "4,300"
-    elif 'sachin' in h:
-        return "2,500"
-
-    match = re.search(r'1\.\s*([\d,\.kKmM]+)', metrics_text)
-    if match:
-        return match.group(1).strip()
+    n = name.lower()
+    m = metrics_text.strip()
     
-    num_match = re.search(r'([\d,\.]+\s*[kKmM\+]*)', metrics_text)
+    if 'ankrena' in h: return "4,983"
+    elif 'uttarakhandyb' in h: return "11,700"
+    elif 'aanushkaanexttdoorr' in h: return "2,023"
+    elif 'musclestroke' in h: return "6,802"
+    elif 'charika' in h: return "1,955"
+    elif 'mahhiii' in h: return "868"
+    elif 'simplymalvika' in h: return "31,000"
+    elif 'sarthak' in h: return "2,200"
+    elif 'ankit.k.09' in h: return "95,000"
+    elif 'whoistanaaa' in h: return "6,500"
+    elif 'ananyaanotpanday' in h: return "1,667"
+    elif 'yourfirst.100k' in h: return "10,200"
+    elif 'aanchallp' in h: return "2,705"
+    elif 'sh.reyya' in h: return "12,200"
+    elif 'fanish' in h: return "4,300"
+    elif 'sachin' in h: return "2,500"
+    elif 'ishwarya' in h or 'kaur' in n: return "24.8k"
+    elif 'anmol' in h or '_ak_vlogs' in h or 'khanna' in n: return "2,25,000"
+    elif 'drishti' in h or 'rawat' in n: return "2,380"
+    elif 'roshan' in h or 'sharma' in n: return "1,560"
+
+    m_clean = re.sub(r'1\.\s*total\s*followers?[:\s]*', 'followers: ', m, flags=re.I)
+    pat = re.search(r'(?:total\s*)?followers?[:\s-]*([\d,\.kKmM]+)', m_clean, re.I)
+    if pat:
+        val = pat.group(1).strip()
+        if val and val.lower() != 'followers':
+            return val
+            
+    num_match = re.search(r'([\d,\.]+\s*[kKmM\+]*)', m)
     if num_match:
         return num_match.group(1).strip()
-    
+        
     return "2,500"
+
+def parse_reach(metrics_text, handle="", name=""):
+    h = handle.lower()
+    n = name.lower()
+    m = metrics_text.strip()
+    
+    if 'ankrena' in h: return "11.3M reach (3k avg)"
+    elif 'uttarakhandyb' in h: return "20k+ avg"
+    elif 'aanushkaanexttdoorr' in h: return "1.8M peak"
+    elif 'musclestroke' in h: return "1.1M peak"
+    elif 'charika' in h: return "166k avg"
+    elif 'mahhiii' in h: return "50k-70k avg (475k reach)"
+    elif 'simplymalvika' in h: return "20k avg"
+    elif 'sarthak' in h: return "3k+ avg"
+    elif 'ankit.k.09' in h: return "93M+ reach"
+    elif 'whoistanaaa' in h: return "500k reach"
+    elif 'ananyaanotpanday' in h: return "10k avg (300k reach)"
+    elif 'yourfirst.100k' in h: return "27k avg"
+    elif 'aanchallp' in h: return "15k avg"
+    elif 'sh.reyya' in h: return "14.3k avg"
+    elif 'fanish' in h: return "20M reach"
+    elif 'sachin' in h: return "5k avg"
+    elif 'ishwarya' in h or 'kaur' in n: return "10k avg"
+    elif 'anmol' in h or '_ak_vlogs' in h or 'khanna' in n: return "400k reach"
+    elif 'drishti' in h or 'rawat' in n: return "100k+ avg (17.8M reach)"
+    elif 'roshan' in h or 'sharma' in n: return "71k avg"
+
+    views_match = re.search(r'(?:avg|average)?\s*views?[:\s-]*([\d,\.kKmM\+\s\-]+(?:avg|min|peak)?)', m, re.I)
+    if views_match:
+        return views_match.group(1).strip()
+        
+    reach_match = re.search(r'reach[:\s-]*([\d,\.kKmM\+\s\-]+)', m, re.I)
+    if reach_match:
+        return f"{reach_match.group(1).strip()} reach"
+        
+    return "15k avg"
+
+def get_category(followers_str):
+    f = followers_str.lower().replace(',', '')
+    if 'm' in f:
+        return "Macro"
+    if 'k' in f:
+        try:
+            val = float(re.sub(r'[^\d\.]', '', f))
+            if val >= 100: return "Macro"
+            if val >= 10: return "Micro"
+            return "Nano"
+        except:
+            pass
+    try:
+        val = int(re.sub(r'[^\d]', '', f))
+        if val >= 100000: return "Macro"
+        if val >= 10000: return "Micro"
+        return "Nano"
+    except:
+        return "Nano"
 
 def sync():
     req = urllib.request.Request(GOOGLE_SHEET_CSV_URL, headers={'User-Agent': 'Mozilla/5.0'})
@@ -167,43 +217,11 @@ def sync():
         phone = row[5].strip() if len(row) > 5 else ""
 
         handle = extract_handle(profile_link, brand or name)
-        followers = parse_followers(metrics, handle)
+        followers = parse_followers(metrics, handle, name)
         expected_price = parse_price(col11_price, handle)
-
-        # Reach and views formatting
-        if 'ankrena' in handle.lower():
-            avg_views = "11.3M total views (3k avg)"
-            loc = "Delhi, India"
-        elif 'uttarakhandyb' in handle.lower():
-            avg_views = "20k+ avg"
-            loc = "Rishikesh, Uttarakhand"
-        elif 'aanushkaanexttdoorr' in handle.lower():
-            avg_views = "1.8M highest"
-            loc = "Delhi, India"
-        elif 'musclestroke' in handle.lower():
-            avg_views = "1.1M peak"
-            loc = "New Delhi, India"
-        elif 'charika' in handle.lower():
-            avg_views = "166,030 avg"
-            loc = "Delhi, India"
-        elif 'simplymalvika' in handle.lower():
-            avg_views = "20k avg"
-            loc = "Delhi, India"
-        elif 'ankit.k.09' in handle.lower():
-            avg_views = "93M+ reach"
-            loc = "New Delhi, India"
-        elif '_ak_vlogs' in handle.lower() or 'anmol' in handle.lower():
-            avg_views = "400k avg reach"
-            loc = city_country or "Delhi, India"
-        else:
-            avg_views = "15k avg"
-            loc = city_country or "India"
-
-        cat = "Nano"
-        if '95,000' in followers or '31,000' in followers or '11,700' in followers or '10,200' in followers or '12,200' in followers:
-            cat = "Micro"
-        elif 'M' in followers or 'm' in followers:
-            cat = "Macro"
+        avg_views = parse_reach(metrics, handle, name)
+        loc = city_country or "India"
+        cat = get_category(followers)
 
         item = {
             "id": f"creator_{idx+1}",
