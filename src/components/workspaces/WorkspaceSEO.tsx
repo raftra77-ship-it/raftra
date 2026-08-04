@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Globe, Check, ExternalLink, TrendingUp, ChevronDown, GitBranch, ShoppingBag, PenSquare } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { GitHubPanel } from './GitHubPanel';
@@ -16,7 +16,7 @@ function authHeaders(): Record<string, string> {
 const IDLE_RUN: RunStatus = { status: 'idle', running: false, stages: [], stages_done: [], current_stage: null, started_at: null, target_url: null };
 
 // Polls run-status continuously (fast while running, slow otherwise) so the report reflects
-// the real backend state — including a run started from another tab.
+// the real backend state ΓÇö including a run started from another tab.
 function useRunStatus(workspaceId: number | null | undefined, pipeline: 'SEO' | 'GEO'): [RunStatus, () => void] {
   const [status, setStatus] = useState<RunStatus>(IDLE_RUN);
   const [nonce, setNonce] = useState(0);
@@ -43,7 +43,7 @@ function useRunStatus(workspaceId: number | null | undefined, pipeline: 'SEO' | 
   return [status, () => setNonce(n => n + 1)];
 }
 
-// Month-over-month comparison card — reads the /seo/comparison endpoint and shows the deltas
+// Month-over-month comparison card ΓÇö reads the /seo/comparison endpoint and shows the deltas
 // between the two most recent runs (the "monthly analysis" view).
 const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
   const [data, setData] = useState<any>(null);
@@ -65,19 +65,19 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
   if (!workspaceId) return null;
 
   const arrow = (dir?: string) =>
-    dir === 'improved' ? { s: '▲', c: '#00ff9d' } :
-    dir === 'worsened' ? { s: '▼', c: '#ff5c5c' } : { s: '–', c: 'var(--text-muted)' };
-  const disp = (v: any) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : (v ?? '—'));
+    dir === 'improved' ? { s: 'Γû▓', c: '#00ff9d' } :
+    dir === 'worsened' ? { s: 'Γû╝', c: '#ff5c5c' } : { s: 'ΓÇô', c: 'var(--text-muted)' };
+  const disp = (v: any) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : (v ?? 'ΓÇö'));
 
   return (
     <div className="glow-card">
       <h3 style={{ fontSize: '16px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Month-over-Month Change (SEO)
       </h3>
-      {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>}
+      {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>LoadingΓÇª</p>}
       {!loading && (!data || data.runs_available === 0) && (
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-          No runs yet — run the SEO pipeline to start building history.
+          No runs yet ΓÇö run the SEO pipeline to start building history.
         </p>
       )}
       {!loading && data && data.runs_available === 1 && (
@@ -88,8 +88,8 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
       {!loading && data && data.runs_available > 1 && (
         <>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            {new Date(data.previous_run.date).toLocaleDateString()} → {new Date(data.current_run.date).toLocaleDateString()}
-            {'  ·  Score '}{data.previous_run.score} → <b style={{ color: '#fff' }}>{data.current_run.score}</b>
+            {new Date(data.previous_run.date).toLocaleDateString()} ΓåÆ {new Date(data.current_run.date).toLocaleDateString()}
+            {'  ┬╖  Score '}{data.previous_run.score} ΓåÆ <b style={{ color: '#fff' }}>{data.current_run.score}</b>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {data.changes.map((c: any) => {
@@ -98,7 +98,7 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
                 <div key={c.metric} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>{c.metric}</span>
                   <span style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>{disp(c.previous)} → {disp(c.current)}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{disp(c.previous)} ΓåÆ {disp(c.current)}</span>
                     <span style={{ color: a.c, fontWeight: 600, minWidth: '48px', textAlign: 'right' }}>
                       {a.s}{typeof c.delta === 'number' ? ` ${c.delta > 0 ? '+' : ''}${c.delta}` : ''}
                     </span>
@@ -117,7 +117,7 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
 const ExplainerCard: React.FC = () => {
   const steps = [
     { n: 1, t: 'Run the pipeline', d: 'We crawl your live site and audit it for Google SEO + AI search (GEO).' },
-    { n: 2, t: 'Real, measured fixes', d: 'Every suggestion comes from your actual page — nothing is invented.' },
+    { n: 2, t: 'Real, measured fixes', d: 'Every suggestion comes from your actual page ΓÇö nothing is invented.' },
     { n: 3, t: 'Human review', d: 'Approve, edit, or reject each suggestion below. Nothing auto-applies.' },
     { n: 4, t: 'Make the changes', d: 'Open GitHub / Shopify / WordPress on the right and apply the approved fixes.' },
     { n: 5, t: 'Re-run & track', d: 'Deploy, then re-run to watch your scores improve over time.' },
@@ -146,7 +146,7 @@ const ExplainerCard: React.FC = () => {
 };
 
 // Compact status-only summary of every platform connection. Full connect/manage controls
-// live on the Integrations page (sidebar) — this card exists so the user always sees, at a
+// live on the Integrations page (sidebar) ΓÇö this card exists so the user always sees, at a
 // glance, why GitHub/WordPress/Shopify/Search Console/Analytics matter here, without the
 // full connector UI crowding the main SEO page.
 const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIntegrations?: () => void }> = ({ workspaceId, onManageIntegrations }) => {
@@ -210,7 +210,7 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
   );
 };
 
-// The "connect your website & data" hub — reuses the already-built connector panels, each of
+// The "connect your website & data" hub ΓÇö reuses the already-built connector panels, each of
 // which shows its own connect / "keys missing" placeholder state.
 const ConnectSection: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
   const [open, setOpen] = useState(true);
@@ -224,7 +224,7 @@ const ConnectSection: React.FC<{ workspaceId?: number | null }> = ({ workspaceId
         <ChevronDown size={18} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', color: 'var(--text-secondary)' }} />
       </button>
       <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '6px 0 0' }}>
-        Publish approved changes to your site, and pull in real Google rankings + traffic. Connect what you have — the rest stay as placeholders until keys are added.
+        Publish approved changes to your site, and pull in real Google rankings + traffic. Connect what you have ΓÇö the rest stay as placeholders until keys are added.
       </p>
       {open && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginTop: '16px' }}>
@@ -255,7 +255,7 @@ interface WorkspaceSEOProps {
   onTriggerSEO?: (url: string) => void;
   onTriggerGEO?: (url: string) => void;
   workspaceId?: number | null;
-  siteUrl?: string; // the website already connected to this workspace (from onboarding) — audits target this by default, not a placeholder
+  siteUrl?: string; // the website already connected to this workspace (from onboarding) ΓÇö audits target this by default, not a placeholder
   onManageIntegrations?: () => void; // navigates to the sidebar's Integrations tab
 }
 
@@ -264,7 +264,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
   const [urlEditedByUser, setUrlEditedByUser] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
 
-  // Default the audit target to the site already connected to this workspace — siteUrl
+  // Default the audit target to the site already connected to this workspace ΓÇö siteUrl
   // arrives asynchronously (brand profile fetch), so pick it up once it loads. Never
   // overwrite a URL the user has deliberately typed themselves.
   useEffect(() => {
@@ -274,7 +274,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
   }, [siteUrl, urlEditedByUser]);
   const [toast, setToast] = useState<{ msg: string; pipeline?: 'SEO' | 'GEO' } | null>(null);
 
-  // Real connector status (already-existing endpoint) — used only to show a status badge
+  // Real connector status (already-existing endpoint) ΓÇö used only to show a status badge
   // on the audit report. Future audits will combine this data with Firecrawl + SEO
   // analysis; for now this is a badge only, nothing extra is fetched.
   const [gscConnected, setGscConnected] = useState(false);
@@ -284,10 +284,10 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
       .then(r => (r.ok ? r.json() : null)).then(d => setGscConnected(!!d?.connected)).catch(() => {});
   }, [workspaceId]);
 
-  // One live run-status per pipeline — the single source of truth for both the pipeline
+  // One live run-status per pipeline ΓÇö the single source of truth for both the pipeline
   // graph highlighting below and the combined report modal. SEO and GEO stay two fully
   // independent pipelines (separate trigger, separate single-flight state, separate
-  // scoring) but always render into the ONE report modal — never a second report.
+  // scoring) but always render into the ONE report modal ΓÇö never a second report.
   const [seoRun, refreshSeoRun] = useRunStatus(workspaceId, 'SEO');
   const [geoRun, refreshGeoRun] = useRunStatus(workspaceId, 'GEO');
   const seoRunning = seoRun.status === 'running' || seoRun.status === 'queued';
@@ -322,7 +322,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
           {toast.pipeline && (
             <button onClick={() => { setToast(null); setReportOpen(true); }} style={{ fontSize: '12px', fontWeight: 700, color: '#ffae00', background: 'rgba(255,174,0,0.1)', border: '1px solid rgba(255,174,0,0.4)', borderRadius: '7px', padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap' }}>View Running Audit</button>
           )}
-          <button onClick={() => setToast(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0, fontSize: '14px' }}>✕</button>
+          <button onClick={() => setToast(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0, fontSize: '14px' }}>Γ£ò</button>
         </div>
       )}
 
@@ -348,12 +348,12 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
           <GlowButton variant="glow" disabled={seoRunning}
             onClick={() => seoRunning ? setToast({ msg: 'An audit is already running for this website.', pipeline: 'SEO' }) : triggerPipeline('SEO', targetUrl)}
             style={seoRunning ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
-            {seoRunning ? 'SEO Running…' : 'Run SEO Pipeline'}
+            {seoRunning ? 'SEO RunningΓÇª' : 'Run SEO Pipeline'}
           </GlowButton>
         </div>
       </div>
 
-      {/* SEO & GEO Pipelines — clicking any node opens/focuses the one combined report below */}
+      {/* SEO & GEO Pipelines ΓÇö clicking any node opens/focuses the one combined report below */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '10px' }}>
         {/* SEO Pipeline */}
         <div className="glow-card" style={{ padding: '20px', background: 'rgba(0, 255, 157, 0.01)', border: '1px solid rgba(0, 255, 157, 0.08)' }}>
@@ -396,7 +396,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   {isCompleted && !isActive && <Check size={10} color="var(--success)" />}
                   <span>{node}</span>
                 </div>
-                {idx < arr.length - 1 && <span style={{ color: isActive ? 'var(--success)' : 'var(--text-muted)', fontSize: '11px' }}>→</span>}
+                {idx < arr.length - 1 && <span style={{ color: isActive ? 'var(--success)' : 'var(--text-muted)', fontSize: '11px' }}>ΓåÆ</span>}
               </div>
             )})}
           </div>
@@ -411,7 +411,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
             <GlowButton variant="glow" disabled={geoRunning}
               onClick={() => geoRunning ? setToast({ msg: 'An audit is already running for this website.', pipeline: 'GEO' }) : triggerPipeline('GEO', targetUrl)}
               style={{ fontSize: '11px', padding: '4px 12px', ...(geoRunning ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
-              {geoRunning ? 'GEO Running…' : 'Run GEO Pipeline'}
+              {geoRunning ? 'GEO RunningΓÇª' : 'Run GEO Pipeline'}
             </GlowButton>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
@@ -446,7 +446,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   <span className={isActive ? "badge-pulse warning" : isCompleted ? "badge-pulse success" : ""} style={{ width: '4px', height: '4px', backgroundColor: isActive ? '#ffae00' : isCompleted ? '#00ff9d' : 'var(--accent)', display: isActive || isCompleted ? 'block' : 'none' }} />
                   <span>{node}</span>
                 </div>
-                {idx < arr.length - 1 && <span style={{ color: isActive || isCompleted ? '#fff' : 'var(--text-muted)', fontSize: '11px' }}>→</span>}
+                {idx < arr.length - 1 && <span style={{ color: isActive || isCompleted ? '#fff' : 'var(--text-muted)', fontSize: '11px' }}>ΓåÆ</span>}
               </div>
             )})}
           </div>
@@ -457,13 +457,13 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
       <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ flex: '2 1 460px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <ExplainerCard />
-          {/* Search Console + GA4 are analytics/tracking sources — they feed the month-over-month tracking below. */}
+          {/* Search Console + GA4 are analytics/tracking sources ΓÇö they feed the month-over-month tracking below. */}
           <div className="glow-card">
             <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Search Console &amp; Analytics
             </h3>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
-              Connect Google Search Console &amp; GA4 to pull real rankings, clicks and traffic — this powers the performance tracking below.
+              Connect Google Search Console &amp; GA4 to pull real rankings, clicks and traffic ΓÇö this powers the performance tracking below.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
               <SearchConsolePanel workspaceId={workspaceId ?? null} onRunAudit={() => triggerPipeline('SEO', targetUrl)} />
