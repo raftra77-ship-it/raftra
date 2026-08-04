@@ -478,13 +478,25 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   };
 
   const handleOpenCanva = (designType: string) => {
-    window.open('https://www.canva.com/design', '_blank');
-    triggerToast(`Opened ${designType} in Canva! Syncing Raftra brand assets & layout templates... 🎨`);
+    let url = 'https://www.canva.com/templates/?query=facebook-ad-banner';
+    if (designType.toLowerCase().includes('carousel')) {
+      url = 'https://www.canva.com/templates/?query=instagram-carousel-ad';
+    } else if (designType.toLowerCase().includes('video') || designType.toLowerCase().includes('reel')) {
+      url = 'https://www.canva.com/templates/?query=instagram-reel-ad';
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+    triggerToast(`Opened ${designType} Canva Ad Templates! Syncing Raftra design assets... 🎨`);
   };
 
   const handleOpenFigma = (designType: string) => {
-    window.open('https://www.figma.com/files', '_blank');
-    triggerToast(`Opened ${designType} in Figma! Syncing Raftra design frames & components... ❖`);
+    let url = 'https://www.figma.com/community/file/1089201509930773665';
+    if (designType.toLowerCase().includes('carousel')) {
+      url = 'https://www.figma.com/community/file/1154562098438491873';
+    } else if (designType.toLowerCase().includes('video') || designType.toLowerCase().includes('reel')) {
+      url = 'https://www.figma.com/community/file/1187428389230198421';
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+    triggerToast(`Opened ${designType} Figma Community File! Syncing Raftra design frames... ❖`);
   };
 
   // File Upload Handler
@@ -715,9 +727,23 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     triggerToast('Project asset approved successfully! ✔');
   };
 
-  // Open any ad into the Canva/Figma Studio Editor
+  // Open any ad into the Canva/Figma Studio Editor with smart routing
   const handleOpenAdInStudio = (adData: any) => {
     if (!adData) return;
+    const type = String(adData.type || '').toLowerCase();
+
+    if (type.includes('carousel')) {
+      setActiveTab('carousel');
+      triggerToast('Opened ad in Multi-Card Carousel Studio! 🎴');
+      return;
+    }
+
+    if (type.includes('video') || type.includes('reel') || type.includes('ugc')) {
+      setActiveTab('video_editor');
+      triggerToast('Opened ad in Video Storyboard Studio! 📹');
+      return;
+    }
+
     setEditorCanvasElements([
       {
         id: 'el_bg',
