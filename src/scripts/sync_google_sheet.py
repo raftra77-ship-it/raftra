@@ -45,57 +45,26 @@ def extract_handle(profile_link, brand_name):
     return f"@{clean_brand}" if clean_brand else "@creator"
 
 def parse_price(col11_text, handle=""):
-    h = handle.lower()
-    if 'ankrena' in h:
-        return "₹10,000"
-    elif 'aanushkaanexttdoorr' in h:
-        return "₹5,500"
-    elif 'charika' in h:
-        return "₹25,000"
-    elif 'simplymalvika' in h:
-        return "₹12,000"
-    elif 'ankit.k.09' in h:
-        return "₹50,000"
-    elif 'mahhiii' in h:
-        return "₹1,500"
-    elif 'yourfirst.100k' in h:
-        return "₹8,000"
-    elif 'whoistanaaa' in h:
-        return "₹5,000"
-    elif 'sh.reyya' in h or 'sachin' in h:
-        return "₹4,000"
-    elif 'fanish' in h or 'uttarakhandyb' in h or 'musclestroke' in h:
-        return "₹3,000"
-    elif '_ak_vlogs' in h or 'anmol' in h or 'khanna' in h:
-        return "Can discuss"
-
     if not col11_text or not col11_text.strip():
         return "Can discuss"
     
-    if 'discuss' in col11_text.lower() or 'negotiable' in col11_text.lower():
-        return "Can discuss"
+    txt = col11_text.strip()
+    txt_lower = txt.lower()
     
-    match = re.search(r'₹\s*([\d,]+)', col11_text)
-    if match:
-        try:
-            num = int(match.group(1).replace(',', ''))
-            return f"₹{num:,}"
-        except:
-            return f"₹{match.group(1)}"
-            
-    match2 = re.search(r'(\d+[\d,]*)\s*(?:rs|rupees|per reel|reel|k|K)?', col11_text, re.IGNORECASE)
-    if match2:
-        try:
-            val_str = match2.group(1).replace(',', '')
-            num = int(val_str)
-            if 'k' in match2.group(0).lower():
-                num = num * 1000
-            if num >= 500:
-                return f"₹{num:,}"
-        except:
-            pass
-            
-    return "₹3,000"
+    if 'discuss' in txt_lower or 'negotiable' in txt_lower or 'depend' in txt_lower or 'contact' in txt_lower:
+        return "Can discuss"
+
+    digits_only = re.sub(r'[^\d]', '', txt)
+    if not digits_only:
+        return "Can discuss"
+        
+    try:
+        val_int = int(digits_only)
+        if val_int < 300 or val_int > 300000:
+            return "Can discuss"
+        return f"₹{val_int:,}"
+    except:
+        return "Can discuss"
 
 def parse_followers(metrics_text, handle="", name=""):
     h = handle.lower()
