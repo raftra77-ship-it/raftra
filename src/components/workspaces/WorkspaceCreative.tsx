@@ -2282,25 +2282,30 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <span style={{ fontSize: '11px', color: '#8e8e9e' }}>Instagram • Facebook • TikTok Carousel Ads</span>
               </div>
               <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontWeight: 700 }}>Interactive Multi-Slide Carousel Studio</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 10px 0' }}>
                 Har card slide ke liye dedicated headline, graphic, aur <b>unique destination URL link</b> setup karein.
               </p>
+
+              {/* LEFT ACTIONS: CANVA & FIGMA BUTTONS */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => handleOpenCanva('Carousel Ad Cards')}
+                  style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  Open in Canva 🎨
+                </button>
+
+                <button
+                  onClick={() => handleOpenFigma('Carousel Ad Cards')}
+                  style={{ background: 'rgba(162, 89, 255, 0.15)', border: '1px solid rgba(162, 89, 255, 0.4)', color: '#A259FF', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  Open in Figma ❖
+                </button>
+              </div>
             </div>
 
+            {/* FAR RIGHT ACTIONS: DRAFT, AD LIBRARY, DOWNLOAD AD */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-              <button
-                onClick={() => handleOpenCanva('Carousel Ad Cards')}
-                style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                Open in Canva 🎨
-              </button>
-
-              <button
-                onClick={() => handleOpenFigma('Carousel Ad Cards')}
-                style={{ background: 'rgba(162, 89, 255, 0.15)', border: '1px solid rgba(162, 89, 255, 0.4)', color: '#A259FF', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                Open in Figma ❖
-              </button>
 
               {/* 1. SAVE IN DRAFT */}
               <button 
@@ -2568,25 +2573,30 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <span style={{ fontSize: '11px', color: '#8e8e9e' }}>Meta Reels • TikTok • YouTube Shorts</span>
               </div>
               <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontWeight: 700 }}>Dynamic Scene Storyboard & Subtitle Studio</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 10px 0' }}>
                 Hook, Problem, Solution, aur CTA scenes ko timeline format me edit karke viral ad videos banayein.
               </p>
+
+              {/* LEFT ACTIONS: CANVA & FIGMA BUTTONS */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => handleOpenCanva('Video Reel Storyboard')}
+                  style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  Open in Canva 🎨
+                </button>
+
+                <button
+                  onClick={() => handleOpenFigma('Video Reel Storyboard')}
+                  style={{ background: 'rgba(162, 89, 255, 0.15)', border: '1px solid rgba(162, 89, 255, 0.4)', color: '#A259FF', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  Open in Figma ❖
+                </button>
+              </div>
             </div>
 
+            {/* FAR RIGHT ACTIONS: DRAFT, AD LIBRARY, DOWNLOAD AD */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-              <button
-                onClick={() => handleOpenCanva('Video Reel Storyboard')}
-                style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                Open in Canva 🎨
-              </button>
-
-              <button
-                onClick={() => handleOpenFigma('Video Reel Storyboard')}
-                style={{ background: 'rgba(162, 89, 255, 0.15)', border: '1px solid rgba(162, 89, 255, 0.4)', color: '#A259FF', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                Open in Figma ❖
-              </button>
 
               {/* 1. SAVE IN DRAFT */}
               <button 
@@ -2871,8 +2881,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               ))}
             </div>
 
-            {/* Zoom & Action Buttons (FAR RIGHT ALIGNED) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
+            {/* LEFT ACTIONS: ZOOM CONTROLS, CANVA & FIGMA BUTTONS */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.4)', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <button onClick={() => setEditorZoom(Math.max(50, editorZoom - 15))} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>-</button>
                 <span style={{ fontSize: '11.5px', color: '#fff', fontWeight: 600, minWidth: '36px', textAlign: 'center' }}>{editorZoom}%</span>
@@ -2892,7 +2902,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               >
                 Open in Figma ❖
               </button>
+            </div>
 
+            {/* FAR RIGHT ACTIONS: SAVE IN DRAFT, SAVE TO AD LIBRARY, DOWNLOAD AD */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
               {/* 1. SAVE IN DRAFT */}
               <button 
                 onClick={() => {
