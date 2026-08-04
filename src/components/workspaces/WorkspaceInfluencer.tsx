@@ -109,7 +109,13 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         if (customCardStr) {
           try {
             const custom = JSON.parse(customCardStr);
-            list = list.map(c => (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') ? { ...c, ...custom } : c);
+            list = list.map(c => {
+              if (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') {
+                const deliverables = Array.from(new Set(['UGC Video', ...(custom.deliverables || c.deliverables || ['Reel', 'Story'])]));
+                return { ...c, ...custom, deliverables };
+              }
+              return c;
+            });
           } catch (err) {}
         }
         setCreators(list);
@@ -120,7 +126,13 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       if (customCardStr) {
         try {
           const custom = JSON.parse(customCardStr);
-          list = list.map(c => (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') ? { ...c, ...custom } : c);
+          list = list.map(c => {
+            if (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') {
+              const deliverables = Array.from(new Set(['UGC Video', ...(custom.deliverables || c.deliverables || ['Reel', 'Story'])]));
+              return { ...c, ...custom, deliverables };
+            }
+            return c;
+          });
         } catch (err) {}
       }
       setCreators(list);
@@ -508,16 +520,9 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   )}
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                  {creator.category.toUpperCase()}
-                </span>
-                {creator.deliverables && creator.deliverables.includes('UGC Video') && (
-                  <span style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                    ✨ UGC Available
-                  </span>
-                )}
-              </div>
+              <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                {creator.category.toUpperCase()}
+              </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
@@ -549,11 +554,28 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               <div style={{ marginTop: '8px' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>AVAILABLE FOR:</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {creator.deliverables.map(d => (
-                    <span key={d} style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.1)', color: '#00E676', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(0, 230, 118, 0.2)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {d.includes('Video') ? <Video size={10} /> : <ImageIcon size={10} />} {d}
-                    </span>
-                  ))}
+                  {creator.deliverables.map(d => {
+                    const isUGC = d.toLowerCase().includes('ugc');
+                    return (
+                      <span
+                        key={d}
+                        style={{
+                          fontSize: '10px',
+                          background: isUGC ? 'rgba(255, 77, 77, 0.15)' : 'rgba(0, 230, 118, 0.1)',
+                          color: isUGC ? '#FF4D4D' : '#00E676',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          border: isUGC ? '1px solid rgba(255, 77, 77, 0.4)' : '1px solid rgba(0, 230, 118, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontWeight: isUGC ? 700 : 500
+                        }}
+                      >
+                        {isUGC ? <Video size={10} color="#FF4D4D" /> : d.includes('Video') ? <Video size={10} /> : <ImageIcon size={10} />} {d}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>
