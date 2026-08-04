@@ -836,24 +836,37 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', paddingBottom: '40px' }}>
       
-      {/* 1. TOP 3 MASTER SECTIONS NAVIGATION */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ fontSize: '13px', color: '#fff', fontWeight: 800, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Sparkles size={16} color="#00E676" /> AI CREATIVE STUDIO WORKSPACES
+      {/* 1. TOP 3 MASTER SECTIONS NAVIGATION (SPACIOUS FULL-WIDTH CARDS) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '24px' }}>
+        
+        {/* HEADER BAR */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Sparkles size={20} color="#00E676" />
+            </div>
+            <div>
+              <div style={{ fontSize: '16px', color: '#fff', fontWeight: 800, letterSpacing: '0.04em', fontFamily: 'var(--font-heading)' }}>
+                AI CREATIVE STUDIO WORKSPACES
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Select a workspace module to build, edit, or analyze high-converting ad assets.
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ShieldCheck size={14} color="var(--success)" />
+
+          <div style={{ fontSize: '12px', color: 'var(--success)', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', padding: '6px 14px', borderRadius: '100px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ShieldCheck size={15} color="var(--success)" />
             <span>Raftra Ad Intelligence Vault Sync Active</span>
           </div>
         </div>
 
-        {/* 3 MASTER SECTIONS PILLS */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', width: '100%' }}>
+        {/* 3 MASTER SECTIONS CARDS GRID (FULL LEFT-TO-RIGHT WIDTH) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', width: '100%' }}>
           {[
-            { id: 'create_intel', label: '1. Create & Intelligence 🪄', desc: 'AI Generator, Projects, Competitor Spy & Vault', color: '#00E676' },
-            { id: 'editing', label: '2. Creative Editing 🎨', desc: 'Canva Image, Meta Carousel & Video Storyboard', color: '#7C75FF' },
-            { id: 'services', label: '3. UGC Services 🤝', desc: 'AI UGC Reel Generator & Influencer Marketplace', color: '#FFB74D' }
+            { id: 'create_intel', label: '1. Create & Intelligence 🪄', tag: 'AI GENERATOR & VAULT', desc: 'AI Generator, Saved Projects, Competitor Spy & Winning Vault', color: '#00E676', bg: 'linear-gradient(135deg, rgba(0,230,118,0.14) 0%, rgba(10,14,20,0.95) 100%)' },
+            { id: 'editing', label: '2. Creative Editing 🎨', tag: 'CANVA & FIGMA WORKBENCH', desc: 'Single Graphic Studio, Multi-Card Carousel Builder & Video Storyboard', color: '#7C75FF', bg: 'linear-gradient(135deg, rgba(124,117,255,0.14) 0%, rgba(12,10,24,0.95) 100%)' },
+            { id: 'services', label: '3. UGC Services 🤝', tag: 'AI REELS & MARKETPLACE', desc: 'AI UGC Avatar Reel Generator & Hire Verified Human Influencers', color: '#FFB74D', bg: 'linear-gradient(135deg, rgba(255,183,77,0.14) 0%, rgba(20,14,10,0.95) 100%)' }
           ].map(sec => {
             const isSelected = masterSection === sec.id;
             return (
@@ -866,23 +879,34 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   if (sec.id === 'services') setActiveTab('ugc');
                 }}
                 style={{
-                  background: isSelected 
-                    ? 'linear-gradient(180deg, #1c1c2b 0%, #0d0d15 100%)' 
-                    : 'rgba(255,255,255,0.02)',
-                  backdropFilter: 'blur(16px)',
-                  border: isSelected ? `1.5px solid ${sec.color}` : '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '14px',
-                  padding: '12px 16px',
+                  background: isSelected ? sec.bg : 'rgba(255,255,255,0.02)',
+                  backdropFilter: 'blur(20px)',
+                  border: isSelected ? `2px solid ${sec.color}` : '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '20px',
+                  padding: '20px 24px',
                   textAlign: 'left',
                   cursor: 'pointer',
-                  boxShadow: isSelected ? `0 4px 20px ${sec.color}25` : 'none',
-                  transition: 'all 0.2s ease'
+                  boxShadow: isSelected ? `0 8px 30px ${sec.color}30` : 'none',
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
                 }}
               >
-                <div style={{ fontSize: '13.5px', fontWeight: isSelected ? 800 : 600, color: isSelected ? sec.color : '#fff', marginBottom: '2px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em', color: sec.color, background: `${sec.color}20`, border: `1px solid ${sec.color}40`, padding: '2px 8px', borderRadius: '4px' }}>
+                    {sec.tag}
+                  </span>
+                  {isSelected && (
+                    <span style={{ fontSize: '11px', color: sec.color, fontWeight: 700 }}>● Active</span>
+                  )}
+                </div>
+
+                <div style={{ fontSize: '17px', fontWeight: 800, color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.9)', fontFamily: 'var(--font-heading)' }}>
                   {sec.label}
                 </div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+
+                <div style={{ fontSize: '12.5px', color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>
                   {sec.desc}
                 </div>
               </button>
@@ -890,8 +914,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           })}
         </div>
 
-        {/* SUB-SECTION TOOL SWITCHER BAR */}
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', background: 'rgba(0,0,0,0.4)', padding: '6px 10px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.06)' }}>
+        {/* SUB-SECTION SPACIOUS PILL TOOL SWITCHER BAR */}
+        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', background: 'rgba(12, 12, 20, 0.8)', backdropFilter: 'blur(16px)', padding: '10px 16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', width: '100%', boxSizing: 'border-box' }}>
           {masterSection === 'create_intel' && [
             { id: 'create', label: '🪄 AI Ad Generator' },
             { id: 'projects', label: '📁 Recent Projects' },
@@ -902,15 +926,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               key={tool.id}
               onClick={() => setActiveTab(tool.id as any)}
               style={{
-                padding: '6px 14px',
-                background: activeTab === tool.id ? 'rgba(0,230,118,0.2)' : 'transparent',
-                color: activeTab === tool.id ? '#00E676' : 'rgba(255,255,255,0.65)',
-                border: activeTab === tool.id ? '1px solid rgba(0,230,118,0.4)' : '1px solid transparent',
-                borderRadius: '100px',
-                fontSize: '12px',
-                fontWeight: activeTab === tool.id ? 700 : 500,
+                flex: 1,
+                padding: '10px 20px',
+                background: activeTab === tool.id ? 'linear-gradient(180deg, rgba(0,230,118,0.25) 0%, rgba(0,200,100,0.1) 100%)' : 'rgba(255,255,255,0.03)',
+                color: activeTab === tool.id ? '#00E676' : 'rgba(255,255,255,0.7)',
+                border: activeTab === tool.id ? '1.5px solid #00E676' : '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: activeTab === tool.id ? 800 : 500,
                 cursor: 'pointer',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                boxShadow: activeTab === tool.id ? '0 4px 16px rgba(0,230,118,0.2)' : 'none',
+                transition: 'all 0.2s ease',
+                textAlign: 'center'
               }}
             >
               {tool.label}
@@ -926,15 +954,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               key={tool.id}
               onClick={() => setActiveTab(tool.id as any)}
               style={{
-                padding: '6px 14px',
-                background: activeTab === tool.id ? 'rgba(124,117,255,0.2)' : 'transparent',
-                color: activeTab === tool.id ? '#7C75FF' : 'rgba(255,255,255,0.65)',
-                border: activeTab === tool.id ? '1px solid rgba(124,117,255,0.4)' : '1px solid transparent',
-                borderRadius: '100px',
-                fontSize: '12px',
-                fontWeight: activeTab === tool.id ? 700 : 500,
+                flex: 1,
+                padding: '10px 20px',
+                background: activeTab === tool.id ? 'linear-gradient(180deg, rgba(124,117,255,0.25) 0%, rgba(100,90,240,0.1) 100%)' : 'rgba(255,255,255,0.03)',
+                color: activeTab === tool.id ? '#7C75FF' : 'rgba(255,255,255,0.7)',
+                border: activeTab === tool.id ? '1.5px solid #7C75FF' : '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: activeTab === tool.id ? 800 : 500,
                 cursor: 'pointer',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                boxShadow: activeTab === tool.id ? '0 4px 16px rgba(124,117,255,0.2)' : 'none',
+                transition: 'all 0.2s ease',
+                textAlign: 'center'
               }}
             >
               {tool.label}
@@ -949,15 +981,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               key={tool.id}
               onClick={() => setActiveTab(tool.id as any)}
               style={{
-                padding: '6px 14px',
-                background: activeTab === tool.id ? 'rgba(255,183,77,0.2)' : 'transparent',
-                color: activeTab === tool.id ? '#FFB74D' : 'rgba(255,255,255,0.65)',
-                border: activeTab === tool.id ? '1px solid rgba(255,183,77,0.4)' : '1px solid transparent',
-                borderRadius: '100px',
-                fontSize: '12px',
-                fontWeight: activeTab === tool.id ? 700 : 500,
+                flex: 1,
+                padding: '10px 20px',
+                background: activeTab === tool.id ? 'linear-gradient(180deg, rgba(255,183,77,0.25) 0%, rgba(240,160,50,0.1) 100%)' : 'rgba(255,255,255,0.03)',
+                color: activeTab === tool.id ? '#FFB74D' : 'rgba(255,255,255,0.7)',
+                border: activeTab === tool.id ? '1.5px solid #FFB74D' : '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: activeTab === tool.id ? 800 : 500,
                 cursor: 'pointer',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                boxShadow: activeTab === tool.id ? '0 4px 16px rgba(255,183,77,0.2)' : 'none',
+                transition: 'all 0.2s ease',
+                textAlign: 'center'
               }}
             >
               {tool.label}
