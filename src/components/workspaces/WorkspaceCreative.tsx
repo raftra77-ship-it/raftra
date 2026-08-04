@@ -39,7 +39,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onNavigateTab
 }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc' | 'editor' | 'carousel' | 'video_editor'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc' | 'editor' | 'carousel' | 'video_editor' | 'ad_library'>('create');
   
   // Hero Quick Goal Selector
   const [quickGoal, setQuickGoal] = useState<'image' | 'video' | 'carousel' | 'ai_ugc' | 'hire_ugc'>('image');
@@ -187,6 +187,28 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setDraggedElId(null);
   };
 
+  // Save active Studio design as Draft into Recent Projects
+  const handleSaveAsDraft = () => {
+    const bgEl = editorCanvasElements.find(el => el.id === 'el_bg') || editorCanvasElements.find(el => el.type === 'image');
+    const headEl = editorCanvasElements.find(el => el.id === 'el_headline') || editorCanvasElements.find(el => el.type === 'text');
+    const bodyEl = editorCanvasElements.find(el => el.id === 'el_body');
+
+    const newDraftAd = {
+      id: `proj_draft_${Date.now()}`,
+      title: editorDocumentTitle || 'Draft Campaign Design',
+      date: 'Just now (Draft)',
+      status: 'Draft' as const,
+      img: bgEl?.content || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
+      bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
+      cta: 'Shop Now',
+      hashtags: '#Ambrane #Draft'
+    };
+
+    setProjectsList(prev => [newDraftAd, ...prev]);
+    triggerToast('Saved project as Draft in Recent Projects! 💾');
+  };
+
   // Save active Studio design directly into Ad Library / Recent Projects Vault
   const handleSaveToVault = () => {
     const bgEl = editorCanvasElements.find(el => el.id === 'el_bg') || editorCanvasElements.find(el => el.type === 'image');
@@ -206,7 +228,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     };
 
     setProjectsList(prev => [newVaultAd, ...prev]);
-    triggerToast('Saved ad design to Brand Ad Vault & Recent Projects Library! 🏆');
+    triggerToast('Saved ad design to Verified Ad Library & Vault! 🏛️');
   };
 
   // Export active Canvas to 4K PNG file download
@@ -918,9 +940,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', background: 'rgba(12, 12, 20, 0.8)', backdropFilter: 'blur(16px)', padding: '10px 16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', width: '100%', boxSizing: 'border-box' }}>
           {masterSection === 'create_intel' && [
             { id: 'create', label: '🪄 AI Ad Generator' },
-            { id: 'projects', label: '📁 Recent Projects' },
             { id: 'competitors', label: '⚡ Competitor Intel' },
-            { id: 'templates', label: '🏆 Winning Templates' }
+            { id: 'templates', label: '🏆 Winning Templates' },
+            { id: 'projects', label: '📁 Recent Projects' },
+            { id: 'ad_library', label: '🏛️ Ad Library' }
           ].map(tool => (
             <button
               key={tool.id}
@@ -2025,6 +2048,73 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       )}
 
+      {/* ==================== TAB: AD LIBRARY (SAVED APPROVED ASSETS) ==================== */}
+      {activeTab === 'ad_library' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(0,230,118,0.12)', borderRadius: '100px', border: '1px solid rgba(0,230,118,0.3)', marginBottom: '6px' }}>
+                <ShieldCheck size={13} color="var(--success)" />
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--success)', letterSpacing: '0.04em' }}>RAFTRA APPROVED AD LIBRARY</span>
+              </div>
+              <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 4px 0' }}>
+                Verified Brand Ad Intelligence Vault & Library
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
+                Approved high-performing ad creatives, scaling campaign assets, and verified copy frameworks ready for immediate launch.
+              </p>
+            </div>
+
+            <div style={{ fontSize: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: '12px', color: '#fff', fontWeight: 600 }}>
+              🏛️ Total Approved Assets: <span style={{ color: '#00E676', fontWeight: 800 }}>{projectsList.filter(p => p.status === 'Approved').length}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            {projectsList.filter(p => p.status === 'Approved').map(proj => (
+              <div
+                key={proj.id}
+                onClick={() => setSelectedProjectModal(proj)}
+                className="glow-card"
+                style={{
+                  padding: '20px',
+                  background: '#0c0c14',
+                  border: '1px solid rgba(0,230,118,0.3)',
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden' }}>
+                  <img src={proj.img} alt={proj.title} style={{ width: '100%', height: '160px', objectFit: 'cover' }} />
+                  <span style={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 10,
+                    fontSize: '10px',
+                    background: 'rgba(0,230,118,0.9)',
+                    color: '#000',
+                    padding: '3px 10px',
+                    borderRadius: '100px',
+                    fontWeight: 800
+                  }}>
+                    🏛️ Approved Vault Ad
+                  </span>
+                </div>
+                <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>{proj.title}</h4>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>"{proj.headline}"</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{proj.date}</span>
+                  <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 700 }}>Open in Editor 🎨 →</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
           {/* TAB 4: TEMPLATES & VAULT */}
           {activeTab === 'templates' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -2307,24 +2397,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             {/* FAR RIGHT ACTIONS: DRAFT, AD LIBRARY, DOWNLOAD AD */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
 
-              {/* 1. SAVE IN DRAFT */}
+              {/* 1. SAVE IN DRAFT → goes to Recent Projects as Draft */}
               <button 
-                onClick={() => {
-                  triggerToast('Saved Carousel Project as Draft in Recent Projects! 💾');
-                }}
+                onClick={handleSaveAsDraft}
                 style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <Save size={14} /> Save in Draft 💾
               </button>
 
-              {/* 2. SAVE TO AD LIBRARY */}
+              {/* 2. SAVE TO AD LIBRARY → goes to Ad Library as Approved */}
               <button 
-                onClick={() => {
-                  triggerToast('Saved to Raftra Ad Intelligence Vault & Library! 📁');
-                }}
+                onClick={handleSaveToVault}
                 style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
-                <FolderPlus size={14} /> Save to Ad Library 📁
+                <FolderPlus size={14} /> Save to Ad Library 🏛️
               </button>
 
               {/* 3. DOWNLOAD AD */}
@@ -2598,24 +2684,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             {/* FAR RIGHT ACTIONS: DRAFT, AD LIBRARY, DOWNLOAD AD */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
 
-              {/* 1. SAVE IN DRAFT */}
+              {/* 1. SAVE IN DRAFT → goes to Recent Projects as Draft */}
               <button 
-                onClick={() => {
-                  triggerToast('Saved Video Project as Draft in Recent Projects! 💾');
-                }}
+                onClick={handleSaveAsDraft}
                 style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <Save size={14} /> Save in Draft 💾
               </button>
 
-              {/* 2. SAVE TO AD LIBRARY */}
+              {/* 2. SAVE TO AD LIBRARY → goes to Ad Library as Approved */}
               <button 
-                onClick={() => {
-                  triggerToast('Saved to Raftra Ad Intelligence Vault & Library! 📁');
-                }}
+                onClick={handleSaveToVault}
                 style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
-                <FolderPlus size={14} /> Save to Ad Library 📁
+                <FolderPlus size={14} /> Save to Ad Library 🏛️
               </button>
 
               {/* 3. DOWNLOAD AD */}
@@ -2906,25 +2988,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
             {/* FAR RIGHT ACTIONS: SAVE IN DRAFT, SAVE TO AD LIBRARY, DOWNLOAD AD */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
-              {/* 1. SAVE IN DRAFT */}
+              {/* 1. SAVE IN DRAFT → goes to Recent Projects as Draft */}
               <button 
-                onClick={() => {
-                  triggerToast('Saved project as Draft in Recent Projects! 💾');
-                }}
+                onClick={handleSaveAsDraft}
                 style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <Save size={14} /> Save in Draft 💾
               </button>
 
-              {/* 2. SAVE TO AD LIBRARY */}
+              {/* 2. SAVE TO AD LIBRARY → goes to Ad Library as Approved */}
               <button 
-                onClick={() => {
-                  handleSaveToVault();
-                  triggerToast('Saved to Raftra Ad Intelligence Vault & Library! 📁');
-                }}
+                onClick={handleSaveToVault}
                 style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
-                <FolderPlus size={14} /> Save to Ad Library 📁
+                <FolderPlus size={14} /> Save to Ad Library 🏛️
               </button>
 
               {/* 3. DOWNLOAD AD */}
