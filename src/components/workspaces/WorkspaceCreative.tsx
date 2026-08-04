@@ -39,7 +39,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onNavigateTab
 }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc' | 'editor'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc' | 'editor' | 'carousel' | 'video_editor'>('create');
   
   // Hero Quick Goal Selector
   const [quickGoal, setQuickGoal] = useState<'image' | 'video' | 'carousel' | 'ai_ugc' | 'hire_ugc'>('image');
@@ -404,6 +404,74 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     status: string;
   } | null>(null);
 
+  // Multi-Card Carousel Ad Builder State
+  const [carouselCards, setCarouselCards] = useState([
+    {
+      id: 'c1',
+      title: 'Card 1: High Hook Cover',
+      headline: '⚡ 20000mAh Powerbank @ ₹1,499',
+      description: '22.5W Fast Charging, Dual USB & Type-C Output.',
+      destinationUrl: 'https://ambrane.com/powerbank-festive-deal',
+      ctaAction: 'SHOP_NOW',
+      imageUrl: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80'
+    },
+    {
+      id: 'c2',
+      title: 'Card 2: Feature Showcase',
+      headline: '🔋 Charges iPhone 15 Up To 4 Times',
+      description: 'Compact pocket design with BIS safety protection.',
+      destinationUrl: 'https://ambrane.com/powerbank-features',
+      ctaAction: 'SHOP_NOW',
+      imageUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80'
+    },
+    {
+      id: 'c3',
+      title: 'Card 3: Customer Proof',
+      headline: '⭐️ 4.9/5 Rating by 45,000+ Buyers',
+      description: 'Made in India with 180 Days doorstep warranty.',
+      destinationUrl: 'https://ambrane.com/reviews',
+      ctaAction: 'GET_OFFER',
+      imageUrl: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80'
+    }
+  ]);
+  const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
+
+  // Video Storyboard & Timeline Editor State
+  const [videoScenes, setVideoScenes] = useState([
+    {
+      id: 'scene_1',
+      name: 'Scene 1: Visual Hook (0-3s)',
+      overlayText: 'Tired of phone dying mid-travel? 😱',
+      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-holding-a-smartphone-with-a-green-screen-41544-large.mp4',
+      duration: '3s'
+    },
+    {
+      id: 'scene_2',
+      name: 'Scene 2: Problem Painpoint (3-7s)',
+      overlayText: 'Slow chargers take 3 hours just for 50% battery!',
+      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-man-holding-a-smartphone-in-his-hands-41545-large.mp4',
+      duration: '4s'
+    },
+    {
+      id: 'scene_3',
+      name: 'Scene 3: Solution Showcase (7-12s)',
+      overlayText: 'Switch to Ambrane 22.5W Ultra-Fast Powerbank! ⚡',
+      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-holding-a-smartphone-with-green-screen-41546-large.mp4',
+      duration: '5s'
+    },
+    {
+      id: 'scene_4',
+      name: 'Scene 4: Call To Action (12-15s)',
+      overlayText: 'Claim 30% Diwali Discount Today 👇',
+      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-person-working-on-a-laptop-and-using-a-smartphone-41547-large.mp4',
+      duration: '3s'
+    }
+  ]);
+  const [activeVideoSceneIndex, setActiveVideoSceneIndex] = useState(0);
+  const [videoSubtitleStyle, setVideoSubtitleStyle] = useState<'viral_yellow' | 'capsule_white' | 'minimal'>('viral_yellow');
+  const [videoAudioTrack, setVideoAudioTrack] = useState('Upbeat Tech Bass (128 BPM)');
+  const [isPlayingVideoPreview, setIsPlayingVideoPreview] = useState(false);
+
   const triggerToast = (msg: string) => {
     setCopyToast(msg);
     setTimeout(() => setCopyToast(null), 3500);
@@ -729,6 +797,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           {[
             { id: 'create', label: 'Create Ad', icon: Wand2 },
             { id: 'editor', label: 'Canva / Figma Studio Editor 🎨', icon: Edit3, badge: 'Interactive' },
+            { id: 'carousel', label: 'Multi-Card Carousel Builder 🎴', icon: Layers, badge: 'Meta Multi-Link' },
+            { id: 'video_editor', label: 'Video Storyboard & Timeline 📹', icon: Film, badge: 'Reels & Shorts' },
             { id: 'competitors', label: 'Competitor Intelligence', icon: Zap },
             { id: 'projects', label: 'Recent Projects', icon: Layers },
             { id: 'templates', label: 'Winning Templates & Vault', icon: Film },
@@ -2116,7 +2186,470 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       )}
 
-      {/* ==================== TAB: CANVA/FIGMA HYBRID STUDIO EDITOR WORKPLACE ==================== */}
+      {/* ==================== TAB: MULTI-CARD CAROUSEL BUILDER ==================== */}
+      {activeTab === 'carousel' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* HEADER BANNER */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(20, 20, 35, 0.9), rgba(10, 10, 20, 0.95))', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '16px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '3px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                  🎴 META MULTI-CARD CAROUSEL BUILDER
+                </span>
+                <span style={{ fontSize: '11px', color: '#8e8e9e' }}>Instagram • Facebook • TikTok Carousel Ads</span>
+              </div>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontWeight: 700 }}>Interactive Multi-Slide Carousel Studio</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                Har card slide ke liye dedicated headline, graphic, aur <b>unique destination URL link</b> setup karein.
+              </p>
+            </div>
+
+            <GlowButton
+              variant="glow"
+              onClick={() => {
+                const payload = {
+                  ad_type: 'CAROUSEL',
+                  cards: carouselCards.map(c => ({
+                    headline: c.headline,
+                    description: c.description,
+                    destination_url: c.destinationUrl,
+                    call_to_action: c.ctaAction,
+                    image_url: c.imageUrl
+                  }))
+                };
+                navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+                triggerToast('Copied Meta Multi-Card Carousel JSON payload to clipboard! 📋');
+              }}
+              style={{ padding: '10px 20px', fontSize: '13px' }}
+            >
+              Export Meta Carousel Payload 📋
+            </GlowButton>
+          </div>
+
+          {/* 2-COLUMN WORKBENCH */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
+            
+            {/* LEFT COLUMN: CAROUSEL CARDS NAV & SLIDE EDITOR */}
+            <div style={{ background: '#0c0c14', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', color: '#fff', fontWeight: 700 }}>Carousel Slide Cards ({carouselCards.length})</span>
+                <button
+                  onClick={() => {
+                    const newCard = {
+                      id: `c_${Date.now()}`,
+                      title: `Card ${carouselCards.length + 1}: Custom Slide`,
+                      headline: `⚡ Exclusive Offer Slide ${carouselCards.length + 1}`,
+                      description: 'Special limited time bundle deal.',
+                      destinationUrl: 'https://ambrane.com/deal',
+                      ctaAction: 'SHOP_NOW',
+                      imageUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80'
+                    };
+                    setCarouselCards(prev => [...prev, newCard]);
+                    setActiveCarouselIndex(carouselCards.length);
+                    triggerToast('Added new Carousel Slide Card! 🎴');
+                  }}
+                  style={{ background: 'rgba(0, 230, 118, 0.15)', border: '1px solid rgba(0, 230, 118, 0.3)', color: '#00E676', padding: '6px 12px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  + Add Slide Card
+                </button>
+              </div>
+
+              {/* CARDS SLIDE TAB SELECTOR */}
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                {carouselCards.map((card, idx) => (
+                  <button
+                    key={card.id}
+                    onClick={() => setActiveCarouselIndex(idx)}
+                    style={{
+                      padding: '8px 14px',
+                      background: activeCarouselIndex === idx ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'rgba(255,255,255,0.03)',
+                      color: activeCarouselIndex === idx ? '#00E676' : '#8e8e9e',
+                      border: activeCarouselIndex === idx ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: activeCarouselIndex === idx ? 700 : 500,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Card {idx + 1}
+                  </button>
+                ))}
+              </div>
+
+              {/* ACTIVE CARD PROPERTIES FORM */}
+              {(() => {
+                const currentCard = carouselCards[activeCarouselIndex] || carouselCards[0];
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: '#12121c', padding: '18px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+                      Editing: {currentCard.title}
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>CARD HEADLINE</label>
+                      <input
+                        type="text"
+                        value={currentCard.headline}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setCarouselCards(prev => prev.map((c, i) => i === activeCarouselIndex ? { ...c, headline: val } : c));
+                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>CARD DESCRIPTION / SUBTEXT</label>
+                      <input
+                        type="text"
+                        value={currentCard.description}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setCarouselCards(prev => prev.map((c, i) => i === activeCarouselIndex ? { ...c, description: val } : c));
+                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '12.5px' }}
+                      />
+                    </div>
+
+                    <div style={{ background: 'rgba(0, 230, 118, 0.05)', border: '1px solid rgba(0, 230, 118, 0.25)', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Zap size={13} /> CARD SPECIFIC META DESTINATION LINK (URL)
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="https://ambrane.com/card-specific-page"
+                        value={currentCard.destinationUrl}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setCarouselCards(prev => prev.map((c, i) => i === activeCarouselIndex ? { ...c, destinationUrl: val } : c));
+                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                      />
+                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>
+                        📍 Jab user Card {activeCarouselIndex + 1} par click karega, Meta is target URL par user ko landing karwayega.
+                      </span>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>CARD CTA ACTION BUTTON</label>
+                      <select
+                        value={currentCard.ctaAction}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setCarouselCards(prev => prev.map((c, i) => i === activeCarouselIndex ? { ...c, ctaAction: val } : c));
+                        }}
+                        style={{ width: '100%', padding: '8px 10px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                      >
+                        <option value="SHOP_NOW">SHOP_NOW (Shop Now)</option>
+                        <option value="LEARN_MORE">LEARN_MORE (Learn More)</option>
+                        <option value="GET_OFFER">GET_OFFER (Get Offer)</option>
+                        <option value="ORDER_NOW">ORDER_NOW (Order Now)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>CARD IMAGE GRAPHIC URL</label>
+                      <input
+                        type="text"
+                        value={currentCard.imageUrl}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setCarouselCards(prev => prev.map((c, i) => i === activeCarouselIndex ? { ...c, imageUrl: val } : c));
+                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* RIGHT COLUMN: LIVE INTERACTIVE CAROUSEL PREVIEW SLIDER */}
+            <div style={{ background: '#06060c', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              
+              <div style={{ fontSize: '12px', color: '#8e8e9e', fontWeight: 700, marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Meta Live Carousel Ad Preview (Card {activeCarouselIndex + 1} of {carouselCards.length})
+              </div>
+
+              {/* CAROUSEL AD CARD CHASSIS */}
+              {(() => {
+                const activeCard = carouselCards[activeCarouselIndex] || carouselCards[0];
+                return (
+                  <div style={{ width: '320px', background: '#0d0d15', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.8)' }}>
+                    <div style={{ width: '100%', height: '240px', position: 'relative' }}>
+                      <img src={activeCard.imageUrl} alt={activeCard.headline} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '3px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 700 }}>
+                        {activeCarouselIndex + 1} / {carouselCards.length}
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <h4 style={{ fontSize: '14px', color: '#fff', margin: 0, fontWeight: 700 }}>{activeCard.headline}</h4>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>{activeCard.description}</p>
+                      
+                      <div style={{ fontSize: '10px', color: '#00E676', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        🔗 {activeCard.destinationUrl}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
+                        <span style={{ fontSize: '11px', background: '#00E676', color: '#000', padding: '6px 14px', borderRadius: '6px', fontWeight: 800 }}>
+                          {activeCard.ctaAction.replace('_', ' ')} →
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* SLIDE NAVIGATION CONTROLS */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+                <button
+                  disabled={activeCarouselIndex === 0}
+                  onClick={() => setActiveCarouselIndex(prev => Math.max(0, prev - 1))}
+                  style={{ padding: '8px 16px', background: activeCarouselIndex === 0 ? 'rgba(255,255,255,0.05)' : '#12121c', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: activeCarouselIndex === 0 ? 'not-allowed' : 'pointer' }}
+                >
+                  ← Previous Card
+                </button>
+                <button
+                  disabled={activeCarouselIndex === carouselCards.length - 1}
+                  onClick={() => setActiveCarouselIndex(prev => Math.min(carouselCards.length - 1, prev + 1))}
+                  style={{ padding: '8px 16px', background: activeCarouselIndex === carouselCards.length - 1 ? 'rgba(255,255,255,0.05)' : '#00E676', border: 'none', color: activeCarouselIndex === carouselCards.length - 1 ? '#8e8e9e' : '#000', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: activeCarouselIndex === carouselCards.length - 1 ? 'not-allowed' : 'pointer' }}
+                >
+                  Next Card →
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* ==================== TAB: VIDEO STORYBOARD & TIMELINE EDITOR ==================== */}
+      {activeTab === 'video_editor' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* HEADER BANNER */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(30, 20, 45, 0.9), rgba(10, 10, 20, 0.95))', border: '1px solid rgba(124, 117, 255, 0.4)', borderRadius: '16px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', background: 'rgba(124, 117, 255, 0.15)', color: '#7C75FF', border: '1px solid rgba(124, 117, 255, 0.4)', padding: '3px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                  📹 VIDEO STORYBOARD & TIMELINE STUDIO
+                </span>
+                <span style={{ fontSize: '11px', color: '#8e8e9e' }}>Meta Reels • TikTok • YouTube Shorts</span>
+              </div>
+              <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontWeight: 700 }}>Dynamic Scene Storyboard & Subtitle Studio</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                Hook, Problem, Solution, aur CTA scenes ko timeline format me edit karke viral ad videos banayein.
+              </p>
+            </div>
+
+            <GlowButton
+              variant="glow"
+              onClick={() => {
+                const payload = {
+                  ad_type: 'VIDEO',
+                  format: 'REEL_9_16',
+                  subtitle_style: videoSubtitleStyle,
+                  audio_track: videoAudioTrack,
+                  scenes: videoScenes.map(s => ({
+                    scene_id: s.id,
+                    duration: s.duration,
+                    overlay_subtitle: s.overlayText,
+                    video_url: s.videoUrl
+                  }))
+                };
+                navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+                triggerToast('Copied Meta Video Ad JSON payload to clipboard! 📋');
+              }}
+              style={{ padding: '10px 20px', fontSize: '13px' }}
+            >
+              Export Meta Video Payload 📋
+            </GlowButton>
+          </div>
+
+          {/* 2-COLUMN WORKBENCH */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
+            
+            {/* LEFT COLUMN: SCENE TIMELINE LIST & PROPERTY EDITOR */}
+            <div style={{ background: '#0c0c14', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              <div style={{ fontSize: '13px', color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+                4-Scene Storyboard Timeline
+              </div>
+
+              {/* TIMELINE SCENES SELECTOR LIST */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {videoScenes.map((scene, idx) => (
+                  <div
+                    key={scene.id}
+                    onClick={() => setActiveVideoSceneIndex(idx)}
+                    style={{
+                      padding: '12px 14px',
+                      background: activeVideoSceneIndex === idx ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : '#12121c',
+                      border: activeVideoSceneIndex === idx ? '1px solid #7C75FF' : '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '11px', background: activeVideoSceneIndex === idx ? '#7C75FF' : 'rgba(255,255,255,0.1)', color: '#fff', padding: '3px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                        {scene.duration}
+                      </span>
+                      <div>
+                        <div style={{ fontSize: '12.5px', color: '#fff', fontWeight: 700 }}>{scene.name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                          "{scene.overlayText}"
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={{ fontSize: '11px', color: activeVideoSceneIndex === idx ? '#7C75FF' : '#8e8e9e', fontWeight: 600 }}>
+                      {activeVideoSceneIndex === idx ? '● Editing' : 'Select'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* ACTIVE SCENE EDIT FORM */}
+              {(() => {
+                const curScene = videoScenes[activeVideoSceneIndex] || videoScenes[0];
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: '#12121c', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', marginTop: '8px' }}>
+                    <div style={{ fontSize: '12.5px', color: '#7C75FF', fontWeight: 700 }}>
+                      Editing {curScene.name} Properties
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>SUBTITLE OVERLAY TEXT</label>
+                      <textarea
+                        rows={2}
+                        value={curScene.overlayText}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setVideoScenes(prev => prev.map((s, i) => i === activeVideoSceneIndex ? { ...s, overlayText: val } : s));
+                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>SUBTITLE STYLE</label>
+                        <select
+                          value={videoSubtitleStyle}
+                          onChange={e => setVideoSubtitleStyle(e.target.value as any)}
+                          style={{ width: '100%', padding: '6px 8px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '11.5px', outline: 'none' }}
+                        >
+                          <option value="viral_yellow">Viral Yellow Shadow (TikTok)</option>
+                          <option value="capsule_white">White Capsule Pill</option>
+                          <option value="minimal">Minimalist Sans</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>AUDIO TRACK</label>
+                        <select
+                          value={videoAudioTrack}
+                          onChange={e => setVideoAudioTrack(e.target.value)}
+                          style={{ width: '100%', padding: '6px 8px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '11.5px', outline: 'none' }}
+                        >
+                          <option value="Upbeat Tech Bass (128 BPM)">Upbeat Tech Bass (128 BPM)</option>
+                          <option value="Lo-fi Chill Vibe">Lo-fi Chill Vibe</option>
+                          <option value="High Energy EDM">High Energy EDM</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+            </div>
+
+            {/* RIGHT COLUMN: LIVE REEL/STORY VIDEO PLAYER PREVIEW CHASSIS */}
+            <div style={{ background: '#06060c', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              
+              <div style={{ fontSize: '12px', color: '#8e8e9e', fontWeight: 700, marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Reels / Story Video Player Preview (9:16)
+              </div>
+
+              {/* 9:16 SMARTPHONE CHASSIS */}
+              {(() => {
+                const currentScene = videoScenes[activeVideoSceneIndex] || videoScenes[0];
+                return (
+                  <div style={{ width: '260px', height: '440px', background: '#000', border: '2px solid rgba(255,255,255,0.2)', borderRadius: '24px', overflow: 'hidden', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.95)' }}>
+                    
+                    <video
+                      src={currentScene.videoUrl}
+                      autoPlay
+                      loop
+                      muted
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+
+                    {/* LIVE BURNED SUBTITLE OVERLAY */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '60px',
+                      left: '14px',
+                      right: '14px',
+                      textAlign: 'center',
+                      zIndex: 10
+                    }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '6px 12px',
+                        background: videoSubtitleStyle === 'viral_yellow' ? '#FFBD2E' : videoSubtitleStyle === 'capsule_white' ? '#ffffff' : 'rgba(0,0,0,0.85)',
+                        color: videoSubtitleStyle === 'viral_yellow' || videoSubtitleStyle === 'capsule_white' ? '#000000' : '#ffffff',
+                        borderRadius: videoSubtitleStyle === 'capsule_white' ? '20px' : '6px',
+                        fontWeight: 900,
+                        fontSize: '13px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                        lineHeight: 1.35
+                      }}>
+                        {currentScene.overlayText}
+                      </span>
+                    </div>
+
+                    {/* SCENE WATERMARK BADGE */}
+                    <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.7)', color: '#7C75FF', padding: '3px 8px', borderRadius: '12px', fontSize: '9.5px', fontWeight: 800 }}>
+                      {currentScene.name.split(':')[0]} ({currentScene.duration})
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* TIMELINE PROGRESS INDICATOR */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '16px', width: '260px' }}>
+                {videoScenes.map((s, idx) => (
+                  <div
+                    key={s.id}
+                    onClick={() => setActiveVideoSceneIndex(idx)}
+                    style={{
+                      flex: 1,
+                      height: '4px',
+                      borderRadius: '2px',
+                      background: activeVideoSceneIndex === idx ? '#7C75FF' : 'rgba(255,255,255,0.2)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  />
+                ))}
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
       {activeTab === 'editor' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
