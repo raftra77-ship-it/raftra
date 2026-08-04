@@ -34,6 +34,8 @@ import {
   FileText,
   Settings,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   LogOut
 } from 'lucide-react';
 
@@ -1055,18 +1057,38 @@ export function BrandDashboard() {
 
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {/* Sidebar navigation */}
       <aside className="sidebar">
-        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Cpu className="logo-icon" size={20} />
-          <span style={{ fontWeight: 800, fontSize: '15px', fontFamily: 'var(--font-heading)' }}>
-            RAFTRA ENGINE
-          </span>
+        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Cpu className="logo-icon" size={20} />
+            <span className="sidebar-logo-text" style={{ fontWeight: 800, fontSize: '15px', fontFamily: 'var(--font-heading)' }}>
+              RAFTRA ENGINE
+            </span>
+          </div>
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-secondary)',
+              padding: '5px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s'
+            }}
+          >
+            {isSidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
         </div>
 
         <div className="sidebar-menu">
-          <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', marginBottom: '8px', display: 'block', fontFamily: 'var(--font-mono)' }}>
+          <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', marginBottom: '8px', display: 'block', fontFamily: 'var(--font-mono)' }}>
             CORE CHASSIS
           </span>
 
@@ -1086,7 +1108,7 @@ export function BrandDashboard() {
             )}
           </button>
 
-          <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
+          <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
             WORKSPACES
           </span>
 
@@ -1156,7 +1178,7 @@ export function BrandDashboard() {
             </div>
           </button>
 
-          <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
+          <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
             AI NETWORK
           </span>
 
@@ -1207,10 +1229,10 @@ export function BrandDashboard() {
 
         <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 8px' }}>
-            <div className="user-avatar">{(brandProfile?.name || 'B').charAt(0)}</div>
-            <div>
-              <h4 style={{ fontSize: '13px', fontWeight: 600 }}>{brandProfile?.name || 'Brand Workspace'}</h4>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{brandProfile?.url || 'loading...'}</p>
+            <div className="user-avatar" style={{ flexShrink: 0 }}>{(brandProfile?.name || 'B').charAt(0)}</div>
+            <div className="sidebar-footer-info" style={{ minWidth: 0 }}>
+              <h4 style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{brandProfile?.name || 'Brand Workspace'}</h4>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{brandProfile?.url || 'loading...'}</p>
             </div>
           </div>
           <button 

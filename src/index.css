@@ -47,8 +47,8 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 13.5px;
-  line-height: 1.55;
+  font-size: 14.5px;
+  line-height: 1.6;
   letter-spacing: -0.01em;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;

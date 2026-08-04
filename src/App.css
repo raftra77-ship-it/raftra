@@ -308,6 +308,17 @@
 }
 
 /* POST-LOGIN DASHBOARD STYLE */
+.dashboard-container {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+  transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dashboard-container.sidebar-collapsed {
+  grid-template-columns: 72px 1fr;
+}
+
 .sidebar {
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
@@ -316,18 +327,22 @@
   height: 100vh;
   position: sticky;
   top: 0;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease;
+  overflow: hidden;
+  z-index: 100;
 }
 
 .sidebar-header {
-  padding: 24px 20px;
+  padding: 20px 16px;
   border-bottom: 1px solid var(--border-color);
+  transition: padding 0.3s ease;
 }
 
 .sidebar-menu {
-  padding: 20px 12px;
+  padding: 16px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
   overflow-y: auto;
 }
@@ -336,12 +351,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   text-decoration: none;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   transition: var(--transition-fast);
 }
@@ -368,12 +383,45 @@
 
 .sidebar-footer {
   margin-top: auto;
-  padding-top: 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 20px;
+  padding: 16px;
   display: flex;
   align-items: center;
   gap: 12px;
+  transition: padding 0.3s ease;
+}
+
+/* Sidebar Collapsed State Rules */
+.sidebar-collapsed .sidebar-logo-text,
+.sidebar-collapsed .sidebar-menu-category,
+.sidebar-collapsed .sidebar-item-left span,
+.sidebar-collapsed .hero-pill-badge,
+.sidebar-collapsed .sidebar-footer-info {
+  display: none !important;
+}
+
+.sidebar-collapsed .sidebar-header {
+  padding: 16px 8px;
+  justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-menu {
+  padding: 16px 6px;
+}
+
+.sidebar-collapsed .sidebar-item {
+  justify-content: center;
+  padding: 12px 6px;
+}
+
+.sidebar-collapsed .sidebar-item-left {
+  gap: 0;
+  justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-footer {
+  padding: 16px 8px;
+  justify-content: center;
 }
 
 @media (max-width: 1024px) {
