@@ -792,17 +792,28 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', paddingBottom: '40px' }}>
       
       {/* 1. TOP NAVIGATION TABS */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-        <div style={{ display: 'flex', gap: '10px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '14px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '13px', color: '#fff', fontWeight: 800, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sparkles size={16} color="#00E676" /> AI CREATIVE STUDIO WORKSPACES
+          </div>
+          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ShieldCheck size={14} color="var(--success)" />
+            <span>Raftra Ad Intelligence Vault Sync Active</span>
+          </div>
+        </div>
+
+        {/* HORIZONTAL SCROLLABLE PILL ROW */}
+        <div className="custom-horizontal-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px', width: '100%', scrollbarWidth: 'thin' }}>
           {[
             { id: 'create', label: 'Create Ad', icon: Wand2 },
-            { id: 'editor', label: 'Canva / Figma Studio Editor 🎨', icon: Edit3, badge: 'Interactive' },
-            { id: 'carousel', label: 'Multi-Card Carousel Builder 🎴', icon: Layers, badge: 'Meta Multi-Link' },
-            { id: 'video_editor', label: 'Video Storyboard & Timeline 📹', icon: Film, badge: 'Reels & Shorts' },
-            { id: 'competitors', label: 'Competitor Intelligence', icon: Zap },
-            { id: 'projects', label: 'Recent Projects', icon: Layers },
-            { id: 'templates', label: 'Winning Templates & Vault', icon: Film },
-            { id: 'ugc', label: 'AI UGC Ads', icon: Video }
+            { id: 'editor', label: 'Canva / Figma Editor 🎨', icon: Edit3, badge: 'Interactive' },
+            { id: 'carousel', label: 'Carousel Ads 🎴', icon: Layers, badge: 'Multi-Link' },
+            { id: 'video_editor', label: 'Video Storyboard 📹', icon: Film, badge: 'Reels & Shorts' },
+            { id: 'competitors', label: 'Competitor Intel ⚡', icon: Zap },
+            { id: 'projects', label: 'Recent Projects 📁', icon: Layers },
+            { id: 'templates', label: 'Templates & Vault 🏆', icon: Film },
+            { id: 'ugc', label: 'AI UGC Ads 🎥', icon: Video }
           ].map(tab => {
             const Icon = tab.icon;
             const isSelected = activeTab === tab.id;
@@ -812,41 +823,38 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 onClick={() => setActiveTab(tab.id as any)}
                 style={{
                   background: isSelected 
-                    ? 'linear-gradient(180deg, #222232 0%, #0d0d15 100%)' 
+                    ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' 
                     : 'rgba(255,255,255,0.03)',
                   backdropFilter: 'blur(16px)',
                   WebkitBackdropFilter: 'blur(16px)',
                   border: isSelected 
-                    ? '1px solid rgba(255, 255, 255, 0.35)' 
+                    ? '1px solid rgba(0, 230, 118, 0.5)' 
                     : '1px solid rgba(255,255,255,0.08)',
                   borderRadius: '100px',
-                  padding: '10px 20px',
-                  color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.65)',
+                  padding: '8px 16px',
+                  color: isSelected ? '#00E676' : 'rgba(255,255,255,0.7)',
                   cursor: 'pointer',
-                  fontSize: '14px',
+                  fontSize: '12.5px',
                   fontWeight: isSelected ? 700 : 500,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: isSelected ? '0 4px 16px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.15)' : 'none',
+                  gap: '7px',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  boxShadow: isSelected ? '0 4px 16px rgba(0,230,118,0.2), inset 0 1px 0 rgba(255,255,255,0.15)' : 'none',
                   transition: 'all 0.2s ease'
                 }}
               >
-                <Icon size={15} color={isSelected ? '#ffffff' : 'rgba(255,255,255,0.45)'} />
+                <Icon size={14} color={isSelected ? '#00E676' : 'rgba(255,255,255,0.5)'} />
                 <span>{tab.label}</span>
                 {tab.badge && (
-                  <span style={{ fontSize: '10px', background: 'rgba(0,230,118,0.2)', color: 'var(--success)', border: '1px solid rgba(0,230,118,0.3)', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
+                  <span style={{ fontSize: '9.5px', background: isSelected ? 'rgba(0,230,118,0.25)' : 'rgba(255,255,255,0.08)', color: isSelected ? '#00E676' : 'rgba(255,255,255,0.6)', border: isSelected ? '1px solid rgba(0,230,118,0.4)' : '1px solid rgba(255,255,255,0.12)', padding: '1px 6px', borderRadius: '100px', fontWeight: 700 }}>
                     {tab.badge}
                   </span>
                 )}
               </button>
             );
           })}
-        </div>
-
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <ShieldCheck size={14} color="var(--success)" />
-          <span>Raftra Ad Intelligence Vault Sync Active</span>
         </div>
       </div>
 
