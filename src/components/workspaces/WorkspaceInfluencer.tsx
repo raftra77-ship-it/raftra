@@ -464,18 +464,11 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   <ShieldAlert size={14} /> {creator.fakeFollowerScore}%
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', alignItems: 'flex-start' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Collaboration Pricing</span>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ color: '#00E676', fontWeight: 700, display: 'block' }}>
-                    {creator.expectedPrice}
-                  </span>
-                  {creator.priceRange && creator.priceRange !== creator.expectedPrice && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                      Range: {creator.priceRange}
-                    </span>
-                  )}
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Collaboration Price Range</span>
+                <span style={{ color: '#00E676', fontWeight: 700 }}>
+                  {creator.expectedPrice}
+                </span>
               </div>
               
               <div style={{ marginTop: '8px' }}>
