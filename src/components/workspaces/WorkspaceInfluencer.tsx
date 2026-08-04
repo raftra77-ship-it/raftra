@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2 } from 'lucide-react';
+import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 import parsedCreatorsData from '../../data/influencers_parsed.json';
@@ -25,28 +25,13 @@ export interface InfluencerItemExtended {
   rating: number;
   reviewsCount: number;
   recentWorks: string[];
-  topComments?: { author: string, text: string }[];
-  recentPosts?: {url: string, type: string}[];
+  topComments: { author: string; text: string }[];
+  recentPosts?: { id: string; url: string; likes: string; comments: string }[];
 }
 
 const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[]).map(item => ({
-  id: item.id,
-  name: item.name,
-  handle: item.handle,
-  avatar: item.avatar,
-  platform: item.platform || 'Instagram',
-  niche: item.niche,
-  allNiches: item.allNiches || [item.niche],
-  category: item.category || 'Micro',
-  expectedPrice: item.expectedPrice,
-  deliverables: item.deliverables || ['Reel', 'Story'],
-  followers: item.followers,
-  avgViews: item.avgViews,
-  location: item.location,
-  email: item.email,
-  phone: item.phone,
-  profileLink: item.profileLink,
-  fakeFollowerScore: item.fakeFollowerScore || 2,
+  ...item,
+  fakeFollowerScore: item.fakeFollowerScore || 1,
   rating: item.rating || 4.8,
   reviewsCount: item.reviewsCount || 20,
   recentWorks: item.recentWorks || ['D2C Brand Collab'],
@@ -57,6 +42,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const [creators, setCreators] = useState<InfluencerItemExtended[]>([]);
   const [filterNiche, setFilterNiche] = useState('All');
   const [filterFollowers, setFilterFollowers] = useState('All');
+  const [sortBy, setSortBy] = useState('featured');
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -180,6 +166,46 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     }
 
     return nicheMatch && followerMatch;
+  });
+
+  const parseFollowerNum = (str: string): number => {
+    if (!str) return 0;
+    const clean = str.toLowerCase().replace(/,/g, '').trim();
+    if (clean.includes('m')) {
+      return parseFloat(clean.replace('m', '')) * 1000000;
+    }
+    if (clean.includes('k')) {
+      return parseFloat(clean.replace('k', '')) * 1000;
+    }
+    const val = parseFloat(clean);
+    return isNaN(val) ? 0 : val;
+  };
+
+  const parsePriceNum = (str: string): number => {
+    if (!str || str.toLowerCase().includes('discuss')) return 0;
+    const digits = str.replace(/[^\d]/g, '');
+    const val = parseInt(digits, 10);
+    return isNaN(val) ? 0 : val;
+  };
+
+  const sortedCreators = [...filteredCreators].sort((a, b) => {
+    if (sortBy === 'followers_desc') {
+      return parseFollowerNum(b.followers) - parseFollowerNum(a.followers);
+    }
+    if (sortBy === 'followers_asc') {
+      return parseFollowerNum(a.followers) - parseFollowerNum(b.followers);
+    }
+    if (sortBy === 'price_desc') {
+      return parsePriceNum(b.expectedPrice) - parsePriceNum(a.expectedPrice);
+    }
+    if (sortBy === 'price_asc') {
+      const pA = parsePriceNum(a.expectedPrice);
+      const pB = parsePriceNum(b.expectedPrice);
+      if (pA === 0) return 1;
+      if (pB === 0) return -1;
+      return pA - pB;
+    }
+    return 0;
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -416,11 +442,44 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             </button>
           ))}
         </div>
+
+        <div className="glow-card" style={{ padding: '14px 16px', display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+              <ArrowUpDown size={14} color="#00E676" /> SORT BY:
+            </span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid #00E676',
+                borderRadius: '8px',
+                color: '#fff',
+                padding: '6px 14px',
+                fontSize: '13px',
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="featured" style={{ background: '#121216', color: '#fff' }}>Recommended (Featured)</option>
+              <option value="followers_desc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: High to Low ⬇️</option>
+              <option value="followers_asc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: Low to High ⬆️</option>
+              <option value="price_desc" style={{ background: '#121216', color: '#fff' }}>💰 Pricing: High to Low ⬇️</option>
+              <option value="price_asc" style={{ background: '#121216', color: '#fff' }}>💰 Pricing: Low to High ⬆️</option>
+            </select>
+          </div>
+
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Showing <strong style={{ color: '#00E676' }}>{sortedCreators.length}</strong> Creators
+          </div>
+        </div>
       </div>
 
       {/* Influencers grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-        {filteredCreators.map((creator) => (
+        {sortedCreators.map((creator) => (
           <div key={creator.id} className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
