@@ -471,6 +471,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [videoSubtitleStyle, setVideoSubtitleStyle] = useState<'viral_yellow' | 'capsule_white' | 'minimal'>('viral_yellow');
   const [videoAudioTrack, setVideoAudioTrack] = useState('Upbeat Tech Bass (128 BPM)');
   const [isPlayingVideoPreview, setIsPlayingVideoPreview] = useState(false);
+  const [masterSection, setMasterSection] = useState<'create_intel' | 'editing' | 'services'>('create_intel');
+  const [intelSubTab, setIntelSubTab] = useState<'create' | 'projects' | 'competitors' | 'templates'>('create');
+  const [editingSubTab, setEditingSubTab] = useState<'image' | 'carousel' | 'video'>('image');
 
   const triggerToast = (msg: string) => {
     setCopyToast(msg);
@@ -731,18 +734,24 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const handleOpenAdInStudio = (adData: any) => {
     if (!adData) return;
     const type = String(adData.type || '').toLowerCase();
+    setMasterSection('editing');
 
     if (type.includes('carousel')) {
       setActiveTab('carousel');
+      setEditingSubTab('carousel');
       triggerToast('Opened ad in Multi-Card Carousel Studio! 🎴');
       return;
     }
 
     if (type.includes('video') || type.includes('reel') || type.includes('ugc')) {
       setActiveTab('video_editor');
+      setEditingSubTab('video');
       triggerToast('Opened ad in Video Storyboard Studio! 📹');
       return;
     }
+
+    setActiveTab('editor');
+    setEditingSubTab('image');
 
     setEditorCanvasElements([
       {
@@ -827,9 +836,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', paddingBottom: '40px' }}>
       
-      {/* 1. TOP NAVIGATION TABS */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '14px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* 1. TOP 3 MASTER SECTIONS NAVIGATION */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ fontSize: '13px', color: '#fff', fontWeight: 800, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sparkles size={16} color="#00E676" /> AI CREATIVE STUDIO WORKSPACES
           </div>
@@ -839,58 +848,121 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           </div>
         </div>
 
-        {/* HORIZONTAL SCROLLABLE PILL ROW */}
-        <div className="custom-horizontal-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px', width: '100%', scrollbarWidth: 'thin' }}>
+        {/* 3 MASTER SECTIONS PILLS */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', width: '100%' }}>
           {[
-            { id: 'create', label: 'Create Ad', icon: Wand2 },
-            { id: 'editor', label: 'Canva / Figma Editor 🎨', icon: Edit3, badge: 'Interactive' },
-            { id: 'carousel', label: 'Carousel Ads 🎴', icon: Layers, badge: 'Multi-Link' },
-            { id: 'video_editor', label: 'Video Storyboard 📹', icon: Film, badge: 'Reels & Shorts' },
-            { id: 'competitors', label: 'Competitor Intel ⚡', icon: Zap },
-            { id: 'projects', label: 'Recent Projects 📁', icon: Layers },
-            { id: 'templates', label: 'Templates & Vault 🏆', icon: Film },
-            { id: 'ugc', label: 'AI UGC Ads 🎥', icon: Video }
-          ].map(tab => {
-            const Icon = tab.icon;
-            const isSelected = activeTab === tab.id;
+            { id: 'create_intel', label: '1. Create & Intelligence 🪄', desc: 'AI Generator, Projects, Competitor Spy & Vault', color: '#00E676' },
+            { id: 'editing', label: '2. Creative Editing 🎨', desc: 'Canva Image, Meta Carousel & Video Storyboard', color: '#7C75FF' },
+            { id: 'services', label: '3. UGC Services 🤝', desc: 'AI UGC Reel Generator & Influencer Marketplace', color: '#FFB74D' }
+          ].map(sec => {
+            const isSelected = masterSection === sec.id;
             return (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                key={sec.id}
+                onClick={() => {
+                  setMasterSection(sec.id as any);
+                  if (sec.id === 'create_intel') setActiveTab('create');
+                  if (sec.id === 'editing') setActiveTab('editor');
+                  if (sec.id === 'services') setActiveTab('ugc');
+                }}
                 style={{
                   background: isSelected 
-                    ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' 
-                    : 'rgba(255,255,255,0.03)',
+                    ? 'linear-gradient(180deg, #1c1c2b 0%, #0d0d15 100%)' 
+                    : 'rgba(255,255,255,0.02)',
                   backdropFilter: 'blur(16px)',
-                  WebkitBackdropFilter: 'blur(16px)',
-                  border: isSelected 
-                    ? '1px solid rgba(0, 230, 118, 0.5)' 
-                    : '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '100px',
-                  padding: '8px 16px',
-                  color: isSelected ? '#00E676' : 'rgba(255,255,255,0.7)',
+                  border: isSelected ? `1.5px solid ${sec.color}` : '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '14px',
+                  padding: '12px 16px',
+                  textAlign: 'left',
                   cursor: 'pointer',
-                  fontSize: '12.5px',
-                  fontWeight: isSelected ? 700 : 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '7px',
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                  boxShadow: isSelected ? '0 4px 16px rgba(0,230,118,0.2), inset 0 1px 0 rgba(255,255,255,0.15)' : 'none',
+                  boxShadow: isSelected ? `0 4px 20px ${sec.color}25` : 'none',
                   transition: 'all 0.2s ease'
                 }}
               >
-                <Icon size={14} color={isSelected ? '#00E676' : 'rgba(255,255,255,0.5)'} />
-                <span>{tab.label}</span>
-                {tab.badge && (
-                  <span style={{ fontSize: '9.5px', background: isSelected ? 'rgba(0,230,118,0.25)' : 'rgba(255,255,255,0.08)', color: isSelected ? '#00E676' : 'rgba(255,255,255,0.6)', border: isSelected ? '1px solid rgba(0,230,118,0.4)' : '1px solid rgba(255,255,255,0.12)', padding: '1px 6px', borderRadius: '100px', fontWeight: 700 }}>
-                    {tab.badge}
-                  </span>
-                )}
+                <div style={{ fontSize: '13.5px', fontWeight: isSelected ? 800 : 600, color: isSelected ? sec.color : '#fff', marginBottom: '2px' }}>
+                  {sec.label}
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                  {sec.desc}
+                </div>
               </button>
             );
           })}
+        </div>
+
+        {/* SUB-SECTION TOOL SWITCHER BAR */}
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', background: 'rgba(0,0,0,0.4)', padding: '6px 10px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.06)' }}>
+          {masterSection === 'create_intel' && [
+            { id: 'create', label: '🪄 AI Ad Generator' },
+            { id: 'projects', label: '📁 Recent Projects' },
+            { id: 'competitors', label: '⚡ Competitor Intel' },
+            { id: 'templates', label: '🏆 Winning Templates' }
+          ].map(tool => (
+            <button
+              key={tool.id}
+              onClick={() => setActiveTab(tool.id as any)}
+              style={{
+                padding: '6px 14px',
+                background: activeTab === tool.id ? 'rgba(0,230,118,0.2)' : 'transparent',
+                color: activeTab === tool.id ? '#00E676' : 'rgba(255,255,255,0.65)',
+                border: activeTab === tool.id ? '1px solid rgba(0,230,118,0.4)' : '1px solid transparent',
+                borderRadius: '100px',
+                fontSize: '12px',
+                fontWeight: activeTab === tool.id ? 700 : 500,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {tool.label}
+            </button>
+          ))}
+
+          {masterSection === 'editing' && [
+            { id: 'editor', label: '🎨 Image Ad Studio (Canva/Figma)' },
+            { id: 'carousel', label: '🎴 Multi-Card Carousel Builder' },
+            { id: 'video_editor', label: '📹 Video Storyboard & Reels' }
+          ].map(tool => (
+            <button
+              key={tool.id}
+              onClick={() => setActiveTab(tool.id as any)}
+              style={{
+                padding: '6px 14px',
+                background: activeTab === tool.id ? 'rgba(124,117,255,0.2)' : 'transparent',
+                color: activeTab === tool.id ? '#7C75FF' : 'rgba(255,255,255,0.65)',
+                border: activeTab === tool.id ? '1px solid rgba(124,117,255,0.4)' : '1px solid transparent',
+                borderRadius: '100px',
+                fontSize: '12px',
+                fontWeight: activeTab === tool.id ? 700 : 500,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {tool.label}
+            </button>
+          ))}
+
+          {masterSection === 'services' && [
+            { id: 'ugc', label: '🎥 AI UGC Reel Generator' },
+            { id: 'projects', label: '👤 Hire Influencer Marketplace' }
+          ].map(tool => (
+            <button
+              key={tool.id}
+              onClick={() => setActiveTab(tool.id as any)}
+              style={{
+                padding: '6px 14px',
+                background: activeTab === tool.id ? 'rgba(255,183,77,0.2)' : 'transparent',
+                color: activeTab === tool.id ? '#FFB74D' : 'rgba(255,255,255,0.65)',
+                border: activeTab === tool.id ? '1px solid rgba(255,183,77,0.4)' : '1px solid transparent',
+                borderRadius: '100px',
+                fontSize: '12px',
+                fontWeight: activeTab === tool.id ? 700 : 500,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {tool.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1848,7 +1920,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
       )}
 
-      {/* ==================== TAB 3: PROJECTS (INTERACTIVE EDIT & APPROVE MODAL) ==================== */}
+      {/* ==================== TAB: RECENT PROJECTS ==================== */}
       {activeTab === 'projects' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div>
@@ -1862,12 +1934,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
             {projectsList.map((proj) => (
-              <div
-                key={proj.id}
-                onClick={() => setSelectedProjectModal(proj)}
-                className="glow-card"
-                style={{ padding: '20px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '16px', cursor: 'pointer', transition: 'all 0.2s ease' }}
-              >
+                <div
+                  key={proj.id}
+                  onClick={() => setSelectedProjectModal(proj)}
+                  className="glow-card"
+                  style={{ padding: '20px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '16px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                >
                 <img src={proj.img} alt={proj.title} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '10px', marginBottom: '12px' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{proj.date}</span>
@@ -1882,8 +1954,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     {proj.status}
                   </span>
                 </div>
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>{proj.title}</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, truncate: 'ellipsis' }}>"{proj.headline}"</p>
+                <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>{proj.title}</h4>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>"{proj.headline}"</p>
               </div>
             ))}
           </div>
@@ -1985,13 +2057,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
             </div>
           )}
-
         </div>
       )}
 
-      {/* ==================== TAB 4: TEMPLATES ==================== */}
-      {activeTab === 'templates' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* TAB 4: TEMPLATES & VAULT */}
+          {activeTab === 'templates' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div>
             <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0' }}>
               High-Converting Ad Framework Templates
@@ -2020,10 +2091,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           </div>
         </div>
       )}
-
-      {/* ==================== TAB 5: UGC (AI UGC REEL WORKING GENERATOR) ==================== */}
+      {/* TAB 5: AI UGC REEL & SERVICES */}
       {activeTab === 'ugc' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
           <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '14px' }}>
             <button
