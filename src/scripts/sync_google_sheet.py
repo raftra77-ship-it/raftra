@@ -123,16 +123,18 @@ def parse_followers(metrics_text, handle="", name=""):
     elif 'drishti' in h or 'rawat' in n: return "2,380"
     elif 'roshan' in h or 'sharma' in n: return "1,560"
 
-    m_clean = re.sub(r'1\.\s*total\s*followers?[:\s]*', 'followers: ', m, flags=re.I)
+    m_clean = re.sub(r'^\s*1[\.\)]\s*', '', m, flags=re.I)
     pat = re.search(r'(?:total\s*)?followers?[:\s-]*([\d,\.kKmM]+)', m_clean, re.I)
     if pat:
         val = pat.group(1).strip()
-        if val and val.lower() != 'followers':
+        if val and val not in ['1', '1.']:
             return val
             
-    num_match = re.search(r'([\d,\.]+\s*[kKmM\+]*)', m)
-    if num_match:
-        return num_match.group(1).strip()
+    num_matches = re.findall(r'([\d,\.]+\s*[kKmM\+]*)', m_clean)
+    for nm in num_matches:
+        cleaned_nm = nm.strip()
+        if cleaned_nm and cleaned_nm not in ['1', '1.', '2', '2.', '3', '3.']:
+            return cleaned_nm
         
     return "2,500"
 
