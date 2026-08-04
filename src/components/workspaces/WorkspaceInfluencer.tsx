@@ -440,9 +440,16 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   )}
                 </div>
               </div>
-              <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                {creator.category.toUpperCase()}
-              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                  {creator.category.toUpperCase()}
+                </span>
+                {creator.deliverables && creator.deliverables.includes('UGC Video') && (
+                  <span style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                    ✨ UGC Available
+                  </span>
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>

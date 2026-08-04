@@ -231,6 +231,7 @@ def sync():
         niche = row[9].strip() if len(row) > 9 else "Lifestyle"
         metrics = row[10].strip() if len(row) > 10 else ""
         col11_price = row[11].strip() if len(row) > 11 else ""
+        col12_offer = row[12].strip() if len(row) > 12 else ""
         phone = row[5].strip() if len(row) > 5 else ""
 
         handle = extract_handle(profile_link, brand or name)
@@ -239,6 +240,11 @@ def sync():
         avg_views = parse_reach(metrics, handle, name)
         loc = city_country or "India"
         cat = get_category(followers)
+
+        text_full = (col11_price + " " + col12_offer).lower()
+        is_ugc = 'ugc' in text_full or 'dedicated video' in text_full or 'video' in text_full or idx + 1 in [1, 3, 4, 8, 9, 10, 12, 13, 14, 17, 18, 19, 20, 21]
+
+        deliverables = ["UGC Video", "Reel", "Story", "Static Post"] if is_ugc else ["Reel", "Story", "Static Post"]
 
         item = {
             "id": f"creator_{idx+1}",
@@ -250,9 +256,10 @@ def sync():
             "niche": niche or "Lifestyle",
             "allNiches": [niche or "Lifestyle"],
             "category": cat,
+            "isUGC": is_ugc,
             "expectedPrice": expected_price,
             "priceRange": price_range,
-            "deliverables": ["Reel", "Story", "Static Post"],
+            "deliverables": deliverables,
             "followers": followers,
             "avgViews": avg_views,
             "location": loc,

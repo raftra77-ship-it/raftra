@@ -11,9 +11,11 @@
       "Local / City-based"
     ],
     "category": "Micro",
+    "isUGC": true,
     "expectedPrice": "₹1,000 - ₹3,000",
     "priceRange": "₹1,000 - ₹3,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -43,6 +45,7 @@
       "Local / City-based, Fashion"
     ],
     "category": "Nano",
+    "isUGC": false,
     "expectedPrice": "₹2,000 - ₹6,000",
     "priceRange": "₹2,000 - ₹6,000",
     "deliverables": [
@@ -75,9 +78,11 @@
       "Art"
     ],
     "category": "Nano",
+    "isUGC": true,
     "expectedPrice": "₹1,000 - ₹3,000",
     "priceRange": "₹1,000 - ₹3,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -107,9 +112,11 @@
       "Education, Tech, Fashion, Lifestyle, Food"
     ],
     "category": "Nano",
+    "isUGC": true,
     "expectedPrice": "₹400 - ₹5,000",
     "priceRange": "₹400 - ₹5,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -139,6 +146,7 @@
       "Lifestyle"
     ],
     "category": "Nano",
+    "isUGC": false,
     "expectedPrice": "Can discuss",
     "priceRange": "Can discuss",
     "deliverables": [
@@ -171,6 +179,7 @@
       "Fashion, Lifestyle, Beauty"
     ],
     "category": "Micro",
+    "isUGC": false,
     "expectedPrice": "₹200 - ₹1,000",
     "priceRange": "₹200 - ₹1,000",
     "deliverables": [
@@ -203,6 +212,7 @@
       "Fitness, Food"
     ],
     "category": "Nano",
+    "isUGC": false,
     "expectedPrice": "₹500 - ₹10,000",
     "priceRange": "₹500 - ₹10,000",
     "deliverables": [
@@ -235,9 +245,11 @@
       "Fitness, Lifestyle"
     ],
     "category": "Micro",
+    "isUGC": true,
     "expectedPrice": "₹4,000 - ₹25,000",
     "priceRange": "₹4,000 - ₹25,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -267,9 +279,11 @@
       "Fashion"
     ],
     "category": "Nano",
+    "isUGC": true,
     "expectedPrice": "₹2,000 - ₹5,000",
     "priceRange": "₹2,000 - ₹5,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -299,9 +313,11 @@
       "Fashion, Lifestyle"
     ],
     "category": "Nano",
+    "isUGC": true,
     "expectedPrice": "₹300 - ₹2,000",
     "priceRange": "₹300 - ₹2,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -331,6 +347,7 @@
       "Lifestyle, Food, Couple reels"
     ],
     "category": "Nano",
+    "isUGC": false,
     "expectedPrice": "₹5,000 - ₹10,000",
     "priceRange": "₹5,000 - ₹10,000",
     "deliverables": [
@@ -363,9 +380,11 @@
       "Education, Tech, AI, financial independence"
     ],
     "category": "Micro",
+    "isUGC": true,
     "expectedPrice": "₹2,000 - ₹20,000",
     "priceRange": "₹2,000 - ₹20,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -395,9 +414,11 @@
       "Fashion, Lifestyle, Food"
     ],
     "category": "Nano",
+    "isUGC": true,
     "expectedPrice": "₹350 - ₹2,200",
     "priceRange": "₹350 - ₹2,200",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -427,9 +448,11 @@
       "Fitness, Fashion, Lifestyle, Food"
     ],
     "category": "Micro",
+    "isUGC": true,
     "expectedPrice": "₹1,500 - ₹7,000",
     "priceRange": "₹1,500 - ₹7,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -459,6 +482,7 @@
       "Fashion, Lifestyle, Food"
     ],
     "category": "Nano",
+    "isUGC": false,
     "expectedPrice": "₹1,000 - ₹3,000",
     "priceRange": "₹1,000 - ₹3,000",
     "deliverables": [
@@ -491,6 +515,7 @@
       "Fitness, Fashion, Lifestyle"
     ],
     "category": "Nano",
+    "isUGC": false,
     "expectedPrice": "₹1,000 - ₹4,000",
     "priceRange": "₹1,000 - ₹4,000",
     "deliverables": [
@@ -523,9 +548,11 @@
       "Lifestyle"
     ],
     "category": "Micro",
+    "isUGC": true,
     "expectedPrice": "₹500 - ₹4,000",
     "priceRange": "₹500 - ₹4,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -555,9 +582,11 @@
       "Entertainment"
     ],
     "category": "Macro",
+    "isUGC": true,
     "expectedPrice": "Can discuss",
     "priceRange": "Can discuss",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -587,9 +616,11 @@
       "Couple content, content creator"
     ],
     "category": "Nano",
+    "isUGC": true,
     "expectedPrice": "₹500 - ₹5,000",
     "priceRange": "₹500 - ₹5,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -619,9 +650,11 @@
       "Fashion, Lifestyle"
     ],
     "category": "Nano",
+    "isUGC": true,
     "expectedPrice": "₹800 - ₹4,800",
     "priceRange": "₹800 - ₹4,800",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
@@ -651,9 +684,11 @@
       "Fitness, Fashion, Lifestyle"
     ],
     "category": "Micro",
+    "isUGC": true,
     "expectedPrice": "₹10,000 - ₹80,000",
     "priceRange": "₹10,000 - ₹80,000",
     "deliverables": [
+      "UGC Video",
       "Reel",
       "Story",
       "Static Post"
