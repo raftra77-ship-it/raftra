@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { LogLine } from '../components/TerminalFeed';
 import { ReviewDrawer } from '../components/ReviewDrawer';
@@ -15,6 +15,38 @@ import type { SocialPostItem } from '../components/workspaces/WorkspaceSocial';
 import { WorkspaceInfluencer } from '../components/workspaces/WorkspaceInfluencer';
 import { GlowButton } from '../components/GlowButton';
 import '../App.css';
+
+class DashboardErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Dashboard caught error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '40px', textAlign: 'center', background: '#0a0a0c', color: '#fff', minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <h2 style={{ fontSize: '22px', marginBottom: '12px', color: '#00E676' }}>⚡ View Reloaded</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', maxWidth: '500px' }}>
+            A temporary component state reset occurred. Click below to refresh the workspace view.
+          </p>
+          <button 
+            onClick={() => this.setState({ hasError: false, error: null })} 
+            style={{ padding: '10px 24px', background: '#00E676', color: '#000', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
+          >
+            Reset Workspace View
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 import {
   Cpu,
@@ -1250,7 +1282,8 @@ export function BrandDashboard() {
       </aside>
 
       {/* Main Panel */}
-      <main className="dashboard-main">
+      <DashboardErrorBoundary>
+        <main className="dashboard-main">
         {/* Header/Top Bar */}
         <header className="dashboard-header">
           {/* Workspace Switcher */}
@@ -1774,6 +1807,7 @@ export function BrandDashboard() {
           )}
         </div>
       </main>
+      </DashboardErrorBoundary>
 
       {/* Search Command Palette Overlay */}
       {isSearchOpen && (

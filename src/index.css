@@ -5,10 +5,10 @@
   --bg-secondary: #0a0a0c;
   --bg-tertiary: #121217;
   
-  --accent: #000000;
-  --accent-glow: rgba(0, 0, 0, 0.4);
-  --accent-glow-strong: rgba(0, 0, 0, 0.7);
-  --accent-muted: #121218;
+  --accent: #5A52FF;
+  --accent-glow: rgba(90, 82, 255, 0.2);
+  --accent-glow-strong: rgba(90, 82, 255, 0.4);
+  --accent-muted: #1e1b4b;
   
   --text-primary: #ffffff;
   --text-secondary: #8f8f9b;
