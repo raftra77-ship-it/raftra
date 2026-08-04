@@ -174,55 +174,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      {/* 2. BRAND SOCIAL PRESENCE ANALYTICS */}
-      <div>
-        <h3 style={{ fontSize: '15px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
-          <Activity size={18} color="var(--success)" /> Live Brand Social Performance
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-          
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <Users size={16} /> <span style={{ fontSize: '12px' }}>Total Active Reach</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>1.2M</div>
-            <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingUp size={12} /> +24% this week
-            </div>
-          </div>
 
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <MessageCircle size={16} /> <span style={{ fontSize: '12px' }}>Brand Mentions</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>14,302</div>
-            <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingUp size={12} /> +102 organically
-            </div>
-          </div>
-
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <Heart size={16} /> <span style={{ fontSize: '12px' }}>Engagement Rate</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>4.8%</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              vs 3.2% industry avg
-            </div>
-          </div>
-
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <Zap size={16} /> <span style={{ fontSize: '12px' }}>Audience Growth</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>+12.4k</div>
-            <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingUp size={12} /> Driven by AI Automations
-            </div>
-          </div>
-
-        </div>
-      </div>
 
       {/* 3. HERO POSITIONING CARD: HIRE A RAFTRA SPECIALIST */}
       <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(124,117,255,0.1) 0%, rgba(10,10,14,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px', position: 'relative', overflow: 'hidden' }}>
