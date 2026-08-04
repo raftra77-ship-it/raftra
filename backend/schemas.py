@@ -88,6 +88,10 @@ class CampaignCreate(BaseModel):
 class CampaignAgentTrigger(BaseModel):
     prompt: str
     model: str = "gemini-2.5-flash"
+    # Passed through verbatim into the spec (never re-derived by the LLM from prose) so the
+    # exact geography the user picked in the form can't drift during strategy generation.
+    geo_targeting_level: Optional[str] = None
+    geo_locations: Optional[List[str]] = None
 
 class CampaignResponse(BaseModel):
     id: int
@@ -97,6 +101,8 @@ class CampaignResponse(BaseModel):
     budget: float
     status: str
     roas: float
+    version: int = 1
+    version_group: Optional[str] = None
     metrics: Optional[Any] = None
 
     class Config:
@@ -197,6 +203,24 @@ class AgentTaskResponse(BaseModel):
 class PublishCampaignRequest(BaseModel):
     """Which platforms to publish to. Omit to publish to every platform that is set up."""
     platforms: Optional[List[str]] = None      # e.g. ["meta"], ["google"], ["meta","google"]
+
+
+class PlatformsBody(BaseModel):
+    """Which platforms this campaign targets."""
+    meta: bool = False
+    google: bool = False
+
+
+class ReviewBody(BaseModel):
+    """A platform's edited review payload (Meta or Google). Kept as a free-form dict so the
+    frontend's typed interface is the single source of truth and new fields need no backend
+    change — the real Meta/Google publishers read whichever keys they need later."""
+    data: dict
+
+
+class OptimizationBody(BaseModel):
+    """Auto-kill / rotation rules stored with the campaign; read-only after publish."""
+    data: dict
 
 
 class AdSetupRequest(BaseModel):

@@ -23,6 +23,7 @@ import database, auth, models
 from core import search_console as gsc
 from core import github_connect as gh
 from core import meta_ads as meta
+from core import google_ads as gads
 from core import campaign_optimizer as optimizer
 from core import shopify_connect as shop
 from core import wordpress_connect as wp
@@ -443,18 +444,31 @@ class ApplySeoFixesBody(BaseModel):
     dry_run: bool = False            # true = don't open a PR, just return the planned change
 
 
-def _collect_onpage_fixes(audit: dict) -> list:
-    """The audit recommendations that can be mechanically applied to a single HTML/template
-    file — metadata, head/technical tags, structured data, accessibility. Content-strategy
-    items (write more/better copy) are intentionally excluded: they can't be auto-applied."""
-    seo = audit.get("seo") or {}
-    applicable = {"Metadata", "Technical SEO", "Structured Data", "Accessibility"}
-    fixes = []
-    for c in seo.get("categories", []):
-        if c.get("name") in applicable and c.get("status") == "verified":
-            for r in (c.get("recommendations") or []):
-                fixes.append(f"{c['name']}: {r}")
-    return fixes[:12]
+def _get_approved_fixes(audit_row, categories: set) -> list:
+    """Recommendations from the given categories that the user has actually approved or
+    edited via the per-item decision endpoint (/seo/audits/{id}/decision) — NOT every
+    "verified" recommendation in the raw audit. This is the real review/approval gate:
+    nothing reaches a platform adapter unless a human explicitly approved it here first."""
+    kd = audit_row.keywords_data or {}
+    decisions = kd.get("decisions") or {}
+    audit = kd.get("audit") or {}
+    issues = audit.get("priority_issues") or audit.get("top_5_issues") or []
+    by_key = {f"{it.get('area')}::{it.get('issue')}": it for it in issues}
+    out = []
+    for key, d in decisions.items():
+        if d.get("decision") not in ("approved", "edited"):
+            continue
+        src = by_key.get(key, {})
+        # area is "<Pipeline> · <Category>" e.g. "SEO · Metadata" (core/seo_scoring.py
+        # build_audit/_build_issues) — match on the category name after the separator.
+        area = src.get("area") or ""
+        category = area.rsplit(" · ", 1)[-1]
+        if category not in categories:
+            continue
+        text = d.get("edited_text") or src.get("issue")
+        if text:
+            out.append(f"{category}: {text}")
+    return out[:12]
 
 
 async def _apply_fixes_to_file(file_content: str, fixes: list, file_path: str) -> str:
@@ -511,9 +525,15 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
                       and (r.keywords_data or {}).get("audit")), None)
     if not audit_row:
         raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
-    fixes = _collect_onpage_fixes((audit_row.keywords_data or {}).get("audit") or {})
-    if not fixes:
-        raise HTTPException(status_code=409, detail="The latest audit has no on-page fixes that can be auto-applied.")
+
+    # Two independent, approval-gated fix sources: structural/content fixes still go through
+    # a full-file LLM rewrite (they aren't tag VALUES, so they don't fit the universal fix);
+    # Metadata + Structured Data go through the universal fix -> adapter path everyone else uses.
+    structural_fixes = _get_approved_fixes(audit_row, {"Technical SEO", "Accessibility"})
+    tag_fixes = _get_approved_fixes(audit_row, {"Metadata", "Structured Data"})
+    if not structural_fixes and not tag_fixes:
+        raise HTTPException(status_code=409,
+                            detail="No approved fixes yet — approve at least one recommendation in the audit report before applying.")
 
     content = await gh.get_file_content(conn.access_token, conn.repo_full_name, file_path, conn.default_branch or "main")
     if content is None:
@@ -521,15 +541,40 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
     if len(content) > 60000:
         raise HTTPException(status_code=413, detail=f"{file_path} is too large to auto-edit safely — apply it manually.")
 
-    try:
-        new_content = await _apply_fixes_to_file(content, fixes, file_path)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not generate the fixed file: {e}")
+    new_content = content
+    if structural_fixes:
+        try:
+            new_content = await _apply_fixes_to_file(new_content, structural_fixes, file_path)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Could not generate the fixed file: {e}")
+
+    universal_fix = None
+    if tag_fixes:
+        import re as _re
+        from core.seo_fix_schema import generate_universal_seo_fix
+        from core import seo_adapters
+        from core.brand_context import get_brand_context
+        title_match = _re.search(r"<title>(.*?)</title>", new_content, _re.IGNORECASE | _re.DOTALL)
+        ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+        brand = get_brand_context(workspace_id, query="SEO title and meta description")
+        universal_fix = await generate_universal_seo_fix(
+            current_title=(title_match.group(1).strip() if title_match else ""),
+            target_url=target.get("url") or (ws.company_url if ws else ""),
+            brand_context=brand,
+            workspace_name=ws.name if ws else None,
+            workspace_url=ws.company_url if ws else None,
+            workspace_logo=ws.brand_logo if ws else None,
+            approved_fixes=tag_fixes,
+        )
+        new_content = seo_adapters.apply_to_html(new_content, universal_fix)
+
+    fixes = structural_fixes + tag_fixes
     if not new_content or new_content.strip() == content.strip():
-        raise HTTPException(status_code=422, detail="The audit fixes produced no change to this file.")
+        raise HTTPException(status_code=422, detail="The approved fixes produced no change to this file.")
 
     if body.dry_run:
         return {"status": "preview", "file_path": file_path, "fixes": fixes,
+                "universal_fix": universal_fix.dict() if universal_fix else None,
                 "size_change": len(new_content) - len(content)}
 
     try:
@@ -820,6 +865,206 @@ async def meta_launch(workspace_id: int, body: LaunchCampaignBody, db: Session =
             "message": "Campaign + ad created in Meta (PAUSED — review and activate it in Meta to start spending)."}
 
 
+# ================================================================ Google Ads
+def _get_gads(workspace_id: int, db: Session):
+    return db.query(models.GoogleAdsConnection).filter(
+        models.GoogleAdsConnection.workspace_id == workspace_id
+    ).first()
+
+
+class GoogleAdsAccountSelect(BaseModel):
+    customer_id: str
+
+
+class GoogleAdsPublishCampaign(BaseModel):
+    campaign_id: int
+
+
+class GoogleAdsCampaignStatusBody(BaseModel):
+    status: str  # PAUSED | ENABLED
+
+
+class GoogleAdsCampaignBudgetBody(BaseModel):
+    budget_resource_name: str
+    daily_budget: float  # major currency units
+
+
+@router.get("/google-ads/{workspace_id}/status")
+def gads_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_gads(workspace_id, db)
+    return {
+        "configured": gads.is_configured(),
+        "connected": bool(conn and conn.refresh_token),
+        "email": conn.connected_email if conn else None,
+        "customer_id": conn.customer_id if conn else None,
+    }
+
+
+@router.get("/google-ads/{workspace_id}/authorize")
+def gads_authorize(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    if not gads.is_configured():
+        raise HTTPException(status_code=503, detail="Google Ads is not configured on the server (GOOGLE_ADS_CLIENT_ID/SECRET/DEVELOPER_TOKEN missing).")
+    state = jwt.encode({
+        "purpose": "gads_oauth",
+        "workspace_id": workspace_id,
+        "user_id": current_user.id,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=_STATE_TTL_MIN),
+    }, auth.SECRET_KEY, algorithm=auth.ALGORITHM)
+    return {"url": gads.build_authorize_url(state)}
+
+
+@router.get("/google-ads/callback")
+async def gads_callback(state: str, code: str = None, error: str = None, db: Session = Depends(database.get_db)):
+    frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    if error or not code:
+        return RedirectResponse(f"{frontend}/dashboard?gads=error")
+    try:
+        payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        if payload.get("purpose") != "gads_oauth":
+            raise ValueError("bad purpose")
+        workspace_id = int(payload["workspace_id"])
+    except Exception:
+        return RedirectResponse(f"{frontend}/dashboard?gads=error")
+    try:
+        tok = await gads.exchange_code(code)
+        email = await gads.fetch_user_email(tok["access_token"])
+    except Exception as e:
+        print(f"Google Ads OAuth failed: {e}")
+        return RedirectResponse(f"{frontend}/dashboard?gads=error")
+    conn = _get_gads(workspace_id, db)
+    if not conn:
+        conn = models.GoogleAdsConnection(workspace_id=workspace_id)
+        db.add(conn)
+    conn.access_token = tok["access_token"]
+    # Google only returns a refresh_token on the first consent (with prompt=consent it always
+    # should, but keep the existing one if a re-auth response happens to omit it).
+    if tok.get("refresh_token"):
+        conn.refresh_token = tok["refresh_token"]
+    conn.token_expiry = datetime.datetime.utcnow() + datetime.timedelta(seconds=int(tok.get("expires_in", 3600)))
+    conn.connected_email = email
+    db.commit()
+    return RedirectResponse(f"{frontend}/dashboard?gads=connected")
+
+
+def _gads_ready(workspace_id: int, db: Session, need_account: bool = True) -> "models.GoogleAdsConnection":
+    conn = _get_gads(workspace_id, db)
+    if not conn or not conn.refresh_token:
+        raise HTTPException(status_code=400, detail="Google Ads is not connected for this workspace.")
+    if need_account and not conn.customer_id:
+        raise HTTPException(status_code=400, detail="Select a Google Ads customer account first.")
+    return conn
+
+
+@router.get("/google-ads/{workspace_id}/accounts")
+async def gads_accounts(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _gads_ready(workspace_id, db, need_account=False)
+    try:
+        accounts = await gads.list_accessible_customers(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not list accessible customers: {e}")
+    db.commit()  # persist any access-token refresh from the calls above
+    return {"accounts": accounts}
+
+
+@router.post("/google-ads/{workspace_id}/account")
+def gads_select_account(workspace_id: int, body: GoogleAdsAccountSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _gads_ready(workspace_id, db, need_account=False)
+    conn.customer_id = body.customer_id.replace("-", "")
+    db.commit()
+    return {"status": "success", "customer_id": conn.customer_id}
+
+
+@router.post("/google-ads/{workspace_id}/publish-campaign")
+async def gads_publish_campaign(workspace_id: int, body: GoogleAdsPublishCampaign, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _gads_ready(workspace_id, db)
+    camp = db.query(models.Campaign).filter(
+        models.Campaign.id == body.campaign_id, models.Campaign.workspace_id == workspace_id
+    ).first()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    try:
+        result = await gads.publish_campaign(conn, name=camp.name or "Raftra Campaign",
+                                             objective=camp.objective or "", daily_budget_major=camp.daily_budget or 200.0)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not create Google Ads campaign: {e}")
+    m = dict(camp.metrics or {})
+    m["google_ads"] = {"campaign_id": result["campaign_id"]}
+    camp.metrics = m
+    camp.status = "PAUSED"
+    db.commit()
+    return {"status": "success", "google_campaign_id": result["campaign_id"], "url": result["url"],
+            "message": "Campaign created in Google Ads (PAUSED — activate it in Google Ads to start spending)."}
+
+
+@router.get("/google-ads/{workspace_id}/campaigns")
+async def gads_campaigns(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Live campaigns on the connected customer account."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _gads_ready(workspace_id, db)
+    try:
+        campaigns = await gads.list_campaigns(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not list campaigns: {e}")
+    db.commit()
+    return {"campaigns": campaigns}
+
+
+@router.get("/google-ads/{workspace_id}/insights")
+async def gads_insights(workspace_id: int, date_range: str = "LAST_7_DAYS", db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Per-campaign performance (impressions, clicks, cost, CTR, ROAS) for the account."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _gads_ready(workspace_id, db)
+    try:
+        insights = await gads.fetch_insights(conn, date_range=date_range)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch insights: {e}")
+    db.commit()
+    return {"insights": insights, "date_range": date_range}
+
+
+@router.post("/google-ads/{workspace_id}/campaign/{campaign_id}/status")
+async def gads_set_status(workspace_id: int, campaign_id: str, body: GoogleAdsCampaignStatusBody, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Pause (kill) or re-activate a campaign."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _gads_ready(workspace_id, db)
+    try:
+        res = await gads.set_campaign_status(conn, campaign_id, body.status)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not update campaign: {e}")
+    db.commit()
+    return {"status": "success", **res}
+
+
+@router.post("/google-ads/{workspace_id}/campaign/budget")
+async def gads_set_budget(workspace_id: int, body: GoogleAdsCampaignBudgetBody, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Set a campaign's daily budget (scale up a winner / trim an underperformer). Needs the
+    CampaignBudget resource name from /campaigns, since Google Ads budgets are a separate
+    resource from the campaign itself."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _gads_ready(workspace_id, db)
+    try:
+        res = await gads.update_campaign_budget(conn, body.budget_resource_name, body.daily_budget)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not update budget: {e}")
+    db.commit()
+    return {"status": "success", **res}
+
+
+@router.delete("/google-ads/{workspace_id}")
+def gads_disconnect(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_gads(workspace_id, db)
+    if conn:
+        db.delete(conn)
+        db.commit()
+    return {"status": "success"}
+
+
 # ---------------------------------------------------------------- Shopify
 # Shopify OAuth is per-shop: the shop domain must be known before we can build the
 # authorize URL, so the frontend passes it in (unlike GitHub/Google).
@@ -889,6 +1134,35 @@ async def _run_theme_duplication(workspace_id: int, conn_id: int):
             new_id = await shop.duplicate_theme(conn, main_theme["id"], new_name, on_progress=on_progress)
             draft.draft_theme_id = new_id
             draft.draft_theme_name = new_name
+
+            # Apply the same universal fix -> adapter every other platform uses, restricted
+            # to whatever the user has actually APPROVED for Metadata/Structured Data
+            # (canonical/OG/twitter/schema — the fields that need real <head> control, which
+            # only the theme has). Best-effort: a failure here still leaves a usable
+            # duplicated draft theme, so it doesn't fail the whole task.
+            try:
+                ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+                audit_row = (db.query(models.SEOAudit)
+                             .filter(models.SEOAudit.workspace_id == workspace_id)
+                             .order_by(models.SEOAudit.created_at.desc()).first())
+                tag_fixes = _get_approved_fixes(audit_row, {"Metadata", "Structured Data"}) if audit_row else []
+                if tag_fixes and ws:
+                    from core.seo_fix_schema import generate_universal_seo_fix
+                    from core import seo_adapters
+                    from core.brand_context import get_brand_context
+                    brand = get_brand_context(workspace_id, query="SEO title and meta description")
+                    fix = await generate_universal_seo_fix(
+                        current_title=ws.name or "", target_url=ws.company_url or "",
+                        brand_context=brand, workspace_name=ws.name,
+                        workspace_url=ws.company_url, workspace_logo=ws.brand_logo,
+                        approved_fixes=tag_fixes,
+                    )
+                    theme_asset = await shop.get_theme_asset(conn, new_id, "layout/theme.liquid")
+                    new_html = seo_adapters.apply_to_shopify_theme(theme_asset.get("value") or "", fix)
+                    await shop.put_theme_asset(conn, new_id, "layout/theme.liquid", value=new_html)
+            except Exception as e:
+                print(f"[shopify theme draft] Head tag injection failed (non-fatal): {e}")
+
             draft.status = "ready"
             db.commit()
         except Exception as e:
@@ -1049,38 +1323,15 @@ class ApplyShopifySeoBody(BaseModel):
     dry_run: bool = False
 
 
-async def _generate_seo_meta(brand_context: str, page_title: str, metadata_recs: list) -> dict:
-    """Produce an improved SEO title (<=60) + meta description (<=155) from the brand context
-    and the audit's metadata findings. Returns {seo_title, meta_description}."""
-    import json as _json, re as _re
-    from core.providers.llm_providers import GeminiProvider
-    system = ("You write concise, compelling on-page SEO metadata. Return ONLY a JSON object: "
-              '{"seo_title": "<=60 characters", "meta_description": "120-155 characters"}. '
-              "No prose, no markdown fences.")
-    prompt = (f"Brand / page context:\n{brand_context}\n\nPage title: {page_title}\n\n"
-              "Audit findings to address:\n" + "\n".join(f"- {r}" for r in metadata_recs) +
-              "\n\nWrite the SEO title and meta description as JSON.")
-    out = (await GeminiProvider().generate_text(prompt=prompt, system_prompt=system)).strip()
-    out = _re.sub(r"^```[a-zA-Z0-9]*\n", "", out)
-    out = _re.sub(r"\n```\s*$", "", out)
-    try:
-        d = _json.loads(out)
-    except Exception:
-        d = {}
-    title = (d.get("seo_title") or "").strip()[:60]
-    desc = (d.get("meta_description") or "").strip()[:160]
-    if not title and not desc:
-        raise RuntimeError("The model did not return usable SEO metadata.")
-    return {"seo_title": title, "meta_description": desc}
-
-
 @router.post("/shopify/{workspace_id}/apply-seo-fixes")
 async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
                                db: Session = Depends(database.get_db),
                                current_user: models.User = Depends(auth.get_current_user)):
-    """Apply the audit's metadata fixes (SEO title + meta description) to a Shopify Page via the
-    Admin API. `dry_run` returns the proposal for review; a real call writes it. Since Shopify
-    has no pull request, the human review happens here in Raftra before anything is written."""
+    """Apply the audit's APPROVED metadata fixes (SEO title + meta description) to a Shopify
+    Page via the Admin API — via the shared universal fix -> Shopify adapter, same object
+    every other platform consumes. `dry_run` returns the proposal for review; a real call
+    writes it. Since Shopify has no pull request, the human review happens here in Raftra
+    before anything is written."""
     _require_workspace(workspace_id, db, current_user)
     conn = _get_shop(workspace_id, db)
     if not conn or not conn.access_token or not conn.shop_domain:
@@ -1103,45 +1354,46 @@ async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
                       and (r.keywords_data or {}).get("audit")), None)
     if not audit_row:
         raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
-    metadata_recs = [f for f in _collect_onpage_fixes((audit_row.keywords_data or {}).get("audit") or {})
-                     if f.startswith("Metadata")]
-    if not metadata_recs:
-        raise HTTPException(status_code=409, detail="The latest audit has no metadata fixes to apply.")
+    metadata_fixes = _get_approved_fixes(audit_row, {"Metadata"})
+    if not metadata_fixes:
+        raise HTTPException(status_code=409,
+                            detail="No approved Metadata fixes yet — approve at least one in the audit report before applying.")
 
+    from core.seo_fix_schema import generate_universal_seo_fix
+    from core import seo_adapters
     from core.brand_context import get_brand_context
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
     brand = get_brand_context(workspace_id, query="SEO title and meta description")
     try:
-        meta_seo = await _generate_seo_meta(brand, target.get("title", ""), metadata_recs)
+        fix = await generate_universal_seo_fix(
+            current_title=target.get("title", ""),
+            target_url=f"https://{conn.shop_domain}/pages/{target.get('handle', '')}",
+            brand_context=brand,
+            workspace_name=ws.name if ws else None,
+            workspace_url=ws.company_url if ws else None,
+            workspace_logo=ws.brand_logo if ws else None,
+            approved_fixes=metadata_fixes,
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not generate SEO metadata: {e}")
+
+    page_fields = seo_adapters.apply_to_shopify_page(fix)
+    if not page_fields["seo_title"] and not page_fields["meta_description"]:
+        raise HTTPException(status_code=422, detail="The approved fixes produced no change to this page.")
 
     if body.dry_run:
         return {"status": "preview",
                 "page": {"id": target["id"], "title": target["title"]},
                 "current": {"seo_title": target.get("seo_title"), "seo_description": target.get("seo_description")},
-                "proposed": meta_seo, "fixes": metadata_recs}
+                "proposed": page_fields, "fixes": metadata_fixes}
 
     try:
-        result = await shop.update_page_seo(conn, target["id"], meta_seo["seo_title"], meta_seo["meta_description"])
+        result = await shop.update_page_seo(conn, target["id"], page_fields["seo_title"], page_fields["meta_description"])
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not update the Shopify page: {e}")
     return {"status": "success", "admin_url": result["admin_url"],
-            "page": {"id": target["id"], "title": target["title"]}, "applied": meta_seo,
+            "page": {"id": target["id"], "title": target["title"]}, "applied": page_fields,
             "message": "Updated the page's SEO title and meta description in Shopify."}
-
-
-def _collect_content_fixes(audit: dict) -> list:
-    """Fixes that map to fields WordPress core genuinely supports without a plugin — page
-    title and body content. Restricted to the Content category only: Metadata-type fixes
-    (meta title/description) need a specific SEO plugin's custom field (Yoast, RankMath...)
-    whose presence we can't assume, so those stay manual for WordPress."""
-    seo = audit.get("seo") or {}
-    fixes = []
-    for c in seo.get("categories", []):
-        if c.get("name") == "Content" and c.get("status") == "verified":
-            for r in (c.get("recommendations") or []):
-                fixes.append(f"Content: {r}")
-    return fixes[:8]
 
 
 async def _apply_fixes_to_wp_page(current_title: str, current_content: str, fixes: list) -> dict:
@@ -1182,10 +1434,11 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
                              db: Session = Depends(database.get_db),
                              current_user: models.User = Depends(auth.get_current_user)):
     """Apply the latest audit's content/title fixes to a WordPress Page directly via the REST
-    API (dry_run previews first). Restricted to fields WP core genuinely supports — title and
-    body content — never a guessed SEO-plugin meta field. Since WordPress pages have no
-    pull-request concept, human review happens via the dry_run preview in Raftra, same as
-    Shopify."""
+    API (dry_run previews first). Restricted to fields WP core genuinely supports — title,
+    body content, and (if the audit flagged missing Structured Data) an Organization JSON-LD
+    block embedded in the content — never a guessed SEO-plugin meta field. Since WordPress
+    pages have no pull-request concept, human review happens via the dry_run preview in
+    Raftra, same as Shopify."""
     _require_workspace(workspace_id, db, current_user)
     conn = _get_wp(workspace_id, db)
     if not conn or not conn.app_password or not conn.site_url:
@@ -1208,34 +1461,67 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
                       and (r.keywords_data or {}).get("audit")), None)
     if not audit_row:
         raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
-    fixes = _collect_content_fixes((audit_row.keywords_data or {}).get("audit") or {})
-    if not fixes:
-        raise HTTPException(status_code=409, detail="The latest audit has no content fixes that can be auto-applied.")
+    # Two independent, approval-gated fix sources, same split as GitHub: Content-category
+    # fixes are full-body rewrites (not tag values), Metadata/Structured Data go through the
+    # shared universal fix -> WordPress adapter (title -> post title, schema -> JSON-LD in
+    # content; meta_description/canonical/OG/twitter get reported as skipped, since WP core
+    # has no real place to write them without a plugin).
+    content_fixes = _get_approved_fixes(audit_row, {"Content"})
+    tag_fixes = _get_approved_fixes(audit_row, {"Metadata", "Structured Data"})
+    if not content_fixes and not tag_fixes:
+        raise HTTPException(status_code=409,
+                            detail="No approved fixes yet — approve at least one recommendation in the audit report before applying.")
 
     try:
         current = await wp.get_page_content(conn, target["id"])
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not read the WordPress page: {e}")
 
-    try:
-        updated = await _apply_fixes_to_wp_page(current["title"], current["content"], fixes)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not generate the updated page: {e}")
+    if content_fixes:
+        try:
+            updated = await _apply_fixes_to_wp_page(current["title"], current["content"], content_fixes)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Could not generate the updated page: {e}")
+    else:
+        updated = {"title": current["title"], "content": current["content"]}
 
+    skipped = []
+    if tag_fixes:
+        from core.seo_fix_schema import generate_universal_seo_fix
+        from core import seo_adapters
+        from core.brand_context import get_brand_context
+        ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+        brand = get_brand_context(workspace_id, query="SEO title and meta description")
+        fix = await generate_universal_seo_fix(
+            current_title=updated["title"], target_url=target.get("link") or "",
+            brand_context=brand,
+            workspace_name=ws.name if ws else None,
+            workspace_url=ws.company_url if ws else None,
+            workspace_logo=ws.brand_logo if ws else None,
+            approved_fixes=tag_fixes,
+        )
+        adapted = seo_adapters.apply_to_wordpress(updated["title"], updated["content"], fix)
+        updated = {"title": adapted["title"], "content": adapted["content"]}
+        skipped = adapted["skipped"]
+
+    fixes = content_fixes + tag_fixes
     if updated["title"] == current["title"] and updated["content"].strip() == current["content"].strip():
-        raise HTTPException(status_code=422, detail="The audit fixes produced no change to this page.")
+        raise HTTPException(status_code=422, detail="The approved fixes produced no change to this page.")
 
     if body.dry_run:
         return {"status": "preview", "page": {"id": target["id"], "title": target["title"]},
-                "current": current, "proposed": updated, "fixes": fixes}
+                "current": current, "proposed": updated, "fixes": fixes, "skipped": skipped}
 
     try:
         result = await wp.update_page_content(conn, target["id"], updated["title"], updated["content"])
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not update the WordPress page: {e}")
+    message = "Updated the page's title/content in WordPress."
+    if skipped:
+        message += f" ({', '.join(skipped)} need an SEO plugin — not applied.)"
     return {"status": "success", "edit_url": result["edit_url"], "link": result["link"],
-            "page": {"id": target["id"], "title": target["title"]}, "fixes": fixes,
-            "message": "Updated the page's title/content in WordPress."}
+            "page": {"id": target["id"], "title": target["title"]}, "fixes": fixes, "skipped": skipped,
+            "message": message}
 
 
 @router.delete("/shopify/{workspace_id}")

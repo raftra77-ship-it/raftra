@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, Check, ExternalLink, TrendingUp, ChevronDown, GitBranch, ShoppingBag, PenSquare } from 'lucide-react';
+import {
+  Globe, Check, ExternalLink, TrendingUp, ChevronDown, GitBranch, ShoppingBag, PenSquare,
+  Search, ShieldCheck, Lightbulb, FileText, Link2, Wrench, Sparkles, ClipboardList,
+  Radar, MessageSquare, Eye, Star, Network, Wand2,
+} from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { GitHubPanel } from './GitHubPanel';
 import { ShopifyPanel } from './ShopifyPanel';
@@ -14,6 +18,35 @@ function authHeaders(): Record<string, string> {
 }
 
 const IDLE_RUN: RunStatus = { status: 'idle', running: false, stages: [], stages_done: [], current_stage: null, started_at: null, target_url: null };
+
+// Plain-language display labels for the pipeline graph nodes. `key` MUST stay the exact
+// backend stage name (SEO_STAGES/GEO_STAGES in agents/seo_geo.py) since that's what
+// current_stage/stages_done match against for live status — only `label`/`description`/
+// `Icon` are user-facing. Terminology only: the pill layout, spacing, colors and click
+// behavior are unchanged — `description` shows as a hover tooltip so it never affects the
+// compact layout.
+const SEO_STAGE_LABELS: { key: string; label: string; description: string; Icon: React.ElementType }[] = [
+  { key: 'Crawler Agent', label: 'Website Scan', description: 'We scan every page of your website', Icon: Search },
+  { key: 'Technical SEO Agent', label: 'SEO Check', description: 'Checking technical health and search readiness', Icon: ShieldCheck },
+  { key: 'Keyword Agent', label: 'Keyword Opportunities', description: 'Finding what your customers search for', Icon: Lightbulb },
+  { key: 'Content Strategy Agent', label: 'Content Review', description: 'Reviewing your content for clarity and value', Icon: FileText },
+  { key: 'Internal Linking Agent', label: 'Link Review', description: 'Checking how your pages connect internally', Icon: Link2 },
+  { key: 'Backlink Agent', label: 'Backlink Check', description: 'Checking who links to your website', Icon: ExternalLink },
+  { key: 'Schema Agent', label: 'Website Improvements', description: 'Applying fixes to boost your rankings', Icon: Wrench },
+  { key: 'Publishing Agent', label: 'Final Check', description: 'Double-checking everything before your report', Icon: Sparkles },
+  { key: 'Reporting Agent', label: 'SEO Report', description: 'Your full report with clear next steps', Icon: ClipboardList },
+];
+
+const GEO_STAGE_LABELS: { key: string; label: string; description: string; Icon: React.ElementType }[] = [
+  { key: 'Entity Agent', label: 'Brand Scan', description: 'Scanning how AI understands your brand', Icon: Radar },
+  { key: 'Citation Agent', label: 'AI Mentions', description: 'Checking where AI tools mention you', Icon: MessageSquare },
+  { key: 'Prompt Visibility Agent', label: 'AI Visibility', description: 'Measuring how visible you are in AI answers', Icon: Eye },
+  { key: 'LLM Ranking Agent', label: 'Brand Trust', description: 'Checking how AI ranks your brand', Icon: Star },
+  { key: 'Authority Agent', label: 'Online Presence', description: 'Checking your trust signals across the web', Icon: Globe },
+  { key: 'Knowledge Graph Agent', label: 'Knowledge Presence', description: 'Making your brand easy for AI to understand', Icon: Network },
+  { key: 'Optimization Agent', label: 'AI Recommendations', description: 'Suggesting ways to improve AI visibility', Icon: Wand2 },
+  { key: 'Reporting', label: 'GEO Report', description: 'Your full report with clear next steps', Icon: ClipboardList },
+];
 
 // Polls run-status continuously (fast while running, slow otherwise) so the report reflects
 // the real backend state — including a run started from another tab.
@@ -44,8 +77,10 @@ function useRunStatus(workspaceId: number | null | undefined, pipeline: 'SEO' | 
 }
 
 // Month-over-month comparison card — reads the /seo/comparison endpoint and shows the deltas
-// between the two most recent runs (the "monthly analysis" view).
-const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
+// between the two most recent runs (the "monthly analysis" view). Shared by SEO and GEO: the
+// backend endpoint already accepts a `pipeline` param and returns GEO's extra ai_visibility
+// block (brand recall) when pipeline=GEO, so this one component covers both.
+const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 'GEO' }> = ({ workspaceId, pipeline }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
@@ -53,14 +88,14 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
     if (!workspaceId) return;
     setLoading(true);
     const token = localStorage.getItem('token');
-    fetch(`/api/workspaces/${workspaceId}/seo/comparison?pipeline=SEO`, {
+    fetch(`/api/workspaces/${workspaceId}/seo/comparison?pipeline=${pipeline}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     })
       .then(r => (r.ok ? r.json() : null))
       .then(d => setData(d))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, pipeline]);
 
   if (!workspaceId) return null;
 
@@ -69,15 +104,19 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
     dir === 'worsened' ? { s: '▼', c: '#ff5c5c' } : { s: '–', c: 'var(--text-muted)' };
   const disp = (v: any) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : (v ?? '—'));
 
+  const vis = data?.ai_visibility;
+  const recallImproved = vis && vis.previous_recognised === false && vis.current_recognised === true;
+  const recallWorsened = vis && vis.previous_recognised === true && vis.current_recognised === false;
+
   return (
     <div className="glow-card">
       <h3 style={{ fontSize: '16px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Month-over-Month Change (SEO)
+        <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Month-over-Month Change ({pipeline})
       </h3>
       {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>}
       {!loading && (!data || data.runs_available === 0) && (
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-          No runs yet — run the SEO pipeline to start building history.
+          No runs yet — run the {pipeline} pipeline to start building history.
         </p>
       )}
       {!loading && data && data.runs_available === 1 && (
@@ -107,6 +146,24 @@ const SeoComparisonCard: React.FC<{ workspaceId?: number | null }> = ({ workspac
               );
             })}
           </div>
+          {vis && (
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', marginBottom: '8px' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Recognised by AI answer engines</span>
+                <span style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{disp(vis.previous_recognised)} → {disp(vis.current_recognised)}</span>
+                  <span style={{ color: recallImproved ? '#00ff9d' : recallWorsened ? '#ff5c5c' : 'var(--text-muted)', fontWeight: 600, minWidth: '48px', textAlign: 'right' }}>
+                    {recallImproved ? '▲' : recallWorsened ? '▼' : '–'}
+                  </span>
+                </span>
+              </div>
+              {vis.current_recall && (
+                <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, margin: 0 }}>
+                  "{vis.current_recall}"
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -361,23 +418,13 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
             TRADITIONAL SEO PIPELINE GRAPH
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-            {[
-              'Crawler Agent',
-              'Technical SEO Agent',
-              'Keyword Agent',
-              'Content Strategy Agent',
-              'Internal Linking Agent',
-              'Backlink Agent',
-              'Schema Agent',
-              'Publishing Agent',
-              'Reporting Agent'
-            ].map((node, idx, arr) => {
-              const isActive = seoRunning && seoRun.current_stage === node;
-              const isCompleted = seoRun.stages_done.includes(node);
+            {SEO_STAGE_LABELS.map(({ key, label, description, Icon }, idx, arr) => {
+              const isActive = seoRunning && seoRun.current_stage === key;
+              const isCompleted = seoRun.stages_done.includes(key);
 
               return (
-              <div key={node} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div onClick={() => setReportOpen(true)} style={{
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div onClick={() => setReportOpen(true)} title={description} style={{
                   cursor: 'pointer',
                   background: isActive ? 'rgba(0, 255, 157, 0.2)' : isCompleted ? 'rgba(0, 255, 157, 0.05)' : 'rgba(255, 255, 255, 0.02)',
                   border: isActive ? '1px solid var(--success)' : isCompleted ? '1px solid rgba(0, 255, 157, 0.5)' : '1px solid var(--border-color)',
@@ -392,9 +439,10 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   boxShadow: isActive ? '0 0 10px rgba(0, 255, 157, 0.3)' : 'none',
                   transition: 'all 0.3s ease'
                 }}>
+                  <Icon size={10} style={{ flexShrink: 0, color: isActive || isCompleted ? '#fff' : 'var(--text-secondary)' }} />
                   {isActive && <span className="badge-pulse success" style={{ width: '4px', height: '4px', backgroundColor: 'var(--success)' }} />}
                   {isCompleted && !isActive && <Check size={10} color="var(--success)" />}
-                  <span>{node}</span>
+                  <span>{label}</span>
                 </div>
                 {idx < arr.length - 1 && <span style={{ color: isActive ? 'var(--success)' : 'var(--text-muted)', fontSize: '11px' }}>→</span>}
               </div>
@@ -415,22 +463,13 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
             </GlowButton>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-            {[
-              'Entity Agent',
-              'Citation Agent',
-              'Prompt Visibility Agent',
-              'LLM Ranking Agent',
-              'Authority Agent',
-              'Knowledge Graph Agent',
-              'Optimization Agent',
-              'Reporting',
-            ].map((node, idx, arr) => {
-              const isActive = geoRunning && geoRun.current_stage === node;
-              const isCompleted = geoRun.stages_done.includes(node);
+            {GEO_STAGE_LABELS.map(({ key, label, description, Icon }, idx, arr) => {
+              const isActive = geoRunning && geoRun.current_stage === key;
+              const isCompleted = geoRun.stages_done.includes(key);
 
               return (
-              <div key={node} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div onClick={() => setReportOpen(true)} style={{
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div onClick={() => setReportOpen(true)} title={description} style={{
                   cursor: 'pointer',
                   background: isActive ? 'rgba(90, 82, 255, 0.2)' : isCompleted ? 'rgba(0, 255, 157, 0.1)' : 'rgba(90, 82, 255, 0.05)',
                   border: `1px solid ${isActive ? '#5a52ff' : isCompleted ? '#00ff9d' : 'var(--accent)'}`,
@@ -443,8 +482,9 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   gap: '4px',
                   color: isActive ? '#fff' : isCompleted ? '#00ff9d' : '#fff'
                 }}>
+                  <Icon size={10} style={{ flexShrink: 0, color: isActive ? '#fff' : isCompleted ? '#00ff9d' : '#fff' }} />
                   <span className={isActive ? "badge-pulse warning" : isCompleted ? "badge-pulse success" : ""} style={{ width: '4px', height: '4px', backgroundColor: isActive ? '#ffae00' : isCompleted ? '#00ff9d' : 'var(--accent)', display: isActive || isCompleted ? 'block' : 'none' }} />
-                  <span>{node}</span>
+                  <span>{label}</span>
                 </div>
                 {idx < arr.length - 1 && <span style={{ color: isActive || isCompleted ? '#fff' : 'var(--text-muted)', fontSize: '11px' }}>→</span>}
               </div>
@@ -470,7 +510,8 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
               <GA4Panel workspaceId={workspaceId ?? null} />
             </div>
           </div>
-          <SeoComparisonCard workspaceId={workspaceId} />
+          <ComparisonCard workspaceId={workspaceId} pipeline="SEO" />
+          <ComparisonCard workspaceId={workspaceId} pipeline="GEO" />
         </div>
         <div style={{ flex: '1 1 300px', minWidth: 0 }}>
           <ConnectedPlatformsCard workspaceId={workspaceId} onManageIntegrations={onManageIntegrations} />

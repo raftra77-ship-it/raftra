@@ -87,7 +87,9 @@ async def trigger_campaign(workspace_id: int, request: schemas.CampaignAgentTrig
         run_campaign_planning_task,
         workspace_id=workspace_id,
         prompt=request.prompt,
-        model=request.model
+        model=request.model,
+        geo_targeting_level=request.geo_targeting_level,
+        geo_locations=request.geo_locations,
     )
     return {"status": "success", "message": "Campaign Manager agent pipeline triggered."}
 
@@ -130,13 +132,14 @@ async def trigger_geo_publish(workspace_id: int, background_tasks: BackgroundTas
     return {"status": "success", "message": "GEO Publishing sequence triggered."}
 
 @router.post("/{workspace_id}/analytics")
-async def trigger_analytics(workspace_id: int, request: AnalyticsTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
-    background_tasks.add_task(
-        run_analytics_pipeline,
-        workspace_id=workspace_id,
-        query_message=request.query_message
-    )
-    return {"status": "success", "message": "Analytics agent pipeline triggered."}
+async def trigger_analytics(workspace_id: int, request: AnalyticsTrigger, current_user: models.User = Depends(auth.get_current_user)):
+    """Runs synchronously (not backgrounded) - this is a chat reply the user is waiting on,
+    not a long audit, so the real generated text can go straight back in the response."""
+    try:
+        result = await run_analytics_pipeline(workspace_id=workspace_id, query_message=request.query_message)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Analytics agent failed: {e}")
+    return {"status": "success", "sender": "claude", "text": result.get("explanation", "")}
 
 @router.post("/{workspace_id}/social")
 async def trigger_social(workspace_id: int, request: SocialTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):

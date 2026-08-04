@@ -64,6 +64,14 @@ async def preload_embedding_model():
 
 
 @app.on_event("startup")
+async def reconcile_stale_agent_tasks():
+    """Fix up any AgentTask left at RUNNING by a previous server instance, so a page opened
+    right after a restart never shows a false "Running..." state."""
+    from core.agent_status import reconcile_all_stale_running
+    reconcile_all_stale_running()
+
+
+@app.on_event("startup")
 async def start_monthly_scheduler():
     """Start the in-process monthly SEO/GEO audit scheduler (no Redis needed)."""
     try:
@@ -135,6 +143,8 @@ def _run_light_migrations():
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS budget DOUBLE PRECISION DEFAULT 0.0",
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS daily_budget DOUBLE PRECISION",
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS meta_campaign_id VARCHAR",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS version_group VARCHAR",
         # Publishing foundation (backend/publishing/) — last_synced_at on existing connections.
         "ALTER TABLE github_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
         "ALTER TABLE shopify_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",

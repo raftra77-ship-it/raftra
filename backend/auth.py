@@ -174,9 +174,6 @@ def login(user_in: schemas.UserLogin, request: Request, db: Session = Depends(da
     return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user": {"id": user.id, "email": user.email}}
 
 # Keep the billing endpoints from original auth.py
-class TopUpRequest(BaseModel):
-    amount: float
-
 class UnlockNodeRequest(BaseModel):
     node_name: str
     price: float
@@ -188,15 +185,9 @@ def get_billing(current_user: models.User = Depends(get_current_user)):
         "unlocked_nodes": [n.strip() for n in current_user.unlocked_nodes.split(",") if n.strip()]
     }
 
-@router.post("/billing/topup")
-def topup_billing(request: TopUpRequest, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
-    current_user.billing_balance += request.amount
-    db.commit()
-    db.refresh(current_user)
-    return {
-        "status": "success",
-        "balance": current_user.billing_balance
-    }
+# Topping up billing_balance now happens exclusively through /api/payments/create-order
+# + /api/payments/verify-payment (Razorpay), so the balance can only increase after a
+# server-verified payment — see payments.py.
 
 @router.post("/billing/unlock-node")
 def unlock_node(request: UnlockNodeRequest, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):

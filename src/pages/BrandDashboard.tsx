@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRazorpay } from 'react-razorpay';
 import type { LogLine } from '../components/TerminalFeed';
 import { ReviewDrawer } from '../components/ReviewDrawer';
 import type { ReviewItem } from '../components/ReviewDrawer';
@@ -129,6 +130,7 @@ function VectorDatastores({ workspaceId, reindexing }: { workspaceId: number | n
 
 export function BrandDashboard() {
   const navigate = useNavigate();
+  const { Razorpay } = useRazorpay();
   const [activeTab, setActiveTab] = useState<NavigationTab>('control');
   const [creativeSeedPrompt, setCreativeSeedPrompt] = useState('');
 
@@ -795,7 +797,7 @@ export function BrandDashboard() {
     }
   };
 
-  const handleTopUpShortcut = (amountUSD: number) => {
+  const handleTopUpShortcut = async (amountUSD: number) => {
     const token = localStorage.getItem('token');
     if (!token) {
       alert('Please log in first to use top-up.');
@@ -806,28 +808,79 @@ export function BrandDashboard() {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     };
-    fetch('/api/auth/billing/topup', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ amount: amountUSD })
-    })
-      .then(res => {
-        if (res.status === 401) {
-          localStorage.removeItem('token');
-          navigate('/');
-          throw new Error("Session expired. Please log in again.");
-        }
-        if (!res.ok) throw new Error("Top up failed");
-        return res.json();
-      })
-      .then(data => {
-        if (data.balance !== undefined) {
-          setBillingBalance(data.balance);
+
+    // Balances are tracked in USD-equivalent credits but charged in INR via
+    // Razorpay, using the same $1 = ₹83 rate already shown elsewhere on this page.
+    const amountINR = Math.round(amountUSD * 83 * 100) / 100;
+
+    let order;
+    try {
+      const res = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ purpose: 'topup', amount_inr: amountINR })
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        navigate('/');
+        throw new Error("Session expired. Please log in again.");
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.id) throw new Error(data.detail || "Failed to start top-up");
+      order = data;
+    } catch (err: any) {
+      console.error(err);
+      alert("Top-up failed: " + (err.message || "Please try again."));
+      return;
+    }
+
+    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+    if (!rzpKey || rzpKey === 'rzp_test_placeholder') {
+      alert("Payment gateway is not configured. Please contact support.");
+      return;
+    }
+
+    const options = {
+      key: rzpKey,
+      amount: order.amount,
+      currency: order.currency,
+      name: "Raftra Credits",
+      description: "Account Credit Top Up",
+      order_id: order.id,
+      handler: async function (response: any) {
+        try {
+          const verifyRes = await fetch('/api/payments/verify-payment', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature
+            })
+          });
+          const result = await verifyRes.json().catch(() => ({}));
+          if (!verifyRes.ok || result.status !== 'success') {
+            throw new Error(result.detail || "Payment verification failed");
+          }
+          setBillingBalance(result.balance);
           const curr = localStorage.getItem('currency') || 'USD';
-          alert(`Top-up successful! Active Credits: ${curr === 'USD' ? '$' + data.balance : '₹' + Math.round(data.balance * 83).toLocaleString()}`);
+          alert(`Top-up successful! Active Credits: ${curr === 'USD' ? '$' + result.balance : '₹' + Math.round(result.balance * 83).toLocaleString()}`);
+        } catch (err: any) {
+          console.error("Payment verification failed:", err);
+          alert("We couldn't confirm your payment. If any amount was deducted, it will be refunded automatically. Please contact support if this persists.");
         }
-      })
-      .catch(err => console.error(err));
+      },
+      theme: {
+        color: "#5A52FF"
+      }
+    };
+
+    const rzp = new Razorpay(options);
+    rzp.on('payment.failed', function (response: any) {
+      console.error(response.error.description);
+      alert("Payment Failed");
+    });
+    rzp.open();
   };
 
   const renderLockOverlay = (nodeName: string, priceUSD: number) => {
@@ -1087,7 +1140,12 @@ export function BrandDashboard() {
     setActiveTab('control');
   };
 
-  // Claude chat analyzer response simulator
+  // AI Marketing Analyst chat handler. The reply text itself is real (fetched from the
+  // backend, which grounds it in this workspace's actual connected-data status and never
+  // fabricates campaign numbers). The isVisual/visualType keyword detection below is kept
+  // exactly as before - it only decides whether to render one of the existing sample charts
+  // alongside the answer, which is a cosmetic/demo affordance unrelated to the answer's
+  // honesty and out of scope for this change.
   const handleSendClaudeMessage = (message: string) => {
     const userMsg: ChatMessage = {
       id: String(Date.now()),
@@ -1103,47 +1161,28 @@ export function BrandDashboard() {
     };
 
     if (workspaceId) {
-      // Trigger background task log
+      let isVisual = false;
+      let visualType: 'bar' | 'table' | 'pie' | 'line' | 'heatmap' | null = null;
+      const lower = message.toLowerCase();
+      if (lower.includes('roas')) { isVisual = true; visualType = 'bar'; }
+      else if (lower.includes('wasting') || lower.includes('cpa')) { isVisual = true; visualType = 'table'; }
+      else if (lower.includes('csv') || lower.includes('upload') || lower.includes('heatmap')) { isVisual = true; visualType = 'heatmap'; }
+      else if (lower.includes('pie')) { isVisual = true; visualType = 'pie'; }
+      else if (lower.includes('line')) { isVisual = true; visualType = 'line'; }
+
       fetch(`/api/agents/${workspaceId}/analytics`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ query_message: message })
-      }).catch(() => {});
-
-      // For demonstration, we'll bypass the backend fetch and mock the responses directly
-      setTimeout(() => {
-        let response = 'I am auditing the dataset connected for this query. Let me know if you need specific breakdowns.';
-        let isVisual = false;
-        let visualType: 'bar' | 'table' | 'pie' | 'line' | 'heatmap' | null = null;
-        
-        if (message.toLowerCase().includes('conversion') || message.toLowerCase().includes('drop')) {
-          response = 'Conversions dropped by 12% on cp-1. The Optimization Agent suggests redistributing the $35/day budget limit to cp-2 to avoid creative fatigue and stabilize CPA.';
-        } else if (message.toLowerCase().includes('fatigue')) {
-          response = 'Creative fatigue is flagged on Facebook Static Adset 4. Average CPM rose by 18% over the last 48 hours. Swapping Concept A headline will likely increase CTR by ~0.45%.';
-        } else if (message.toLowerCase().includes('roas')) {
-          response = 'Here is the platform-by-platform ROAS breakdown from your connected Ad Manager APIs. Meta Ads is currently underperforming the baseline (2.4x), whereas your Influencer campaigns are driving a stellar 4.2x return on ad spend. I recommend reallocating 15% of your Meta budget towards top-performing creators.';
-          isVisual = true;
-          visualType = 'bar';
-        } else if (message.toLowerCase().includes('wasting') || message.toLowerCase().includes('cpa')) {
-          response = 'I have identified specific campaigns that are running at a loss (CPA exceeds LTV margin). The "Retargeting BOF" campaign is currently spending $4,200 at a high CPA of $45.20. Consider pausing this ad set immediately.';
-          isVisual = true;
-          visualType = 'table';
-        } else if (message.toLowerCase().includes('csv') || message.toLowerCase().includes('upload') || message.toLowerCase().includes('heatmap')) {
-          response = 'I have processed the uploaded dataset. The demographic heatmap below visualizes engagement intensity across age groups. You can see a strong concentration of high engagement in the 35-44 demographic, indicating our core audience is slightly older than initial projections.';
-          isVisual = true;
-          visualType = 'heatmap';
-        } else if (message.toLowerCase().includes('pie')) {
-          response = 'Based on the connected APIs, your current budget allocation is heavily skewed towards Meta Ads (40%). However, given recent CPA trends, diversifying further into TikTok and LinkedIn could reduce overall customer acquisition costs by an estimated 12%.';
-          isVisual = true;
-          visualType = 'pie';
-        } else if (message.toLowerCase().includes('line')) {
-          response = 'Here is your CPA trend over the last 7 days. Notice the sharp spike on Thursday ($22) and Friday ($25), which correlates with the weekend bid multiplier adjustments. We should smooth the bid caps to prevent this volatility.';
-          isVisual = true;
-          visualType = 'line';
-        }
-        
-        setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text: response, isVisual, visualType }]);
-      }, 800);
+      })
+        .then(r => r.json())
+        .then(d => {
+          const text = d?.text || 'Sorry, I could not generate a response just now — please try again.';
+          setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text, isVisual, visualType }]);
+        })
+        .catch(() => {
+          setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text: 'I could not reach the analytics agent — please try again.', isVisual: false, visualType: null }]);
+        });
     }
   };
 
@@ -1824,8 +1863,8 @@ export function BrandDashboard() {
                       ${billingBalance.toFixed(2)}
                     </div>
                   </div>
-                  <GlowButton variant="secondary" onClick={handleTopUpShortcut} style={{ width: '100%' }}>
-                    Add $100 Credits (Mock Top Up)
+                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(100)} style={{ width: '100%' }}>
+                    Add $100 Credits
                   </GlowButton>
                 </div>
               </div>

@@ -15,28 +15,32 @@ export function Checkout({ onComplete }: CheckoutProps) {
   const handleSubscribe = async () => {
     setIsLoading(true);
     try {
-      // 1. Create order on backend (mock if fails)
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // 1. Create order on backend
       let order;
       try {
-        const response = await fetch(`/api/payments/create-order?email=${email}`, {
+        const response = await fetch('/api/payments/create-order', {
           method: 'POST',
+          headers,
+          body: JSON.stringify({ purpose: 'subscription', email }),
         });
-        if (!response.ok) throw new Error("Failed");
-        order = await response.json();
-        if (!order.id) throw new Error("Failed to create order");
-      } catch (e) {
-        order = { id: 'order_demo' + Math.floor(Math.random() * 1000000), amount: 200000, currency: 'INR' };
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.id) throw new Error(data.detail || "Failed to create order");
+        order = data;
+      } catch (e: any) {
+        console.error("Order creation failed:", e);
+        alert("Could not start payment: " + (e.message || "Please try again."));
+        return;
       }
 
       // 2. Setup Razorpay options
       const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
-      
+
       if (!rzpKey || rzpKey === 'rzp_test_placeholder') {
-        console.warn("Using demo payment flow because Razorpay key is missing or placeholder");
-        setTimeout(() => {
-          alert("Payment Successful (Demo Mode)!");
-          onComplete();
-        }, 1000);
+        alert("Payment gateway is not configured. Please contact support.");
         return;
       }
 
@@ -48,11 +52,12 @@ export function Checkout({ onComplete }: CheckoutProps) {
         description: "Pro Subscription",
         order_id: order.id, //This is a sample Order ID. Pass the `id` obtained in the response of Step 1
         handler: async function (response: any) {
-            // 3. Verify payment on backend
+            // 3. Verify payment on backend — only treat the payment as successful
+            // once the server confirms the signature, never on the client alone.
             try {
-                await fetch('/api/payments/verify-payment', {
+                const verifyRes = await fetch('/api/payments/verify-payment', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers,
                     body: JSON.stringify({
                         razorpay_payment_id: response.razorpay_payment_id,
                         razorpay_order_id: response.razorpay_order_id,
@@ -60,11 +65,16 @@ export function Checkout({ onComplete }: CheckoutProps) {
                         email: email
                     })
                 });
-            } catch (e) {
-                console.warn("Verify payment failed, mocking success.");
+                const result = await verifyRes.json().catch(() => ({}));
+                if (!verifyRes.ok || result.status !== 'success') {
+                    throw new Error(result.detail || "Payment verification failed");
+                }
+                alert("Payment Successful!");
+                onComplete();
+            } catch (e: any) {
+                console.error("Payment verification failed:", e);
+                alert("We couldn't confirm your payment. If any amount was deducted, it will be refunded automatically. Please contact support if this persists.");
             }
-            alert("Payment Successful!");
-            onComplete();
         },
         prefill: {
             email: email,
@@ -74,18 +84,12 @@ export function Checkout({ onComplete }: CheckoutProps) {
         }
       };
 
-      try {
-        const rzp = new Razorpay(options);
-        rzp.on('payment.failed', function (response: any){
-            console.error(response.error.description);
-            alert("Payment Failed");
-        });
-        rzp.open();
-      } catch (e) {
-        console.error("Razorpay object creation failed", e);
-        alert("Payment Gateway Failed to Load. Triggering Demo Mode.");
-        onComplete();
-      }
+      const rzp = new Razorpay(options);
+      rzp.on('payment.failed', function (response: any){
+          console.error(response.error.description);
+          alert("Payment Failed");
+      });
+      rzp.open();
 
     } catch (error) {
       console.error("Payment failed to initialize:", error);

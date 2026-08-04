@@ -270,6 +270,31 @@ async def duplicate_theme(conn, source_theme_id: str, new_name: str,
     return new_id
 
 
+_JSONLD_START = "<!-- raftra:jsonld:start -->"
+_JSONLD_END = "<!-- raftra:jsonld:end -->"
+
+
+async def inject_head_jsonld(conn, theme_id: str, jsonld_json: str) -> None:
+    """Insert (or replace) an Organization JSON-LD <script> block into a theme's
+    layout/theme.liquid, right before </head> — this is where site-wide JSON-LD/OG/canonical
+    tags actually live in Shopify (Page metafields don't cover them). Idempotent: a second
+    call replaces the previous block instead of duplicating it. Callers should only ever
+    point this at a draft (unpublished) theme, never the live one."""
+    asset = await get_theme_asset(conn, theme_id, "layout/theme.liquid")
+    html = asset.get("value")
+    if not html:
+        raise RuntimeError("Could not read layout/theme.liquid for this theme — it may not be a text file.")
+    block = f'{_JSONLD_START}\n<script type="application/ld+json">\n{jsonld_json}\n</script>\n{_JSONLD_END}'
+    if _JSONLD_START in html:
+        html = re.sub(re.escape(_JSONLD_START) + r".*?" + re.escape(_JSONLD_END), block, html, flags=re.DOTALL)
+    else:
+        idx = html.lower().rfind("</head>")
+        if idx == -1:
+            raise RuntimeError("layout/theme.liquid has no </head> tag to inject before.")
+        html = html[:idx] + block + "\n" + html[idx:]
+    await put_theme_asset(conn, theme_id, "layout/theme.liquid", value=html)
+
+
 async def publish_markdown(conn, title: str, body: str, published: bool = False) -> dict:
     """Create a blog article from markdown. Unpublished by default — a human publishes it."""
     blog_id = getattr(conn, "blog_id", None)

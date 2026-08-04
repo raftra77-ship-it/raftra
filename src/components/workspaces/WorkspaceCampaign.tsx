@@ -3,8 +3,9 @@ import {
   Sparkles, Check, CheckCircle2, Clock, AlertTriangle, Rocket, Activity,
   Image as ImageIcon, ShieldCheck, Edit3, RefreshCw, XCircle,
   OctagonX, ArrowRight, FileUp, Download, Copy, Database, Upload,
-  TrendingUp, ShoppingCart,
+  TrendingUp, ShoppingCart, GitBranch, BarChart3,
 } from 'lucide-react';
+import { CampaignService } from '../../services/campaigns';
 
 export interface CampaignItem {
   id: string; platform: string; name: string; objective: string;
@@ -67,6 +68,7 @@ const Pill: React.FC<{ status: string }> = ({ status }) => {
     Locked: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)' },
     Pending: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)' },
     MOCK: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
+    DEMO: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     SAMPLE: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
   };
   const s = map[status] || map.Pending;
@@ -125,6 +127,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [activity, setActivity] = useState<{ label: string; at: number }[]>([]);
   const [isCopied, setIsCopied] = useState(false);
+  const topRef = useRef<HTMLDivElement>(null);
+  const scrollToTop = () => {
+    let node: HTMLElement | null = topRef.current;
+    while (node) {
+      if (node.scrollHeight > node.clientHeight + 5) { node.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+      node = node.parentElement;
+    }
+  };
   const importRef = useRef<HTMLInputElement>(null);
 
   // Smart ad management (restored)
@@ -138,9 +148,100 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
   // Real Meta ad-account connection (from the Meta connector), the publish popup, and the
   // persistent list of campaigns already published.
-  const [metaAccount, setMetaAccount] = useState<{ configured?: boolean; connected?: boolean; name?: string }>({});
+  const [metaAccount, setMetaAccount] = useState<{ configured?: boolean; connected?: boolean; name?: string; ad_account_id?: string | null }>({});
   const [publishPopup, setPublishPopup] = useState(false);
   const [recentPublished, setRecentPublished] = useState<any[]>([]);
+  const [analyticsView, setAnalyticsView] = useState<any | null>(null);   // opened analytics modal payload
+
+  // Meta ad account + Facebook Page picker (needed before a real campaign/ad can be launched).
+  const [metaAdAccounts, setMetaAdAccounts] = useState<{ account_id: string; name: string; currency?: string; active?: boolean }[] | null>(null);
+  const [metaPages, setMetaPages] = useState<{ id: string; name: string }[] | null>(null);
+  const [selectedPage, setSelectedPage] = useState('');
+  const [metaPickerOpen, setMetaPickerOpen] = useState(false);
+  const [metaPickerBusy, setMetaPickerBusy] = useState(false);
+
+  const loadMetaAdAccounts = useCallback(async () => {
+    if (!workspaceId) return;
+    setMetaPickerBusy(true);
+    try {
+      const [accRes, pageRes] = await Promise.all([
+        fetch(`/api/connectors/meta/${workspaceId}/ad-accounts`, { headers: authHeaders() }),
+        fetch(`/api/connectors/meta/${workspaceId}/pages`, { headers: authHeaders() }),
+      ]);
+      const accData = await accRes.json().catch(() => ({}));
+      const pageData = await pageRes.json().catch(() => ({}));
+      if (accRes.ok) setMetaAdAccounts(accData.ad_accounts || []);
+      else flash(accData.detail || 'Could not load Meta ad accounts.', false);
+      if (pageRes.ok) setMetaPages(pageData.pages || []);
+      else flash(pageData.detail || 'Could not load Facebook Pages.', false);
+    } catch { flash('Could not reach Meta to load ad accounts / Pages.', false); }
+    setMetaPickerBusy(false);
+  }, [workspaceId]);
+
+  const selectAdAccount = async (accountId: string) => {
+    if (!workspaceId || !accountId) return;
+    setMetaPickerBusy(true);
+    try {
+      const r = await fetch(`/api/connectors/meta/${workspaceId}/account`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ ad_account_id: accountId }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { setMetaAccount(a => ({ ...a, ad_account_id: d.ad_account_id })); flash('Ad account saved.'); }
+      else flash(d.detail || 'Could not save ad account.', false);
+    } catch { flash('Could not save ad account.', false); }
+    setMetaPickerBusy(false);
+  };
+
+  const openMetaPicker = () => {
+    setMetaPickerOpen(o => !o);
+    if (!metaAdAccounts && !metaPickerOpen) loadMetaAdAccounts();
+  };
+
+  // Real Google Ads connection (mirrors the Meta picker above exactly) + its account picker.
+  const [googleAccount, setGoogleAccount] = useState<{ configured?: boolean; connected?: boolean; email?: string; customer_id?: string | null }>({});
+  const [googleAdAccounts, setGoogleAdAccounts] = useState<{ customer_id: string; name: string }[] | null>(null);
+  const [googlePickerOpen, setGooglePickerOpen] = useState(false);
+  const [googlePickerBusy, setGooglePickerBusy] = useState(false);
+
+  const loadGoogleAdAccounts = useCallback(async () => {
+    if (!workspaceId) return;
+    setGooglePickerBusy(true);
+    try {
+      const r = await fetch(`/api/connectors/google-ads/${workspaceId}/accounts`, { headers: authHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) setGoogleAdAccounts(d.accounts || []);
+      else flash(d.detail || 'Could not load Google Ads accounts.', false);
+    } catch { flash('Could not reach Google Ads to load accounts.', false); }
+    setGooglePickerBusy(false);
+  }, [workspaceId]);
+
+  const selectGoogleAccount = async (customerId: string) => {
+    if (!workspaceId || !customerId) return;
+    setGooglePickerBusy(true);
+    try {
+      const r = await fetch(`/api/connectors/google-ads/${workspaceId}/account`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ customer_id: customerId }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { setGoogleAccount(a => ({ ...a, customer_id: d.customer_id })); flash('Google Ads account saved.'); }
+      else flash(d.detail || 'Could not save Google Ads account.', false);
+    } catch { flash('Could not save Google Ads account.', false); }
+    setGooglePickerBusy(false);
+  };
+
+  const openGooglePicker = () => {
+    setGooglePickerOpen(o => !o);
+    if (!googleAdAccounts && !googlePickerOpen) loadGoogleAdAccounts();
+  };
+
+  const connectGoogleAds = async () => {
+    try {
+      const r = await fetch(`/api/connectors/google-ads/${workspaceId}/authorize`, { headers: authHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.url) { window.location.href = d.url; return; }
+      flash(d.detail || 'Google Ads login isn’t configured on the server yet.', false);
+    } catch { flash('Could not start Google Ads connection.', false); }
+  };
 
   // The single approved creative that flows into the platform reviews, plus any
   // images the user uploads, plus a manual override of the Google campaign type.
@@ -229,11 +330,25 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       if (r.ok) setCampaign(await r.json());
     } catch { /* ignore */ }
   }, [workspaceId]);
+  // Refresh ONLY the Recently Published list (never changes the campaign in focus).
+  const loadRecent = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const list = await CampaignService.list(workspaceId);
+      setRecentPublished(list.filter(c => String(c.status).toUpperCase() === 'PUBLISHED_DEMO')
+        .sort((a, b) => b.id - a.id).slice(0, 10));
+    } catch { /* ignore */ }
+  }, [workspaceId]);
   useEffect(() => { loadLatest(); }, [loadLatest]);
   useEffect(() => {
     if (!workspaceId) return;
     fetch(`/api/connectors/meta/${workspaceId}/status`, { headers: authHeaders() })
       .then(r => (r.ok ? r.json() : null)).then(d => d && setMetaAccount(d)).catch(() => {});
+  }, [workspaceId]);
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch(`/api/connectors/google-ads/${workspaceId}/status`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null)).then(d => d && setGoogleAccount(d)).catch(() => {});
   }, [workspaceId]);
 
   // ── generate strategy (+ its ad image, together) ──
@@ -246,8 +361,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       if (Array.isArray(b)) beforeMax = b.reduce((m: number, c: any) => Math.max(m, c.id), 0);
     } catch { /* ignore */ }
     const prompt = `Create an ad campaign. Theme/focus: ${form.campaignFocus}. Objective: ${form.objective}. Total budget: ₹${form.budget}. Audience: ${form.audience}. Funnel: ${form.funnel}. Geo: ${form.placement} (${form.geoTargetingLevel}). Schedule: ${form.schedule}. Tracking: ${form.tracking}.`;
+    // Geo is also sent as its own structured field (not just inside the prose prompt above) so
+    // the exact locations the user picked are carried through the spec verbatim, rather than
+    // relying on the LLM to re-extract them accurately from text.
+    const geoLocations = form.placement.split(',').map(s => s.trim()).filter(Boolean);
     try {
-      await fetch(`/api/agents/${workspaceId}/campaign`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ prompt, model: 'gemini-2.5-flash' }) });
+      await fetch(`/api/agents/${workspaceId}/campaign`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ prompt, model: 'gemini-2.5-flash', geo_targeting_level: form.geoTargetingLevel, geo_locations: geoLocations }) });
     } catch { setIsGenerating(false); flash('Could not start generation.', false); return; }
     let tries = 0;
     const poll = setInterval(async () => {
@@ -304,23 +423,83 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       const d = await r.json();
       if (r.ok) {
         const label = targets.map(t => (t === 'meta' ? 'Meta' : 'Google')).join(' & ');
-        log(`Published to ${label} (demo)`);
-        flash(d.message || `Published to ${label} (demo). It's now in Recently Published below — starting a fresh campaign.`);
-        setPublishPopup(false);
-        await loadLatest();   // moves the published campaign into "Recently Published"
-        resetFlow();          // reset the checklist/flow back to the start
+        const modeTag = d.mode === 'real' ? '' : d.mode === 'mixed' ? ' (partly demo)' : ' (demo)';
+        log(`Published to ${label}${modeTag}`);
+        flash(d.message || `Published to ${label}${modeTag}.`);
+        setPublishPopup(false); setConfirmed(false);
+        // Do NOT reset — stay on the now-published campaign (it becomes read-only), and
+        // refresh the Recently Published list.
+        await refresh(campaign.id);
+        await loadRecent();
       } else flash(d.detail || 'Publish failed.', false);
     } catch { flash('Publish failed.', false); }
     setBusy(null);
   };
 
-  // Reset the whole workflow so the top checklist (Ideation → Approve → …) appears fresh.
-  const resetFlow = () => {
+  // Start a brand-new empty campaign flow (explicit — no longer automatic after publish).
+  const startNewCampaign = () => {
     setConfirmed(false); setReviewOpen(false); setPublishPopup(false);
     setSelectedImage(null); setUploadedImages([]); setGoogleTypeOverride('');
     setPlatforms({ meta: true, google: true });
     setCampaign(null);
   };
+
+  // Create the next version of a published campaign (V2, V3…) — editable; the old version stays read-only.
+  const createNewVersion = async () => {
+    if (!campaign) return;
+    setBusy('version');
+    try {
+      const d = await CampaignService.createVersion(workspaceId!, campaign.id);
+      await refresh(d.campaign_id);
+      await loadRecent();
+      setConfirmed(false); setPublishPopup(false); setReviewOpen(false);
+      log(`Version ${d.version} created`);
+      flash(`Version ${d.version} created — edit it and publish when ready. The previous version stays read-only.`);
+    } catch (e: any) { flash(e.message || 'Could not create a new version.', false); }
+    setBusy(null);
+  };
+
+  const duplicateCampaign = async (id: number) => {
+    if (!workspaceId) return;
+    setBusy('duplicate');
+    try {
+      const d = await CampaignService.duplicate(workspaceId, id);
+      await refresh(d.campaign_id);
+      await loadRecent();
+      setConfirmed(false); setPublishPopup(false);
+      log('Campaign duplicated');
+      flash('Duplicated into a new editable campaign.');
+    } catch (e: any) { flash(e.message || 'Could not duplicate.', false); }
+    setBusy(null);
+  };
+
+  const viewAnalytics = async (id: number) => {
+    if (!workspaceId) return;
+    setBusy('analytics');
+    try { setAnalyticsView(await CampaignService.analytics(workspaceId, id)); }
+    catch (e: any) { flash(e.message || 'Could not load analytics.', false); }
+    setBusy(null);
+  };
+
+  // Fire-and-forget persistence (keeps the design unchanged; saves quietly as the user works).
+  const persistPlatforms = (p: { meta: boolean; google: boolean }) => {
+    if (campaign && approved && !published) CampaignService.selectPlatforms(workspaceId!, campaign.id, p).catch(() => {});
+  };
+  const persistOptimization = (rules: any) => {
+    if (campaign && approved && !published) {
+      CampaignService.saveOptimization(workspaceId!, campaign.id, {
+        auto_kill: rules.killAds, cpa_limit: rules.cpaThreshold, frequency_limit: rules.frequencyCap,
+        creative_rotation: rules.autoRotate, refresh_interval_days: rules.refreshIntervalDays,
+      }).catch(() => {});
+    }
+  };
+  // Debounced save of the optimization rules whenever the user tweaks them.
+  useEffect(() => {
+    if (!campaign || !approved || published) return;
+    const t = setTimeout(() => persistOptimization(smart), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smart, campaign?.id, approved, published]);
 
   // Start a real Meta connection (OAuth). Falls back to a message when the server is in mock mode.
   const connectMeta = async () => {
@@ -433,28 +612,138 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [executed, setExecuted] = useState<string[]>([]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: '#fff' }}>
+    <div ref={topRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: '#fff' }}>
       {/* ── header ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ fontSize: '25px', fontFamily: 'var(--font-heading)', marginBottom: '6px' }}>Campaign Manager</h2>
           <p style={sectionHint}>Describe your campaign once — AI writes the strategy and the ad image. You approve it, and that approved plan drives Meta, Google and publishing.</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center', position: 'relative' }}>
           {metaAccount.connected ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600, color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', padding: '8px 12px' }}>
-              <CheckCircle2 size={14} /> Meta connected{metaAccount.name ? ` · ${metaAccount.name}` : ''}
-            </span>
+            <div style={{ position: 'relative' }}>
+              <button onClick={openMetaPicker} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600, color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
+                <CheckCircle2 size={14} /> Meta connected{metaAccount.name ? ` · ${metaAccount.name}` : ''}
+                {metaAccount.ad_account_id ? ` · Account ${metaAccount.ad_account_id}` : ' · No ad account selected'}
+              </button>
+              {metaPickerOpen && (
+                <>
+                <div onClick={() => setMetaPickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 50, width: '320px', background: '#14161e', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '14px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>Meta ad account &amp; Page</div>
+                  {metaPickerBusy ? (
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>
+                  ) : (
+                    <>
+                      <span style={label}>Ad account</span>
+                      <select style={{ ...input, padding: '8px 10px', fontSize: '12.5px', marginBottom: '12px' }}
+                        value={metaAccount.ad_account_id || ''} onChange={e => selectAdAccount(e.target.value)}>
+                        <option value="" disabled>{metaAdAccounts && metaAdAccounts.length ? 'Choose an ad account' : 'No ad accounts found'}</option>
+                        {(metaAdAccounts || []).map(a => (
+                          <option key={a.account_id} value={a.account_id}>{a.name} ({a.currency}){a.active ? '' : ' — inactive'}</option>
+                        ))}
+                      </select>
+                      <span style={label}>Facebook Page</span>
+                      <select style={{ ...input, padding: '8px 10px', fontSize: '12.5px' }}
+                        value={selectedPage} onChange={e => setSelectedPage(e.target.value)}>
+                        <option value="" disabled>{metaPages && metaPages.length ? 'Choose a Page' : 'No Pages found'}</option>
+                        {(metaPages || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
+                        Required before a real (non-demo) campaign can be launched on Meta. Publishing below still runs in demo mode until that's wired up.
+                      </p>
+                      <button onClick={loadMetaAdAccounts} style={{ ...btnGhost, marginTop: '10px', width: '100%', padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                    </>
+                  )}
+                </div>
+                </>
+              )}
+            </div>
           ) : (
             <button onClick={connectMeta} style={{ ...btnGhost, color: '#8B85FF', borderColor: 'rgba(90,82,255,0.4)' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ffae00', display: 'inline-block' }} /> Connect Meta account
             </button>
           )}
+          {googleAccount.connected ? (
+            <div style={{ position: 'relative' }}>
+              <button onClick={openGooglePicker} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600, color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
+                <CheckCircle2 size={14} /> Google Ads connected{googleAccount.email ? ` · ${googleAccount.email}` : ''}
+                {googleAccount.customer_id ? ` · Account ${googleAccount.customer_id}` : ' · No account selected'}
+              </button>
+              {googlePickerOpen && (
+                <>
+                <div onClick={() => setGooglePickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 50, width: '320px', background: '#14161e', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '14px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>Google Ads account</div>
+                  {googlePickerBusy ? (
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>
+                  ) : (
+                    <>
+                      <span style={label}>Customer account</span>
+                      <select style={{ ...input, padding: '8px 10px', fontSize: '12.5px', marginBottom: '12px' }}
+                        value={googleAccount.customer_id || ''} onChange={e => selectGoogleAccount(e.target.value)}>
+                        <option value="" disabled>{googleAdAccounts && googleAdAccounts.length ? 'Choose an account' : 'No accounts found'}</option>
+                        {(googleAdAccounts || []).map(a => (
+                          <option key={a.customer_id} value={a.customer_id}>{a.name} ({a.customer_id})</option>
+                        ))}
+                      </select>
+                      <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
+                        Required before a real (non-demo) campaign can be launched on Google Ads. Publishing below still runs in demo mode until that's wired up.
+                      </p>
+                      <button onClick={loadGoogleAdAccounts} style={{ ...btnGhost, marginTop: '10px', width: '100%', padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                    </>
+                  )}
+                </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <button onClick={connectGoogleAds} style={{ ...btnGhost, color: '#8B85FF', borderColor: 'rgba(90,82,255,0.4)' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ffae00', display: 'inline-block' }} /> Connect Google Ads account
+            </button>
+          )}
+          {campaign && !published && <button onClick={startNewCampaign} style={btnGhost}><Sparkles size={14} /> New Campaign</button>}
           <input type="file" ref={importRef} accept=".json" style={{ display: 'none' }} onChange={importCampaign} />
           <button onClick={() => importRef.current?.click()} style={btnGhost}><FileUp size={14} /> Import</button>
           <button onClick={exportCampaign} style={btnGhost}><Download size={14} /> Export</button>
         </div>
       </div>
+
+      {/* ── Published banner: shown after publish; the flow below becomes read-only ── */}
+      {published && (
+        <div style={{ ...card, borderColor: 'rgba(0,230,118,0.35)', background: 'rgba(0,230,118,0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ ...sectionTitle, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '9px' }}>
+                <CheckCircle2 size={18} color="#00e676" /> {campaign.name || 'Campaign'} <Pill status="Published" />
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500 }}>Version {campaign.version || 1}</span>
+                <Pill status="DEMO" />
+              </h3>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <span>Platforms: <b style={{ color: '#fff' }}>{(spec.published_platforms || []).map((p: string) => p === 'meta' ? 'Meta' : 'Google').join(' & ') || '—'}</b></span>
+                <span>Budget: <b style={{ color: '#fff' }}>{money(spec.total_budget || campaign.budget)}</b></span>
+                <span>Published: <b style={{ color: '#fff' }}>{spec.published_at ? new Date(spec.published_at).toLocaleString() : '—'}</b></span>
+              </div>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '6px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                {Object.entries(spec.campaign_ids || {}).map(([p, id]) => (
+                  <span key={p}>{p === 'meta' ? 'Meta' : 'Google'} ID: <code style={{ color: '#8B85FF' }}>{String(id)}</code></span>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button onClick={createNewVersion} disabled={busy === 'version'} style={btnPrimary}>
+                <GitBranch size={14} /> {busy === 'version' ? 'Creating…' : 'Create New Version'}
+              </button>
+              <button onClick={() => duplicateCampaign(campaign.id)} disabled={busy === 'duplicate'} style={btnGhost}><Copy size={14} /> Duplicate</button>
+              <button onClick={() => viewAnalytics(campaign.id)} disabled={busy === 'analytics'} style={btnGhost}><BarChart3 size={14} /> {busy === 'analytics' ? 'Loading…' : 'View Analytics'}</button>
+              <button onClick={startNewCampaign} style={btnGhost}><Sparkles size={14} /> New Campaign</button>
+            </div>
+          </div>
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '10px' }}>
+            This version is <b>read-only</b>. To change anything, click <b>Create New Version</b> — the previous version stays intact.
+          </p>
+        </div>
+      )}
 
       {/* ── 1. performance & action feed (sample data) ── */}
       <div style={card}>
@@ -661,6 +950,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                   {split.meta && <Row k="Meta share" v={`${split.meta.pct}% · ${money(split.meta.amount)}`} />}
                   {split.google && <Row k="Google share" v={`${split.google.pct}% · ${money(split.google.amount)}`} />}
                   <Row k="Runs for" v={spec.duration_label || form.schedule} />
+                  {spec.geo_targeting && (
+                    <Row k="Targeting" v={`${spec.geo_targeting.level || 'Country-Level'}${(spec.geo_targeting.locations || []).length ? ` · ${spec.geo_targeting.locations.join(', ')}` : ''}`} />
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Success targets</div>
@@ -707,7 +999,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       </div>
 
       {/* ── 4. select platforms ── */}
-      <Gated locked={!approved} why="Approve the strategy first to choose platforms">
+      <Gated locked={!approved || published} why={published ? 'Published — read-only. Create a new version to change platforms.' : 'Approve the strategy first to choose platforms'}>
         <div style={{ ...card, display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <div style={{ minWidth: '190px', flex: '0 1 auto' }}>
             <h3 style={{ ...sectionTitle, marginBottom: '2px' }}>Selected Platforms</h3>
@@ -718,7 +1010,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             const on = platforms[p.k];
             return (
               <label key={p.k} style={{ display: 'flex', alignItems: 'center', gap: '11px', padding: '13px 16px', borderRadius: '11px', border: `1px solid ${on ? 'rgba(0,230,118,0.45)' : 'var(--border, var(--border-color))'}`, background: on ? 'rgba(0,230,118,0.06)' : 'rgba(255,255,255,0.02)', cursor: 'pointer', minWidth: '205px' }}>
-                <input type="checkbox" checked={on} onChange={e => { setPlatforms(s => ({ ...s, [p.k]: e.target.checked })); setConfirmed(false); }}
+                <input type="checkbox" checked={on} onChange={e => { const np = { ...platforms, [p.k]: e.target.checked }; setPlatforms(np); persistPlatforms(np); setConfirmed(false); }}
                   style={{ width: '17px', height: '17px', accentColor: '#00e676', cursor: 'pointer', flexShrink: 0 }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600 }}>{p.name}</span>
@@ -735,7 +1027,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       </Gated>
 
       {/* ── 5. per-platform review ── */}
-      <Gated locked={!approved} why="Approve the strategy to review platform ads">
+      <Gated locked={!approved || published} why={published ? 'Published — read-only. Create a new version to edit the ads.' : 'Approve the strategy to review platform ads'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {/* Meta + Google sit side-by-side when both are selected, full-width when only one. */}
           <div style={{ display: 'grid', gridTemplateColumns: (platforms.meta && platforms.google) ? 'repeat(auto-fit, minmax(330px, 1fr))' : '1fr', gap: '18px' }}>
@@ -907,7 +1199,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       </Gated>
 
       {/* ── 6. human review & publish ── */}
-      <Gated locked={!platformsReady} why={!approved ? 'Approve the strategy first' : 'Mark your selected platforms as Ready first'}>
+      <Gated locked={!platformsReady || published} why={published ? 'Published — read-only. Create a new version to publish again.' : !approved ? 'Approve the strategy first' : 'Mark your selected platforms as Ready first'}>
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '4px' }}>
             <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
@@ -1006,18 +1298,28 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       {recentPublished.length > 0 && (
         <div style={card}>
           <h3 style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: '9px' }}><Rocket size={16} color="var(--primary)" /> Recently Published</h3>
-          <p style={{ ...sectionHint, marginBottom: '12px' }}>Campaigns you've published. Publishing a new one adds it here and resets the flow above.</p>
+          <p style={{ ...sectionHint, marginBottom: '12px' }}>Every published campaign and version. Open one to keep working on it, duplicate it, or see its analytics.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {recentPublished.length === 0 && <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Nothing published yet.</p>}
             {recentPublished.map((c: any) => {
               const cm = c.metrics || {};
               const plats = (cm.published_platforms || []).map((p: string) => (p === 'meta' ? 'Meta' : 'Google')).join(' & ');
               return (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '11px 14px' }}>
-                  <span style={{ minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#fff' }}>{c.name || 'Campaign'}</span>
-                    <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)' }}>{c.objective || '—'} · {money(c.budget || 0)}{plats ? ` · ${plats}` : ''}</span>
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#fff' }}>
+                      {c.name || 'Campaign'} <span style={{ fontSize: '10px', fontWeight: 600, color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '20px', padding: '1px 8px' }}>v{c.version || 1}</span>
+                    </span>
+                    <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                      {c.objective || '—'} · {money(c.budget || 0)}{plats ? ` · ${plats}` : ''}{cm.published_at ? ` · ${new Date(cm.published_at).toLocaleDateString()}` : ''}
+                    </span>
                   </span>
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '3px 10px', whiteSpace: 'nowrap' }}>PUBLISHED (DEMO)</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '3px 9px', whiteSpace: 'nowrap' }}>PUBLISHED · DEMO</span>
+                    <button onClick={() => refresh(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '11.5px' }}>View</button>
+                    <button onClick={() => viewAnalytics(c.id)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '11.5px' }}><BarChart3 size={12} /> Analytics</button>
+                    <button onClick={() => duplicateCampaign(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '11.5px' }}><Copy size={12} /> Duplicate</button>
+                  </span>
                 </div>
               );
             })}
@@ -1182,6 +1484,79 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           </div>
         </div>
       )}
+
+      {/* ── analytics modal (mock, demo) ── */}
+      {analyticsView && (() => {
+        const a = analyticsView; const t = a.totals || {};
+        const tiles = [
+          { k: 'Impressions', v: (t.impressions || 0).toLocaleString('en-IN') },
+          { k: 'Reach', v: (t.reach || 0).toLocaleString('en-IN') },
+          { k: 'Clicks', v: (t.clicks || 0).toLocaleString('en-IN') },
+          { k: 'CTR', v: `${t.ctr}%` },
+          { k: 'Conversions', v: t.conversions },
+          { k: 'CPA', v: money(t.cpa) },
+          { k: 'Spend', v: money(t.spend) },
+          { k: 'ROAS', v: `${t.roas}×`, hot: (t.roas || 0) >= 2 },
+        ];
+        const sevColor: Record<string, string> = { good: '#00e676', warn: '#ffae00', critical: '#ff5c5c' };
+        return (
+          <div onClick={() => setAnalyticsView(null)} style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+            <div onClick={e => e.stopPropagation()} style={{ ...card, width: '100%', maxWidth: '760px', maxHeight: '88vh', overflowY: 'auto', background: 'rgba(18,20,28,0.99)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '4px' }}>
+                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <BarChart3 size={18} color="var(--primary)" /> {a.name || 'Campaign'} — Analytics <Pill status="DEMO" />
+                </h3>
+                <button onClick={() => setAnalyticsView(null)} style={{ ...btnGhost, padding: '6px 12px', fontSize: '12px' }}>Close</button>
+              </div>
+              <p style={{ ...sectionHint, marginBottom: '16px' }}>v{a.version} · {(a.platforms || []).map((p: string) => p === 'meta' ? 'Meta' : 'Google').join(' & ')} · {a.status === 'PUBLISHED_DEMO' ? 'Published (demo)' : a.status}. Mock figures — real Meta/Google insights plug in later.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', marginBottom: '18px' }}>
+                {tiles.map(x => (
+                  <div key={x.k} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '12px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{x.k}</div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: (x as any).hot ? '#00e676' : '#fff' }}>{x.v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+                {a.meta_performance && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF', marginBottom: '8px' }}>Meta Performance</div>
+                    <Row k="Spend" v={money(a.meta_performance.spend)} /><Row k="Conversions" v={a.meta_performance.conversions} /><Row k="ROAS" v={`${a.meta_performance.roas}×`} />
+                  </div>
+                )}
+                {a.google_performance && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF', marginBottom: '8px' }}>Google Performance</div>
+                    <Row k="Spend" v={money(a.google_performance.spend)} /><Row k="Conversions" v={a.google_performance.conversions} /><Row k="ROAS" v={`${a.google_performance.roas}×`} />
+                  </div>
+                )}
+              </div>
+              {a.top_keywords?.length > 0 && (
+                <div style={{ marginBottom: '18px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>TOP KEYWORDS</div>
+                  {a.top_keywords.map((kw: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12.5px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <span>{kw.keyword}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{kw.clicks} clicks · {kw.ctr}% CTR · {kw.conversions} conv</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>AI RECOMMENDATIONS</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {(a.recommendations || []).map((r: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: 'rgba(255,255,255,0.03)', border: `1px solid ${sevColor[r.severity] || '#888'}44`, borderRadius: '9px', padding: '10px 12px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: sevColor[r.severity] || '#fff', whiteSpace: 'nowrap' }}>{r.action}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{r.why}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {toast && (
         <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 4000, maxWidth: '580px', background: 'rgba(20,22,30,0.97)', border: `1px solid ${toast.ok ? 'rgba(0,230,118,0.4)' : 'rgba(255,174,0,0.4)'}`, borderRadius: '12px', padding: '14px 18px', color: '#fff', fontSize: '13px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)', display: 'flex', gap: '11px', alignItems: 'center' }}>

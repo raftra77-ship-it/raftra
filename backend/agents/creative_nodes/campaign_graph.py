@@ -16,6 +16,8 @@ class CampaignState(TypedDict):
     budget: str
     audience: str
     placement: str
+    geo_targeting_level: str
+    geo_locations: list
     brief: dict          # channels, ad types, KPIs, keywords, Google copy, budget split
     campaign_spec: str
     logs: list
@@ -213,6 +215,12 @@ async def supervisor_spec_node(state: CampaignState) -> CampaignState:
         "daily_budget": state["budget"],
         "audience": state["audience"],
         "placements": state["placement"],
+        # Passed through verbatim from the user's form input - never re-derived by an LLM
+        # from prose, so the exact geography picked can't drift during strategy generation.
+        "geo_targeting": {
+            "level": state.get("geo_targeting_level") or "Country-Level",
+            "locations": state.get("geo_locations") or [],
+        },
         # ---- richer plan used by the setup screens ----
         "total_budget": total,
         "budget_split": {
@@ -255,7 +263,8 @@ workflow.add_edge("supervisor", END)
 
 campaign_graph = workflow.compile()
 
-async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-2.5-flash"):
+async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-2.5-flash",
+                                     geo_targeting_level: str = None, geo_locations: list = None):
     current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
@@ -266,6 +275,8 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
         "budget": "",
         "audience": "",
         "placement": "",
+        "geo_targeting_level": geo_targeting_level or "",
+        "geo_locations": geo_locations or [],
         "brief": {},
         "campaign_spec": "",
         "logs": []

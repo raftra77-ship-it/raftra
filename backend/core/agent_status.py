@@ -116,6 +116,32 @@ def cancel_task(workspace_id: int, agent_type: str) -> bool:
     return True
 
 
+def reconcile_all_stale_running() -> None:
+    """Call once at process startup. Every RUNNING row is necessarily stale at this point -
+    the in-memory _RUNNING_TASKS registry above is process-local and always empty on a fresh
+    boot, so nothing can legitimately still be running. Without this, a workspace whose audit
+    was mid-flight when the server last restarted shows "Running..." the instant its page is
+    opened - indistinguishable from the pipeline auto-starting - until that workspace's first
+    status poll happens to trigger the lazy per-(workspace, agent_type) check in
+    reconcile_stale_running() below. Fixing all of them up front closes that window entirely."""
+    try:
+        from database import SessionLocal
+        import models
+        with SessionLocal() as db:
+            stale = db.query(models.AgentTask).filter(models.AgentTask.status == "RUNNING").all()
+            for task in stale:
+                task.status = "FAILED"
+                task.updated_at = datetime.datetime.utcnow()
+                logs = dict(task.logs or {})
+                logs["summary"] = "Interrupted (server restarted mid-run)."
+                task.logs = logs
+            if stale:
+                db.commit()
+                print(f"[agent_status] Reconciled {len(stale)} stale RUNNING task(s) from a previous server run.")
+    except Exception as e:
+        print(f"reconcile_all_stale_running failed: {e}")
+
+
 def reconcile_stale_running(workspace_id: int, agent_type: str) -> None:
     """If the DB says RUNNING but no live in-memory task backs it (e.g. the server
     restarted mid-run), mark it FAILED so it doesn't block new runs forever."""

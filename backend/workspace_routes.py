@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import database, models, schemas, auth
 import os
+from core import meta_ads as meta, google_ads as gads
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
@@ -372,6 +373,9 @@ def approve_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(
     m = dict(camp.metrics or {})
     m["status"] = "approved"
     m["approved_at"] = _dt.datetime.utcnow().isoformat()
+    if not camp.version_group:
+        camp.version_group = f"vg-{workspace_id}-{camp.id}"
+    m = _append_activity(m, "Strategy approved")
     camp.metrics = m
     db.commit()
     return {"status": "success", "campaign_id": camp.id, "new_status": camp.status,
@@ -422,12 +426,13 @@ def campaign_ad_setup(workspace_id: int, campaign_id: int, req: schemas.AdSetupR
 
 
 @router.post("/{workspace_id}/campaigns/{campaign_id}/publish")
-def publish_campaign(workspace_id: int, campaign_id: int,
+async def publish_campaign(workspace_id: int, campaign_id: int,
                      req: Optional[schemas.PublishCampaignRequest] = None,
                      db: Session = Depends(database.get_db),
                      current_user: models.User = Depends(auth.get_current_user)):
-    """Final publish to the chosen platforms. Simulated (DEMO) until real Meta/Google credentials
-    exist — the response says so explicitly rather than implying anything went live."""
+    """Final publish to the chosen platforms. Uses the real Meta/Google Ads connection already
+    linked to this workspace when one exists (real ad account selected); otherwise falls back to
+    a simulated (DEMO) publish for that platform, and the response says so explicitly."""
     _require_workspace(workspace_id, db, current_user)
     camp = _get_campaign_or_404(workspace_id, campaign_id, db)
     if (camp.status or "").upper() not in ("APPROVED", "PUBLISHED_DEMO"):
@@ -444,18 +449,253 @@ def publish_campaign(workspace_id: int, campaign_id: int,
         raise HTTPException(status_code=409,
                             detail=f"Complete the {', '.join(p.title() for p in missing)} setup before publishing.")
 
-    import datetime as _dt
+    import datetime as _dt, random as _rand
     published = list(dict.fromkeys((m.get("published_platforms") or []) + wanted))
+    ids = dict(m.get("campaign_ids") or {})
+    modes = dict(m.get("published_modes") or {})
+    urls = dict(m.get("campaign_urls") or {})
+
+    meta_conn = db.query(models.MetaAdsConnection).filter(models.MetaAdsConnection.workspace_id == workspace_id).first()
+    gads_conn = db.query(models.GoogleAdsConnection).filter(models.GoogleAdsConnection.workspace_id == workspace_id).first()
+
+    for p in wanted:
+        if p in ids:
+            continue  # already published on a previous call — keep the existing id/mode
+        if p == "meta" and meta_conn and meta_conn.access_token and meta_conn.ad_account_id:
+            try:
+                result = await meta.publish_campaign(meta_conn, name=camp.name or "Raftra Campaign", objective=camp.objective or "")
+                ids[p] = result["campaign_id"]
+                urls[p] = result.get("url")
+                modes[p] = "real"
+                continue
+            except Exception as e:
+                m = _append_activity(m, f"Meta real publish failed, fell back to demo: {e}")
+        elif p == "google" and gads_conn and gads_conn.refresh_token and gads_conn.customer_id:
+            try:
+                result = await gads.publish_campaign(gads_conn, name=camp.name or "Raftra Campaign",
+                                                      objective=camp.objective or "", daily_budget_major=camp.daily_budget or 200.0)
+                ids[p] = result["campaign_id"]
+                urls[p] = result.get("url")
+                modes[p] = "real"
+                continue
+            except Exception as e:
+                m = _append_activity(m, f"Google Ads real publish failed, fell back to demo: {e}")
+        # No real connection (or the real publish above failed) — mock external campaign id.
+        ids[p] = (f"MOCK-META-{_rand.randint(10**11, 10**12 - 1)}" if p == "meta"
+                  else f"MOCK-GADS-{_rand.randint(100, 999)}-{_rand.randint(1000, 9999)}-{_rand.randint(1000, 9999)}")
+        modes[p] = "demo"
+
+    if not camp.version_group:
+        camp.version_group = f"vg-{workspace_id}-{camp.id}"
     camp.status = "PUBLISHED_DEMO"
+    if any(modes.get(p) == "real" for p in wanted) and camp.meta_campaign_id is None and modes.get("meta") == "real":
+        camp.meta_campaign_id = ids.get("meta")
+    overall_mode = "real" if all(modes.get(p) == "real" for p in wanted) else ("mixed" if any(modes.get(p) == "real" for p in wanted) else "demo")
     m["published_at"] = _dt.datetime.utcnow().isoformat()
-    m["published_mode"] = "demo"
+    m["published_mode"] = overall_mode
+    m["published_modes"] = modes
     m["published_platforms"] = published
+    m["campaign_ids"] = ids
+    m["campaign_urls"] = urls
+    label = ", ".join(f"{p.title()} ({modes.get(p)})" for p in wanted)
+    m = _append_activity(m, f"Published to {label}")
     camp.metrics = m
     db.commit()
-    names = " & ".join(p.title() for p in wanted)
-    return {"status": "success", "campaign_id": camp.id, "mode": "demo", "new_status": camp.status,
-            "platforms": wanted, "published_platforms": published,
-            "message": f"Published to {names} in DEMO mode — nothing was sent to a real ad account (API keys not configured)."}
+    real_names = [p.title() for p in wanted if modes.get(p) == "real"]
+    demo_names = [p.title() for p in wanted if modes.get(p) == "demo"]
+    parts = []
+    if real_names:
+        parts.append(f"Created a real PAUSED campaign on {' & '.join(real_names)} — activate it there to start spending.")
+    if demo_names:
+        parts.append(f"Published to {' & '.join(demo_names)} in DEMO mode — connect that ad account to publish for real.")
+    return {"status": "success", "campaign_id": camp.id, "mode": overall_mode, "new_status": camp.status,
+            "version": camp.version, "platforms": wanted, "published_platforms": published,
+            "campaign_ids": ids, "campaign_urls": urls, "published_modes": modes,
+            "message": " ".join(parts)}
+
+
+# ─────────────────────────────────────────── campaign helpers + persisted endpoints
+def _append_activity(m: dict, label: str, keep: int = 40) -> dict:
+    import datetime as _dt
+    log = list(m.get("activity") or [])
+    log.insert(0, {"label": label, "at": _dt.datetime.utcnow().isoformat()})
+    m["activity"] = log[:keep]
+    return m
+
+
+def _is_published(camp) -> bool:
+    return (camp.status or "").upper() == "PUBLISHED_DEMO"
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/platforms")
+def campaign_platforms(workspace_id: int, campaign_id: int, body: schemas.PlatformsBody,
+                       db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Save which platforms this campaign targets (Meta / Google / both)."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    if (camp.status or "").upper() not in ("APPROVED",):
+        raise HTTPException(status_code=409, detail="Approve the strategy first.")
+    m = dict(camp.metrics or {})
+    m["platforms"] = {"meta": bool(body.meta), "google": bool(body.google)}
+    camp.metrics = m
+    db.commit()
+    return {"status": "success", "platforms": m["platforms"]}
+
+
+def _save_review(workspace_id, campaign_id, key, data, db, current_user, label):
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    if _is_published(camp):
+        raise HTTPException(status_code=409, detail="This campaign is published — create a new version to edit it.")
+    m = dict(camp.metrics or {})
+    m[key] = data
+    m = _append_activity(m, label)
+    camp.metrics = m
+    db.commit()
+    return {"status": "success", key: data}
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/meta-review")
+def save_meta_review(workspace_id: int, campaign_id: int, body: schemas.ReviewBody,
+                     db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Persist the edited Meta review (campaign name, objective, audience, budget, placements,
+    CTA, landing page, tracking URL, creative). Read only after publish."""
+    return _save_review(workspace_id, campaign_id, "meta_review", body.data, db, current_user, "Meta review saved")
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/google-review")
+def save_google_review(workspace_id: int, campaign_id: int, body: schemas.ReviewBody,
+                       db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Persist the edited Google review (campaign type, keywords, headlines, descriptions,
+    extensions, landing page, budget, tracking URL). Read only after publish."""
+    return _save_review(workspace_id, campaign_id, "google_review", body.data, db, current_user, "Google review saved")
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/optimization")
+def save_optimization(workspace_id: int, campaign_id: int, body: schemas.OptimizationBody,
+                      db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    """Auto-kill / CPA / frequency / creative-rotation / refresh-interval. Read-only once published."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    if _is_published(camp):
+        raise HTTPException(status_code=409, detail="Optimization rules are locked after publishing.")
+    m = dict(camp.metrics or {})
+    m["optimization"] = body.data
+    m = _append_activity(m, "Optimization rules updated")
+    camp.metrics = m
+    db.commit()
+    return {"status": "success", "optimization": body.data}
+
+
+def _clone_campaign(src, *, version: int, version_group: str, status: str = "PENDING_REVIEW"):
+    """A fresh Campaign row copying the source's strategy/reviews/rules but clearing published
+    state — used by create-version and duplicate."""
+    import copy
+    m = copy.deepcopy(src.metrics or {})
+    for k in ("published_at", "published_mode", "published_platforms", "campaign_ids",
+              "meta_setup", "google_setup", "analytics"):
+        m.pop(k, None)
+    m["activity"] = []
+    return models.Campaign(
+        workspace_id=src.workspace_id, platform=src.platform, name=src.name,
+        objective=src.objective, budget=src.budget, daily_budget=src.daily_budget,
+        status=status, roas=0.0, metrics=m, version=version, version_group=version_group,
+    )
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/create-version")
+def create_version(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    """Duplicate a published campaign into the next version (V2, V3…) as an editable APPROVED
+    draft, keeping the previous version read-only. Same version_group ties them together."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    vg = camp.version_group or f"vg-{workspace_id}-{camp.id}"
+    if not camp.version_group:
+        camp.version_group = vg
+    latest = (db.query(models.Campaign)
+              .filter(models.Campaign.version_group == vg)
+              .order_by(models.Campaign.version.desc()).first())
+    next_version = (latest.version if latest else camp.version or 1) + 1
+    # New version starts APPROVED so its Select Platforms / reviews are immediately editable
+    # (the strategy is inherited and already approved).
+    new = _clone_campaign(camp, version=next_version, version_group=vg, status="APPROVED")
+    new.metrics = _append_activity(new.metrics, f"Version {next_version} created from v{camp.version}")
+    db.add(new); db.commit(); db.refresh(new)
+    return {"status": "success", "campaign_id": new.id, "version": new.version, "version_group": vg}
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/duplicate")
+def duplicate_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Copy a campaign into a brand-new campaign (its own version_group, Version 1, editable draft)."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    new = _clone_campaign(camp, version=1, version_group=None, status="APPROVED")
+    new.name = f"{camp.name} (copy)" if camp.name else "Campaign (copy)"
+    db.add(new); db.commit(); db.refresh(new)
+    new.version_group = f"vg-{workspace_id}-{new.id}"
+    new.metrics = _append_activity(new.metrics or {}, "Duplicated into a new campaign")
+    db.commit()
+    return {"status": "success", "campaign_id": new.id, "version": 1}
+
+
+@router.get("/{workspace_id}/campaigns/{campaign_id}/analytics")
+def campaign_analytics(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Realistic MOCK analytics for a published campaign (no external API). Deterministic per
+    campaign so numbers are stable across reloads. Replace with real Meta/Google insights later."""
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    m = dict(camp.metrics or {})
+    import random as _rand
+    rng = _rand.Random(campaign_id * 7919 + 13)          # stable seed
+    budget = float(camp.budget or m.get("total_budget") or 40000)
+    platforms = m.get("published_platforms") or [p for p, on in (m.get("platforms") or {}).items() if on] or ["meta", "google"]
+    spend = round(budget * rng.uniform(0.55, 0.92), 2)
+    cpm = rng.uniform(90, 260)                            # ₹ per 1000 impressions
+    impressions = int(spend / cpm * 1000)
+    reach = int(impressions * rng.uniform(0.5, 0.72))
+    ctr = round(rng.uniform(1.4, 4.6), 2)
+    clicks = int(impressions * ctr / 100)
+    conversions = max(1, int(clicks * rng.uniform(0.02, 0.06)))
+    cpa = round(spend / conversions, 2) if conversions else 0.0
+    roas = round(rng.uniform(1.6, 4.8), 2)               # realistic return on ad spend
+    revenue = round(spend * roas, 2)
+
+    def _split(total, base):
+        a = round(total * base, 2); return a, round(total - a, 2)
+    meta_share = 0.62 if len(platforms) > 1 else (1.0 if "meta" in platforms else 0.0)
+    m_spend, g_spend = _split(spend, meta_share)
+    m_conv, g_conv = _split(conversions, meta_share)
+
+    kws = (m.get("top_keywords") or (m.get("google_review") or {}).get("keywords") or
+           ["online course", "learn coding", "interview prep", "dsa practice", "placement guide"])[:6]
+    top_keywords = [{"keyword": k, "clicks": int(clicks * rng.uniform(0.05, 0.22)),
+                     "ctr": round(rng.uniform(1.8, 6.2), 2), "conversions": max(0, int(conversions * rng.uniform(0.05, 0.2)))}
+                    for k in kws]
+    recs = []
+    if roas >= 2.5: recs.append({"action": "Increase Budget", "why": f"ROAS {roas}× is well above target — scale to capture more volume.", "severity": "good"})
+    if ctr < 2.0: recs.append({"action": "Rotate Creative", "why": f"CTR {ctr}% is soft — refresh the creative to fight fatigue.", "severity": "warn"})
+    if cpa > budget * 0.05: recs.append({"action": "Pause Campaign", "why": f"CPA ₹{cpa} is high relative to budget — pause or tighten targeting.", "severity": "critical"})
+    if not recs: recs.append({"action": "Keep Running", "why": "Delivery is healthy and on-target.", "severity": "good"})
+
+    return {
+        "campaign_id": campaign_id, "name": camp.name, "version": camp.version,
+        "status": camp.status, "published": _is_published(camp),
+        "demo": True, "budget": budget, "platforms": platforms,
+        "totals": {"impressions": impressions, "reach": reach, "clicks": clicks, "ctr": ctr,
+                   "conversions": conversions, "cpa": cpa, "spend": spend, "roas": roas, "revenue": revenue},
+        "meta_performance": {"spend": m_spend, "conversions": int(m_conv), "roas": round(roas * rng.uniform(0.9, 1.15), 2)} if "meta" in platforms else None,
+        "google_performance": {"spend": g_spend, "conversions": int(g_conv), "roas": round(roas * rng.uniform(0.85, 1.1), 2)} if "google" in platforms else None,
+        "top_keywords": top_keywords,
+        "best_creative": {"image_url": m.get("image_url"), "ctr": round(ctr * rng.uniform(1.1, 1.5), 2), "label": "Best performing creative"},
+        "recommendations": recs,
+    }
 
 
 @router.post("/{workspace_id}/campaigns/{campaign_id}/toggle")

@@ -296,12 +296,47 @@ async def technical_seo_node(state: SEOState) -> SEOState:
 async def keyword_agent_node(state: SEOState) -> SEOState:
     state["current_node"] = "Keyword Agent"
     await manager.broadcast_node_update("seo_geo", "Keyword Agent", "running")
-    # REAL analysis: top keywords by frequency from the crawled content.
+    # On-page term frequency (what the page itself talks about) - kept as-is, it's what the
+    # Content category's title/H1 topical-focus check uses.
     metrics = state.get("content_metrics") or {}
     top = metrics.get("top_keywords", [])
     state["keyword_clusters"] = {"top_keywords": top}
-    preview = ", ".join(f"{k['term']}({k['count']})" for k in top[:6]) or "no content to analyze"
-    msg = f"Keyword frequency analysis - top terms: {preview}"
+
+    # REAL keyword intelligence: what people actually search to find this site, pulled from
+    # Search Console when connected - genuine search demand (clicks/impressions/position),
+    # not a guess derived from the page's own wording. Degrades honestly when not connected
+    # rather than fabricating volumes.
+    real_keywords = {
+        "source": "none", "queries": [],
+        "message": "Connect Google Search Console to see the real queries driving traffic to this page.",
+    }
+    try:
+        from database import SessionLocal
+        import models
+        from core import search_console
+        with SessionLocal() as db:
+            conn = db.query(models.SearchConsoleConnection).filter(
+                models.SearchConsoleConnection.workspace_id == state["workspace_id"]
+            ).first()
+            if conn and conn.refresh_token and conn.site_url:
+                data = await asyncio.to_thread(search_console.fetch_search_analytics, conn, 28, 15)
+                real_keywords = {"source": "search_console", "queries": data["rows"],
+                                 "range_days": data["range_days"], "message": None}
+                # Persist any refreshed access token from credentials_from_connection().
+                db.commit()
+    except Exception as e:
+        real_keywords = {"source": "error", "queries": [], "message": f"Could not load Search Console data: {e}"}
+
+    state["keyword_clusters"]["real_search_queries"] = real_keywords
+    if state.get("audit"):
+        state["audit"]["real_keywords"] = real_keywords
+
+    on_page_preview = ", ".join(f"{k['term']}({k['count']})" for k in top[:6]) or "no content to analyze"
+    if real_keywords["source"] == "search_console":
+        gsc_preview = ", ".join(q["query"] for q in real_keywords["queries"][:5]) or "no queries yet"
+        msg = f"Real search queries (Search Console): {gsc_preview}. On-page terms: {on_page_preview}"
+    else:
+        msg = f"On-page term frequency only (Search Console not connected) — top terms: {on_page_preview}"
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Keyword Agent", "completed")

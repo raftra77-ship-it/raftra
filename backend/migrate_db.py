@@ -8,7 +8,8 @@ statements = [
     "ALTER TABLE users ADD COLUMN payment_status VARCHAR DEFAULT 'pending'",
     "ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR UNIQUE",
     "ALTER TABLE users ADD COLUMN billing_balance FLOAT DEFAULT 0.0",
-    "ALTER TABLE users ADD COLUMN unlocked_nodes VARCHAR DEFAULT ''"
+    "ALTER TABLE users ADD COLUMN unlocked_nodes VARCHAR DEFAULT ''",
+    "ALTER TABLE transactions ADD COLUMN purpose VARCHAR DEFAULT 'subscription'"
 ]
 
 for stmt in statements:

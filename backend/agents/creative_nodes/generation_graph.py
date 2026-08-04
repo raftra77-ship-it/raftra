@@ -10,6 +10,69 @@ from core.providers.image_providers import FluxSchnellProvider, GPTImageProvider
 from database import SessionLocal
 import models
 
+# The brief handed to the art-director LLM call before any image provider runs - upgrades a
+# raw ad request into a fully-specified commercial ad-photography scene (hero subject, premium
+# lighting, clean negative space for headline/CTA, no text/logos so the image works as pure
+# creative behind overlaid copy).
+CREATIVE_DIRECTOR_PROMPT = """You are an award-winning Creative Director specializing in high-converting commercial advertising.
+
+Create a premium advertisement-quality image.
+
+User Request:
+{user_prompt}
+
+Requirements:
+
+Transform the user's request into a visually stunning commercial advertisement.
+
+The image should look like it was designed by a professional advertising agency.
+
+Use cinematic composition, premium lighting, realistic shadows, rich colors, modern styling, and professional marketing aesthetics.
+
+The image must have:
+- One clear hero subject
+- Strong focal point
+- Premium commercial photography
+- Luxury color grading
+- Realistic environment
+- High visual impact
+- Natural depth of field
+- Balanced composition
+- Photorealistic quality
+
+Reserve clean negative space:
+- Top area for headline
+- Bottom area for CTA
+- Keep these areas visually clean without distracting objects
+
+DO NOT generate:
+- Text
+- Logos
+- Watermarks
+- Buttons
+- Labels
+- UI elements
+- Brand names
+
+The image should feel suitable for:
+- Facebook Ads
+- Instagram Ads
+- Google Display Ads
+- LinkedIn Ads
+- Landing pages
+
+Style:
+Photorealistic
+Commercial photography
+Luxury advertising
+Modern branding
+Award-winning creative direction
+Studio lighting
+Sharp focus
+Ultra detailed
+Premium quality
+8K"""
+
 # --- Schema Definitions ---
 
 class GenerationState(TypedDict):
@@ -210,32 +273,34 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
     if provider_name in ["gpt_image", "flux_pro"]:
         img_provider = GPTImageProvider()
     else:
-        # Default to FluxSchnellProvider (Pollinations free API) for all others in demo
+        # Default to FluxSchnellProvider (Pollinations free API). NanoBananaProvider
+        # (Gemini 2.5 Flash Image) is built and ready in image_providers.py - switch back to
+        # it once billing is enabled on the Gemini API key (free tier has 0 image quota).
         img_provider = FluxSchnellProvider()
         
     # Build a FOCUSED visual prompt. Previously the full marketing strategy (prose) was
     # appended here - an image model can't use prose, it latches onto scattered words, so
-    # the picture looked unrelated to the request. Use a short "art director" LLM call to
-    # turn the request into a clean visual scene description instead.
+    # the picture looked unrelated to the request. Use a "creative director" LLM call to
+    # turn the request into a premium, poster-quality visual scene description instead.
     llm_model = state.get("model", "gemini-2.0-flash")
     art_llm = GeminiProvider() if "gemini" in llm_model.lower() else OpenRouterProvider()
     brand_colors = state.get("cached_colors") or []
     color_hint = f" Incorporate brand colors {', '.join(brand_colors[:3])}." if brand_colors else ""
     try:
         image_prompt = await art_llm.generate_text(
-            f"Ad request: {state['prompt']}\n"
-            f"Write ONE concise image-generation prompt (under 40 words) describing the visual "
-            f"scene for this ad's creative: subject, setting, and style only.{color_hint}",
-            system_prompt="You are an art director writing prompts for an image model. Output only the image prompt itself - no labels, no marketing copy, no text-overlay instructions.",
+            CREATIVE_DIRECTOR_PROMPT.format(user_prompt=state['prompt']) + color_hint,
+            system_prompt="You are an art director writing prompts for an image-generation model. "
+                          "Output ONLY the final image prompt itself (one paragraph, under 60 words) - "
+                          "no labels, no headers, no marketing copy, no text-overlay instructions.",
             model_name=llm_model,
-            max_output_tokens=100,
+            max_output_tokens=150,
         )
         image_prompt = image_prompt.strip().strip('"')
     except LLMProviderError:
         # Fall back to the raw request (still the subject) rather than the strategy essay.
         image_prompt = state.get("prompt", "advertisement")
     # Style/safety suffix so results look like ad creative and avoid garbled text overlays.
-    image_prompt = f"{image_prompt}. Commercial advertising photography, high detail, sharp focus, no text."
+    image_prompt = f"{image_prompt}. Commercial advertising photography, high detail, sharp focus, no text, no logos, no watermarks."
 
     try:
         image_url = await img_provider.generate_image(image_prompt, aspect_ratio=state.get("ad_ratio", "16:9"))

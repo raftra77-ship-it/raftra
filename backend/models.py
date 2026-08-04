@@ -47,6 +47,7 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     amount = Column(Float)
     currency = Column(String, default="inr") # Razorpay default INR
+    purpose = Column(String, default="subscription")  # subscription, topup
     razorpay_order_id = Column(String, unique=True, nullable=True)
     razorpay_payment_id = Column(String, unique=True, nullable=True)
     status = Column(String)  # created, paid, failed
@@ -136,10 +137,13 @@ class Campaign(Base):
     objective = Column(String, nullable=True)
     budget = Column(Float, default=0.0)              # lifetime/total budget entered by the user
     daily_budget = Column(Float, nullable=True)      # daily budget (Meta uses minor units internally)
-    status = Column(String)  # DRAFT, PENDING_REVIEW, ACTIVE, PAUSED
+    status = Column(String)  # DRAFT, PENDING_REVIEW, APPROVED, PUBLISHED_DEMO, PAUSED
     roas = Column(Float, default=0.0)
     meta_campaign_id = Column(String, nullable=True) # id of the campaign created on Meta
-    metrics = Column(JSON, nullable=True)            # last-synced insights + linkage (e.g. {"meta": {...}, "insights": {...}})
+    metrics = Column(JSON, nullable=True)            # everything structured: strategy, reviews, rules, activity, analytics
+    # ── versioning: all versions of one campaign share a version_group; version increments ──
+    version = Column(Integer, default=1)
+    version_group = Column(String, nullable=True, index=True)
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     workspace = relationship("Workspace", back_populates="campaigns")
@@ -353,6 +357,21 @@ class MetaAdsConnection(Base):
     token_expiry = Column(DateTime, nullable=True)
     connected_name = Column(String, nullable=True)   # connected Meta user
     ad_account_id = Column(String, nullable=True)    # selected act_ id (without prefix)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class GoogleAdsConnection(Base):
+    """Per-workspace Google Ads connection. Google access tokens are short-lived (~1hr), so
+    unlike Meta's long-lived token we store a refresh_token and mint access tokens on demand."""
+    __tablename__ = "google_ads_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    access_token = Column(String, nullable=True)
+    refresh_token = Column(String, nullable=True)
+    token_expiry = Column(DateTime, nullable=True)
+    connected_email = Column(String, nullable=True)   # connected Google account
+    customer_id = Column(String, nullable=True)       # selected Google Ads customer id (digits only)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

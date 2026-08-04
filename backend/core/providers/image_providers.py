@@ -1,7 +1,40 @@
+import base64
 import httpx
 import os
 import random
 from .base import ImageProvider, ImageProviderError
+
+
+class NanoBananaProvider(ImageProvider):
+    """Gemini 2.5 Flash Image ("Nano Banana") - Google's image-generation model, reachable
+    with the same GEMINI_API_KEY already used for text. Returns a data: URL directly (the
+    API returns inline base64 bytes, not a hosted link) - same pattern already used for
+    user-uploaded creative images elsewhere in this app."""
+    async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ImageProviderError("GEMINI_API_KEY is not set.")
+
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["IMAGE"]},
+        }
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(url, params={"key": api_key}, json=payload)
+        if r.status_code != 200:
+            raise ImageProviderError(f"Nano Banana (Gemini image) API returned {r.status_code}: {r.text[:300]}")
+        data = r.json()
+        try:
+            parts = data["candidates"][0]["content"]["parts"]
+        except (KeyError, IndexError):
+            raise ImageProviderError(f"Nano Banana returned no image candidates: {str(data)[:300]}")
+        for part in parts:
+            inline = part.get("inlineData") or part.get("inline_data")
+            if inline and inline.get("data"):
+                mime = inline.get("mimeType") or inline.get("mime_type") or "image/png"
+                return f"data:{mime};base64,{inline['data']}"
+        raise ImageProviderError("Nano Banana response contained no image data.")
 
 class FluxSchnellProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:

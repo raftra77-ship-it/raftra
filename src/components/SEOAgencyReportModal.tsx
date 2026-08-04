@@ -433,6 +433,11 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
               </>
             )}
 
+            {/* Connect & Publish — pulled up to the top so it isn't lost below the audit
+                findings. Self-contained (fetches its own status/items), so it works even
+                before an audit has run — connecting early is encouraged. */}
+            {!viewingDate && <ImplementChangesSection workspaceId={workspaceId} refreshKey={`${seoRun.status}-${geoRun.status}`} highlight />}
+
             {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading report…</p>}
 
             {!loading && !report?.has_audit && !anyRunning && (
@@ -492,6 +497,27 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
                       <span style={{ color: scoreColor(report.seo.audit.seo.score_100) }}>{report.seo.audit.seo.score_100}/100</span>
                     </h3>
                     {report.seo.audit.seo.categories.map((c: any) => <CategoryRow key={c.name} c={c} />)}
+                    {report.seo.audit.real_keywords && (
+                      <div style={{ marginTop: '4px', marginBottom: '4px', padding: '12px 14px', background: 'rgba(0,255,157,0.05)', border: '1px solid rgba(0,255,157,0.2)', borderRadius: '10px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff', marginBottom: '6px' }}>Real Search Queries</div>
+                        {report.seo.audit.real_keywords.source === 'search_console' ? (
+                          report.seo.audit.real_keywords.queries.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              {report.seo.audit.real_keywords.queries.slice(0, 10).map((q: any) => (
+                                <div key={q.query} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '11.5px' }}>
+                                  <span style={{ color: '#fff' }}>{q.query}</span>
+                                  <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{q.clicks} clicks · {q.impressions} impr · pos {q.position}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Connected, but no query data yet for the last 28 days.</p>
+                          )
+                        ) : (
+                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>{report.seo.audit.real_keywords.message}</p>
+                        )}
+                      </div>
+                    )}
                     <NarrativeReport label="SEO" text={report.seo.narrative_report} />
                   </div>
                 )}
@@ -616,10 +642,6 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
               </>
             )}
 
-            {/* 6. Implement Approved Changes */}
-            {!viewingDate && report?.has_audit && (
-              <ImplementChangesSection workspaceId={workspaceId} refreshKey={`${seoRun.status}-${geoRun.status}`} />
-            )}
 
             {/* Finished? Run another audit to verify the improvements */}
             {!viewingDate && report?.has_audit && !anyRunning && (
@@ -750,10 +772,12 @@ const CompareModal: React.FC<{ workspaceId: number | null; onClose: () => void }
   );
 };
 
-// "6. Implement Approved Changes" — shows the approved/edited items ready to apply, then lets
+// "Implement Approved Changes" — shows the approved/edited items ready to apply, then lets
 // the user open (if connected) or connect (inline, reusing the real connector panels — no
-// duplicate OAuth flow) each platform where the site actually lives.
-const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey: string }> = ({ workspaceId, refreshKey }) => {
+// duplicate OAuth flow) each platform where the site actually lives. Rendered at the top of
+// the report (highlight=true) so it isn't lost below the audit findings — it's fully
+// self-contained (own fetches), so it renders safely even before an audit has run.
+const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey: string; highlight?: boolean }> = ({ workspaceId, refreshKey, highlight }) => {
   const [items, setItems] = React.useState<any[]>([]);
   const [st, setSt] = React.useState<{ gh?: any; wp?: any; sh?: any }>({});
   const [ghMap, setGhMap] = React.useState<any>(null);   // GitHub repo scan summary
@@ -912,11 +936,32 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
       openLabel: 'Open Store', connectLabel: 'Connect Shopify', Panel: ShopifyPanel },
   ];
 
+  const connectedCount = cards.filter(c => c.connected).length;
+
   return (
-    <div style={{ marginTop: '10px', paddingTop: '18px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-      <h3 style={{ fontSize: '14px', margin: '0 0 4px', color: '#fff' }}>6. Implement Approved Changes</h3>
+    <div style={highlight ? {
+      marginBottom: '22px', padding: '18px 20px', borderRadius: '14px',
+      background: connectedCount > 0 ? 'rgba(0,255,157,0.05)' : 'rgba(255,174,0,0.06)',
+      border: `1px solid ${connectedCount > 0 ? 'rgba(0,255,157,0.25)' : 'rgba(255,174,0,0.3)'}`,
+    } : { marginTop: '10px', paddingTop: '18px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '4px' }}>
+        <h3 style={{ fontSize: highlight ? '15px' : '14px', margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {highlight && <Globe size={16} style={{ color: connectedCount > 0 ? '#00ff9d' : '#ffae00', flexShrink: 0 }} />}
+          {highlight ? 'Connect &amp; Publish Your Site' : 'Implement Approved Changes'}
+        </h3>
+        {highlight && (
+          <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px',
+            color: connectedCount > 0 ? '#00ff9d' : '#ffae00',
+            background: connectedCount > 0 ? 'rgba(0,255,157,0.1)' : 'rgba(255,174,0,0.12)',
+            border: `1px solid ${connectedCount > 0 ? 'rgba(0,255,157,0.35)' : 'rgba(255,174,0,0.4)'}` }}>
+            {connectedCount}/3 connected
+          </span>
+        )}
+      </div>
       <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
-        Apply your approved SEO fixes using your connected website platform.
+        {highlight
+          ? 'Connect GitHub, WordPress or Shopify here first — this is where you apply approved SEO fixes and publish content to your live site.'
+          : 'Apply your approved SEO fixes using your connected website platform.'}
       </p>
 
       {items.length > 0 && (
@@ -1028,13 +1073,13 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
               </div>
             )}
 
-            {/* Theme-level SEO: title/meta/canonical/OG/Twitter/JSON-LD live in Liquid theme
+            {/* Theme-level SEO: JSON-LD (and eventually canonical/OG) live in Liquid theme
                 files, not Page metafields — always applied to a duplicated DRAFT theme, never
                 the live one. We never publish it; the human does that in Shopify Admin. */}
             {c.key === 'sh' && c.connected && (
               <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border-color)' }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: '#fff', marginBottom: '7px' }}>
-                  Theme-Level SEO (canonical, OG, JSON-LD)
+                  Theme-Level SEO (JSON-LD Organization schema)
                 </div>
                 {!themeStatus ? (
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Loading…</span>
@@ -1084,6 +1129,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                       </button>
                     </div>
                     <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                      Includes real Organization JSON-LD (name + url from your workspace) injected into &lt;head&gt;.
                       Publish this draft yourself in Shopify Admin → Online Store → Themes when you're happy with it.
                     </p>
                   </div>
@@ -1124,7 +1170,8 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                   </div>
                 )}
                 <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
-                  Only page title/content are auto-edited — SEO meta tags need a plugin, so those stay manual.
+                  Page title/content are auto-edited, and real Organization JSON-LD is embedded in the page —
+                  SEO meta title/description tags need a plugin, so those stay manual.
                 </p>
               </div>
             )}

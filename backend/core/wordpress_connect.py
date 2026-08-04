@@ -104,6 +104,23 @@ async def update_page_content(conn, page_id: int, title: str, content: str) -> d
     }
 
 
+_JSONLD_START = "<!-- raftra:jsonld:start -->"
+_JSONLD_END = "<!-- raftra:jsonld:end -->"
+
+
+def inject_jsonld(content: str, jsonld_json: str) -> str:
+    """Embed (or replace) an Organization JSON-LD <script> block in a page's content.
+    WordPress core has no site-wide JSON-LD location without a plugin, so this writes it
+    straight into the page body between marker comments — idempotent, so re-applying
+    replaces the previous block instead of duplicating it. Note: WordPress's REST API
+    strips <script> tags via wp_kses for users without the unfiltered_html capability
+    (non-Administrators) — the connected Application Password must belong to an Admin."""
+    block = f'{_JSONLD_START}\n<script type="application/ld+json">\n{jsonld_json}\n</script>\n{_JSONLD_END}'
+    if _JSONLD_START in content:
+        return re.sub(re.escape(_JSONLD_START) + r".*?" + re.escape(_JSONLD_END), block, content, flags=re.DOTALL)
+    return content.rstrip() + "\n\n" + block
+
+
 async def publish_markdown(conn, title: str, body: str, status: str = "draft") -> dict:
     """Create a WordPress post from markdown. Draft by default — a human publishes it."""
     html = markdown_to_html(body)
