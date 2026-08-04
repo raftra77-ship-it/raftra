@@ -11,7 +11,8 @@
       "Local / City-based"
     ],
     "category": "Micro",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹3,000",
+    "priceRange": "₹1,000 - ₹3,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -42,7 +43,8 @@
       "Local / City-based, Fashion"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹5,000",
+    "priceRange": "₹2,000 - ₹6,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -73,7 +75,8 @@
       "Art"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹3,000",
+    "priceRange": "₹1,000 - ₹3,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -104,7 +107,8 @@
       "Education, Tech, Fashion, Lifestyle, Food"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹2,500",
+    "priceRange": "₹400 - ₹5,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -136,6 +140,7 @@
     ],
     "category": "Nano",
     "expectedPrice": "Can discuss",
+    "priceRange": "Can discuss",
     "deliverables": [
       "Reel",
       "Story",
@@ -166,7 +171,8 @@
       "Fashion, Lifestyle, Beauty"
     ],
     "category": "Micro",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹700",
+    "priceRange": "₹200 - ₹1,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -197,7 +203,8 @@
       "Fitness, Food"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹1,500",
+    "priceRange": "₹500 - ₹10,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -228,7 +235,8 @@
       "Fitness, Lifestyle"
     ],
     "category": "Micro",
-    "expectedPrice": "\u20b92,545",
+    "expectedPrice": "₹25,000",
+    "priceRange": "₹4,000 - ₹25,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -259,7 +267,8 @@
       "Fashion"
     ],
     "category": "Nano",
-    "expectedPrice": "\u20b9532",
+    "expectedPrice": "₹5,000",
+    "priceRange": "₹2,000 - ₹5,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -290,7 +299,8 @@
       "Fashion, Lifestyle"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹1,000",
+    "priceRange": "₹300 - ₹2,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -321,7 +331,8 @@
       "Lifestyle, Food, Couple reels"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹10,000",
+    "priceRange": "₹5,000 - ₹10,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -352,7 +363,8 @@
       "Education, Tech, AI, financial independence"
     ],
     "category": "Micro",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹8,000",
+    "priceRange": "₹2,000 - ₹20,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -383,7 +395,8 @@
       "Fashion, Lifestyle, Food"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹1,500",
+    "priceRange": "₹350 - ₹2,200",
     "deliverables": [
       "Reel",
       "Story",
@@ -414,7 +427,8 @@
       "Fitness, Fashion, Lifestyle, Food"
     ],
     "category": "Micro",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹4,000",
+    "priceRange": "₹1,500 - ₹7,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -445,7 +459,8 @@
       "Fashion, Lifestyle, Food"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹3,000",
+    "priceRange": "₹1,000 - ₹3,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -476,7 +491,8 @@
       "Fitness, Fashion, Lifestyle"
     ],
     "category": "Nano",
-    "expectedPrice": "\u20b94,114",
+    "expectedPrice": "₹4,000",
+    "priceRange": "₹1,000 - ₹4,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -507,7 +523,8 @@
       "Lifestyle"
     ],
     "category": "Micro",
-    "expectedPrice": "\u20b94,500",
+    "expectedPrice": "₹4,000",
+    "priceRange": "₹500 - ₹4,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -539,6 +556,7 @@
     ],
     "category": "Macro",
     "expectedPrice": "Can discuss",
+    "priceRange": "Can discuss",
     "deliverables": [
       "Reel",
       "Story",
@@ -569,7 +587,8 @@
       "Couple content, content creator"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹900",
+    "priceRange": "₹500 - ₹5,000",
     "deliverables": [
       "Reel",
       "Story",
@@ -600,7 +619,8 @@
       "Fashion, Lifestyle"
     ],
     "category": "Nano",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹3,500",
+    "priceRange": "₹800 - ₹4,800",
     "deliverables": [
       "Reel",
       "Story",
@@ -631,7 +651,8 @@
       "Fitness, Fashion, Lifestyle"
     ],
     "category": "Micro",
-    "expectedPrice": "Can discuss",
+    "expectedPrice": "₹40,000",
+    "priceRange": "₹10,000 - ₹80,000",
     "deliverables": [
       "Reel",
       "Story",
