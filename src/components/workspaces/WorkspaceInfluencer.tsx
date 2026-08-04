@@ -188,6 +188,18 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     return isNaN(val) ? 0 : val;
   };
 
+  const parseReachNum = (str: string): number => {
+    if (!str) return 0;
+    const clean = str.toLowerCase().replace(/,/g, '').trim();
+    const mMatch = clean.match(/([\d\.]+)\s*m/);
+    if (mMatch) return parseFloat(mMatch[1]) * 1000000;
+    const kMatch = clean.match(/([\d\.]+)\s*k/);
+    if (kMatch) return parseFloat(kMatch[1]) * 1000;
+    const digits = clean.replace(/[^\d]/g, '');
+    const val = parseFloat(digits);
+    return isNaN(val) ? 0 : val;
+  };
+
   const sortedCreators = [...filteredCreators].sort((a, b) => {
     if (sortBy === 'followers_desc') {
       return parseFollowerNum(b.followers) - parseFollowerNum(a.followers);
@@ -205,7 +217,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       if (pB === 0) return -1;
       return pA - pB;
     }
-    return 0;
+    // Recommended default: Sort by total Reach / Avg Views (High to Low)
+    return parseReachNum(b.avgViews || '') - parseReachNum(a.avgViews || '');
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -412,67 +425,63 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           ))}
         </div>
 
-        <div className="glow-card" style={{ padding: '14px 16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '130px', fontWeight: 700 }}>
-            ⚡ FOLLOWERS:
-          </span>
-          {[
-            { id: 'All', label: 'All Creators' },
-            { id: 'Nano', label: 'Nano (< 10k)' },
-            { id: 'Micro', label: 'Micro (10k - 100k)' },
-            { id: 'Macro', label: 'Macro (100k+)' }
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setFilterFollowers(item.id)}
-              style={{
-                padding: '6px 16px',
-                fontSize: '12px',
-                background: filterFollowers === item.id ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.02)',
-                border: '1px solid',
-                borderColor: filterFollowers === item.id ? '#5A52FF' : 'var(--border)',
-                borderRadius: '20px',
-                color: filterFollowers === item.id ? '#fff' : 'var(--text-secondary)',
-                fontWeight: filterFollowers === item.id ? 700 : 400,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <div className="glow-card" style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+            <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '110px', fontWeight: 700 }}>
+              ⚡ FOLLOWERS:
+            </span>
+            {[
+              { id: 'All', label: 'All Creators' },
+              { id: 'Nano', label: 'Nano (< 10k)' },
+              { id: 'Micro', label: 'Micro (10k - 100k)' },
+              { id: 'Macro', label: 'Macro (100k+)' }
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setFilterFollowers(item.id)}
+                style={{
+                  padding: '5px 14px',
+                  fontSize: '11.5px',
+                  background: filterFollowers === item.id ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.02)',
+                  border: '1px solid',
+                  borderColor: filterFollowers === item.id ? '#5A52FF' : 'var(--border)',
+                  borderRadius: '20px',
+                  color: filterFollowers === item.id ? '#fff' : 'var(--text-secondary)',
+                  fontWeight: filterFollowers === item.id ? 700 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
-        <div className="glow-card" style={{ padding: '14px 16px', display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
-              <ArrowUpDown size={14} color="#00E676" /> SORT BY:
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <ArrowUpDown size={12} color="#00E676" /> Sort:
             </span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid #00E676',
-                borderRadius: '8px',
-                color: '#fff',
-                padding: '6px 14px',
-                fontSize: '13px',
+                background: 'rgba(0, 230, 118, 0.1)',
+                border: '1px solid rgba(0, 230, 118, 0.3)',
+                borderRadius: '6px',
+                color: '#00E676',
+                padding: '4px 10px',
+                fontSize: '11.5px',
                 fontWeight: 600,
                 outline: 'none',
                 cursor: 'pointer'
               }}
             >
-              <option value="featured" style={{ background: '#121216', color: '#fff' }}>Recommended (Featured)</option>
-              <option value="followers_desc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: High to Low ⬇️</option>
-              <option value="followers_asc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: Low to High ⬆️</option>
-              <option value="price_desc" style={{ background: '#121216', color: '#fff' }}>💰 Pricing: High to Low ⬇️</option>
-              <option value="price_asc" style={{ background: '#121216', color: '#fff' }}>💰 Pricing: Low to High ⬆️</option>
+              <option value="featured" style={{ background: '#121216', color: '#fff' }}>🔥 Top Reach (Recommended)</option>
+              <option value="followers_desc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: High ➔ Low ⬇️</option>
+              <option value="followers_asc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: Low ➔ High ⬆️</option>
+              <option value="price_desc" style={{ background: '#121216', color: '#fff' }}>💰 Price: High ➔ Low ⬇️</option>
+              <option value="price_asc" style={{ background: '#121216', color: '#fff' }}>💰 Price: Low ➔ High ⬆️</option>
             </select>
-          </div>
-
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            Showing <strong style={{ color: '#00E676' }}>{sortedCreators.length}</strong> Creators
           </div>
         </div>
       </div>
