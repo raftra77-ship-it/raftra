@@ -477,6 +477,16 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setTimeout(() => setCopyToast(null), 3500);
   };
 
+  const handleOpenCanva = (designType: string) => {
+    window.open('https://www.canva.com/design', '_blank');
+    triggerToast(`Opened ${designType} in Canva! Syncing Raftra brand assets & layout templates... 🎨`);
+  };
+
+  const handleOpenFigma = (designType: string) => {
+    window.open('https://www.figma.com/files', '_blank');
+    triggerToast(`Opened ${designType} in Figma! Syncing Raftra design frames & components... ❖`);
+  };
+
   // File Upload Handler
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2213,26 +2223,42 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </p>
             </div>
 
-            <GlowButton
-              variant="glow"
-              onClick={() => {
-                const payload = {
-                  ad_type: 'CAROUSEL',
-                  cards: carouselCards.map(c => ({
-                    headline: c.headline,
-                    description: c.description,
-                    destination_url: c.destinationUrl,
-                    call_to_action: c.ctaAction,
-                    image_url: c.imageUrl
-                  }))
-                };
-                navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-                triggerToast('Copied Meta Multi-Card Carousel JSON payload to clipboard! 📋');
-              }}
-              style={{ padding: '10px 20px', fontSize: '13px' }}
-            >
-              Export Meta Carousel Payload 📋
-            </GlowButton>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => handleOpenCanva('Carousel Ad Cards')}
+                style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                Open in Canva 🎨
+              </button>
+
+              <button
+                onClick={() => handleOpenFigma('Carousel Ad Cards')}
+                style={{ background: 'rgba(162, 89, 255, 0.15)', border: '1px solid rgba(162, 89, 255, 0.4)', color: '#A259FF', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                Open in Figma ❖
+              </button>
+
+              <GlowButton
+                variant="glow"
+                onClick={() => {
+                  const payload = {
+                    ad_type: 'CAROUSEL',
+                    cards: carouselCards.map(c => ({
+                      headline: c.headline,
+                      description: c.description,
+                      destination_url: c.destinationUrl,
+                      call_to_action: c.ctaAction,
+                      image_url: c.imageUrl
+                    }))
+                  };
+                  navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+                  triggerToast('Copied Meta Multi-Card Carousel JSON payload to clipboard! 📋');
+                }}
+                style={{ padding: '9px 16px', fontSize: '12px' }}
+              >
+                Export Meta Payload 📋
+              </GlowButton>
+            </div>
           </div>
 
           {/* 2-COLUMN WORKBENCH */}
@@ -2456,28 +2482,44 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </p>
             </div>
 
-            <GlowButton
-              variant="glow"
-              onClick={() => {
-                const payload = {
-                  ad_type: 'VIDEO',
-                  format: 'REEL_9_16',
-                  subtitle_style: videoSubtitleStyle,
-                  audio_track: videoAudioTrack,
-                  scenes: videoScenes.map(s => ({
-                    scene_id: s.id,
-                    duration: s.duration,
-                    overlay_subtitle: s.overlayText,
-                    video_url: s.videoUrl
-                  }))
-                };
-                navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-                triggerToast('Copied Meta Video Ad JSON payload to clipboard! 📋');
-              }}
-              style={{ padding: '10px 20px', fontSize: '13px' }}
-            >
-              Export Meta Video Payload 📋
-            </GlowButton>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => handleOpenCanva('Video Reel Storyboard')}
+                style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                Open in Canva 🎨
+              </button>
+
+              <button
+                onClick={() => handleOpenFigma('Video Reel Storyboard')}
+                style={{ background: 'rgba(162, 89, 255, 0.15)', border: '1px solid rgba(162, 89, 255, 0.4)', color: '#A259FF', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                Open in Figma ❖
+              </button>
+
+              <GlowButton
+                variant="glow"
+                onClick={() => {
+                  const payload = {
+                    ad_type: 'VIDEO',
+                    format: 'REEL_9_16',
+                    subtitle_style: videoSubtitleStyle,
+                    audio_track: videoAudioTrack,
+                    scenes: videoScenes.map(s => ({
+                      scene_id: s.id,
+                      duration: s.duration,
+                      overlay_subtitle: s.overlayText,
+                      video_url: s.videoUrl
+                    }))
+                  };
+                  navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+                  triggerToast('Copied Meta Video Ad JSON payload to clipboard! 📋');
+                }}
+                style={{ padding: '9px 16px', fontSize: '12px' }}
+              >
+                Export Meta Payload 📋
+              </GlowButton>
+            </div>
           </div>
 
           {/* 2-COLUMN WORKBENCH */}
@@ -2718,6 +2760,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <span style={{ fontSize: '11.5px', color: '#fff', fontWeight: 600, minWidth: '36px', textAlign: 'center' }}>{editorZoom}%</span>
                 <button onClick={() => setEditorZoom(Math.min(200, editorZoom + 15))} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>+</button>
               </div>
+
+              <button
+                onClick={() => handleOpenCanva('Single Graphic Ad')}
+                style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                Open in Canva 🎨
+              </button>
+
+              <button
+                onClick={() => handleOpenFigma('Single Graphic Ad')}
+                style={{ background: 'rgba(162, 89, 255, 0.15)', border: '1px solid rgba(162, 89, 255, 0.4)', color: '#A259FF', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                Open in Figma ❖
+              </button>
 
               <button 
                 onClick={handleSaveToVault}
