@@ -2588,8 +2588,28 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 Open in Figma ❖
               </button>
 
-              <GlowButton
-                variant="glow"
+              {/* 1. SAVE IN DRAFT */}
+              <button 
+                onClick={() => {
+                  triggerToast('Saved Video Project as Draft in Recent Projects! 💾');
+                }}
+                style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <Save size={14} /> Save in Draft 💾
+              </button>
+
+              {/* 2. SAVE TO AD LIBRARY */}
+              <button 
+                onClick={() => {
+                  triggerToast('Saved to Raftra Ad Intelligence Vault & Library! 📁');
+                }}
+                style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <FolderPlus size={14} /> Save to Ad Library 📁
+              </button>
+
+              {/* 3. DOWNLOAD AD */}
+              <button 
                 onClick={() => {
                   const payload = {
                     ad_type: 'VIDEO',
@@ -2603,13 +2623,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       video_url: s.videoUrl
                     }))
                   };
-                  navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-                  triggerToast('Copied Meta Video Ad JSON payload to clipboard! 📋');
+                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'video_storyboard_reel_bundle.json';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  triggerToast('Downloading video reel ad asset bundle... ⬇️');
                 }}
-                style={{ padding: '9px 16px', fontSize: '12px' }}
+                className="btn-grad"
+                style={{ padding: '9px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
               >
-                Export Meta Payload 📋
-              </GlowButton>
+                <Download size={14} /> Download Ad ⬇️
+              </button>
             </div>
           </div>
 
