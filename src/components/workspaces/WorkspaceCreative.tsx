@@ -3,7 +3,7 @@ import {
   Sparkles, Users, Video, 
   ShieldCheck, CheckCircle2, TrendingUp, Layers, Zap, 
   Upload, Image as ImageIcon, Wand2, Film, RefreshCw, BarChart2, 
-  Play, Copy, Edit3, Send, Check, X, ArrowRight, Download, Calendar
+  Play, Copy, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -2005,23 +2005,60 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                {/* MODAL ACTION BUTTONS */}
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                  
+                  {/* 1. OPEN IN EDITOR */}
                   <button
-                    onClick={() => handleApproveProject(selectedProjectModal.id)}
-                    style={{ background: 'rgba(0,230,118,0.2)', border: '1px solid #00E676', color: '#00E676', padding: '10px 20px', borderRadius: '100px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <Check size={16} /> Approve Asset
-                  </button>
-                  <GlowButton
-                    variant="glow"
                     onClick={() => {
-                      if (onOpenReview) onOpenReview(selectedProjectModal.id);
+                      handleOpenAdInStudio(selectedProjectModal);
                       setSelectedProjectModal(null);
                     }}
-                    style={{ padding: '10px 20px', fontSize: '13px' }}
+                    style={{ background: 'rgba(124,117,255,0.2)', border: '1px solid #7C75FF', color: '#fff', padding: '10px 18px', borderRadius: '100px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    Push to Campaign Manager
-                  </GlowButton>
+                    <Edit3 size={15} color="#7C75FF" /> Open in Editor 🎨
+                  </button>
+
+                  {/* 2. SAVE IN AD LIBRARY */}
+                  <button
+                    onClick={() => {
+                      handleApproveProject(selectedProjectModal.id);
+                      triggerToast('Saved to Raftra Ad Intelligence Library! 📁');
+                      setSelectedProjectModal(null);
+                    }}
+                    style={{ background: 'rgba(0,230,118,0.2)', border: '1px solid #00E676', color: '#00E676', padding: '10px 18px', borderRadius: '100px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <FolderPlus size={15} /> Save in Ad Library 📁
+                  </button>
+
+                  {/* 3. DOWNLOAD AD ASSET */}
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = selectedProjectModal.img;
+                      link.download = `${selectedProjectModal.title.replace(/\s+/g, '_')}_ad.jpg`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      triggerToast('Downloading ad asset... ⬇️');
+                    }}
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '10px 18px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Download size={15} /> Download Ad Asset ⬇️
+                  </button>
+
+                  {/* 4. SAVE AS DRAFT */}
+                  <button
+                    onClick={() => {
+                      setProjectsList(prev => prev.map(p => p.id === selectedProjectModal.id ? { ...p, status: 'Draft' } : p));
+                      triggerToast('Saved project as Draft in Recent Projects! 💾');
+                      setSelectedProjectModal(null);
+                    }}
+                    style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '10px 18px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Save size={15} /> Save as Draft 💾
+                  </button>
+
                 </div>
 
               </div>
