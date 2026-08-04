@@ -2287,7 +2287,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
               <button
                 onClick={() => handleOpenCanva('Carousel Ad Cards')}
                 style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -2573,7 +2573,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
               <button
                 onClick={() => handleOpenCanva('Video Reel Storyboard')}
                 style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -2871,8 +2871,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               ))}
             </div>
 
-            {/* Zoom & Action Buttons */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Zoom & Action Buttons (FAR RIGHT ALIGNED) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.4)', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <button onClick={() => setEditorZoom(Math.max(50, editorZoom - 15))} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>-</button>
                 <span style={{ fontSize: '11.5px', color: '#fff', fontWeight: 600, minWidth: '36px', textAlign: 'center' }}>{editorZoom}%</span>
