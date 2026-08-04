@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Activity, Users, MessageCircle, Heart, Zap, Sparkles, UserCheck, 
   ShieldCheck, CheckCircle2, Briefcase, TrendingUp, Search, 
-  Bot, DollarSign, Clock, ChevronRight, Send
+  Bot, DollarSign, Clock, ChevronRight, Send, Share2
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -45,30 +45,26 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
     setTimeout(() => setToastMessage(null), 5000);
   };
 
-  // Specialist Roles Data
+  // Specialist Roles Data (Social Media Manager & SEO/GEO Specialist run full Raftra package on behalf of client)
   const specialistRoles = [
     {
       id: 'social',
       title: 'Social Media Manager',
       price: 'Starting from ₹25,000/month',
       basePrice: 25000,
-      icon: Share2Icon,
+      icon: Share2,
       color: '#7C75FF',
       automates: [
-        'AI Content Ideas',
-        'Caption Generation',
-        'Hashtags',
-        'Content Calendar',
-        'Scheduling',
-        'Analytics',
-        'Performance Reports'
+        'AI Content Ideas & Captions',
+        'Hashtag Strategy & Planning',
+        'Content Calendar Scheduling',
+        'Social Analytics & Reports'
       ],
       specialistDoes: [
-        'Final Content Strategy',
-        'Brand Communication',
-        'Community Management',
-        'Trend-based Decisions',
-        'High-level Campaign Planning'
+        'Core Specialist Social Media Duties',
+        'Full Raftra AI Growth Package Management for Client',
+        'Brand Communication & Community Management',
+        'Campaign Strategy & Trend-based Decisions'
       ]
     },
     {
@@ -79,93 +75,21 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
       icon: Search,
       color: '#00E676',
       automates: [
-        'Website Audit',
-        'GEO Audit',
-        'Keyword Research',
-        'Competitor Analysis',
-        'Blog Generation',
-        'Meta Tags',
-        'Schema',
-        'Internal Linking',
-        'AI Recommendations',
-        'One-click Publishing'
+        'Website & GEO AI Audit',
+        'Keyword & Competitor Research',
+        'Blog Generation & Meta Tags',
+        'Schema & Internal Linking'
       ],
       specialistDoes: [
-        'Approve SEO Strategy',
-        'Advanced Technical SEO',
-        'Backlink Outreach',
-        'Digital PR',
-        'Content Planning'
-      ]
-    },
-    {
-      id: 'paid_ads',
-      title: 'Paid Ads Specialist',
-      price: 'Starting from ₹20,000/month',
-      basePrice: 20000,
-      icon: TrendingUp,
-      color: '#FFBD2E',
-      automates: [
-        'Campaign Suggestions',
-        'Audience Suggestions',
-        'Budget Recommendations',
-        'Creative Generation',
-        'Ad Publishing',
-        'Performance Analytics',
-        'Optimization Recommendations'
-      ],
-      specialistDoes: [
-        'Business Strategy',
-        'Scaling Decisions',
-        'Manual Optimization',
-        'Budget Approval',
-        'New Market Expansion'
-      ]
-    },
-    {
-      id: 'influencer',
-      title: 'Influencer Campaign Manager',
-      price: 'Starting from ₹20,000/month',
-      basePrice: 20000,
-      icon: Users,
-      color: '#FF5296',
-      automates: [
-        'Creator Discovery',
-        'Fake Follower Detection',
-        'Brand Matching',
-        'Campaign Tracking',
-        'Performance Analytics'
-      ],
-      specialistDoes: [
-        'Negotiation',
-        'Pricing',
-        'Relationship Management',
-        'Campaign Coordination'
-      ]
-    },
-    {
-      id: 'cro',
-      title: 'CRO Specialist',
-      price: 'Starting from ₹20,000/project',
-      basePrice: 20000,
-      icon: Activity,
-      color: '#EE82EE',
-      automates: [
-        'Funnel Analytics',
-        'Heatmap Insights (when integrated)',
-        'AI Recommendations',
-        'Landing Page Suggestions'
-      ],
-      specialistDoes: [
-        'Conversion Strategy',
-        'Experiment Design',
-        'A/B Testing Decisions',
-        'UX Improvements'
+        'Core Specialist SEO & GEO Duties',
+        'Full Raftra AI Growth Package Management for Client',
+        'Advanced Technical SEO & Backlinks',
+        'Digital PR & Content Approval'
       ]
     }
   ];
 
-  const currentSpecialist = specialistRoles[selectedSpecialistIndex];
+  const currentSpecialist = specialistRoles[selectedSpecialistIndex] || specialistRoles[0];
 
   const handleOpenEnquiry = (role: { id: string; title: string; price: string; basePrice: number }) => {
     setEnquirySpecialist({ id: role.id, name: role.title, price: role.price, basePrice: role.basePrice });
