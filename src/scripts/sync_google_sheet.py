@@ -242,7 +242,7 @@ def sync():
         cat = get_category(followers)
 
         text_full = (col11_price + " " + col12_offer).lower()
-        is_ugc = 'ugc' in text_full or 'dedicated video' in text_full or 'video' in text_full or idx + 1 in [1, 3, 4, 8, 9, 10, 12, 13, 14, 17, 18, 19, 20, 21]
+        is_ugc = True if idx + 1 <= 21 else ('ugc' in text_full or 'video' in text_full or 'reel' in text_full or not text_full)
 
         deliverables = ["UGC Video", "Reel", "Story", "Static Post"] if is_ugc else ["Reel", "Story", "Static Post"]
 

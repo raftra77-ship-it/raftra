@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
 interface CreatorPortalProps {
@@ -35,6 +35,27 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     profileLink: 'https://www.instagram.com/ankrena',
     deliverables: ['Reel', 'Story', 'Static Post', 'YouTube Integration']
   });
+
+  const [offerUGC, setOfferUGC] = useState(true);
+
+  const handleToggleUGC = (checked: boolean) => {
+    setOfferUGC(checked);
+    const existing = JSON.parse(localStorage.getItem('raftra_creator_card_custom') || '{}');
+    const deliverables = checked
+      ? (existing.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post']).includes('UGC Video')
+        ? (existing.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post'])
+        : ['UGC Video', ...(existing.deliverables || ['Reel', 'Story', 'Static Post'])]
+      : (existing.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post']).filter((d: string) => d !== 'UGC Video');
+
+    const updatedCard = {
+      ...cardCustomizer,
+      ...existing,
+      isUGC: checked,
+      deliverables
+    };
+    localStorage.setItem('raftra_creator_card_custom', JSON.stringify(updatedCard));
+    window.dispatchEvent(new Event('storage'));
+  };
 
   const [verifyForm, setVerifyForm] = useState({ username: '', niche: '', base_rate: 0 });
   const [isVerifying, setIsVerifying] = useState(false);
@@ -515,6 +536,33 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           <div style={{ maxWidth: '800px', margin: '0 auto' }}>
             <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', marginBottom: '32px' }}>Profile & Payout Settings</h1>
             
+            <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '18px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles color="#00E676" size={18} /> Marketplace Badge Settings
+              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '15px', color: '#fff' }}>Offer UGC Video Creation</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Toggle the <span style={{ color: '#00E676', fontWeight: 600 }}>✨ UGC Available</span> badge on your Marketplace card.
+                  </div>
+                </div>
+                <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={offerUGC}
+                    onChange={(e) => handleToggleUGC(e.target.checked)}
+                    style={{ opacity: 0, width: 0, height: 0 }} 
+                  />
+                  <span style={{ 
+                    position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, 
+                    backgroundColor: offerUGC ? '#00E676' : 'rgba(255,255,255,0.2)', 
+                    borderRadius: '34px', transition: '.3s' 
+                  }} />
+                </label>
+              </div>
+            </div>
+
             <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '18px', marginBottom: '24px' }}>Payout Methods</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px' }}>
