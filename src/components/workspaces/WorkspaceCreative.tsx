@@ -975,11 +975,18 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
           {masterSection === 'services' && [
             { id: 'ugc', label: '🎥 AI UGC Reel Generator' },
-            { id: 'projects', label: '👤 Hire Influencer Marketplace' }
+            { id: 'hire_influencer', label: '👤 Hire Influencer Marketplace' }
           ].map(tool => (
             <button
               key={tool.id}
-              onClick={() => setActiveTab(tool.id as any)}
+              onClick={() => {
+                if (tool.id === 'hire_influencer') {
+                  if (onNavigateTab) onNavigateTab('influencer');
+                  else { setActiveTab('ugc'); setUgcSubTab('hire_human'); }
+                } else {
+                  setActiveTab(tool.id as any);
+                }
+              }}
               style={{
                 flex: 1,
                 padding: '10px 20px',
@@ -2075,7 +2082,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               🤖 Create AI UGC Reel
             </button>
             <button
-              onClick={() => setUgcSubTab('hire_human')}
+              onClick={() => {
+                if (onNavigateTab) onNavigateTab('influencer');
+                else setUgcSubTab('hire_human');
+              }}
               style={{
                 background: ugcSubTab === 'hire_human' ? '#7C75FF' : 'transparent',
                 color: ugcSubTab === 'hire_human' ? '#fff' : 'var(--text-secondary)',
