@@ -2721,6 +2721,52 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       />
                     </div>
 
+                    {/* META ADS DESTINATION LINK & CTA ACTION FIELDS (FOR BUTTON & BADGE) */}
+                    {['button', 'badge'].includes(activeEl.type) && (
+                      <div style={{ background: 'rgba(0, 230, 118, 0.05)', border: '1px solid rgba(0, 230, 118, 0.25)', padding: '10px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '10.5px', color: '#00E676', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Zap size={11} /> META ADS NATIVE PAYLOAD SYNC
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '9.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>META CTA ACTION TYPE</label>
+                          <select
+                            value={(activeEl as any).ctaAction || 'SHOP_NOW'}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, ctaAction: val as any } : el));
+                            }}
+                            style={{ width: '100%', padding: '5px 6px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '5px', color: '#fff', fontSize: '11px', outline: 'none' }}
+                          >
+                            <option value="SHOP_NOW">SHOP_NOW (Shop Now)</option>
+                            <option value="LEARN_MORE">LEARN_MORE (Learn More)</option>
+                            <option value="GET_OFFER">GET_OFFER (Get Offer / 50% Off)</option>
+                            <option value="SIGN_UP">SIGN_UP (Sign Up)</option>
+                            <option value="BOOK_NOW">BOOK_NOW (Book Now)</option>
+                            <option value="ORDER_NOW">ORDER_NOW (Order Now)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '9.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>DESTINATION LANDING URL (META LINK)</label>
+                          <input
+                            type="text"
+                            placeholder="https://ambrane.com/diwali-offer"
+                            value={(activeEl as any).targetUrl || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditorCanvasElements(prev => prev.map(el => el.id === activeEl.id ? { ...el, targetUrl: val } : el));
+                            }}
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '5px 6px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '5px', color: '#fff', fontSize: '11px' }}
+                          />
+                        </div>
+
+                        <span style={{ fontSize: '9.5px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.3 }}>
+                          💡 <b>Meta Recognition:</b> Jab aap Meta Ads Manager par publish karenge, toh Meta is URL link ko native <code>destination_url</code> aur CTA Action <code>{(activeEl as any).ctaAction || 'SHOP_NOW'}</code> me automapped karega.
+                        </span>
+                      </div>
+                    )}
+
                     {/* Geometry Coordinates Position X / Y Inputs */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                       <div>
