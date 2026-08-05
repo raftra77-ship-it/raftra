@@ -266,49 +266,50 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const myHandle = (cardCustomizer.handle || '@samairaa.r').replace('@', '').toLowerCase();
   const creatorStorageKey = `raftra_chat_${myHandle}`;
 
+  // ── Real-time WebSocket chat (creator side) ────────────────────────────
   useEffect(() => {
-    const syncChat = () => {
-      const saved = localStorage.getItem(creatorStorageKey);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.length > 0) setChatMessages(parsed);
-        } catch (err) {}
-      }
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+    const ws = new WebSocket(`${protocol}://${wsHost}/ws/chat/${myHandle}`);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'connected') return; // ignore ack
+        if (data.sender && data.text !== undefined) {
+          setChatMessages(prev => {
+            const updated = [...prev, data];
+            localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
+            return updated;
+          });
+        }
+      } catch (err) {}
     };
 
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === creatorStorageKey) syncChat();
-    };
+    ws.onerror = (e) => console.warn('[Creator Chat WS] error:', e);
+    ws.onclose = () => console.log('[Creator Chat WS] disconnected from room:', myHandle);
 
-    const handleCustom = (e: any) => {
-      if (e.detail?.key === creatorStorageKey) {
-        setChatMessages(e.detail.msgs);
-      }
-    };
-
-    syncChat(); // Load on mount
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('raftra_live_chat_event', handleCustom);
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('raftra_live_chat_event', handleCustom);
-    };
-  }, [creatorStorageKey]);
-
-  useEffect(() => {
+    // Load saved messages from localStorage on mount
     const saved = localStorage.getItem(creatorStorageKey);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setChatMessages(parsed);
-          return;
+        } else {
+          initDemoBrandChat();
         }
-      } catch (e) {}
+      } catch (e) { initDemoBrandChat(); }
+    } else {
+      initDemoBrandChat();
     }
-    initDemoBrandChat();
-  }, [activeTab]);
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
+  }, [myHandle, creatorStorageKey]);
 
   const initDemoBrandChat = () => {
     const creatorName = cardCustomizer.name || 'samaira rao';
@@ -370,7 +371,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       const blockedMsgs = [...currentMsgs, { sender: 'creator' as const, sender_type: 'influencer', text: input, content: input }, violationMsg];
       setChatMessages(blockedMsgs as any);
       localStorage.setItem(creatorStorageKey, JSON.stringify(blockedMsgs));
-      window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: creatorStorageKey, msgs: blockedMsgs } }));
+      // Notify brand via WebSocket
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify(violationMsg));
+      }
       return;
     }
 
@@ -384,7 +388,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     const updated = [...currentMsgs, newMsg];
     setChatMessages(updated);
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
-    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: creatorStorageKey, msgs: updated } }));
+    // Send via real WebSocket so brand receives in real-time
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(newMsg));
+    }
   };
 
   const handleAcceptProposal = (amount: number) => {
@@ -407,7 +414,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     const updated = [...filtered, acceptMsg, autoDoneMsg];
     setChatMessages(updated);
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
-    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: creatorStorageKey, msgs: updated } }));
+    // Send accept message via WebSocket so brand knows in real-time
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(acceptMsg));
+      wsRef.current.send(JSON.stringify(autoDoneMsg));
+    }
   };
 
   const handleVerifyProfile = async (e: React.FormEvent) => {

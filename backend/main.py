@@ -38,8 +38,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 def read_root():
     return {"status": "Raftra Engine Backend Running"}
 
-# WebSocket streaming endpoint
-from core.websocket import manager
+# WebSocket streaming endpoint (global: agent logs, notifications)
+from core.websocket import manager, chat_room_manager
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -50,6 +50,31 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# ── Real-time 1-on-1 chat room per creator handle ──────────────────────────
+# room_key = creator handle without @ (e.g. "samairaa.r")
+# Both brand and creator connect here → messages broadcast to both instantly.
+@app.websocket("/ws/chat/{room_key}")
+async def chat_room_endpoint(room_key: str, websocket: WebSocket):
+    await chat_room_manager.join(room_key, websocket)
+    # Send an acknowledgement to the connecting client
+    try:
+        await websocket.send_text('{"type":"connected","room":"' + room_key + '"}')
+    except Exception:
+        pass
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                import json
+                data = json.loads(raw)
+                # Broadcast the message to all other members in the room
+                await chat_room_manager.send_to_room(room_key, data)
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        chat_room_manager.leave(room_key, websocket)
+
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
 from fastapi.staticfiles import StaticFiles

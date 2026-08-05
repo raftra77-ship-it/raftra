@@ -82,3 +82,44 @@ class ConnectionManager:
                 pass
 
 manager = ConnectionManager()
+
+
+# ─── PER-CHAT-ROOM WEBSOCKET MANAGER ─────────────────────────────────────────
+# Keyed by room_key = creator handle (e.g. "samairaa.r")
+# Brand and Creator both join the same room → messages appear in real-time.
+
+class ChatRoomManager:
+    def __init__(self):
+        # room_key → list of websockets
+        self.rooms: Dict[str, List[WebSocket]] = {}
+
+    async def join(self, room_key: str, websocket: WebSocket):
+        await websocket.accept()
+        if room_key not in self.rooms:
+            self.rooms[room_key] = []
+        self.rooms[room_key].append(websocket)
+        print(f"[ChatRoom] {room_key}: +1 connection ({len(self.rooms[room_key])} total)")
+
+    def leave(self, room_key: str, websocket: WebSocket):
+        if room_key in self.rooms:
+            try:
+                self.rooms[room_key].remove(websocket)
+            except ValueError:
+                pass
+            if not self.rooms[room_key]:
+                del self.rooms[room_key]
+        print(f"[ChatRoom] {room_key}: -1 connection")
+
+    async def send_to_room(self, room_key: str, payload: dict):
+        """Send a message to everyone in the room (both brand and creator)."""
+        message = json.dumps(payload)
+        dead = []
+        for ws in self.rooms.get(room_key, []):
+            try:
+                await ws.send_text(message)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.leave(room_key, ws)
+
+chat_room_manager = ChatRoomManager()

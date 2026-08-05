@@ -150,22 +150,27 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const [finalPrice, setFinalPrice] = useState('');
   const [finalDeliverables, setFinalDeliverables] = useState('1 UGC Reel + 2 Stories');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const brandWsRef = useRef<WebSocket | null>(null);
   const getChatKey = (creator: InfluencerItemExtended) =>
-    `raftra_chat_${(creator.handle || creator.id).replace('@', '').toLowerCase()}`;
+    (creator.handle || creator.id).replace('@', '').toLowerCase();
 
   const handleLockDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!finalPrice || isNaN(Number(finalPrice)) || !activeChat) return;
     const price = parseFloat(finalPrice);
     const delivs = finalDeliverables.trim() || 'UGC Video + Reel';
-    const storageKey = getChatKey(activeChat);
+    const roomKey = getChatKey(activeChat);
+    const storageKey = `raftra_chat_${roomKey}`;
     
     const proposalMsg = { sender: 'brand' as const, text: JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs }) };
     const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
     const updated = [...currentMsgs, proposalMsg];
     setChatMessages(updated as any);
     localStorage.setItem(storageKey, JSON.stringify(updated));
-    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: updated } }));
+    // Send via real WebSocket so creator receives in real-time
+    if (brandWsRef.current?.readyState === WebSocket.OPEN) {
+      brandWsRef.current.send(JSON.stringify(proposalMsg));
+    }
 
     try {
       await fetch('/api/deals/propose', {
@@ -192,45 +197,54 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     setFinalDeliverables('1 UGC Reel + 2 Stories');
   };
 
+  // ── Real-time WebSocket for 1-on-1 chat ────────────────────────────────────
   useEffect(() => {
     if (!activeChat) return;
-    const storageKey = getChatKey(activeChat);
+    const roomKey = getChatKey(activeChat);
+    const storageKey = `raftra_chat_${roomKey}`;
 
-    const syncChat = () => {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try { setChatMessages(JSON.parse(saved)); } catch (err) {}
-      }
+    // Load existing messages from localStorage (history)
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try { setChatMessages(JSON.parse(saved)); } catch (err) {}
+    }
+
+    // Connect to backend WebSocket room
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+    const ws = new WebSocket(`${protocol}://${wsHost}/ws/chat/${roomKey}`);
+    brandWsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'connected') return; // ignore ack
+        if (data.sender && data.text !== undefined) {
+          setChatMessages(prev => {
+            const updated = [...prev, data];
+            localStorage.setItem(storageKey, JSON.stringify(updated));
+            return updated;
+          });
+        }
+      } catch (err) {}
     };
 
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === storageKey) syncChat();
-    };
+    ws.onerror = (e) => console.warn('[Brand Chat WS] error:', e);
+    ws.onclose = () => console.log('[Brand Chat WS] disconnected from room:', roomKey);
 
-    const handleCustom = (e: any) => {
-      if (e.detail?.key === storageKey) {
-        setChatMessages(e.detail.msgs);
-      }
-    };
-
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('raftra_live_chat_event', handleCustom);
     return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('raftra_live_chat_event', handleCustom);
+      ws.close();
+      brandWsRef.current = null;
     };
   }, [activeChat]);
 
   const handleOpenChat = (creator: InfluencerItemExtended) => {
     setActiveChat(creator);
-    const storageKey = getChatKey(creator);
+    const roomKey = getChatKey(creator);
+    const storageKey = `raftra_chat_${roomKey}`;
     const savedChat = localStorage.getItem(storageKey);
-    
     if (savedChat) {
-      try {
-        setChatMessages(JSON.parse(savedChat));
-        return;
-      } catch (err) {}
+      try { setChatMessages(JSON.parse(savedChat)); return; } catch (err) {}
     }
     // First time opening this chat — seed with intro messages
     const initialMsgs = [
@@ -270,34 +284,31 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     const input = chatInput;
     setChatInput('');
 
-    const storageKey = getChatKey(activeChat);
+    const roomKey = getChatKey(activeChat);
+    const storageKey = `raftra_chat_${roomKey}`;
     const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
 
     // Anti-Bypass Policy Check
     if (isAntiBypassViolation(input)) {
-      const violationMsg = {
-        sender: 'system' as const,
-        text: '🚨 CHAT BLOCKED: Anti-Bypass Policy Violation Detected! Exchanging phone numbers, Instagram handles, or off-platform contact is strictly prohibited. Your account has been reported.'
-      };
+      const violationMsg = { sender: 'system' as const, text: '🚨 CHAT BLOCKED: Anti-Bypass Policy Violation Detected! Exchanging phone numbers, Instagram handles, or off-platform contact is strictly prohibited. Your account has been reported.' };
       const blockedMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }, violationMsg];
       setChatMessages(blockedMsgs as any);
       localStorage.setItem(storageKey, JSON.stringify(blockedMsgs));
-      window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: blockedMsgs } }));
+      // Send via WS so creator also sees the block
+      if (brandWsRef.current?.readyState === WebSocket.OPEN) {
+        brandWsRef.current.send(JSON.stringify(violationMsg));
+      }
       return;
     }
 
-    const newMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }];
+    const newMsg = { sender: 'brand' as const, text: input };
+    const newMsgs = [...currentMsgs, newMsg];
     setChatMessages(newMsgs);
     localStorage.setItem(storageKey, JSON.stringify(newMsgs));
-    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: newMsgs } }));
 
-    // Silent background webhook dispatch to Creator's WhatsApp notification endpoint
-    if (activeChat.phone) {
-      fetch('/api/workspaces/influencer/whatsapp-notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: activeChat.phone, message: input, brand: 'Demo Brand' })
-      }).catch(() => {});
+    // Send via real WebSocket to creator in real-time
+    if (brandWsRef.current?.readyState === WebSocket.OPEN) {
+      brandWsRef.current.send(JSON.stringify(newMsg));
     }
   };
 
