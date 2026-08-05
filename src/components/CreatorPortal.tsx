@@ -109,8 +109,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     }
 
     setProofVerificationStatus('under_review');
-    setProofSubmissionToast('Proof submitted! Team Raftra Human Auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
-    setTimeout(() => setProofSubmissionToast(null), 5000);
+    setProofSubmissionToast('📩 Proof Emailed to Team Raftra Admin (audits@raftra.com)! Human auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
+    setTimeout(() => setProofSubmissionToast(null), 6000);
   };
 
   const handleSimulateHumanApproval = () => {
@@ -932,28 +932,16 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </p>
             </div>
 
-            {/* RAZORPAY & BANK ACCOUNT SETUP FORM */}
+            {/* BANK ACCOUNT SETUP FORM */}
             <div className="glow-card" style={{ padding: '28px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-                <h3 style={{ fontSize: '18px', margin: 0, color: '#fff' }}>Razorpay Payout & Linked Bank Account</h3>
+                <h3 style={{ fontSize: '18px', margin: 0, color: '#fff' }}>Linked Bank Account for Direct Payouts</h3>
                 <div style={{ padding: '6px 14px', background: 'rgba(255,179,0,0.15)', border: '1px solid #FFB300', color: '#FFB300', borderRadius: '100px', fontSize: '11px', fontWeight: 800 }}>
                   PENDING ACCOUNT SETUP 🟡
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                    Razorpay Payout Account ID:
-                  </label>
-                  <input
-                    type="text"
-                    value="acc_M3k9sD28x1 (Razorpay Route Linked)"
-                    disabled
-                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                </div>
-
                 <div>
                   <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
                     Account Holder Name:
@@ -1020,7 +1008,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </div>
               </div>
 
-              <GlowButton variant="glow" onClick={() => alert("Razorpay payout bank account updated!")} style={{ padding: '12px 28px' }}>
+              <GlowButton variant="glow" onClick={() => alert("Bank Account details updated!")} style={{ padding: '12px 28px' }}>
                 Save Payment Account Details
               </GlowButton>
             </div>
@@ -1033,11 +1021,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                     <ShieldAlert size={20} color="#00E676" /> Submit Deliverables Proof for Payout Disbursal
                   </h3>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                    Upload your brand satisfaction screenshot (WhatsApp/IG DM) & verification token for Team Raftra Human Audit.
+                    Upload your brand satisfaction screenshot (WhatsApp/IG DM) & verification token. Team Raftra receives your proof via admin email for human audit.
                   </p>
                 </div>
                 <div style={{ padding: '6px 14px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, background: proofVerificationStatus === 'verified_payout' ? 'rgba(0,230,118,0.2)' : proofVerificationStatus === 'under_review' ? 'rgba(0,196,204,0.2)' : 'rgba(255,179,0,0.2)', color: proofVerificationStatus === 'verified_payout' ? '#00E676' : proofVerificationStatus === 'under_review' ? '#00C4CC' : '#FFB300', border: '1px solid currentColor' }}>
-                  {proofVerificationStatus === 'verified_payout' ? '🟢 ESCROW PAYOUT DISBURSED' : proofVerificationStatus === 'under_review' ? '🔵 UNDER HUMAN VERIFICATION (TEAM RAFTRA)' : '🟡 PENDING PROOF SUBMISSION'}
+                  {proofVerificationStatus === 'verified_payout' ? '🟢 ESCROW PAYOUT DISBURSED' : proofVerificationStatus === 'under_review' ? '🔵 PROOF EMAILED TO TEAM RAFTRA (UNDER AUDIT)' : '🟡 PENDING PROOF SUBMISSION'}
                 </div>
               </div>
 
