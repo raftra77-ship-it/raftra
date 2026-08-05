@@ -54,6 +54,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const [brandList, setBrandList] = useState([
     {
       id: 'demo_brand',
+      workspaceId: 1,        // ← each brand entry now carries workspaceId
       name: 'Demo Brand',
       logo: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80',
       verified: true,
@@ -262,22 +263,55 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Derive the creator's own chat key from their handle (always stable, matches brand side)
+  // Derive the creator's own handle (stable, matches brand side)
   const myHandle = (cardCustomizer.handle || '@samairaa.r').replace('@', '').toLowerCase();
-  const creatorStorageKey = `raftra_chat_${myHandle}`;
+
+  // Active brand’s workspaceId (determines WS room)
+  const activeBrand = brandList.find(b => b.id === selectedBrandId) || brandList[0];
+  const activeWorkspaceId = activeBrand?.workspaceId ?? 1;
+
+  // Room key matches brand formula: ws{workspaceId}_{handle}
+  const activeRoomKey = `ws${activeWorkspaceId}_${myHandle}`;
+  const creatorStorageKey = `raftra_chat_${activeRoomKey}`;
 
   // ── Real-time WebSocket chat (creator side) ────────────────────────────
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-    const ws = new WebSocket(`${protocol}://${wsHost}/ws/chat/${myHandle}`);
+    const ws = new WebSocket(`${protocol}://${wsHost}/ws/chat/${activeRoomKey}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'connected') return; // ignore ack
+        if (data.type === 'connected') return;
         if (data.sender && data.text !== undefined) {
+          // If message has a workspaceId we haven’t seen → auto-add that brand to inbox
+          if (data.workspaceId && data.workspaceId !== activeWorkspaceId) {
+            const incomingRoomKey = `ws${data.workspaceId}_${myHandle}`;
+            const incomingStorageKey = `raftra_chat_${incomingRoomKey}`;
+            const existing = JSON.parse(localStorage.getItem(incomingStorageKey) || '[]');
+            localStorage.setItem(incomingStorageKey, JSON.stringify([...existing, data]));
+            // Mark as unread in brand list
+            setBrandList(prev => {
+              const existsBrand = prev.find(b => b.workspaceId === data.workspaceId);
+              if (!existsBrand) {
+                return [...prev, {
+                  id: `brand_${data.workspaceId}`,
+                  workspaceId: data.workspaceId,
+                  name: `Brand #${data.workspaceId}`,
+                  logo: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80',
+                  verified: true,
+                  lastMsg: data.text,
+                  time: 'Just now',
+                  unread: true
+                }];
+              }
+              return prev.map(b => b.workspaceId === data.workspaceId ? { ...b, unread: true, lastMsg: data.text } : b);
+            });
+            return;
+          }
+          // Message is for the currently open brand chat
           setChatMessages(prev => {
             const updated = [...prev, data];
             localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
@@ -288,9 +322,9 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     };
 
     ws.onerror = (e) => console.warn('[Creator Chat WS] error:', e);
-    ws.onclose = () => console.log('[Creator Chat WS] disconnected from room:', myHandle);
+    ws.onclose = () => console.log('[Creator Chat WS] disconnected from room:', activeRoomKey);
 
-    // Load saved messages from localStorage on mount
+    // Load saved messages for this brand from localStorage
     const saved = localStorage.getItem(creatorStorageKey);
     if (saved) {
       try {
@@ -298,35 +332,45 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         if (Array.isArray(parsed) && parsed.length > 0) {
           setChatMessages(parsed);
         } else {
-          initDemoBrandChat();
+          // Only show demo chat for the default Demo Brand (workspaceId=1)
+          if (activeWorkspaceId === 1) initDemoBrandChat();
+          else setChatMessages([{ sender: 'system', text: '🔒 SECURE ESCROW WORKSPACE ACTIVATED. No messages yet.' }]);
         }
-      } catch (e) { initDemoBrandChat(); }
+      } catch (e) {
+        if (activeWorkspaceId === 1) initDemoBrandChat();
+        else setChatMessages([]);
+      }
     } else {
-      initDemoBrandChat();
+      if (activeWorkspaceId === 1) initDemoBrandChat();
+      else setChatMessages([{ sender: 'system', text: '🔒 SECURE ESCROW WORKSPACE ACTIVATED. No messages yet.' }]);
     }
 
     return () => {
       ws.close();
       wsRef.current = null;
     };
-  }, [myHandle, creatorStorageKey]);
+  }, [activeRoomKey, activeWorkspaceId]);
+
 
   const initDemoBrandChat = () => {
     const creatorName = cardCustomizer.name || 'samaira rao';
     const creatorHandle = cardCustomizer.handle || '@samairaa.r';
     const creatorRate = cardCustomizer.expectedPrice || '₹500 - ₹1,000';
+    // Build the storageKey from current activeRoomKey at call time
+    const currentRoomKey = `ws${1}_${(cardCustomizer.handle || '@samairaa.r').replace('@', '').toLowerCase()}`;
+    const currentStorageKey = `raftra_chat_${currentRoomKey}`;
 
     const initialMsgs = [
-      { sender: 'system', text: '🔒 SECURE ESCROW END-TO-END WORKSPACE ACTIVATED' },
-      { sender: 'brand', text: `Hi ${creatorName} (${creatorHandle})! We loved your recent viral content. We're launching our new campaign and want to partner with you for a dedicated UGC video reel.` },
-      { sender: 'creator', text: "Hey Demo Brand team! Thanks for reaching out. What exact deliverables are you expecting and what is your campaign timeline?" },
-      { sender: 'brand', text: "We need 1 High-Quality UGC Reel (30-45 sec with product unboxing + feature demonstration) + 2 Instagram Story Swipe-ups with link tag." },
-      { sender: 'creator', text: `Got it! My rate for 1 UGC Reel + 2 Stories is ${creatorRate}. I will deliver the first draft within 3 days after deal acceptance.` },
-      { sender: 'brand', text: `${creatorRate} works great for us! I am sending the official deal proposal now with final deliverables & price breakdown.` },
-      { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 1000, deliverables: '1 UGC Reel (30-45s) + 2 Instagram Story Links' }) }
+      { sender: 'system', workspaceId: 1, text: '🔒 SECURE ESCROW END-TO-END WORKSPACE #1 ACTIVATED' },
+      { sender: 'brand', workspaceId: 1, text: `Hi ${creatorName} (${creatorHandle})! We loved your recent viral content. We're launching our new campaign and want to partner with you for a dedicated UGC video reel.` },
+      { sender: 'creator', workspaceId: 1, text: "Hey Demo Brand team! Thanks for reaching out. What exact deliverables are you expecting and what is your campaign timeline?" },
+      { sender: 'brand', workspaceId: 1, text: "We need 1 High-Quality UGC Reel (30-45 sec with product unboxing + feature demonstration) + 2 Instagram Story Swipe-ups with link tag." },
+      { sender: 'creator', workspaceId: 1, text: `Got it! My rate for 1 UGC Reel + 2 Stories is ${creatorRate}. I will deliver the first draft within 3 days after deal acceptance.` },
+      { sender: 'brand', workspaceId: 1, text: `${creatorRate} works great for us! I am sending the official deal proposal now with final deliverables & price breakdown.` },
+      { sender: 'brand', workspaceId: 1, text: JSON.stringify({ type: 'proposal', amount: 1000, deliverables: '1 UGC Reel (30-45s) + 2 Instagram Story Links' }) }
     ];
     setChatMessages(initialMsgs);
-    localStorage.setItem(creatorStorageKey, JSON.stringify(initialMsgs));
+    localStorage.setItem(currentStorageKey, JSON.stringify(initialMsgs));
   };
 
   const isAntiBypassViolation = (text: string): boolean => {
@@ -381,6 +425,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     const newMsg = {
       sender: 'creator' as const,
       sender_type: 'influencer',
+      workspaceId: activeWorkspaceId,  // so brand side knows which workspace
       text: input,
       content: input
     };
@@ -665,7 +710,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   return (
                     <div 
                       key={brand.id}
-                      onClick={() => setSelectedBrandId(brand.id)}
+                      onClick={() => {
+                        setSelectedBrandId(brand.id);
+                        // Clear unread badge when selected
+                        setBrandList(prev => prev.map(b => b.id === brand.id ? { ...b, unread: false } : b));
+                      }}
                       style={{ 
                         padding: '14px 18px', 
                         cursor: 'pointer', 
@@ -682,9 +731,14 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                       <div style={{ flex: 1, overflow: 'hidden' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                           <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff' }}>{brand.name}</span>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{brand.time}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {brand.unread && (
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00E676', display: 'inline-block', flexShrink: 0 }} />
+                            )}
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{brand.time}</span>
+                          </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: isSelected ? '#00E676' : 'var(--text-secondary)', fontWeight: isSelected ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '12px', color: isSelected ? '#00E676' : 'var(--text-secondary)', fontWeight: brand.unread ? 700 : (isSelected ? 600 : 400), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {typeof lastMsgText === 'string' && lastMsgText.includes('proposal') ? '⚡ Official Proposal' : lastMsgText}
                         </div>
                       </div>
@@ -696,7 +750,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
             {/* Right Pane - Chat Window with Negotiation & Deal Card */}
             {(() => {
-              const activeBrand = brandList[0];
+              const activeBrandChat = brandList.find(b => b.id === selectedBrandId) || brandList[0];
               const displayMessages = chatMessages;
 
               return (
@@ -704,11 +758,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   {/* Chat Header */}
                   <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <img src={activeBrand.logo} alt={activeBrand.name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <img src={activeBrandChat.logo} alt={activeBrandChat.name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                       <div>
-                        <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>{activeBrand.name}</div>
+                        <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>{activeBrandChat.name}</div>
                         <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <CheckCircle2 size={12} /> Verified Brand Partner ⚡
+                          <CheckCircle2 size={12} /> Verified Brand Partner ⚡ &bull; Workspace #{activeBrandChat.workspaceId}
                         </div>
                       </div>
                     </div>
@@ -800,7 +854,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   return (
                     <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
-                        {isMe ? `You (${cardCustomizer.name || 'Samaira'})` : 'Demo Brand'}
+                        {isMe ? `You (${cardCustomizer.name || 'Samaira'})` : activeBrandChat.name}
                       </div>
                       <div style={{ 
                         background: isMe ? 'linear-gradient(135deg, #5A52FF, #7832FF)' : 'rgba(255,255,255,0.06)', 
@@ -822,7 +876,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               <form onSubmit={handleSendChat} style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', background: '#0a0a0d', display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <input
                   type="text"
-                  placeholder="Message Demo Brand..."
+                  placeholder={`Message ${activeBrandChat.name}...`}
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                   style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '24px', color: '#fff', outline: 'none', fontSize: '13px' }}

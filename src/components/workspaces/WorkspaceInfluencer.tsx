@@ -151,8 +151,10 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const [finalDeliverables, setFinalDeliverables] = useState('1 UGC Reel + 2 Stories');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const brandWsRef = useRef<WebSocket | null>(null);
+  // Room key = ws{workspaceId}_{creatorHandle}  →  each brand × creator pair is fully isolated
   const getChatKey = (creator: InfluencerItemExtended) =>
-    (creator.handle || creator.id).replace('@', '').toLowerCase();
+    `ws${workspaceId}_${(creator.handle || creator.id).replace('@', '').toLowerCase()}`;
+
 
   const handleLockDeal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,7 +164,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     const roomKey = getChatKey(activeChat);
     const storageKey = `raftra_chat_${roomKey}`;
     
-    const proposalMsg = { sender: 'brand' as const, text: JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs }) };
+    const proposalMsg = { sender: 'brand' as const, workspaceId, text: JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs }) };
     const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
     const updated = [...currentMsgs, proposalMsg];
     setChatMessages(updated as any);
@@ -246,10 +248,10 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     if (savedChat) {
       try { setChatMessages(JSON.parse(savedChat)); return; } catch (err) {}
     }
-    // First time opening this chat — seed with intro messages
+    // First time opening — seed with intro messages that include workspaceId so creator knows which brand
     const initialMsgs = [
-      { sender: 'system', text: `🔒 SECURE ESCROW END-TO-END WORKSPACE ACTIVATED` },
-      { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
+      { sender: 'system', workspaceId, text: `🔒 SECURE ESCROW END-TO-END WORKSPACE #${workspaceId} ACTIVATED` },
+      { sender: 'creator', workspaceId, text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
     ];
     setChatMessages(initialMsgs as any);
     localStorage.setItem(storageKey, JSON.stringify(initialMsgs));
@@ -301,7 +303,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       return;
     }
 
-    const newMsg = { sender: 'brand' as const, text: input };
+    const newMsg = { sender: 'brand' as const, workspaceId, text: input };
     const newMsgs = [...currentMsgs, newMsg];
     setChatMessages(newMsgs);
     localStorage.setItem(storageKey, JSON.stringify(newMsgs));
