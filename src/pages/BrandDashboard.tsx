@@ -1322,21 +1322,6 @@ export function BrandDashboard() {
               <span>AI Assistant</span>
             </button>
 
-            {/* Switch to Creator Portal button */}
-            <button
-              onClick={() => {
-                const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-                const payload = btoa(JSON.stringify({ role: 'creator', email: 'creator@raftra.ai' }));
-                localStorage.setItem('token', `${header}.${payload}.signature`);
-                navigate('/creator-dashboard');
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', padding: '4px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 600 }}
-              title="Switch to Creator Portal"
-            >
-              <UserCheck size={13} />
-              <span>Creator Portal</span>
-            </button>
-
             {/* Profile Avatar */}
             <div className="user-avatar" style={{ width: '28px', height: '28px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {userName.charAt(0)}
