@@ -24,8 +24,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   });
   
   const DEFAULT_CREATOR_CARD = {
-    name: 'samaira rao',
-    handle: '@samairaa.r',
+    name: 'samrao112',
+    handle: '@samrao112',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
     niche: 'Fashion & Lifestyle',
     category: 'MICRO',
@@ -34,7 +34,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     avgViews: '2.5M peak (170k reach)',
     fakeFollowerScore: '1%',
     expectedPrice: '₹500 - ₹1,000',
-    profileLink: 'https://www.instagram.com/samairaa.r',
+    profileLink: 'https://www.instagram.com/samrao112',
     deliverables: ['UGC Video', 'Reel', 'Story', 'Static Post']
   };
 
@@ -43,8 +43,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     if (savedCard) {
       try {
         const parsed = JSON.parse(savedCard);
-        // If old default Ankit was cached, update to Samaira Rao
-        if (parsed.handle === '@ankrena' || parsed.name === 'Ankit Kumar') {
+        // Reset old hardcoded default cards
+        if (parsed.handle === '@ankrena' || parsed.name === 'Ankit Kumar' || parsed.handle === '@samairaa.r') {
           localStorage.setItem('raftra_creator_card_custom', JSON.stringify(DEFAULT_CREATOR_CARD));
           return DEFAULT_CREATOR_CARD;
         }
@@ -71,13 +71,14 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       isUGC: checked,
       deliverables
     };
+    setCardCustomizer(updatedCard);
     localStorage.setItem('raftra_creator_card_custom', JSON.stringify(updatedCard));
     window.dispatchEvent(new Event('storage'));
   };
 
   const [verifyForm, setVerifyForm] = useState({ username: '', niche: '', base_rate: 0 });
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState<'unverified' | 'verified' | 'rejected'>('verified');
+  const [verificationStatus, setVerificationStatus] = useState<'unverified'|'pending'|'verified'>('unverified');
 
   const [allBrands, setAllBrands] = useState<{id: number, name: string}[]>([]);
   const [showDiscover, setShowDiscover] = useState(false);
@@ -133,17 +134,17 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         const payloadBase64 = token.split('.')[1];
         if (payloadBase64) {
           const decoded = JSON.parse(atob(payloadBase64));
-          const name = decoded.name || (decoded.first_name ? `${decoded.first_name} ${decoded.last_name || ''}`.trim() : (decoded.email ? decoded.email.split('@')[0] : 'Ankit Kumar'));
-          const handle = decoded.handle || `@${(name || 'ankrena').toLowerCase().replace(/[^a-z0-9_]/g, '')}`;
+          const username = decoded.username || (decoded.email ? decoded.email.split('@')[0] : 'samrao112');
+          const cleanUser = username.replace(/[^a-zA-Z0-9_\.]/g, '');
+          const name = decoded.name || (decoded.first_name ? `${decoded.first_name} ${decoded.last_name || ''}`.trim() : cleanUser);
+          const handle = `@${cleanUser}`;
           
-          setCardCustomizer(prev => {
-            const updated = {
-              ...prev,
-              name: name || prev.name,
-              handle: handle.startsWith('@') ? handle : `@${handle}`
-            };
-            return updated;
-          });
+          setCardCustomizer(prev => ({
+            ...prev,
+            name: name,
+            handle: handle,
+            profileLink: `https://www.instagram.com/${cleanUser}`
+          }));
         }
       } catch (e) {}
     }
@@ -152,13 +153,17 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       setMe(data);
-      if (data && (data.first_name || data.email)) {
-        const name = `${data.first_name || ''} ${data.last_name || ''}`.trim() || data.email.split('@')[0];
-        const handle = `@${name.toLowerCase().replace(/[^a-z0-9_]/g, '')}`;
+      if (data && (data.username || data.email || data.first_name)) {
+        const username = data.username || (data.email ? data.email.split('@')[0] : 'samrao112');
+        const cleanUser = username.replace(/[^a-zA-Z0-9_\.]/g, '');
+        const name = `${data.first_name || ''} ${data.last_name || ''}`.trim() || cleanUser;
+        const handle = `@${cleanUser}`;
+        
         setCardCustomizer(prev => ({
           ...prev,
-          name: name || prev.name,
-          handle: handle
+          name: name,
+          handle: handle,
+          profileLink: `https://www.instagram.com/${cleanUser}`
         }));
       }
     }).catch(() => {});
@@ -216,8 +221,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         try {
           const parsed = JSON.parse(savedChat);
           const str = JSON.stringify(parsed);
-          // Purge old test junk / blocked messages from localStorage
-          const hasJunk = str.includes('BLOCKED') || str.includes('Asitis') || str.includes('instagram dm') || str.includes('Whey Protein');
+          // Purge old test junk or mismatched handle chats from localStorage
+          const hasJunk = str.includes('BLOCKED') || str.includes('Asitis') || str.includes('instagram dm') || str.includes('Whey Protein') || str.includes('Ankit') || str.includes('ankrena') || !str.includes(cardCustomizer.handle);
           if (parsed && parsed.length > 0 && !hasJunk) {
             setChatMessages(parsed);
           } else {
@@ -233,8 +238,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   }, [activeTab, cardCustomizer.name, cardCustomizer.handle]);
 
   const initDemoBrandChat = () => {
-    const creatorName = cardCustomizer.name || 'samaira rao';
-    const creatorHandle = cardCustomizer.handle || '@samairaa.r';
+    const creatorName = cardCustomizer.name || 'samrao112';
+    const creatorHandle = cardCustomizer.handle || '@samrao112';
     const creatorRate = cardCustomizer.expectedPrice || '₹500 - ₹1,000';
 
     const initialMsgs = [
