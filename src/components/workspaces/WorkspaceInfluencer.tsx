@@ -409,6 +409,47 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         </div>
       </div>
 
+      {/* PLATFORM PROTECTION & DISINTERMEDIATION SAFETY BANNER */}
+      <div 
+        style={{
+          background: 'linear-gradient(135deg, rgba(255, 179, 0, 0.08) 0%, rgba(220, 38, 38, 0.08) 100%)',
+          border: '1px solid rgba(255, 179, 0, 0.3)',
+          borderRadius: '16px',
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '16px',
+          flexWrap: 'wrap',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', flex: 1, minWidth: '280px' }}>
+          <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(255, 179, 0, 0.15)', border: '1px solid rgba(255, 179, 0, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ShieldAlert size={20} color="#FFB300" />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFB300', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                🛡️ Platform Escrow Protection & Safety Policy
+              </span>
+              <span style={{ fontSize: '10px', background: 'rgba(220, 38, 38, 0.2)', color: '#f87171', border: '1px solid rgba(220,38,38,0.4)', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
+                STRICT TERMS
+              </span>
+            </div>
+            <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.5 }}>
+              <b>Brands & Creators Notice</b>: All deals must be conducted inside Raftra Web Chat using <b>Raftra Escrow Vault</b>. If you take negotiations off-platform (direct IG DMs, personal wire transfers, external chat), <b>Raftra assumes ZERO liability for unpaid deals, scam creators, or unfulfilled deliverables</b>. Sharing phone numbers or off-platform payment links in chat will trigger <b>automated chat blocks & account suspension</b>.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ padding: '6px 12px', background: 'rgba(0, 230, 118, 0.12)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', fontSize: '11px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <CheckCircle2 size={13} /> 100% Escrow Protected
+          </div>
+        </div>
+      </div>
+
       {/* Filters row */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div className="glow-card" style={{ padding: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -614,11 +655,11 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               <button onClick={() => setActiveChat(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '24px' }}>&times;</button>
             </div>
 
-            {/* Raftra AI Policy Banner */}
-            <div style={{ background: 'rgba(255, 171, 0, 0.1)', borderBottom: '1px solid rgba(255, 171, 0, 0.2)', padding: '12px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-              <AlertTriangle size={16} color="var(--warning)" style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div style={{ fontSize: '11px', color: 'var(--warning)', lineHeight: '1.4' }}>
-                <strong>RAFTRA AI COMPLIANCE NOTICE:</strong> A 10% platform commission is securely processed by Raftra AI upon deal completion. If this deal is directed outside the Raftra ecosystem to avoid fees, both brand and creator accounts will be permanently blocked.
+            {/* Raftra Anti-Bypass & Escrow Notice Banner */}
+            <div style={{ background: 'linear-gradient(90deg, rgba(220, 38, 38, 0.12) 0%, rgba(255, 179, 0, 0.12) 100%)', borderBottom: '1px solid rgba(220, 38, 38, 0.3)', padding: '12px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+              <ShieldAlert size={18} color="#FFB300" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.9)', lineHeight: '1.4' }}>
+                <strong style={{ color: '#FFB300' }}>SECURITY & ESCROW NOTICE:</strong> All payments are locked in <b>Raftra Escrow</b> and released only upon verified deliverable approval. Exchanging personal numbers, IG handles, or off-platform payment links will result in <b>instant chat block</b>. Off-platform deals carry <b>no refund or scam protection</b>.
               </div>
             </div>
 
@@ -770,6 +811,14 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                     <Star size={14} fill="currentColor" /> {viewProfile.rating} ({viewProfile.reviewsCount} reviews)
                   </span>
                 </div>
+              </div>
+            </div>
+
+            {/* ESCROW SAFETY BANNER */}
+            <div style={{ background: 'rgba(0, 230, 118, 0.08)', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '12px', padding: '12px 16px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <CheckCircle2 size={20} color="#00E676" style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: '12px', color: '#00E676', lineHeight: 1.4 }}>
+                <b>Raftra Escrow Guarantee</b>: Always negotiate & hire through Raftra Web Chat. Funds remain safe in Escrow until you review & approve final video deliverables. Off-platform deals waive all transparency & refund guarantees.
               </div>
             </div>
 
