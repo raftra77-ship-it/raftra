@@ -23,29 +23,36 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     recent_reviews: [] as {author: string, text: string}[] 
   });
   
-  const [cardCustomizer, setCardCustomizer] = useState({
-    name: 'Ankit Kumar',
-    handle: '@ankrena',
-    avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80',
-    niche: 'Lifestyle',
-    category: 'Nano',
-    location: 'Delhi ( india )',
-    followers: '4,983',
-    avgViews: '11.3M reach (3k avg)',
+  const DEFAULT_CREATOR_CARD = {
+    name: 'samaira rao',
+    handle: '@samairaa.r',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+    niche: 'Fashion & Lifestyle',
+    category: 'MICRO',
+    location: 'gurgaon haryana india',
+    followers: '18.8k',
+    avgViews: '2.5M peak (170k reach)',
     fakeFollowerScore: '1%',
-    expectedPrice: '₹5,000 - ₹10,000',
-    profileLink: 'https://www.instagram.com/ankrena',
+    expectedPrice: '₹500 - ₹1,000',
+    profileLink: 'https://www.instagram.com/samairaa.r',
     deliverables: ['UGC Video', 'Reel', 'Story', 'Static Post']
-  });
+  };
 
-  useEffect(() => {
+  const [cardCustomizer, setCardCustomizer] = useState(() => {
     const savedCard = localStorage.getItem('raftra_creator_card_custom');
     if (savedCard) {
       try {
-        setCardCustomizer(prev => ({ ...prev, ...JSON.parse(savedCard) }));
+        const parsed = JSON.parse(savedCard);
+        // If old default Ankit was cached, update to Samaira Rao
+        if (parsed.handle === '@ankrena' || parsed.name === 'Ankit Kumar') {
+          localStorage.setItem('raftra_creator_card_custom', JSON.stringify(DEFAULT_CREATOR_CARD));
+          return DEFAULT_CREATOR_CARD;
+        }
+        return { ...DEFAULT_CREATOR_CARD, ...parsed };
       } catch (e) {}
     }
-  }, []);
+    return DEFAULT_CREATOR_CARD;
+  });
 
   const [offerUGC, setOfferUGC] = useState(true);
 
@@ -226,17 +233,18 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   }, [activeTab, cardCustomizer.name, cardCustomizer.handle]);
 
   const initDemoBrandChat = () => {
-    const creatorName = cardCustomizer.name || 'Ankit Kumar';
-    const creatorHandle = cardCustomizer.handle || '@ankrena';
+    const creatorName = cardCustomizer.name || 'samaira rao';
+    const creatorHandle = cardCustomizer.handle || '@samairaa.r';
+    const creatorRate = cardCustomizer.expectedPrice || '₹500 - ₹1,000';
 
     const initialMsgs = [
       { sender: 'system', text: '🔒 SECURE ESCROW END-TO-END WORKSPACE ACTIVATED' },
       { sender: 'brand', text: `Hi ${creatorName} (${creatorHandle})! We loved your recent viral content. We're launching our new campaign and want to partner with you for a dedicated UGC video reel.` },
       { sender: 'creator', text: "Hey Demo Brand team! Thanks for reaching out. What exact deliverables are you expecting and what is your campaign timeline?" },
       { sender: 'brand', text: "We need 1 High-Quality UGC Reel (30-45 sec with product unboxing + feature demonstration) + 2 Instagram Story Swipe-ups with link tag." },
-      { sender: 'creator', text: "Got it! My rate for 1 UGC Reel + 2 Stories is ₹12,000. I will deliver the first draft within 3 days after deal acceptance." },
-      { sender: 'brand', text: "₹12,000 works great for us! I am sending the official deal proposal now with final deliverables & price breakdown." },
-      { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 12000, deliverables: '1 UGC Reel (30-45s) + 2 Instagram Story Links' }) }
+      { sender: 'creator', text: `Got it! My rate for 1 UGC Reel + 2 Stories is ${creatorRate}. I will deliver the first draft within 3 days after deal acceptance.` },
+      { sender: 'brand', text: `${creatorRate} works great for us! I am sending the official deal proposal now with final deliverables & price breakdown.` },
+      { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 1000, deliverables: '1 UGC Reel (30-45s) + 2 Instagram Story Links' }) }
     ];
     setChatMessages(initialMsgs);
     localStorage.setItem(creatorStorageKey, JSON.stringify(initialMsgs));
@@ -687,7 +695,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   return (
                     <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
-                        {isMe ? 'You (Ankit)' : 'Demo Brand'}
+                        {isMe ? `You (${cardCustomizer.name || 'Samaira'})` : 'Demo Brand'}
                       </div>
                       <div style={{ 
                         background: isMe ? 'linear-gradient(135deg, #5A52FF, #7832FF)' : 'rgba(255,255,255,0.06)', 
