@@ -351,7 +351,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 Raftra Complete Operating System Packages
               </h2>
               <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                End-to-end AI Marketing suites combining Creative Studio, Campaign Manager, SEO & GEO, Social Hub, and Claude Max Analytics.
+                End-to-end AI Marketing suites combining Creative Studio, Campaign Manager, SEO & GEO, Social Hub, and Claude Analytics Recommendations.
               </p>
             </div>
 
@@ -433,7 +433,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Business</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Growth</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Full Claude Analytics & Social Hub</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Full Claude Analytics Recommendations & Social Hub</li>
                   </ul>
                 </div>
 
@@ -539,7 +539,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Pro</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude 3.5 Real-Time Ad Analytics Sync</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude Analytics Recommendations</li>
                   </ul>
                 </div>
 
@@ -598,7 +598,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 1</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Creative Studio (Credit Based + Claude Analytics Sync)</h2>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Creative Studio (Credit Based + Claude Analytics Recommendations)</h2>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
@@ -615,7 +615,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     {formatPrice(1499, 19, 14999)}
                   </div>
                   <div style={{ fontSize: '13px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
-                    5,000 AI Credits + Claude AI Sync
+                    5,000 AI Credits + Claude Analytics Recommendations
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
@@ -623,7 +623,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Product Photography Renders</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Basic Ad Copy & Photo Editing</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Carousel Ads Framework</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude 3.5 Analytics Reasoning Sync</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude Analytics Recommendations</li>
                   </ul>
                 </div>
 
@@ -648,7 +648,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     {formatPrice(2999, 35, 29999)}
                   </div>
                   <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 700, marginBottom: '20px', background: 'rgba(0,230,118,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
-                    15,000 AI Credits + Claude Max Sync
+                    15,000 AI Credits + Claude Analytics Recommendations
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
@@ -656,7 +656,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> 15s / 30s / 60s AI Video Ads</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI UGC Video Reels & Avatars</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Advanced In-Place Ad Editing</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude Max Real-time Performance Sync</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude Analytics Recommendations</li>
                   </ul>
                 </div>
 
@@ -677,7 +677,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     {formatPrice(5499, 65, 54999)}
                   </div>
                   <div style={{ fontSize: '13px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
-                    40,000 AI Credits + Claude Max Sync
+                    40,000 AI Credits + Claude Analytics Recommendations
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
@@ -809,7 +809,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Weekly SEO Audit</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Weekly GEO Audit</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Optimization Recommendations</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude GEO Search Visibility Tracking</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude Analytics Recommendations</li>
                   </ul>
                 </div>
 
@@ -836,7 +836,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Everything in Starter +</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> GSC & GA4 Real-time Claude Integration</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> GSC & GA4 Real-time Claude Analytics Recommendations</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> WordPress / Shopify / GitHub Connect</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> One-Click CMS Publishing</li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Blog & Landing Page Writer</li>
@@ -966,7 +966,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </h3>
 
                   <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.6 }}>
-                    Included free with purchased modules. Tracks Marketing ROAS/CPA, Creative Performance, SEO Prompt Tracking, and AI Visibility Rankings with Claude Max Reasoning Engine.
+                    Included free with purchased modules. Tracks Marketing ROAS/CPA, Creative Performance, SEO Prompt Tracking, and AI Visibility Rankings with Claude Analytics Recommendations.
                   </p>
 
                   <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', padding: '16px', borderRadius: '16px', fontSize: '13px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
