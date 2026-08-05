@@ -110,16 +110,19 @@ class ChatRoomManager:
                 del self.rooms[room_key]
         print(f"[ChatRoom] {room_key}: -1 connection")
 
-    async def send_to_room(self, room_key: str, payload: dict):
-        """Send a message to everyone in the room (both brand and creator)."""
+    async def send_to_room(self, room_key: str, payload: dict, exclude: WebSocket = None):
+        """Send a message to everyone in the room except the sender (exclude)."""
         message = json.dumps(payload)
         dead = []
         for ws in self.rooms.get(room_key, []):
+            if ws is exclude:
+                continue  # don't echo back to sender → prevents duplicate
             try:
                 await ws.send_text(message)
             except Exception:
                 dead.append(ws)
         for ws in dead:
             self.leave(room_key, ws)
+
 
 chat_room_manager = ChatRoomManager()

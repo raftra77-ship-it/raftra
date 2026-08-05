@@ -46,6 +46,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
       }
 
       let token = '';
+      let actualIsCreator = isCreator;
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -55,6 +56,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         if (!res.ok) throw new Error("Invalid credentials");
         const data = await res.json();
         token = data.access_token;
+        // Backend returns role directly in response body — use it
+        if (data.role === 'creator') actualIsCreator = true;
+        else if (data.role === 'brand') actualIsCreator = false;
       } catch (e) {
         console.warn("Backend login failed, using mock token.");
         const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -64,16 +68,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
       
       localStorage.setItem('token', token);
       
-      let hasWorkspace = false;
-      let actualIsCreator = isCreator;
+      // Also try decoding JWT as a second source of truth
       try {
         const payloadBase64 = token.split('.')[1];
         const decoded = JSON.parse(atob(payloadBase64));
-        if (decoded.role === 'creator') {
-          actualIsCreator = true;
-        }
+        if (decoded.role === 'creator') actualIsCreator = true;
+        else if (decoded.role === 'brand') actualIsCreator = false;
       } catch(e) {}
 
+      let hasWorkspace = false;
       if (!actualIsCreator) {
         try {
           const wsRes = await fetch('/api/workspaces', {
@@ -87,6 +90,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
       }
 
       onLoginComplete(hasWorkspace, actualIsCreator);
+
     } catch (err: any) {
       setError(err.message);
     } finally {

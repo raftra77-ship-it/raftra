@@ -1,4 +1,5 @@
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { AuthScreen } from './components/AuthScreen';
 import { PricingScreen } from './components/PricingScreen';
@@ -15,6 +16,31 @@ import { FlowyBackground } from './components/FlowyBackground';
 
 export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // ── Auto-redirect if already logged in ───────────────────────────────────
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return; // not logged in, stay wherever they are
+
+    try {
+      const payloadBase64 = token.split('.')[1];
+      const decoded = JSON.parse(atob(payloadBase64));
+      const role = decoded.role;
+
+      // Only auto-redirect when user lands on home / or login page
+      if (location.pathname === '/' || location.pathname === '/login') {
+        if (role === 'creator') {
+          navigate('/creator-dashboard', { replace: true });
+        } else if (role === 'brand') {
+          navigate('/dashboard', { replace: true });
+        }
+      }
+    } catch (e) {
+      // Malformed token — clear it
+      localStorage.removeItem('token');
+    }
+  }, []);
 
   const handleLoginComplete = (hasWorkspace: boolean, isCreator?: boolean) => {
     if (isCreator) {

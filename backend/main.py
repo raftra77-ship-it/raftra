@@ -68,8 +68,8 @@ async def chat_room_endpoint(room_key: str, websocket: WebSocket):
             try:
                 import json
                 data = json.loads(raw)
-                # Broadcast the message to all other members in the room
-                await chat_room_manager.send_to_room(room_key, data)
+                # Broadcast the message to all other members in the room (exclude sender to prevent double message)
+                await chat_room_manager.send_to_room(room_key, data, exclude=websocket)
             except Exception:
                 pass
     except WebSocketDisconnect:

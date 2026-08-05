@@ -168,7 +168,15 @@ class InfluencerResponse(BaseModel):
         from_attributes = True
 
 class InfluencerProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    handle: Optional[str] = None
+    niche: Optional[str] = None
     base_rate: Optional[float] = None
+    category: Optional[str] = None
+    followers: Optional[str] = None
+    location: Optional[str] = None
+    expectedPrice: Optional[str] = None
+    deliverables: Optional[Any] = None
     recent_posts: Optional[Any] = None
     recent_collabs: Optional[Any] = None
     recent_reviews: Optional[Any] = None

@@ -57,6 +57,7 @@ import {
   BarChart3,
   Share2,
   Users2,
+  UserCheck,
   CheckCircle2,
   Zap,
   Search,
@@ -1319,6 +1320,21 @@ export function BrandDashboard() {
             >
               <Sparkles size={12} />
               <span>AI Assistant</span>
+            </button>
+
+            {/* Switch to Creator Portal button */}
+            <button
+              onClick={() => {
+                const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+                const payload = btoa(JSON.stringify({ role: 'creator', email: 'creator@raftra.ai' }));
+                localStorage.setItem('token', `${header}.${payload}.signature`);
+                navigate('/creator-dashboard');
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', padding: '4px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 600 }}
+              title="Switch to Creator Portal"
+            >
+              <UserCheck size={13} />
+              <span>Creator Portal</span>
             </button>
 
             {/* Profile Avatar */}

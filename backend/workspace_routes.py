@@ -348,16 +348,22 @@ def get_my_influencer(db: Session = Depends(database.get_db), current_user: mode
 def update_my_influencer_profile(data: schemas.InfluencerProfileUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
     if not inf:
-        raise HTTPException(status_code=404, detail="Influencer profile not found")
+        inf = models.Influencer(
+            user_id=current_user.id,
+            name=data.name or f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email.split('@')[0],
+            handle=data.handle or "",
+            niche=data.niche or "",
+            platform="instagram"
+        )
+        db.add(inf)
     
-    if data.recent_posts is not None:
-        inf.recent_posts = data.recent_posts
-    if data.recent_collabs is not None:
-        inf.recent_collabs = data.recent_collabs
-    if data.recent_reviews is not None:
-        inf.recent_reviews = data.recent_reviews
-    if data.base_rate is not None:
-        inf.base_rate = data.base_rate
+    if data.name: inf.name = data.name
+    if data.handle: inf.handle = data.handle
+    if data.niche: inf.niche = data.niche
+    if data.base_rate is not None: inf.base_rate = data.base_rate
+    if data.recent_posts is not None: inf.recent_posts = data.recent_posts
+    if data.recent_collabs is not None: inf.recent_collabs = data.recent_collabs
+    if data.recent_reviews is not None: inf.recent_reviews = data.recent_reviews
         
     db.commit()
     db.refresh(inf)

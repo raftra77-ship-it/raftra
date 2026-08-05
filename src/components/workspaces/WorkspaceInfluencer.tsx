@@ -44,13 +44,37 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const [filterFollowers, setFilterFollowers] = useState('All');
   const [sortBy, setSortBy] = useState('featured');
 
-  useEffect(() => {
+  const mergeCustomProfile = (list: InfluencerItemExtended[]): InfluencerItemExtended[] => {
+    const customCardStr = localStorage.getItem('raftra_creator_card_custom');
+    if (!customCardStr) return list;
+    try {
+      const custom = JSON.parse(customCardStr);
+      let matched = false;
+      const updatedList = list.map(c => {
+        if (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11' || c.id === custom.id) {
+          matched = true;
+          const deliverables = Array.from(new Set(['UGC Video', ...(custom.deliverables || c.deliverables || ['Reel', 'Story'])]));
+          return { ...c, ...custom, deliverables };
+        }
+        return c;
+      });
+
+      if (!matched && custom.name) {
+        return [{ id: 'creator_custom', deliverables: ['UGC Video'], rating: 4.9, reviewsCount: 12, ...custom }, ...list];
+      }
+      return updatedList;
+    } catch (err) {
+      return list;
+    }
+  };
+
+  const loadCreatorsData = () => {
     const token = localStorage.getItem('token');
     fetch(`/api/workspaces/${workspaceId}/influencers`, {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       if (Array.isArray(data) && data.length > 0) {
-        setCreators(data.map((inf: any) => {
+        const mapped = data.map((inf: any) => {
           const nicheLower = (inf.niche || '').toLowerCase();
           let recentWorks = ['Local Brand', 'Startup X'];
           let topComments = [
@@ -102,42 +126,31 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             topComments,
             recentPosts: inf.recent_posts || []
           };
-        }));
+        });
+        setCreators(mergeCustomProfile(mapped));
       } else {
-        const customCardStr = localStorage.getItem('raftra_creator_card_custom');
-        let list = INITIAL_CREATORS;
-        if (customCardStr) {
-          try {
-            const custom = JSON.parse(customCardStr);
-            list = list.map(c => {
-              if (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') {
-                const deliverables = Array.from(new Set(['UGC Video', ...(custom.deliverables || c.deliverables || ['Reel', 'Story'])]));
-                return { ...c, ...custom, deliverables };
-              }
-              return c;
-            });
-          } catch (err) {}
-        }
-        setCreators(list);
+        setCreators(mergeCustomProfile(INITIAL_CREATORS));
       }
     }).catch(() => {
-      const customCardStr = localStorage.getItem('raftra_creator_card_custom');
-      let list = INITIAL_CREATORS;
-      if (customCardStr) {
-        try {
-          const custom = JSON.parse(customCardStr);
-          list = list.map(c => {
-            if (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11') {
-              const deliverables = Array.from(new Set(['UGC Video', ...(custom.deliverables || c.deliverables || ['Reel', 'Story'])]));
-              return { ...c, ...custom, deliverables };
-            }
-            return c;
-          });
-        } catch (err) {}
-      }
-      setCreators(list);
+      setCreators(mergeCustomProfile(INITIAL_CREATORS));
     });
-  }, []);
+  };
+
+  useEffect(() => {
+    loadCreatorsData();
+
+    const handleSync = () => {
+      setCreators(prev => mergeCustomProfile(prev));
+    };
+
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('creatorProfileUpdated', handleSync);
+
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('creatorProfileUpdated', handleSync);
+    };
+  }, [workspaceId]);
   
   // Modals state
   const [activeChat, setActiveChat] = useState<InfluencerItemExtended | null>(null);
@@ -223,6 +236,10 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         if (data.type === 'connected') return; // ignore ack
         if (data.sender && data.text !== undefined) {
           setChatMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.sender === data.sender && lastMsg.text === data.text) {
+              return prev;
+            }
             const updated = [...prev, data];
             localStorage.setItem(storageKey, JSON.stringify(updated));
             return updated;
