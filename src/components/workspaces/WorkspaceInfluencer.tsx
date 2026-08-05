@@ -426,35 +426,27 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       {/* PLATFORM PROTECTION & DISINTERMEDIATION SAFETY BANNER */}
       <div 
         style={{
-          background: 'linear-gradient(135deg, rgba(255, 179, 0, 0.08) 0%, rgba(220, 38, 38, 0.08) 100%)',
-          border: '1px solid rgba(255, 179, 0, 0.3)',
+          background: 'linear-gradient(135deg, rgba(255, 179, 0, 0.12) 0%, rgba(220, 38, 38, 0.12) 100%)',
+          border: '1.5px solid #FFB300',
           borderRadius: '16px',
-          padding: '16px 20px',
+          padding: '16px 22px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           gap: '16px',
-          flexWrap: 'wrap',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          boxShadow: '0 4px 20px rgba(255,179,0,0.15)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', flex: 1, minWidth: '280px' }}>
-          <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(255, 179, 0, 0.15)', border: '1px solid rgba(255, 179, 0, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <ShieldAlert size={20} color="#FFB300" />
+        <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(255, 179, 0, 0.2)', border: '1px solid #FFB300', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <ShieldAlert size={24} color="#FFB300" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '14px', fontWeight: 900, color: '#FFB300', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🛡️ RAFTRA 100% ESCROW PROTECTION POLICY</span>
+            <span style={{ fontSize: '10px', background: '#dc2626', color: '#fff', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>STRICT RULE</span>
           </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFB300', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                🛡️ Platform Escrow Protection & Safety Policy
-              </span>
-              <span style={{ fontSize: '10px', background: 'rgba(220, 38, 38, 0.2)', color: '#f87171', border: '1px solid rgba(220,38,38,0.4)', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
-                STRICT TERMS
-              </span>
-            </div>
-            <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.5 }}>
-              <b>Brands & Creators Notice</b>: All deals must be conducted inside Raftra Web Chat using <b>Raftra Escrow Vault</b>. If you take negotiations off-platform (direct IG DMs, personal wire transfers, external chat), <b>Raftra assumes ZERO liability for unpaid deals, scam creators, or unfulfilled deliverables</b>. Sharing phone numbers or off-platform payment links in chat will trigger <b>automated chat blocks & account suspension</b>.
-            </p>
-          </div>
+          <p style={{ fontSize: '13px', color: '#fff', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
+            Pay ONLY via Raftra Web Chat & Escrow Vault. Raftra is <b>NOT responsible</b> for deals taken off-platform (direct wire transfers or IG DMs). Sharing contact info in chat = <b>instant account suspension</b>.
+          </p>
         </div>
       </div>
 
@@ -465,38 +457,39 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           background: 'rgba(255,255,255,0.02)',
           border: '1px solid var(--border)',
           borderRadius: '16px',
-          padding: '20px 24px',
+          padding: '22px 24px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <h3 style={{ fontSize: '16px', margin: '0 0 4px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-heading)' }}>
-              ⚡ How Brands Complete Influencer Campaigns (Step-by-Step Guide)
+            <h3 style={{ fontSize: '17px', margin: '0 0 2px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+              ⚡ BRAND CAMPAIGN WORKFLOW (4 EASY STEPS)
             </h3>
-            <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
-              Follow this 4-step workflow to negotiate, fund escrow, deliver content, and approve payouts safely.
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, fontWeight: 500 }}>
+              How to hire, fund escrow, and approve influencer deliverables safely.
             </p>
           </div>
-          <span style={{ fontSize: '11px', padding: '4px 10px', background: 'rgba(90,82,255,0.15)', color: 'var(--primary)', border: '1px solid rgba(90,82,255,0.3)', borderRadius: '20px', fontWeight: 700 }}>
-            BRAND WORKFLOW GUIDE
+          <span style={{ fontSize: '11px', padding: '6px 12px', background: 'rgba(0,230,118,0.15)', color: '#00E676', border: '1px solid #00E676', borderRadius: '20px', fontWeight: 800 }}>
+            HOW TO USE
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
           {[
-            { step: '1', title: 'Negotiate in Web Chat', desc: 'Select creator, negotiate terms, & click "Finalize Deal" to enter Final Price (₹) & Deliverables.' },
-            { step: '2', title: 'Fund Escrow Vault', desc: 'Influencer accepts proposal -> Click "Proceed to Secure Payment Page" to deposit funds into Raftra Escrow Vault.' },
-            { step: '3', title: 'Receive Email & WA Link', desc: 'Instant email arrives with deliverables receipt & influencer WhatsApp number to begin content production.' },
-            { step: '4', title: 'Send Satisfaction Msg', desc: 'Once work is delivered & approved, copy the official timestamped satisfaction message & send to influencer for payout release.' }
+            { step: '1', title: 'Negotiate & Lock Deal', tag: 'Chat ➔ Finalize Price & Items', desc: 'Chat with creator & click "Finalize Deal" to set Final Price (₹) & Deliverables.' },
+            { step: '2', title: 'Deposit Escrow Funds', tag: 'Influencer Accepts ➔ Pay', desc: 'Creator accepts -> Click "Proceed to Secure Payment Page" to lock funds in Vault.' },
+            { step: '3', title: 'Check Email & WhatsApp', tag: 'Get WA Contact & Contract', desc: 'Check email receipt & open creator WhatsApp link to start production.' },
+            { step: '4', title: 'Approve Payout', tag: 'Send Code ➔ Release Funds', desc: 'Work done? Copy timestamped satisfaction code & send to creator for payout release.' }
           ].map(item => (
-            <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#00E676', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(0,230,118,0.15)', border: '1px solid #00E676', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.step}</span>
-                STEP {item.step}
+            <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px', position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 900, color: '#00E676', letterSpacing: '0.05em' }}>STEP {item.step}</span>
+                <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#00E676', color: '#000', fontWeight: 900, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.step}</span>
               </div>
-              <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>{item.title}</div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{item.desc}</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>{item.title}</div>
+              <div style={{ fontSize: '11px', color: '#00C4CC', fontWeight: 700, marginBottom: '8px', background: 'rgba(0,196,204,0.1)', padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.tag}</div>
+              <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, fontWeight: 500 }}>{item.desc}</div>
             </div>
           ))}
         </div>
