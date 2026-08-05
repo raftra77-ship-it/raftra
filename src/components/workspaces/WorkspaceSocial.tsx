@@ -358,9 +358,15 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
 
           </div>
 
-          {/* Bottom Banner Note */}
-          <div style={{ marginTop: '24px', padding: '16px 20px', background: 'rgba(124,117,255,0.08)', border: '1px solid rgba(124,117,255,0.2)', borderRadius: '12px', color: 'rgba(255,255,255,0.85)', fontSize: '13px', lineHeight: 1.6 }}>
-            ⚡ <strong>Raftra specialists use the Raftra platform</strong> to automate repetitive work, generate AI-powered insights, publish changes, and provide transparent reporting—so more time is spent on strategy and growth instead of manual tasks.
+          {/* Bottom Banner Note & Pricing Exclusion Disclaimer */}
+          <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ padding: '16px 20px', background: 'rgba(124,117,255,0.08)', border: '1px solid rgba(124,117,255,0.2)', borderRadius: '12px', color: 'rgba(255,255,255,0.85)', fontSize: '13px', lineHeight: 1.6 }}>
+              ⚡ <strong>Raftra specialists use the Raftra platform</strong> to automate repetitive work, generate AI-powered insights, publish changes, and provide transparent reporting—so more time is spent on strategy and growth instead of manual tasks.
+            </div>
+
+            <div style={{ padding: '14px 20px', background: 'rgba(255,179,0,0.08)', border: '1px solid rgba(255,179,0,0.25)', borderRadius: '12px', color: '#FFB300', fontSize: '12.5px', lineHeight: 1.6 }}>
+              📌 <strong>Please Note (External Costs & Budget Exclusions):</strong> Meta & Google Paid Ads ad spend budgets, SEO/GEO Paid PRs & external publication fees, and Influencer deal payouts are <strong>separate and not included</strong> in the specialist monthly package rates.
+            </div>
           </div>
 
         </div>

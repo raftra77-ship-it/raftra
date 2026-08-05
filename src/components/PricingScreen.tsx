@@ -95,8 +95,29 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
           <p style={{ fontSize: '17px', color: 'var(--text-secondary)', maxWidth: '750px', margin: '0 auto', lineHeight: 1.5 }}>
             Choose complete All-in-One Operating Suites, Dual-Module Starter Packs, or individual AI tools. Includes free core tools, creator escrow protection, and zero hidden costs.
-          </p>
-        </motion.div>
+        {/* IMPORTANT PRICING & BUDGET DISCLAIMER BANNER */}
+        <div style={{ 
+          maxWidth: '1000px', 
+          margin: '0 auto 36px auto', 
+          padding: '18px 24px', 
+          background: 'rgba(255, 179, 0, 0.08)', 
+          border: '1px solid rgba(255, 179, 0, 0.3)', 
+          borderRadius: '16px', 
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#FFB300', fontWeight: 700, fontSize: '14px' }}>
+            <ShieldCheck size={18} />
+            <span>IMPORTANT NOTICE REGARDING EXTERNAL COSTS & BUDGET ALLOCATION</span>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: '24px', color: 'rgba(255, 255, 255, 0.85)', fontSize: '13px', lineHeight: 1.6 }}>
+            <li><strong>Paid Ads Budget Cost:</strong> Meta & Google Ad Spend budgets are paid directly to ad platforms and are separate from Raftra software & specialist retainer fees.</li>
+            <li><strong>SEO & GEO Digital PRs:</strong> Paid PR placements, media publication fees, and external backlinks are separate from SEO specialist packages.</li>
+            <li><strong>Influencer Collaboration Payouts:</strong> Direct creator deal payouts and escrow funds are separate from Raftra package pricing.</li>
+          </ul>
+        </div>
 
         {/* CURRENCY & BILLING TOGGLES (ULTRA-MODERN MINIMAL SEGMENTED CONTROL) */}
         <div style={{ 
