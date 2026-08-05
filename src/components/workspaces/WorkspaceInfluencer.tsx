@@ -148,7 +148,42 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const [chatInput, setChatInput] = useState('');
   const [showFinalize, setShowFinalize] = useState(false);
   const [finalPrice, setFinalPrice] = useState('');
+  const [finalDeliverables, setFinalDeliverables] = useState('1 UGC Reel + 2 Stories');
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const handleLockDeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!finalPrice || isNaN(Number(finalPrice)) || !activeChat) return;
+    const price = parseFloat(finalPrice);
+    const delivs = finalDeliverables.trim() || 'UGC Video + Reel';
+    const storageKey = `raftra_chat_${activeChat.id}`;
+    
+    const proposalMsg = { sender: 'brand' as const, text: JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs }) };
+    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
+    const updated = [...currentMsgs, proposalMsg];
+    setChatMessages(updated as any);
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
+    
+    try {
+      const token = localStorage.getItem('token');
+      const payload = JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs, status: 'pending' });
+      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: payload, sender_type: 'brand' })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+    
+    setShowFinalize(false);
+    setFinalPrice('');
+    setFinalDeliverables('1 UGC Reel + 2 Stories');
+  };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -335,38 +370,6 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         })
       }).catch(() => {});
     }
-  };
-
-  const handleLockDeal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!finalPrice || isNaN(Number(finalPrice)) || !activeChat) return;
-    const price = parseFloat(finalPrice);
-    const storageKey = `raftra_chat_${activeChat.id}`;
-    
-    const proposalMsg = { sender: 'brand' as const, text: JSON.stringify({ type: 'proposal', amount: price }) };
-    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
-    const updated = [...currentMsgs, proposalMsg];
-    setChatMessages(updated as any);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
-    window.dispatchEvent(new Event('storage'));
-    
-    try {
-      const token = localStorage.getItem('token');
-      const payload = JSON.stringify({ type: 'proposal', amount: price, status: 'pending' });
-      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: payload, sender_type: 'brand' })
-      });
-    } catch (e) {
-      console.error(e);
-    }
-    
-    setShowFinalize(false);
-    setFinalPrice('');
   };
 
   const [showEmailReceiptModal, setShowEmailReceiptModal] = useState<boolean>(false);
@@ -651,36 +654,38 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
       {/* Negotiation Chat Modal */}
       {activeChat && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div className="glow-card" style={{ width: '600px', height: '70vh', background: '#0a0a0c', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)', padding: '20px' }}>
+          <div className="glow-card" style={{ width: '850px', height: '82vh', background: '#08080a', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '20px', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.6)' }}>
             
             {/* Chat Header */}
-            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <img src={"https://ui-avatars.com/api/?name=" + activeChat.name.replace(' ', '+') + "&background=random&color=fff&size=40"} alt={activeChat.name} style={{ borderRadius: '50%' }} />
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <img src={activeChat.avatar || ("https://ui-avatars.com/api/?name=" + activeChat.name.replace(' ', '+') + "&background=random&color=fff&size=48")} alt={activeChat.name} style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(0,230,118,0.5)' }} />
                 <div>
-                  <h4 style={{ fontSize: '16px', margin: '0', color: '#fff' }}>Negotiation: {activeChat.name}</h4>
-                  <div style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}><BadgeCheck size={12} /> Verified Creator</div>
+                  <h4 style={{ fontSize: '18px', margin: '0 0 2px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-heading)' }}>
+                    Direct Negotiation with {activeChat.name} <BadgeCheck size={16} color="#00E676" />
+                  </h4>
+                  <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 600 }}>{activeChat.handle} • {activeChat.followers} followers</div>
                 </div>
               </div>
-              <button onClick={() => setActiveChat(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '24px' }}>&times;</button>
+              <button onClick={() => setActiveChat(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px' }}>&times;</button>
             </div>
 
             {/* Raftra Anti-Bypass & Escrow Notice Banner */}
-            <div style={{ background: 'linear-gradient(90deg, rgba(220, 38, 38, 0.12) 0%, rgba(255, 179, 0, 0.12) 100%)', borderBottom: '1px solid rgba(220, 38, 38, 0.3)', padding: '12px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-              <ShieldAlert size={18} color="#FFB300" style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.9)', lineHeight: '1.4' }}>
-                <strong style={{ color: '#FFB300' }}>SECURITY & ESCROW NOTICE:</strong> All payments are locked in <b>Raftra Escrow</b> and released only upon verified deliverable approval. Exchanging personal numbers, IG handles, or off-platform payment links will result in <b>instant chat block</b>. Off-platform deals carry <b>no refund or scam protection</b>.
+            <div style={{ background: 'linear-gradient(90deg, rgba(220, 38, 38, 0.12) 0%, rgba(255, 179, 0, 0.12) 100%)', borderBottom: '1px solid rgba(220, 38, 38, 0.3)', padding: '12px 24px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <ShieldAlert size={18} color="#FFB300" style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.9)', lineHeight: '1.4' }}>
+                <strong style={{ color: '#FFB300' }}>ESCROW SECURITY ACTIVE:</strong> Finalize deal below. Funds stay 100% locked in <b>Raftra Vault</b> until work is delivered & approved. Exchanging phone numbers/social DMs triggers <b>chat block</b>.
               </div>
             </div>
 
             {/* Chat Feed */}
-            <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px', background: 'rgba(0,0,0,0.3)' }}>
               {chatMessages.map((msg, i) => {
                 if (msg.sender === 'system') {
                   return (
                     <div key={i} style={{ textAlign: 'center', margin: '8px 0' }}>
-                      <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '6px 16px', borderRadius: '20px', border: '1px solid var(--border)' }}>
                         {msg.text}
                       </span>
                     </div>
@@ -688,7 +693,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                 }
                 const isBrand = msg.sender === 'brand';
                 
-                let parsedContent = null;
+                let parsedContent: any = null;
                 try {
                   if (msg.text.trim().startsWith('{')) {
                     parsedContent = JSON.parse(msg.text);
@@ -697,27 +702,32 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
                 if (parsedContent && parsedContent.type === 'proposal') {
                   return (
-                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
-                      <div style={{ background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.3)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
-                        <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', color: '#fff' }}>You Proposed a Deal</h3>
-                        <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '16px' }}>
+                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '500px' }}>
+                      <div style={{ background: 'linear-gradient(135deg, rgba(90,82,255,0.15), rgba(120,50,255,0.1))', border: '1px solid rgba(90,82,255,0.4)', padding: '24px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                          🤝 OFFICIAL DEAL PROPOSAL
+                        </div>
+                        <div style={{ fontSize: '32px', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>
                           ₹{parsedContent.amount.toLocaleString()}
                         </div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for creator to accept...</div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (parsedContent && parsedContent.type === 'proposal_accepted') {
-                  return (
-                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
-                      <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: 'var(--success)' }}>
-                        <CheckCircle2 size={24} style={{ marginBottom: '8px' }} />
-                        <div style={{ fontWeight: 'bold' }}>Deal Accepted for ₹{parsedContent.amount.toLocaleString()}!</div>
-                        <div style={{ marginTop: '16px' }}>
-                          <GlowButton variant="glow" onClick={() => handlePayRazorpay(parsedContent.amount)}>
-                            Pay via Razorpay
+                        <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 600, marginBottom: '18px', background: 'rgba(0,230,118,0.1)', padding: '6px 12px', borderRadius: '8px', display: 'inline-block' }}>
+                          Deliverables: {parsedContent.deliverables || 'UGC Video Reel'}
+                        </div>
+                        <div>
+                          <GlowButton
+                            variant="glow"
+                            onClick={() => {
+                              const acceptMsg = { sender: 'creator' as const, text: JSON.stringify({ type: 'proposal_accepted', amount: parsedContent.amount, deliverables: parsedContent.deliverables }) };
+                              const storageKey = `raftra_chat_${activeChat.id}`;
+                              const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
+                              const updated = [...currentMsgs, acceptMsg];
+                              setChatMessages(updated as any);
+                              localStorage.setItem(storageKey, JSON.stringify(updated));
+                              window.dispatchEvent(new Event('storage'));
+                            }}
+                            style={{ width: '100%', padding: '12px', fontSize: '13px', fontWeight: 700 }}
+                          >
+                            Accept Deal (as Influencer)
                           </GlowButton>
                         </div>
                       </div>
@@ -725,31 +735,51 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   );
                 }
 
+                if (parsedContent && parsedContent.type === 'proposal_accepted') {
+                  return (
+                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '520px' }}>
+                      <div style={{ background: 'linear-gradient(135deg, rgba(0,230,118,0.15), rgba(16,185,129,0.1))', border: '1px solid rgba(0,230,118,0.4)', padding: '24px', borderRadius: '16px', textAlign: 'center', color: 'var(--success)' }}>
+                        <CheckCircle2 size={32} style={{ marginBottom: '8px' }} />
+                        <div style={{ fontWeight: 800, fontSize: '18px', color: '#fff' }}>Deal Accepted by Influencer! 🎉</div>
+                        <div style={{ fontSize: '14px', color: '#00E676', marginTop: '6px', fontWeight: 700 }}>
+                          Amount: ₹{parsedContent.amount.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)', marginTop: '4px', marginBottom: '18px' }}>
+                          Deliverables: {parsedContent.deliverables || 'UGC Video Reel'}
+                        </div>
+                        <GlowButton variant="glow" onClick={() => handlePayRazorpay(parsedContent.amount)} style={{ width: '100%', padding: '14px', fontSize: '14px', fontWeight: 800 }}>
+                          💳 Proceed to Secure Payment Page (Razorpay Escrow)
+                        </GlowButton>
+                      </div>
+                    </div>
+                  );
+                }
+
                 if (parsedContent && parsedContent.type === 'payment_complete') {
                   return (
-                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
-                      <div style={{ background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: '#ffd700' }}>
-                        <DollarSign size={24} style={{ marginBottom: '8px' }} />
-                        <div style={{ fontWeight: 'bold' }}>Payment Complete!</div>
-                        <div style={{ fontSize: '13px', marginTop: '4px' }}>₹{parsedContent.amount.toLocaleString()} paid. Escrow securely funded.</div>
+                    <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '500px' }}>
+                      <div style={{ background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', padding: '20px', borderRadius: '16px', textAlign: 'center', color: '#ffd700' }}>
+                        <DollarSign size={28} style={{ marginBottom: '6px' }} />
+                        <div style={{ fontWeight: 800, fontSize: '18px' }}>Payment Complete & Vault Funded!</div>
+                        <div style={{ fontSize: '13px', marginTop: '4px', color: '#fff' }}>₹{parsedContent.amount.toLocaleString()} locked safely in Escrow. Confirmation email sent!</div>
                       </div>
                     </div>
                   );
                 }
 
                 return (
-                  <div key={i} style={{ alignSelf: isBrand ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
+                  <div key={i} style={{ alignSelf: isBrand ? 'flex-end' : 'flex-start', maxWidth: '65%' }}>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isBrand ? 'right' : 'left' }}>
-                      {isBrand ? 'You' : activeChat.name}
+                      {isBrand ? 'You (Brand)' : activeChat.name}
                     </div>
                     <div style={{ 
-                      background: isBrand ? 'rgba(90, 82, 255, 0.15)' : 'rgba(255,255,255,0.05)', 
+                      background: isBrand ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.06)', 
                       border: '1px solid',
-                      borderColor: isBrand ? 'rgba(90, 82, 255, 0.3)' : 'var(--border)',
-                      padding: '12px 16px', 
-                      borderRadius: isBrand ? '12px 12px 0 12px' : '12px 12px 12px 0',
+                      borderColor: isBrand ? 'rgba(90, 82, 255, 0.4)' : 'var(--border)',
+                      padding: '12px 18px', 
+                      borderRadius: isBrand ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
                       color: '#fff',
-                      fontSize: '13px',
+                      fontSize: '13.5px',
                       lineHeight: '1.5'
                     }}>
                       {msg.text}
@@ -760,92 +790,57 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               <div ref={chatEndRef} />
             </div>
 
-              {/* Chat Input */}
-            <div style={{ padding: '16px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
-              
-              {/* Brand Approval Message Generator Banner */}
-              <div style={{ background: 'rgba(0, 230, 118, 0.08)', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '12px', padding: '12px 16px', marginBottom: '14px' }}>
-                <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                  <CheckCircle2 size={15} /> Brand Work Completion & Approval Verification Message
-                </div>
-                <div style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, marginBottom: '10px' }}>
-                  Work complete? Generate & send this official timestamped satisfaction statement to the creator on WhatsApp or IG DM. Creator will upload screenshot proof to <b>Team Raftra for Human Verification & Escrow Payout release</b>.
-                </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const now = new Date();
-                      const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-                      const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-                      const token = `RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}`;
-
-                      const customMsg = `--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Influencer Deliverable Approval\nBrand Partner: Brand Workspace\nCreator: ${activeChat.name} (${activeChat.handle})\nTimestamp: ${dateStr}, ${timeStr} IST\nVerification Code: ${token}\n\n"We hereby confirm that the campaign deliverables for this collaboration have been received, reviewed, published, and we are 100% satisfied with the work! Creator ${activeChat.handle} has fulfilled all contract terms. You may submit a screenshot of this message to Team Raftra for instant Escrow payout release."\n--------------------------------------------------`;
-
-                      navigator.clipboard.writeText(customMsg);
-                      alert(`Copied Custom Brand Approval Message!\n\nSend this text to ${activeChat.name} on WhatsApp or IG DM:\n\n${customMsg}`);
-
-                      const storageKey = `raftra_chat_${activeChat.id}`;
-                      const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
-
-                      const systemCardMsg = {
-                        sender: 'system' as const,
-                        text: `📋 OFFICIAL BRAND APPROVAL GENERATED: Code ${token} at ${dateStr}, ${timeStr} IST. Sent to creator for WhatsApp/IG DM screenshot proof & Team Raftra Human Verification.`
-                      };
-                      const updated = [...currentMsgs, systemCardMsg];
-                      setChatMessages(updated as any);
-                      localStorage.setItem(storageKey, JSON.stringify(updated));
-                      window.dispatchEvent(new Event('storage'));
-                    }}
-                    style={{ background: '#00E676', color: '#000', border: 'none', padding: '8px 14px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    📋 Copy Custom Approval Msg (With Date/Time & Token)
-                  </button>
-
-                  {activeChat.phone && (
-                    <a
-                      href={`https://wa.me/${activeChat.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${activeChat.name}! We reviewed the deliverable and we are 100% satisfied! Here is your Raftra verification token: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)} on ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}. Please upload screenshot proof to your Raftra Creator Portal for Escrow Payout!`)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ background: 'rgba(37, 211, 102, 0.2)', border: '1px solid #25D366', color: '#25D366', padding: '8px 14px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      📲 Open WhatsApp Chat
-                    </a>
-                  )}
-                </div>
-              </div>
-
+            {/* Chat Input Bar */}
+            <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', background: '#0a0a0d' }}>
               {showFinalize ? (
-                <form onSubmit={handleLockDeal} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Final Price ($):</span>
-                  <input
-                    type="number"
-                    placeholder="e.g. 500"
-                    value={finalPrice}
-                    onChange={e => setFinalPrice(e.target.value)}
-                    required
-                    style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--primary)', borderRadius: '8px', color: '#fff', outline: 'none' }}
-                  />
-                  <GlowButton variant="glow" type="submit" style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}>
-                    Lock Deal
-                  </GlowButton>
-                  <button type="button" onClick={() => setShowFinalize(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '12px' }}>
-                    Cancel
-                  </button>
+                <form onSubmit={handleLockDeal} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(90,82,255,0.08)', border: '1px solid rgba(90,82,255,0.3)', padding: '16px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary)' }}>⚡ Finalize Official Deal Contract</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Final Price (₹):</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 10000"
+                        value={finalPrice}
+                        onChange={e => setFinalPrice(e.target.value)}
+                        required
+                        style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--primary)', borderRadius: '8px', color: '#fff', outline: 'none', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Deliverables Breakdown:</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 1 UGC Reel + 2 IG Stories"
+                        value={finalDeliverables}
+                        onChange={e => setFinalDeliverables(e.target.value)}
+                        required
+                        style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--primary)', borderRadius: '8px', color: '#fff', outline: 'none', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={() => setShowFinalize(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '8px 14px', fontSize: '12px' }}>
+                      Cancel
+                    </button>
+                    <GlowButton variant="glow" type="submit" style={{ padding: '8px 20px', fontSize: '12.5px', whiteSpace: 'nowrap' }}>
+                      Send Proposal to Influencer 🤝
+                    </GlowButton>
+                  </div>
                 </form>
               ) : (
-                <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '12px' }}>
-                  <button type="button" onClick={() => setShowFinalize(true)} style={{ background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.3)', borderRadius: '8px', padding: '0 16px', color: 'var(--primary)', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                    Finalize Deal
+                <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                  <button type="button" onClick={() => setShowFinalize(true)} style={{ background: 'rgba(90,82,255,0.15)', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '10px', padding: '12px 18px', color: 'var(--primary)', cursor: 'pointer', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    ⚡ Finalize Deal
                   </button>
                   <input
                     type="text"
-                    placeholder="Propose a deal or negotiate pricing..."
+                    placeholder="Type message to creator or propose terms..."
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
-                    style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', outline: 'none' }}
+                    style={{ flex: 1, padding: '12px 18px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '10px', color: '#fff', outline: 'none', fontSize: '13.5px' }}
                   />
-                  <GlowButton variant="glow" type="submit" style={{ padding: '0 20px' }}>
+                  <GlowButton variant="glow" type="submit" style={{ padding: '12px 22px' }}>
                     <Send size={18} />
                   </GlowButton>
                 </form>
