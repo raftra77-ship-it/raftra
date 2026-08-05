@@ -150,23 +150,22 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const [finalPrice, setFinalPrice] = useState('');
   const [finalDeliverables, setFinalDeliverables] = useState('1 UGC Reel + 2 Stories');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const getChatKey = (creator: InfluencerItemExtended) =>
+    `raftra_chat_${(creator.handle || creator.id).replace('@', '').toLowerCase()}`;
+
   const handleLockDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!finalPrice || isNaN(Number(finalPrice)) || !activeChat) return;
     const price = parseFloat(finalPrice);
     const delivs = finalDeliverables.trim() || 'UGC Video + Reel';
-    const storageKey = `raftra_chat_${activeChat.id}`;
+    const storageKey = getChatKey(activeChat);
     
     const proposalMsg = { sender: 'brand' as const, text: JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs }) };
-    const currentMsgs = JSON.parse(localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat') || JSON.stringify(chatMessages));
+    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
     const updated = [...currentMsgs, proposalMsg];
     setChatMessages(updated as any);
-    localStorage.setItem('raftra_global_live_chat', JSON.stringify(updated));
     localStorage.setItem(storageKey, JSON.stringify(updated));
-    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
-    localStorage.setItem('raftra_chat_creator_11', JSON.stringify(updated));
-    window.dispatchEvent(new Event('storage'));
-    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: updated }));
+    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: updated } }));
 
     try {
       const token = localStorage.getItem('token');
@@ -189,28 +188,23 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   };
 
   useEffect(() => {
+    if (!activeChat) return;
+    const storageKey = getChatKey(activeChat);
+
     const syncChat = () => {
-      const saved = localStorage.getItem('raftra_global_live_chat') || 
-                    (activeChat ? localStorage.getItem(`raftra_chat_${activeChat.id}`) : null) || 
-                    localStorage.getItem('raftra_creator_inbox_chat');
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
-        try {
-          setChatMessages(JSON.parse(saved));
-        } catch (err) {}
+        try { setChatMessages(JSON.parse(saved)); } catch (err) {}
       }
     };
 
     const handleStorage = (e: StorageEvent) => {
-      if (!e.key || e.key.includes('raftra_')) {
-        syncChat();
-      }
+      if (e.key === storageKey) syncChat();
     };
 
     const handleCustom = (e: any) => {
-      if (e.detail) {
-        setChatMessages(e.detail);
-      } else {
-        syncChat();
+      if (e.detail?.key === storageKey) {
+        setChatMessages(e.detail.msgs);
       }
     };
 
@@ -224,27 +218,22 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
   const handleOpenChat = (creator: InfluencerItemExtended) => {
     setActiveChat(creator);
-    const storageKey = `raftra_chat_${creator.id}`;
-    const savedChat = localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat');
+    const storageKey = getChatKey(creator);
+    const savedChat = localStorage.getItem(storageKey);
     
     if (savedChat) {
       try {
         setChatMessages(JSON.parse(savedChat));
-      } catch (err) {
-        setChatMessages([
-          { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
-          { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
-        ]);
-      }
-    } else {
-      const initialMsgs = [
-        { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
-        { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
-      ];
-      setChatMessages(initialMsgs as any);
-      localStorage.setItem('raftra_global_live_chat', JSON.stringify(initialMsgs));
-      localStorage.setItem(storageKey, JSON.stringify(initialMsgs));
+        return;
+      } catch (err) {}
     }
+    // First time opening this chat — seed with intro messages
+    const initialMsgs = [
+      { sender: 'system', text: `🔒 SECURE ESCROW END-TO-END WORKSPACE ACTIVATED` },
+      { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
+    ];
+    setChatMessages(initialMsgs as any);
+    localStorage.setItem(storageKey, JSON.stringify(initialMsgs));
   };
 
   const isAntiBypassViolation = (text: string): boolean => {
@@ -276,8 +265,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     const input = chatInput;
     setChatInput('');
 
-    const storageKey = `raftra_chat_${activeChat.id}`;
-    const currentMsgs = JSON.parse(localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat') || JSON.stringify(chatMessages));
+    const storageKey = getChatKey(activeChat);
+    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
 
     // Anti-Bypass Policy Check
     if (isAntiBypassViolation(input)) {
@@ -287,23 +276,15 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       };
       const blockedMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }, violationMsg];
       setChatMessages(blockedMsgs as any);
-      localStorage.setItem('raftra_global_live_chat', JSON.stringify(blockedMsgs));
       localStorage.setItem(storageKey, JSON.stringify(blockedMsgs));
-      localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(blockedMsgs));
-      localStorage.setItem('raftra_chat_creator_11', JSON.stringify(blockedMsgs));
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: blockedMsgs }));
+      window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: blockedMsgs } }));
       return;
     }
 
     const newMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }];
     setChatMessages(newMsgs);
-    localStorage.setItem('raftra_global_live_chat', JSON.stringify(newMsgs));
     localStorage.setItem(storageKey, JSON.stringify(newMsgs));
-    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(newMsgs));
-    localStorage.setItem('raftra_chat_creator_11', JSON.stringify(newMsgs));
-    window.dispatchEvent(new Event('storage'));
-    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: newMsgs }));
+    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: newMsgs } }));
 
     // Silent background webhook dispatch to Creator's WhatsApp notification endpoint
     if (activeChat.phone) {
