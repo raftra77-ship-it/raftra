@@ -641,79 +641,53 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 2</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Campaign Manager Plans</h2>
+              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Campaign Manager Plan</h2>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
-              
-              {/* Campaign Manager Lite */}
-              <div
-                onMouseEnter={() => setHoveredCard('cm_lite')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={getCardStyle('cm_lite')}
-              >
-                <div>
-                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Campaign Manager Lite</div>
-                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
-                    {formatPrice(1999, 24, 19999)}
+            <div
+              onMouseEnter={() => setHoveredCard('cm_pro_single')}
+              onMouseLeave={() => setHoveredCard(null)}
+              style={getCardStyle('cm_pro_single', true)}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '28px', width: '100%' }}>
+                <div style={{ maxWidth: '850px' }}>
+                  <div style={{ background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 800, display: 'inline-block', marginBottom: '12px' }}>
+                    RECOMMENDED CAMPAIGN SUITE ⭐
+                  </div>
+                  <h3 style={{ fontSize: '26px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Campaign Manager Pro ⭐</h3>
+                  <div style={{ fontSize: '38px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
+                    {formatPrice(3499, 42, 34999)}
                   </div>
 
-                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px 0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Unlimited Campaign Creation</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Campaign Builder</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Audience Suggestions</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Budget Planner</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> OAuth Connections</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Meta & Google Publishing</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Basic Analytics</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Campaign History</li>
-                  </ul>
-
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,100,100,0.85)' }}>
-                    <div>❌ No Claude Optimization</div>
-                    <div>❌ No Advanced Analytics</div>
-                    <div>❌ No Auto Optimization</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', fontSize: '13.5px', color: '#ccc' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Unlimited Campaign Creation</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Meta Ads Publishing</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Google Ads Publishing</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> OAuth Integrations</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Campaign Builder</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Audience Suggestions</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Budget Planner</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Campaign Objectives</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Creative Linking</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Campaign Dashboard</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Performance Analytics</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude AI Recommendations</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Optimization Suggestions</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Creative Performance Analysis</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> A/B Test Recommendations</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Multi-Platform Campaigns</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Team Collaboration</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Campaign History</div>
+                    <div style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Export Reports</div>
                   </div>
                 </div>
 
-                <button onClick={onComplete} style={{ marginTop: '28px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '12px', borderRadius: '100px', fontWeight: 600, cursor: 'pointer' }}>
-                  Select Lite
-                </button>
-              </div>
-
-              {/* Campaign Manager Pro ⭐ */}
-              <div
-                onMouseEnter={() => setHoveredCard('cm_pro')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={getCardStyle('cm_pro', true)}
-              >
-                <div>
-                  <div style={{ background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800, display: 'inline-block', marginBottom: '10px' }}>
-                    RECOMMENDED CAMPAIGN TIER ⭐
-                  </div>
-
-                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Campaign Manager Pro ⭐</div>
-                  <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
-                    {formatPrice(4999, 59, 49999)}
-                  </div>
-
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Everything in Lite +</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude Recommendations</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Advanced Analytics</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Creative Performance</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> AI Optimization Suggestions</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> A/B Test Insights</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Multi-workspace</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Team Members</li>
-                  </ul>
+                <div style={{ minWidth: '220px', alignSelf: 'center' }}>
+                  <GlowButton variant="glow" onClick={onComplete} style={{ width: '100%', padding: '16px 32px', fontSize: '15px' }}>
+                    Get Campaign Pro
+                  </GlowButton>
                 </div>
-
-                <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '28px', padding: '14px' }}>
-                  Get Campaign Pro
-                </GlowButton>
               </div>
-
             </div>
           </div>
         )}
