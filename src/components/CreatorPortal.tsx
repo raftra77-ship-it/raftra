@@ -70,13 +70,13 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const [proofVerificationStatus, setProofVerificationStatus] = useState<'idle' | 'under_review' | 'verified_payout'>('idle');
   const [proofSubmissionToast, setProofSubmissionToast] = useState<string | null>(null);
 
-  // Payout Bank Details & Tax Invoice State
+  // Payout Bank Details & Tax Invoice State (Initialized empty for user setup)
   const [bankDetails, setBankDetails] = useState({
-    accountHolder: 'Ankit Kumar',
-    bankName: 'HDFC Bank',
-    accountNumber: '50100293849182',
-    ifscCode: 'HDFC0001234',
-    upiId: 'ankit@okaxis'
+    accountHolder: '',
+    bankName: '',
+    accountNumber: '',
+    ifscCode: '',
+    upiId: ''
   });
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
@@ -104,7 +104,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   const handleSimulateHumanApproval = () => {
     setProofVerificationStatus('verified_payout');
-    setProofSubmissionToast('✅ Human Verification Approved by Team Raftra! ₹9,000 (90% net payout) disbursed to your bank account via Razorpay/UPI.');
+    setProofSubmissionToast('✅ Human Verification Approved by Team Raftra! Net payout disbursed to your bank account via Razorpay/UPI.');
     setTimeout(() => setProofSubmissionToast(null), 6000);
   };
 
@@ -153,41 +153,18 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   useEffect(() => {
     if (activeTab === 'inbox') {
-      const defaultBrands = [
-        { id: 1, name: 'Asitis Nutrition' },
-        { id: 2, name: 'Zara India' },
-        { id: 3, name: 'Nike Performance' },
-        { id: 4, name: 'Zomato D2C' }
-      ];
-      setAllBrands(defaultBrands);
-
       const savedChat = localStorage.getItem(creatorStorageKey) || localStorage.getItem('raftra_creator_inbox_chat');
       if (savedChat) {
         try {
           setChatMessages(JSON.parse(savedChat));
         } catch (e) {
-          initDefaultCreatorChats();
+          setChatMessages([]);
         }
       } else {
-        initDefaultCreatorChats();
+        setChatMessages([]);
       }
     }
   }, [activeTab]);
-
-  const initDefaultCreatorChats = () => {
-    const initialMsgs = [
-      { sender: 'system', text: '🔒 SECURE ESCROW END-TO-END WORKSPACE ACTIVATED' },
-      { sender: 'brand', text: "Hi Ankit (@ankrena)! We loved your recent tech reel with 11.3M views. We're launching our new 100W Fast Powerbank and want to partner with you for a dedicated UGC video reel." },
-      { sender: 'creator', text: "Hey Raftra Demo Brand team! Thanks for reaching out. The powerbank looks solid! What exact deliverables are you expecting and what is your campaign timeline?" },
-      { sender: 'brand', text: "We need 1 High-Quality UGC Reel (30-45 sec with product unboxing + feature demonstration) + 2 Instagram Story Swipe-ups with link tag within 5 days." },
-      { sender: 'creator', text: "Got it! My rate for 1 UGC Reel + 2 Stories is ₹12,000. I will deliver the first draft within 3 days after escrow funding." },
-      { sender: 'brand', text: "₹12,000 works great for us! I am sending the official deal proposal now with final deliverables & price breakdown." },
-      { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 12000, deliverables: '1 UGC Reel (30-45s) + 2 Instagram Story Links' }) }
-    ];
-    setChatMessages(initialMsgs);
-    localStorage.setItem(creatorStorageKey, JSON.stringify(initialMsgs));
-    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(initialMsgs));
-  };
 
   const isAntiBypassViolation = (text: string): boolean => {
     const lower = text.toLowerCase();
@@ -389,7 +366,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   Creator Dashboard 📊
                 </h1>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                  Welcome, <b>{me?.first_name || cardCustomizer.name}</b> ({cardCustomizer.handle})! Synced with your live creator account.
+                  Overview of your active brand campaigns, earnings, and escrow funds.
                 </p>
               </div>
               <div style={{ padding: '6px 14px', background: 'rgba(0,230,118,0.12)', border: '1px solid #00E676', borderRadius: '100px', fontSize: '12px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -397,81 +374,58 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </div>
             </div>
 
-            {/* Stat Cards - Real Account Truth State */}
+            {/* Stat Cards - All Zero Ground Truth */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '32px' }}>
               <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>TOTAL PAYOUTS DISBURSED</div>
                 <div style={{ fontSize: '28px', fontWeight: 800, color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   ₹0
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>₹0 Disbursed (New Creator Account)</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>0 Payouts Disbursed</div>
               </div>
 
               <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>ACTIVE BRAND DEALS</div>
                 <div style={{ fontSize: '28px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <CheckCircle2 color="var(--primary)" size={24} /> 1 Pending
+                  0 Deals
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Demo proposal in Inbox</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>0 Active Campaigns</div>
               </div>
 
               <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>SYNCED FOLLOWER REACH</div>
-                <div style={{ fontSize: '28px', fontWeight: 800, color: '#00C4CC' }}>{cardCustomizer.followers}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Live IG Followers ({cardCustomizer.avgViews.split(' ')[0]} views)</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>FOLLOWER REACH</div>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#00C4CC' }}>0 Reach</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Pending Profile Connect</div>
               </div>
 
               <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>APPROVAL RATING</div>
-                <div style={{ fontSize: '28px', fontWeight: 800, color: '#FFB300' }}>5.0 ★</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>100% Brand Satisfaction</div>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#FFB300' }}>0.0 ★</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>No Ratings Yet</div>
               </div>
             </div>
 
-            {/* Recent Deals Table - Demo Brand Examples */}
+            {/* Brand Collaborations Status Tracker Table - Zero State */}
             <div className="glow-card" style={{ padding: '24px', marginBottom: '32px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div>
-                  <h3 style={{ fontSize: '16px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>Brand Collaborations Status Tracker</h3>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Demo campaign workflow examples for creator dashboard</div>
-                </div>
-                <span style={{ fontSize: '11px', padding: '4px 10px', background: 'rgba(90,82,255,0.15)', color: 'var(--primary)', border: '1px solid rgba(90,82,255,0.3)', borderRadius: '100px', fontWeight: 700 }}>
-                  Demo Brand Examples 📌
-                </span>
+                <h3 style={{ fontSize: '16px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>Brand Collaborations Status Tracker</h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Live Status Tracker</span>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {[
-                  { brand: 'Raftra Demo Brand (Ambrane India)', campaign: 'UGC Video Reel + 2 Stories', amount: '₹12,000', status: 'Deal Proposed 🟢', code: 'RAFTRA-VERIFIED-98241', date: '05 Aug 2026, 12:15 PM' },
-                  { brand: 'BoAt Audio (Demo Brand)', campaign: '2 Instagram Stories + Post', amount: '₹15,000', status: 'Disbursed ✨', code: 'RAFTRA-VERIFIED-44102', date: '01 Aug 2026, 04:30 PM' },
-                  { brand: 'Mamaearth (Demo Brand)', campaign: 'Skincare Video Integration', amount: '₹10,000', status: 'Under Verification 🔍', code: 'RAFTRA-VERIFIED-71049', date: '30 Jul 2026, 11:00 AM' }
-                ].map((deal, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>{deal.brand}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{deal.campaign} • {deal.date}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '14px', fontWeight: 800, color: '#00E676' }}>{deal.amount}</div>
-                        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{deal.code}</div>
-                      </div>
-                      <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', background: deal.status.includes('Disbursed') ? 'rgba(0,230,118,0.15)' : deal.status.includes('Proposed') ? 'rgba(90,82,255,0.15)' : 'rgba(255,179,0,0.15)', color: deal.status.includes('Disbursed') ? '#00E676' : deal.status.includes('Proposed') ? 'var(--primary)' : '#FFB300', fontWeight: 700 }}>
-                        {deal.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+              <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '12px', color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: '32px', marginBottom: '8px' }}>📊</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#fff', marginBottom: '4px' }}>No Active Brand Deals</div>
+                <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>When a brand reaches out and sends a deal proposal on Raftra Marketplace, your status tracker will update here.</div>
               </div>
             </div>
           </div>
         )}
 
-        {/* 💬 INBOX TAB (INSTAGRAM DIRECT DM STYLE) */}
+        {/* 💬 INBOX TAB (INSTAGRAM DIRECT DM STYLE - ZERO STATE) */}
         {activeTab === 'inbox' && (
           <div style={{ maxWidth: '1000px', margin: '0 auto', height: 'calc(100vh - 120px)', display: 'flex', gap: '16px', background: '#0a0a0d', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
             
-            {/* Left Pane - Instagram Style Chat List */}
+            {/* Left Pane - Chat List */}
             <div style={{ width: '320px', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.01)' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ fontSize: '16px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -479,156 +433,18 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </h3>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                {[
-                  { id: 1, name: 'Raftra Demo Brand', avatar: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80', lastMsg: '⚡ Proposal: ₹12,000 (1 UGC Reel + 2 Stories)', time: 'Just now', unread: true },
-                  { id: 2, name: 'BoAt Audio (Demo Brand)', avatar: 'https://images.unsplash.com/photo-1572021335469-31706a17aaef?auto=format&fit=crop&w=100&q=80', lastMsg: 'Awesome video reel! Payout disbursed.', time: '1d', unread: false },
-                  { id: 3, name: 'Mamaearth (Demo Brand)', avatar: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=100&q=80', lastMsg: 'Can you send the draft by tomorrow?', time: '3d', unread: false }
-                ].map(chat => (
-                  <div 
-                    key={chat.id} 
-                    onClick={() => setChatWorkspaceId(chat.id)}
-                    style={{ 
-                      padding: '14px 18px', 
-                      cursor: 'pointer', 
-                      borderBottom: '1px solid rgba(255,255,255,0.03)',
-                      background: chatWorkspaceId === chat.id ? 'rgba(90,82,255,0.12)' : 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px'
-                    }}
-                  >
-                    <img src={chat.avatar} alt={chat.name} style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <div style={{ flex: 1, overflow: 'hidden' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                        <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff' }}>{chat.name}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{chat.time}</span>
-                      </div>
-                      <div style={{ fontSize: '12px', color: chat.unread ? '#fff' : 'var(--text-secondary)', fontWeight: chat.unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {chat.lastMsg}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '24px 16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                No active conversations yet.
               </div>
             </div>
 
-            {/* Right Pane - Instagram Style Direct Chat Screen */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#08080a' }}>
-              {/* Chat Header */}
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.02)' }}>
-                <img src={chatWorkspaceId === 1 ? "https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" : "https://images.unsplash.com/photo-1572021335469-31706a17aaef?auto=format&fit=crop&w=100&q=80"} alt="Brand" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                <div>
-                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>{chatWorkspaceId === 1 ? 'Raftra Demo Brand' : 'BoAt Audio (Demo Brand)'}</div>
-                  <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <CheckCircle2 size={12} /> Verified Brand Partner ⚡
-                  </div>
-                </div>
-              </div>
-
-              {/* Message Feed */}
-              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {currentChatMessages.map((msg: any, i: number) => {
-                  const contentStr = msg.text || msg.content || '';
-                  const isSystem = msg.sender === 'system' || msg.sender_type === 'system';
-                  if (isSystem) {
-                    return (
-                      <div key={i} style={{ textAlign: 'center', margin: '8px 0' }}>
-                        <span style={{ fontSize: '10.5px', color: '#00E676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', padding: '4px 14px', borderRadius: '12px', fontWeight: 600 }}>
-                          {contentStr}
-                        </span>
-                      </div>
-                    );
-                  }
-                  let parsedContent: any = null;
-                  try {
-                    if (typeof contentStr === 'string' && contentStr.trim().startsWith('{')) {
-                      parsedContent = JSON.parse(contentStr);
-                    }
-                  } catch (e) {}
-
-                  if (parsedContent && parsedContent.type === 'proposal') {
-                    return (
-                      <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '480px' }}>
-                        <div style={{ background: 'linear-gradient(135deg, rgba(90,82,255,0.15), rgba(120,50,255,0.2))', border: '1.5px solid var(--primary)', padding: '22px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 8px 24px rgba(90,82,255,0.2)' }}>
-                          <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                            🤝 OFFICIAL BRAND DEAL PROPOSAL
-                          </div>
-                          <div style={{ fontSize: '32px', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
-                            ₹{(parsedContent.amount || 12000).toLocaleString()}
-                          </div>
-                          <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 700, marginBottom: '16px', background: 'rgba(0,230,118,0.1)', padding: '6px 12px', borderRadius: '8px', display: 'inline-block' }}>
-                            Deliverables: {parsedContent.deliverables || '1 UGC Reel (30-45s) + 2 Instagram Stories'}
-                          </div>
-                          <div>
-                            <GlowButton variant="glow" onClick={() => handleAcceptProposal(parsedContent.amount || 12000)} style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 700 }}>
-                              Accept Proposal & Start Project
-                            </GlowButton>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (parsedContent && parsedContent.type === 'proposal_accepted') {
-                    return (
-                      <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '480px' }}>
-                        <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', padding: '16px', borderRadius: '14px', textAlign: 'center', color: '#00E676' }}>
-                          <CheckCircle2 size={28} style={{ marginBottom: '6px' }} />
-                          <div style={{ fontWeight: 800, fontSize: '16px' }}>Deal Accepted for ₹{(parsedContent.amount || 12000).toLocaleString()}!</div>
-                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', marginTop: '4px' }}>Waiting for brand to deposit funds into Raftra Escrow Vault...</div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (parsedContent && parsedContent.type === 'payment_complete') {
-                    return (
-                      <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '480px' }}>
-                        <div style={{ background: 'rgba(255,215,0,0.12)', border: '1px solid rgba(255,215,0,0.4)', padding: '16px', borderRadius: '14px', textAlign: 'center', color: '#ffd700' }}>
-                          <DollarSign size={28} style={{ marginBottom: '6px' }} />
-                          <div style={{ fontWeight: 800, fontSize: '16px' }}>Escrow Payment Deposited! 🟢</div>
-                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', marginTop: '4px' }}>₹{((parsedContent.amount || 12000) * 0.9).toLocaleString()} (90% net payout) is now locked in Raftra Vault for you.</div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const isMe = msg.sender === 'creator' || msg.sender_type === 'influencer';
-                  return (
-                    <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
-                        {isMe ? 'You (Ankit)' : (chatWorkspaceId === 1 ? 'Raftra Demo Brand' : 'Brand')}
-                      </div>
-                      <div style={{ 
-                        background: isMe ? 'linear-gradient(135deg, #5A52FF, #7832FF)' : 'rgba(255,255,255,0.06)', 
-                        padding: '12px 16px', 
-                        borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                        color: '#fff',
-                        fontSize: '13px',
-                        lineHeight: '1.45'
-                      }}>
-                        {contentStr}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={chatEndRef} />
-              </div>
-
-              {/* Chat Input Bar */}
-              <form onSubmit={handleSendChat} style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', background: '#0a0a0d', display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  placeholder="Message brand..."
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '24px', color: '#fff', outline: 'none', fontSize: '13px' }}
-                />
-                <GlowButton variant="glow" type="submit" style={{ borderRadius: '50%', width: '42px', height: '42px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Send size={16} />
-                </GlowButton>
-              </form>
+            {/* Right Pane - Chat Window Empty State */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#08080a', padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              <MessageCircle size={48} color="var(--primary)" style={{ opacity: 0.4, marginBottom: '16px' }} />
+              <h3 style={{ fontSize: '18px', margin: '0 0 6px 0', color: '#fff', fontFamily: 'var(--font-heading)' }}>Your Direct Messages</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, maxWidth: '400px', lineHeight: 1.5 }}>
+                When brands discover your profile on Raftra Marketplace and send a message or proposal, your direct chats will appear here.
+              </p>
             </div>
 
           </div>
@@ -805,8 +621,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
             <div className="glow-card" style={{ padding: '28px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                 <h3 style={{ fontSize: '18px', margin: 0, color: '#fff' }}>Razorpay Payout & Linked Bank Account</h3>
-                <div style={{ padding: '6px 14px', background: 'rgba(0,230,118,0.15)', border: '1px solid #00E676', color: '#00E676', borderRadius: '100px', fontSize: '11px', fontWeight: 800 }}>
-                  VERIFIED FOR DIRECT DISBURSAL ⚡
+                <div style={{ padding: '6px 14px', background: 'rgba(255,179,0,0.15)', border: '1px solid #FFB300', color: '#FFB300', borderRadius: '100px', fontSize: '11px', fontWeight: 800 }}>
+                  PENDING ACCOUNT SETUP 🟡
                 </div>
               </div>
 
@@ -829,6 +645,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   </label>
                   <input
                     type="text"
+                    placeholder="Enter Account Holder Name"
                     value={bankDetails.accountHolder}
                     onChange={e => setBankDetails({ ...bankDetails, accountHolder: e.target.value })}
                     style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
@@ -841,6 +658,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   </label>
                   <input
                     type="text"
+                    placeholder="Enter Bank Name & Branch"
                     value={bankDetails.bankName}
                     onChange={e => setBankDetails({ ...bankDetails, bankName: e.target.value })}
                     style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
@@ -853,6 +671,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   </label>
                   <input
                     type="text"
+                    placeholder="Enter Bank Account Number"
                     value={bankDetails.accountNumber}
                     onChange={e => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
                     style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
@@ -865,6 +684,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   </label>
                   <input
                     type="text"
+                    placeholder="Enter IFSC Code"
                     value={bankDetails.ifscCode}
                     onChange={e => setBankDetails({ ...bankDetails, ifscCode: e.target.value })}
                     style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
@@ -877,6 +697,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   </label>
                   <input
                     type="text"
+                    placeholder="Enter Instant UPI ID (e.g. name@upi)"
                     value={bankDetails.upiId}
                     onChange={e => setBankDetails({ ...bankDetails, upiId: e.target.value })}
                     style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
