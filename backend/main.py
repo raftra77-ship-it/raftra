@@ -52,13 +52,21 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
-# Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
-import auth, models, database, payments, agent_routes, workspace_routes
+from fastapi.staticfiles import StaticFiles
+import auth, models, database, payments, agent_routes, workspace_routes, influencer_deal_routes, payout_routes, media_routes
 
 # Create tables in db (in production, use alembic for migrations)
 models.Base.metadata.create_all(bind=database.engine)
+
+uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 app.include_router(auth.router)
 app.include_router(payments.router)
 app.include_router(agent_routes.router)
 app.include_router(workspace_routes.router)
+app.include_router(influencer_deal_routes.router)
+app.include_router(payout_routes.router)
+app.include_router(media_routes.router)
+

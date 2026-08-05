@@ -185,3 +185,69 @@ class AgentTaskResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# ── Deal Schemas ──────────────────────────────────────────────────────────────
+
+class DealPropose(BaseModel):
+    workspace_id: Optional[int] = None
+    brand_name: str
+    brand_email: Optional[str] = None
+    influencer_handle: str   # no @, e.g. "samairaa.r"
+    influencer_name: str
+    influencer_email: Optional[str] = None
+    influencer_phone: Optional[str] = None
+    amount: float
+    deliverables: str
+
+class DealResponse(BaseModel):
+    id: int
+    workspace_id: Optional[int]
+    brand_name: str
+    influencer_handle: str
+    influencer_name: str
+    amount: float
+    deliverables: str
+    status: str
+    brand_release_token: Optional[str]
+    escrow_locked_at: Optional[datetime]
+    brand_released_at: Optional[datetime]
+    paid_at: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ── Payout Schemas ────────────────────────────────────────────────────────────
+
+class PayoutSubmit(BaseModel):
+    creator_handle: str       # no @
+    creator_name: str
+    deal_id: Optional[int] = None
+    screenshot_url: Optional[str] = None
+    token_submitted: Optional[str] = None
+    bank_account_holder: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    upi_id: Optional[str] = None
+
+class PayoutResponse(BaseModel):
+    id: int
+    creator_handle: str
+    creator_name: str
+    deal_id: Optional[int]
+    screenshot_url: Optional[str]
+    token_submitted: Optional[str]
+    bank_account_holder: Optional[str]
+    bank_name: Optional[str]
+    account_number: Optional[str]
+    ifsc_code: Optional[str]
+    upi_id: Optional[str]
+    status: str
+    admin_note: Optional[str]
+    payout_ref: Optional[str]
+    created_at: datetime
+    reviewed_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True

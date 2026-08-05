@@ -110,15 +110,32 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   const proofFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleProofFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProofFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setProofFileScreenshot(url);
+    if (!file) return;
+
+    // Show temporary preview
+    const tempUrl = URL.createObjectURL(file);
+    setProofFileScreenshot(tempUrl);
+
+    // Upload to backend media route (Cloudinary / Local static storage fallback)
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/api/media/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.url) {
+        setProofFileScreenshot(data.url);
+      }
+    } catch (err) {
+      console.warn("Cloudinary/Media upload fallback to blob:", err);
     }
   };
 
-  const handleSubmitProofToTeamRaftra = (e: React.FormEvent) => {
+  const handleSubmitProofToTeamRaftra = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!proofTokenInput && !proofFileScreenshot) {
       alert("Please paste the verification token or upload a screenshot of your WhatsApp/IG DM chat approval.");
@@ -126,13 +143,52 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     }
 
     setProofVerificationStatus('under_review');
-    setProofSubmissionToast('📩 Proof Emailed to Team Raftra Admin (raftra.77@gmail.com)! Human auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
+    setProofSubmissionToast('📩 Proof submitted to Team Raftra Admin (raftra.77@gmail.com)! Human auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
+
+    try {
+      await fetch('/api/payouts/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creator_handle: cardCustomizer.handle || myHandle,
+          creator_name: cardCustomizer.name || 'Creator',
+          screenshot_url: proofFileScreenshot,
+          token_submitted: proofTokenInput,
+          bank_account_holder: bankDetails.accountHolder,
+          bank_name: bankDetails.bankName,
+          account_number: bankDetails.accountNumber,
+          ifsc_code: bankDetails.ifscCode,
+          upi_id: bankDetails.upiId
+        })
+      });
+    } catch (err) {
+      console.error("Error submitting payout to backend:", err);
+    }
+
     setTimeout(() => setProofSubmissionToast(null), 6000);
   };
 
-  const handleSimulateHumanApproval = () => {
+  const handleSimulateHumanApproval = async () => {
     setProofVerificationStatus('verified_payout');
     setProofSubmissionToast('✅ Human Verification Approved by Team Raftra! Net payout disbursed to your bank account via Razorpay/UPI.');
+
+    try {
+      // Trigger approval on backend
+      const cleanH = (cardCustomizer.handle || myHandle).replace('@', '').toLowerCase();
+      const res = await fetch(`/api/payouts/creator/${cleanH}`);
+      const payouts = await res.json();
+      if (Array.isArray(payouts) && payouts.length > 0) {
+        const latestP = payouts[0];
+        await fetch(`/api/payouts/${latestP.id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ admin_note: "Verified by Team Raftra Admin" })
+        });
+      }
+    } catch (err) {
+      console.error("Backend approval simulation error:", err);
+    }
+
     setTimeout(() => setProofSubmissionToast(null), 6000);
   };
 

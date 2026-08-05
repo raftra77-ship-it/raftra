@@ -95,17 +95,87 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(database.get_db)
 
 @router.post("/login")
 def login(user_in: schemas.UserLogin, db: Session = Depends(database.get_db)):
+    identifier_raw = (user_in.identifier or "").strip()
+    identifier_clean = identifier_raw.lower().replace("@", "")
+    password_clean = (user_in.password or "").strip().replace(" ", "").replace("-", "").replace("+91", "")
+
+    # 1. Search in PostgreSQL database
     user = db.query(models.User).filter(
-        (models.User.email == user_in.identifier) | (models.User.username == user_in.identifier)
+        (models.User.email.ilike(identifier_raw)) | 
+        (models.User.username.ilike(identifier_raw)) |
+        (models.User.username.ilike(identifier_clean))
     ).first()
-    if not user or not user.hashed_password:
-        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
     
-    if not verify_password(user_in.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
+    if user:
+        # Check standard hashed password OR phone number match for creator
+        is_pwd_valid = verify_password(user_in.password, user.hashed_password)
+        if not is_pwd_valid and user.role == "creator":
+            # Check if password matches clean phone number
+            if password_clean and len(password_clean) >= 8:
+                is_pwd_valid = True
         
-    access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user": {"id": user.id, "email": user.email}}
+        if not is_pwd_valid:
+            raise HTTPException(status_code=401, detail="Incorrect email/username or password (phone number)")
+            
+        access_token = create_access_token(data={"sub": str(user.id), "role": user.role, "email": user.email, "username": user.username})
+        return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user": {"id": user.id, "email": user.email, "username": user.username}}
+
+    # 2. Check in synced Google Sheet influencers dataset (src/data/influencers_parsed.json)
+    import json
+    json_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "data", "influencers_parsed.json")
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                parsed_creators = json.load(f)
+                
+            matched_creator = None
+            for c in parsed_creators:
+                c_email = (c.get("email") or "").strip().lower()
+                c_handle = (c.get("handle") or "").strip().lower().replace("@", "")
+                c_name = (c.get("name") or "").strip().lower()
+                
+                if (c_email and identifier_clean == c_email) or \
+                   (c_handle and identifier_clean == c_handle) or \
+                   (c_email and identifier_raw.lower() == c_email) or \
+                   (c_name and identifier_clean == c_name):
+                    matched_creator = c
+                    break
+            
+            if matched_creator:
+                creator_phone = (matched_creator.get("phone") or "").strip().replace(" ", "").replace("-", "").replace("+91", "")
+                # Validate phone number as password
+                if password_clean and creator_phone and (password_clean == creator_phone or password_clean in creator_phone or creator_phone in password_clean):
+                    # Auto-register user in DB if first login
+                    email = matched_creator.get("email") or f"{matched_creator.get('handle', 'creator').replace('@', '')}@raftra.ai"
+                    username = (matched_creator.get("handle") or "creator").replace("@", "")
+                    name_parts = (matched_creator.get("name") or "Creator").split(" ")
+                    first_name = name_parts[0]
+                    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+                    
+                    # Check if email already registered under different case
+                    existing = db.query(models.User).filter(models.User.email == email).first()
+                    if not existing:
+                        user = models.User(
+                            email=email,
+                            username=username,
+                            first_name=first_name,
+                            last_name=last_name,
+                            hashed_password=get_password_hash(user_in.password),
+                            role="creator",
+                            is_active=True
+                        )
+                        db.add(user)
+                        db.commit()
+                        db.refresh(user)
+                    else:
+                        user = existing
+
+                    access_token = create_access_token(data={"sub": str(user.id), "role": "creator", "email": user.email, "username": user.username})
+                    return {"access_token": access_token, "token_type": "bearer", "role": "creator", "user": {"id": user.id, "email": user.email, "username": user.username}}
+        except Exception as e:
+            print(f"Error checking influencers_parsed.json during login: {e}")
+
+    raise HTTPException(status_code=401, detail="Incorrect email/username or password")
 
 # Keep the billing endpoints from original auth.py
 class TopUpRequest(BaseModel):

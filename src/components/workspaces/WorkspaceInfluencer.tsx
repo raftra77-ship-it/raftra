@@ -168,18 +168,23 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: updated } }));
 
     try {
-      const token = localStorage.getItem('token');
-      const payload = JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs, status: 'pending' });
-      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat.id}/chat`, {
+      await fetch('/api/deals/propose', {
         method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: payload, sender_type: 'brand' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          brand_name: 'Demo Brand',
+          brand_whatsapp: '9876543210',
+          influencer_handle: activeChat.handle,
+          influencer_name: activeChat.name,
+          influencer_email: activeChat.email,
+          influencer_phone: activeChat.phone,
+          amount: price,
+          deliverables: delivs
+        })
       });
     } catch (err) {
-      console.error(err);
+      console.error("Backend deal proposal dispatch error:", err);
     }
 
     setShowFinalize(false);
@@ -400,29 +405,34 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
   const handlePayRazorpay = async (amount: number) => {
     try {
-      const token = localStorage.getItem('token');
       const payload = JSON.stringify({ type: 'payment_complete', amount });
       
       if (activeChat) {
-        const storageKey = `raftra_chat_${activeChat.id}`;
+        const storageKey = getChatKey(activeChat);
         const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
         const updated = [...currentMsgs, { sender: 'brand' as const, text: payload }];
         setChatMessages(updated as any);
         localStorage.setItem(storageKey, JSON.stringify(updated));
-        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: { key: storageKey, msgs: updated } }));
 
         setPaidDealInfo({ amount, creator: activeChat });
         setShowEmailReceiptModal(true);
-      }
 
-      await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat!.id}/chat`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: payload, sender_type: 'brand' })
-      }).catch(() => {});
+        // Notify backend & trigger email dispatch with token & brand contact number
+        const cleanHandle = activeChat.handle.replace('@', '').toLowerCase();
+        fetch(`/api/deals/creator/${cleanHandle}`)
+          .then(r => r.json())
+          .then(deals => {
+            if (Array.isArray(deals) && deals.length > 0) {
+              const activeDeal = deals[0];
+              fetch(`/api/deals/${activeDeal.id}/release`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ brand_whatsapp: '9876543210' })
+              }).catch(() => {});
+            }
+          }).catch(() => {});
+      }
     } catch(e) {
       console.error(e);
     }

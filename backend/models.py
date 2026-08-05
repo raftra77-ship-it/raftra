@@ -1,7 +1,10 @@
 from sqlalchemy import Boolean, Column, Integer, String, Float, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 import datetime
-from pgvector.sqlalchemy import Vector
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    from sqlalchemy import JSON as Vector
 from database import Base
 
 class AgentMemory(Base):
@@ -243,3 +246,50 @@ class Notification(Base):
     action_url = Column(String, nullable=True)
 
     user = relationship("User")
+
+class InfluencerDeal(Base):
+    """Tracks a finalized brand↔creator deal."""
+    __tablename__ = "influencer_deals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    brand_name = Column(String)              # e.g. "Demo Brand"
+    brand_email = Column(String, nullable=True)
+    influencer_handle = Column(String, index=True)  # e.g. "samairaa.r" (no @)
+    influencer_name = Column(String)
+    influencer_email = Column(String, nullable=True)
+    influencer_phone = Column(String, nullable=True)  # sent via email after release
+    amount = Column(Float)
+    deliverables = Column(String)
+    status = Column(String, default="pending")  # pending|active|delivered|paid
+    brand_release_token = Column(String, nullable=True)  # generated on brand release
+    brand_whatsapp = Column(String, nullable=True)
+    escrow_locked_at = Column(DateTime, nullable=True)
+    brand_released_at = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class CreatorPayoutRequest(Base):
+    """Creator submits proof to claim escrow payout."""
+    __tablename__ = "creator_payout_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    creator_handle = Column(String, index=True)    # e.g. "samairaa.r"
+    creator_name = Column(String)
+    deal_id = Column(Integer, ForeignKey("influencer_deals.id"), nullable=True)
+    screenshot_url = Column(String, nullable=True) # Cloudinary / upload URL
+    token_submitted = Column(String, nullable=True) # token from brand email
+    # Bank / UPI details
+    bank_account_holder = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
+    account_number = Column(String, nullable=True)
+    ifsc_code = Column(String, nullable=True)
+    upi_id = Column(String, nullable=True)
+    # Review
+    status = Column(String, default="submitted")  # submitted|under_review|approved|rejected|paid
+    admin_note = Column(String, nullable=True)
+    payout_ref = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
+
+    deal = relationship("InfluencerDeal")
