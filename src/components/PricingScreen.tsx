@@ -770,7 +770,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>SEO Growth</div>
                   <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
-                    {formatPrice(10000, 119, 100000)}
+                    {formatPrice(9999, 119, 99999)}
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
