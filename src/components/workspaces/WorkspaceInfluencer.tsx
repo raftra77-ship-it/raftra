@@ -150,7 +150,6 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const [finalPrice, setFinalPrice] = useState('');
   const [finalDeliverables, setFinalDeliverables] = useState('1 UGC Reel + 2 Stories');
   const chatEndRef = useRef<HTMLDivElement>(null);
-
   const handleLockDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!finalPrice || isNaN(Number(finalPrice)) || !activeChat) return;
@@ -159,14 +158,16 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     const storageKey = `raftra_chat_${activeChat.id}`;
     
     const proposalMsg = { sender: 'brand' as const, text: JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs }) };
-    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat') || JSON.stringify(chatMessages));
+    const currentMsgs = JSON.parse(localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat') || JSON.stringify(chatMessages));
     const updated = [...currentMsgs, proposalMsg];
     setChatMessages(updated as any);
+    localStorage.setItem('raftra_global_live_chat', JSON.stringify(updated));
     localStorage.setItem(storageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
     localStorage.setItem('raftra_chat_creator_11', JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
-    
+    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: updated }));
+
     try {
       const token = localStorage.getItem('token');
       const payload = JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs, status: 'pending' });
@@ -178,13 +179,140 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         },
         body: JSON.stringify({ content: payload, sender_type: 'brand' })
       });
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
     }
-    
+
     setShowFinalize(false);
     setFinalPrice('');
     setFinalDeliverables('1 UGC Reel + 2 Stories');
+  };
+
+  useEffect(() => {
+    const syncChat = () => {
+      const saved = localStorage.getItem('raftra_global_live_chat') || 
+                    (activeChat ? localStorage.getItem(`raftra_chat_${activeChat.id}`) : null) || 
+                    localStorage.getItem('raftra_creator_inbox_chat');
+      if (saved) {
+        try {
+          setChatMessages(JSON.parse(saved));
+        } catch (err) {}
+      }
+    };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.key || e.key.includes('raftra_')) {
+        syncChat();
+      }
+    };
+
+    const handleCustom = (e: any) => {
+      if (e.detail) {
+        setChatMessages(e.detail);
+      } else {
+        syncChat();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('raftra_live_chat_event', handleCustom);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('raftra_live_chat_event', handleCustom);
+    };
+  }, [activeChat]);
+
+  const handleOpenChat = (creator: InfluencerItemExtended) => {
+    setActiveChat(creator);
+    const storageKey = `raftra_chat_${creator.id}`;
+    const savedChat = localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat');
+    
+    if (savedChat) {
+      try {
+        setChatMessages(JSON.parse(savedChat));
+      } catch (err) {
+        setChatMessages([
+          { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
+          { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
+        ]);
+      }
+    } else {
+      const initialMsgs = [
+        { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
+        { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
+      ];
+      setChatMessages(initialMsgs as any);
+      localStorage.setItem('raftra_global_live_chat', JSON.stringify(initialMsgs));
+      localStorage.setItem(storageKey, JSON.stringify(initialMsgs));
+    }
+  };
+
+  const isAntiBypassViolation = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    
+    // Obfuscated / spaced out phone numbers check (e.g. 9 8 7 6 5 4 3 2 1 0 or 9876543210)
+    const normalizedDigits = text.replace(/[^0-9]/g, '');
+    if (normalizedDigits.length >= 10 && /[6-9]\d{9}/.test(normalizedDigits)) {
+      return true;
+    }
+
+    // Hinglish, English, WhatsApp, Instagram DM, and personal chat keywords
+    const bypassKeywords = [
+      'whatsapp', 'watsapp', 'whatapp', 'whatsaap', 'wa.me', 'wa ', 'wp ', 'wpp',
+      'instagram', 'insta', 'ig dm', 'insta dm', 'dm me', 'dm pe', 'inbox me', 'inbox pe', 'direct msg', 'direct message',
+      'personal chat', 'personal msg', 'personal message', 'personal number', 'personal pe',
+      'baat kare', 'baat karte', 'baat karle', 'baat karo', 'call me', 'call kar', 'call pe',
+      'text me', 'my number', 'phone number', 'phn no', 'contact no', 'mobile no', 'number de',
+      'number send', 'number pe', 'outside chat', 'off platform', 'off-platform',
+      'gpay', 'google pay', 'paytm', 'phonepe', 'upi id', 'direct payment', 'bank transfer'
+    ];
+
+    return bypassKeywords.some(kw => lower.includes(kw));
+  };
+
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !activeChat) return;
+    const input = chatInput;
+    setChatInput('');
+
+    const storageKey = `raftra_chat_${activeChat.id}`;
+    const currentMsgs = JSON.parse(localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat') || JSON.stringify(chatMessages));
+
+    // Anti-Bypass Policy Check
+    if (isAntiBypassViolation(input)) {
+      const violationMsg = {
+        sender: 'system' as const,
+        text: '🚨 CHAT BLOCKED: Anti-Bypass Policy Violation Detected! Exchanging phone numbers, Instagram handles, or off-platform contact is strictly prohibited. Your account has been reported.'
+      };
+      const blockedMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }, violationMsg];
+      setChatMessages(blockedMsgs as any);
+      localStorage.setItem('raftra_global_live_chat', JSON.stringify(blockedMsgs));
+      localStorage.setItem(storageKey, JSON.stringify(blockedMsgs));
+      localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(blockedMsgs));
+      localStorage.setItem('raftra_chat_creator_11', JSON.stringify(blockedMsgs));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: blockedMsgs }));
+      return;
+    }
+
+    const newMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }];
+    setChatMessages(newMsgs);
+    localStorage.setItem('raftra_global_live_chat', JSON.stringify(newMsgs));
+    localStorage.setItem(storageKey, JSON.stringify(newMsgs));
+    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(newMsgs));
+    localStorage.setItem('raftra_chat_creator_11', JSON.stringify(newMsgs));
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: newMsgs }));
+
+    // Silent background webhook dispatch to Creator's WhatsApp notification endpoint
+    if (activeChat.phone) {
+      fetch('/api/workspaces/influencer/whatsapp-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: activeChat.phone, message: input, brand: 'Demo Brand' })
+      }).catch(() => {});
+    }
   };
 
   useEffect(() => {
@@ -285,98 +413,6 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, [activeChat]);
-
-  const handleOpenChat = (creator: InfluencerItemExtended) => {
-    setActiveChat(creator);
-    const storageKey = `raftra_chat_${creator.id}`;
-    const savedChat = localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat');
-    
-    if (savedChat) {
-      try {
-        setChatMessages(JSON.parse(savedChat));
-      } catch (err) {
-        setChatMessages([
-          { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
-          { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
-        ]);
-      }
-    } else {
-      const initialMsgs = [
-        { sender: 'system', text: `SECURE END-TO-END CHAT WITH ${creator.name.toUpperCase()}` },
-        { sender: 'creator', text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
-      ];
-      setChatMessages(initialMsgs as any);
-      localStorage.setItem(storageKey, JSON.stringify(initialMsgs));
-    }
-  };
-
-  const isAntiBypassViolation = (text: string): boolean => {
-    const lower = text.toLowerCase();
-    
-    // Obfuscated / spaced out phone numbers check (e.g. 9 8 7 6 5 4 3 2 1 0 or 9876543210)
-    const normalizedDigits = text.replace(/[^0-9]/g, '');
-    if (normalizedDigits.length >= 10 && /[6-9]\d{9}/.test(normalizedDigits)) {
-      return true;
-    }
-
-    // Hinglish, English, WhatsApp, Instagram DM, and personal chat keywords
-    const bypassKeywords = [
-      'whatsapp', 'watsapp', 'whatapp', 'whatsaap', 'wa.me', 'wa ', 'wp ', 'wpp',
-      'instagram', 'insta', 'ig dm', 'insta dm', 'dm me', 'dm pe', 'inbox me', 'inbox pe', 'direct msg', 'direct message',
-      'personal chat', 'personal msg', 'personal message', 'personal number', 'personal pe',
-      'baat kare', 'baat karte', 'baat karle', 'baat karo', 'call me', 'call kar', 'call pe',
-      'text me', 'my number', 'phone number', 'phn no', 'contact no', 'mobile no', 'number de',
-      'number send', 'number pe', 'outside chat', 'off platform', 'off-platform',
-      'gpay', 'google pay', 'paytm', 'phonepe', 'upi id', 'direct payment', 'bank transfer'
-    ];
-
-    return bypassKeywords.some(kw => lower.includes(kw));
-  };
-
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || !activeChat) return;
-    const input = chatInput;
-    setChatInput('');
-
-    const storageKey = `raftra_chat_${activeChat.id}`;
-    const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || localStorage.getItem('raftra_creator_inbox_chat') || JSON.stringify(chatMessages));
-
-    // Anti-Bypass Policy Check
-    if (isAntiBypassViolation(input)) {
-      const violationMsg = {
-        sender: 'system' as const,
-        text: '🚨 CHAT BLOCKED: Anti-Bypass Policy Violation Detected! Exchanging phone numbers, Instagram handles, or off-platform contact is strictly prohibited. Your account has been reported.'
-      };
-      const blockedMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }, violationMsg];
-      setChatMessages(blockedMsgs as any);
-      localStorage.setItem(storageKey, JSON.stringify(blockedMsgs));
-      localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(blockedMsgs));
-      localStorage.setItem('raftra_chat_creator_11', JSON.stringify(blockedMsgs));
-      window.dispatchEvent(new Event('storage'));
-      return;
-    }
-
-    const newMsgs = [...currentMsgs, { sender: 'brand' as const, text: input }];
-    setChatMessages(newMsgs);
-    localStorage.setItem(storageKey, JSON.stringify(newMsgs));
-    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(newMsgs));
-    localStorage.setItem('raftra_chat_creator_11', JSON.stringify(newMsgs));
-    window.dispatchEvent(new Event('storage'));
-
-    // Silent background webhook dispatch to Creator's WhatsApp notification endpoint
-    if (activeChat.phone) {
-      fetch('/api/workspaces/influencer/whatsapp-notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: activeChat.phone,
-          handle: activeChat.handle,
-          message: input
-        })
-      }).catch(() => {});
-    }
-  };
 
   const [showEmailReceiptModal, setShowEmailReceiptModal] = useState<boolean>(false);
   const [paidDealInfo, setPaidDealInfo] = useState<{amount: number, creator: InfluencerItemExtended} | null>(null);

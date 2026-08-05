@@ -196,20 +196,45 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const creatorStorageKey = 'raftra_chat_creator_11';
 
   useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if ((e.key === creatorStorageKey || e.key === 'raftra_creator_inbox_chat') && e.newValue) {
+    const syncChat = () => {
+      const saved = localStorage.getItem('raftra_global_live_chat') || 
+                    localStorage.getItem(creatorStorageKey) || 
+                    localStorage.getItem('raftra_creator_inbox_chat');
+      if (saved) {
         try {
-          setChatMessages(JSON.parse(e.newValue));
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.length > 0) {
+            setChatMessages(parsed);
+          }
         } catch (err) {}
       }
     };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.key || e.key.includes('raftra_')) {
+        syncChat();
+      }
+    };
+
+    const handleCustom = (e: any) => {
+      if (e.detail) {
+        setChatMessages(e.detail);
+      } else {
+        syncChat();
+      }
+    };
+
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener('raftra_live_chat_event', handleCustom);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('raftra_live_chat_event', handleCustom);
+    };
   }, []);
 
   useEffect(() => {
     if (activeTab === 'inbox') {
-      const savedChat = localStorage.getItem(creatorStorageKey) || localStorage.getItem('raftra_creator_inbox_chat');
+      const savedChat = localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(creatorStorageKey) || localStorage.getItem('raftra_creator_inbox_chat');
       if (savedChat) {
         try {
           const parsed = JSON.parse(savedChat);
@@ -245,8 +270,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 1000, deliverables: '1 UGC Reel (30-45s) + 2 Instagram Story Links' }) }
     ];
     setChatMessages(initialMsgs);
+    localStorage.setItem('raftra_global_live_chat', JSON.stringify(initialMsgs));
     localStorage.setItem(creatorStorageKey, JSON.stringify(initialMsgs));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(initialMsgs));
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: initialMsgs }));
     return initialMsgs;
   };
 
@@ -279,7 +307,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     const input = chatInput;
     setChatInput('');
 
-    const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
+    const currentMsgs = JSON.parse(localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
 
     // Anti-Bypass Guard
     if (isAntiBypassViolation(input)) {
@@ -291,9 +319,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       };
       const blockedMsgs = [...currentMsgs, { sender: 'creator' as const, sender_type: 'influencer', text: input, content: input }, violationMsg];
       setChatMessages(blockedMsgs as any);
+      localStorage.setItem('raftra_global_live_chat', JSON.stringify(blockedMsgs));
       localStorage.setItem(creatorStorageKey, JSON.stringify(blockedMsgs));
       localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(blockedMsgs));
       window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: blockedMsgs }));
       return;
     }
 
@@ -306,9 +336,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
     const updated = [...currentMsgs, newMsg];
     setChatMessages(updated);
+    localStorage.setItem('raftra_global_live_chat', JSON.stringify(updated));
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: updated }));
   };
 
   const handleAcceptProposal = (amount: number) => {
@@ -323,16 +355,18 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       sender_type: 'system',
       text: '✨ DEAL ACCEPTED & ESCROW LOCKED! Brand will contact you on WhatsApp. Once deliverables are completed, get the satisfactory message from Brand & upload screenshot in Payment Setup for instant payout.'
     };
-    const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
+    const currentMsgs = JSON.parse(localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
     const filtered = currentMsgs.filter((m: any) => {
       const str = m.text || m.content || '';
       return !str.includes('proposal_accepted') && !str.includes('DEAL ACCEPTED');
     });
     const updated = [...filtered, acceptMsg, autoDoneMsg];
     setChatMessages(updated);
+    localStorage.setItem('raftra_global_live_chat', JSON.stringify(updated));
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('raftra_live_chat_event', { detail: updated }));
   };
 
   const handleVerifyProfile = async (e: React.FormEvent) => {
