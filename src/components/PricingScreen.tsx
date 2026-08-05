@@ -976,38 +976,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 </div>
               </div>
 
-              {/* Marketplace Revenue & Commission Structure */}
-              <div
-                onMouseEnter={() => setHoveredCard('inc_commission')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={getCardStyle('inc_commission')}
-              >
-                <div>
-                  <div style={{ display: 'inline-block', background: 'rgba(255,189,46,0.15)', border: '1px solid rgba(255,189,46,0.3)', color: '#FFBD2E', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, marginBottom: '16px' }}>
-                    TRANSPARENT REVENUE & COMMISSION MODEL
-                  </div>
 
-                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>
-                    Marketplace & Hire Commissions
-                  </h3>
-
-                  <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.6 }}>
-                    No hidden charges. Platform commissions apply only when completing deal payouts or hiring verified specialists through Raftra Escrow.
-                  </p>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.25)', padding: '12px 16px', borderRadius: '12px', fontSize: '13px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span><strong>Influencer Marketplace:</strong></span>
-                      <strong style={{ color: '#00E676', fontSize: '15px' }}>10% Commission</strong>
-                    </div>
-
-                    <div style={{ background: 'rgba(124,117,255,0.08)', border: '1px solid rgba(124,117,255,0.25)', padding: '12px 16px', borderRadius: '12px', fontSize: '13px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span><strong>Hire a Specialist:</strong></span>
-                      <strong style={{ color: '#7C75FF', fontSize: '15px' }}>20% Commission</strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
             </div>
           </div>
