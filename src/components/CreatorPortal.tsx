@@ -239,8 +239,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         try {
           const parsed = JSON.parse(savedChat);
           const str = JSON.stringify(parsed);
-          // Purge old test junk or mismatched handle chats from localStorage
-          const hasJunk = str.includes('BLOCKED') || str.includes('Asitis') || str.includes('instagram dm') || str.includes('Whey Protein') || str.includes('Ankit') || str.includes('ankrena') || !str.includes(cardCustomizer.handle);
+          // Purge old test junk from localStorage
+          const hasJunk = str.includes('BLOCKED') || str.includes('Asitis') || str.includes('instagram dm') || str.includes('Whey Protein') || str.includes('Ankit') || str.includes('ankrena');
           if (parsed && parsed.length > 0 && !hasJunk) {
             setChatMessages(parsed);
           } else {
@@ -253,7 +253,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         initDemoBrandChat();
       }
     }
-  }, [activeTab, cardCustomizer.name, cardCustomizer.handle]);
+  }, [activeTab]);
 
   const initDemoBrandChat = () => {
     const creatorName = cardCustomizer.name || 'samaira rao';
