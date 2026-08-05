@@ -464,32 +464,35 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h3 style={{ fontSize: '17px', margin: '0 0 2px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
-              ⚡ BRAND CAMPAIGN WORKFLOW (4 EASY STEPS)
+              ⚡ HOW BRAND CAMPAIGNS WORK (5 SIMPLE STEPS)
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, fontWeight: 500 }}>
-              How to hire, fund escrow, and approve influencer deliverables safely.
+              Follow this exact step-by-step process from negotiation to payout release.
             </p>
           </div>
           <span style={{ fontSize: '11px', padding: '6px 12px', background: 'rgba(0,230,118,0.15)', color: '#00E676', border: '1px solid #00E676', borderRadius: '20px', fontWeight: 800 }}>
-            HOW TO USE
+            BRAND CAMPAIGN FLOW
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
           {[
-            { step: '1', title: 'Negotiate & Lock Deal', tag: 'Chat ➔ Finalize Price & Items', desc: 'Chat with creator & click "Finalize Deal" to set Final Price (₹) & Deliverables.' },
-            { step: '2', title: 'Deposit Escrow Funds', tag: 'Influencer Accepts ➔ Pay', desc: 'Creator accepts -> Click "Proceed to Secure Payment Page" to lock funds in Vault.' },
-            { step: '3', title: 'Check Email & WhatsApp', tag: 'Get WA Contact & Contract', desc: 'Check email receipt & open creator WhatsApp link to start production.' },
-            { step: '4', title: 'Approve Payout', tag: 'Send Code ➔ Release Funds', desc: 'Work done? Copy timestamped satisfaction code & send to creator for payout release.' }
+            { step: '1', title: 'Negotiate Directly with Influencer', tag: 'Web Chat Discussion', desc: 'Open Web Chat & discuss project requirements directly with creator.' },
+            { step: '2', title: 'Send Finalize Deal Proposal', tag: 'Price (₹) & Deliverables', desc: 'Click "Finalize Deal", enter final price & deliverables, and send proposal.' },
+            { step: '3', title: 'Accept Proposal & Go to Payment', tag: 'Pay via Escrow Vault', desc: 'Once creator accepts proposal ➔ Click "Proceed to Secure Payment Page".' },
+            { step: '4', title: 'Get Email & WhatsApp Contact', tag: 'Exchange Deliverables', desc: 'Receive email receipt ➔ Open WhatsApp link with creator & exchange deliverables.' },
+            { step: '5', title: 'Send Satisfactory Message', tag: 'Release Payout to Creator', desc: 'Work done & satisfactory? Send timestamped satisfaction code to influencer for payout release.' }
           ].map(item => (
-            <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px', position: 'relative' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 900, color: '#00E676', letterSpacing: '0.05em' }}>STEP {item.step}</span>
-                <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#00E676', color: '#000', fontWeight: 900, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.step}</span>
+            <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px', position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: 900, color: '#00E676', letterSpacing: '0.05em' }}>STEP {item.step}</span>
+                  <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#00E676', color: '#000', fontWeight: 900, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.step}</span>
+                </div>
+                <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#fff', marginBottom: '6px', lineHeight: 1.3 }}>{item.title}</div>
+                <div style={{ fontSize: '10.5px', color: '#00C4CC', fontWeight: 700, marginBottom: '8px', background: 'rgba(0,196,204,0.1)', padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.tag}</div>
               </div>
-              <div style={{ fontSize: '14px', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>{item.title}</div>
-              <div style={{ fontSize: '11px', color: '#00C4CC', fontWeight: 700, marginBottom: '8px', background: 'rgba(0,196,204,0.1)', padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.tag}</div>
-              <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, fontWeight: 500 }}>{item.desc}</div>
+              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, fontWeight: 500 }}>{item.desc}</div>
             </div>
           ))}
         </div>
