@@ -24,8 +24,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   });
   
   const DEFAULT_CREATOR_CARD = {
-    name: 'samrao112',
-    handle: '@samrao112',
+    name: 'samaira rao',
+    handle: '@samairaa.r',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
     niche: 'Fashion & Lifestyle',
     category: 'MICRO',
@@ -34,7 +34,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     avgViews: '2.5M peak (170k reach)',
     fakeFollowerScore: '1%',
     expectedPrice: '₹500 - ₹1,000',
-    profileLink: 'https://www.instagram.com/samrao112',
+    profileLink: 'https://www.instagram.com/samairaa.r',
     deliverables: ['UGC Video', 'Reel', 'Story', 'Static Post']
   };
 
@@ -43,8 +43,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     if (savedCard) {
       try {
         const parsed = JSON.parse(savedCard);
-        // Reset old hardcoded default cards
-        if (parsed.handle === '@ankrena' || parsed.name === 'Ankit Kumar' || parsed.handle === '@samairaa.r') {
+        // Reset old hardcoded default cards if needed
+        if (parsed.handle === '@ankrena' || parsed.name === 'Ankit Kumar' || parsed.handle === '@samrao112') {
           localStorage.setItem('raftra_creator_card_custom', JSON.stringify(DEFAULT_CREATOR_CARD));
           return DEFAULT_CREATOR_CARD;
         }
@@ -129,43 +129,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const payloadBase64 = token.split('.')[1];
-        if (payloadBase64) {
-          const decoded = JSON.parse(atob(payloadBase64));
-          const username = decoded.username || (decoded.email ? decoded.email.split('@')[0] : 'samrao112');
-          const cleanUser = username.replace(/[^a-zA-Z0-9_\.]/g, '');
-          const name = decoded.name || (decoded.first_name ? `${decoded.first_name} ${decoded.last_name || ''}`.trim() : cleanUser);
-          const handle = `@${cleanUser}`;
-          
-          setCardCustomizer(prev => ({
-            ...prev,
-            name: name,
-            handle: handle,
-            profileLink: `https://www.instagram.com/${cleanUser}`
-          }));
-        }
-      } catch (e) {}
-    }
-
     fetch('/api/auth/me', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       setMe(data);
-      if (data && (data.username || data.email || data.first_name)) {
-        const username = data.username || (data.email ? data.email.split('@')[0] : 'samrao112');
-        const cleanUser = username.replace(/[^a-zA-Z0-9_\.]/g, '');
-        const name = `${data.first_name || ''} ${data.last_name || ''}`.trim() || cleanUser;
-        const handle = `@${cleanUser}`;
-        
-        setCardCustomizer(prev => ({
-          ...prev,
-          name: name,
-          handle: handle,
-          profileLink: `https://www.instagram.com/${cleanUser}`
-        }));
-      }
     }).catch(() => {});
 
     fetch('/api/workspaces/influencer/me', {
@@ -176,16 +143,6 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         if (data.handle) {
           setVerificationStatus('verified');
         }
-        setCardCustomizer(prev => ({
-          ...prev,
-          name: data.name || prev.name,
-          handle: data.handle || prev.handle,
-          avatar: data.avatar || prev.avatar,
-          followers: data.followers || prev.followers,
-          expectedPrice: data.base_rate ? `₹${data.base_rate.toLocaleString()}` : prev.expectedPrice,
-          niche: data.niche || prev.niche,
-          location: data.location || prev.location
-        }));
         setProfileForm({
           avatar: data.avatar || '',
           recent_posts: data.recent_posts || [],
@@ -238,8 +195,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   }, [activeTab, cardCustomizer.name, cardCustomizer.handle]);
 
   const initDemoBrandChat = () => {
-    const creatorName = cardCustomizer.name || 'samrao112';
-    const creatorHandle = cardCustomizer.handle || '@samrao112';
+    const creatorName = cardCustomizer.name || 'samaira rao';
+    const creatorHandle = cardCustomizer.handle || '@samairaa.r';
     const creatorRate = cardCustomizer.expectedPrice || '₹500 - ₹1,000';
 
     const initialMsgs = [
