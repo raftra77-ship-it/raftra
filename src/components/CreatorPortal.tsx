@@ -157,7 +157,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       if (savedChat) {
         try {
           const parsed = JSON.parse(savedChat);
-          if (parsed && parsed.length > 0) {
+          const str = JSON.stringify(parsed);
+          // Purge old test junk / blocked messages from localStorage
+          const hasJunk = str.includes('BLOCKED') || str.includes('Asitis') || str.includes('instagram dm') || str.includes('Whey Protein');
+          if (parsed && parsed.length > 0 && !hasJunk) {
             setChatMessages(parsed);
           } else {
             initDemoBrandChat();
@@ -260,14 +263,12 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       sender_type: 'system',
       text: '✨ DEAL CONFIRMED & DONE! Proposal accepted for ₹' + amount.toLocaleString() + '. Escrow funds locked in Raftra Vault.'
     };
-    const paymentMsg = {
-      sender: 'brand' as const,
-      sender_type: 'brand',
-      text: JSON.stringify({ type: 'payment_complete', amount }),
-      content: JSON.stringify({ type: 'payment_complete', amount })
-    };
     const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
-    const updated = [...currentMsgs, acceptMsg, autoDoneMsg, paymentMsg];
+    const filtered = currentMsgs.filter((m: any) => {
+      const str = m.text || m.content || '';
+      return !str.includes('proposal_accepted') && !str.includes('DEAL CONFIRMED');
+    });
+    const updated = [...filtered, acceptMsg, autoDoneMsg];
     setChatMessages(updated);
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
@@ -488,14 +489,22 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
             {/* Right Pane - Chat Window with Negotiation & Deal Card */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#08080a' }}>
               {/* Chat Header */}
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.02)' }}>
-                <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" alt="Demo Brand" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                <div>
-                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>Demo Brand</div>
-                  <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <CheckCircle2 size={12} /> Verified Brand Partner ⚡
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" alt="Demo Brand" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>Demo Brand</div>
+                    <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <CheckCircle2 size={12} /> Verified Brand Partner ⚡
+                    </div>
                   </div>
                 </div>
+                <button
+                  onClick={initDemoBrandChat}
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '11.5px', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  🔄 Reset Demo Chat Flow
+                </button>
               </div>
 
               {/* Message Feed */}
