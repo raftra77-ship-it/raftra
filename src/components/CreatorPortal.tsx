@@ -28,13 +28,24 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     handle: '@ankrena',
     avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80',
     niche: 'Lifestyle',
-    location: 'Delhi, India',
+    category: 'Nano',
+    location: 'Delhi ( india )',
     followers: '4,983',
-    avgViews: '11.3M total views (3k avg)',
-    expectedPrice: '₹10,000',
+    avgViews: '11.3M reach (3k avg)',
+    fakeFollowerScore: '1%',
+    expectedPrice: '₹5,000 - ₹10,000',
     profileLink: 'https://www.instagram.com/ankrena',
-    deliverables: ['Reel', 'Story', 'Static Post', 'YouTube Integration']
+    deliverables: ['UGC Video', 'Reel', 'Story', 'Static Post']
   });
+
+  useEffect(() => {
+    const savedCard = localStorage.getItem('raftra_creator_card_custom');
+    if (savedCard) {
+      try {
+        setCardCustomizer(prev => ({ ...prev, ...JSON.parse(savedCard) }));
+      } catch (e) {}
+    }
+  }, []);
 
   const [offerUGC, setOfferUGC] = useState(true);
 
@@ -628,7 +639,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </p>
             </div>
 
-            {/* LIVE MARKETPLACE CARD PREVIEW - EXACT REPLICA OF MARKETPLACE */}
+            {/* LIVE MARKETPLACE CARD PREVIEW - EXACT USER MARKETPLACE CARD */}
             <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(20,20,35,0.95), rgba(10,10,20,0.98))', border: '1.5px solid #00E676' }}>
               <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Sparkles size={16} /> LIVE MARKETPLACE CARD (HOW BRANDS SEE YOU)
@@ -655,7 +666,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                     </div>
                   </div>
                   <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    {(cardCustomizer.niche || 'LIFESTYLE').toUpperCase()}
+                    {(cardCustomizer.category || 'NANO').toUpperCase()}
                   </span>
                 </div>
 
@@ -673,7 +684,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
                     <span style={{ color: '#00E676', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <ShieldAlert size={14} /> 0.8% (Verified Real)
+                      <ShieldAlert size={14} /> {cardCustomizer.fakeFollowerScore || '1%'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
@@ -707,6 +718,26 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => setActiveTab('inbox')}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      background: 'linear-gradient(135deg, #5A52FF, #7832FF)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      fontWeight: 700
+                    }}
+                  >
+                    🤝 Negotiate
+                  </button>
                   <a
                     href={cardCustomizer.profileLink}
                     target="_blank"
@@ -727,7 +758,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                       fontWeight: 600
                     }}
                   >
-                    <ExternalLink size={13} /> View Instagram Profile
+                    <User size={13} /> Profile
                   </a>
                 </div>
 
@@ -736,17 +767,17 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
             {/* EDIT PROFILE FORM */}
             <div className="glow-card" style={{ padding: '28px' }}>
-              <h3 style={{ fontSize: '18px', margin: '0 0 20px 0', color: '#fff' }}>Edit Public Creator Profile</h3>
+              <h3 style={{ fontSize: '18px', margin: '0 0 20px 0', color: '#fff' }}>Edit Public Creator Profile Card</h3>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 
                 <div>
                   <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                    Profile Photo URL (Replaces Avatar):
+                    Profile Photo URL:
                   </label>
                   <input
                     type="text"
-                    placeholder="Paste image URL (e.g. https://images.unsplash.com/...)"
+                    placeholder="Paste image URL (https://...)"
                     value={cardCustomizer.avatar}
                     onChange={e => setCardCustomizer({ ...cardCustomizer, avatar: e.target.value })}
                     style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
@@ -792,19 +823,68 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
                 <div>
                   <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                    Niche / Category:
+                    Location:
                   </label>
                   <input
                     type="text"
-                    value={cardCustomizer.niche}
-                    onChange={e => setCardCustomizer({ ...cardCustomizer, niche: e.target.value })}
+                    value={cardCustomizer.location}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, location: e.target.value })}
                     style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
 
                 <div>
                   <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                    Starting Rate (₹):
+                    Category / Tier Badge:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Nano / Micro / Macro"
+                    value={cardCustomizer.category}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, category: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Followers:
+                  </label>
+                  <input
+                    type="text"
+                    value={cardCustomizer.followers}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, followers: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Avg Views / Reach:
+                  </label>
+                  <input
+                    type="text"
+                    value={cardCustomizer.avgViews}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, avgViews: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Fake Follower Score:
+                  </label>
+                  <input
+                    type="text"
+                    value={cardCustomizer.fakeFollowerScore}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, fakeFollowerScore: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Collaboration Price Range:
                   </label>
                   <input
                     type="text"
@@ -816,8 +896,12 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </div>
 
               <div style={{ marginTop: '24px' }}>
-                <GlowButton variant="glow" onClick={() => alert("Profile updated successfully!")} style={{ padding: '12px 28px' }}>
-                  Save Profile Changes
+                <GlowButton variant="glow" onClick={() => {
+                  localStorage.setItem('raftra_creator_card_custom', JSON.stringify(cardCustomizer));
+                  window.dispatchEvent(new Event('storage'));
+                  alert("Profile card updated & synced live with Raftra Marketplace!");
+                }} style={{ padding: '12px 28px' }}>
+                  💾 Save & Sync Card with Marketplace
                 </GlowButton>
               </div>
             </div>
