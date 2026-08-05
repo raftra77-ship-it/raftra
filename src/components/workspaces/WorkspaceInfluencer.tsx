@@ -456,11 +456,49 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             </p>
           </div>
         </div>
+      </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ padding: '6px 12px', background: 'rgba(0, 230, 118, 0.12)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', fontSize: '11px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <CheckCircle2 size={13} /> 100% Escrow Protected
+      {/* BRAND WORKFLOW STEPPER (HOW TO USE) */}
+      <div 
+        className="glow-card" 
+        style={{
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid var(--border)',
+          borderRadius: '16px',
+          padding: '20px 24px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h3 style={{ fontSize: '16px', margin: '0 0 4px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-heading)' }}>
+              ⚡ How Brands Complete Influencer Campaigns (Step-by-Step Guide)
+            </h3>
+            <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
+              Follow this 4-step workflow to negotiate, fund escrow, deliver content, and approve payouts safely.
+            </p>
           </div>
+          <span style={{ fontSize: '11px', padding: '4px 10px', background: 'rgba(90,82,255,0.15)', color: 'var(--primary)', border: '1px solid rgba(90,82,255,0.3)', borderRadius: '20px', fontWeight: 700 }}>
+            BRAND WORKFLOW GUIDE
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+          {[
+            { step: '1', title: 'Negotiate in Web Chat', desc: 'Select creator, negotiate terms, & click "Finalize Deal" to enter Final Price (₹) & Deliverables.' },
+            { step: '2', title: 'Fund Escrow Vault', desc: 'Influencer accepts proposal -> Click "Proceed to Secure Payment Page" to deposit funds into Raftra Escrow Vault.' },
+            { step: '3', title: 'Receive Email & WA Link', desc: 'Instant email arrives with deliverables receipt & influencer WhatsApp number to begin content production.' },
+            { step: '4', title: 'Send Satisfaction Msg', desc: 'Once work is delivered & approved, copy the official timestamped satisfaction message & send to influencer for payout release.' }
+          ].map(item => (
+            <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#00E676', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(0,230,118,0.15)', border: '1px solid #00E676', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.step}</span>
+                STEP {item.step}
+              </div>
+              <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>{item.title}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{item.desc}</div>
+            </div>
+          ))}
         </div>
       </div>
 
