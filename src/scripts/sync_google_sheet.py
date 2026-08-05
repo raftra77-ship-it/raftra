@@ -26,7 +26,7 @@ FEMALE_AVATARS = [
     "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80"
 ]
 
-FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi', 'ishwarya']
+FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi', 'ishwarya', 'rubani', 'samaira', 'pritika', 'drishti', 'meenal']
 
 def get_avatar(name, idx):
     first = name.split()[0].lower() if name else ""
@@ -53,7 +53,15 @@ def parse_pricing_details(col11_text, handle="", name=""):
     if 'mahhiii' in h or '_ak_vlogs' in h or 'anmol' in h or 'discuss' in txt_lower or 'negotiable' in txt_lower or not txt:
         return "Can discuss", "Can discuss"
 
-    if 'uttarakhandyb' in h:
+    if 'rubani' in h or 'rubani' in n:
+        return "₹1,000 - ₹8,000", "₹1,000 - ₹8,000"
+    elif 'samaira' in h or 'samaira' in n:
+        return "₹500 - ₹1,000", "₹500 - ₹1,000"
+    elif 'pritika' in h or 'pritika' in n or '_pritika001' in h:
+        return "₹500 - ₹5,000", "₹500 - ₹5,000"
+    elif 'aayush' in h or 'aayushhyrrr' in h:
+        return "₹1,000 - ₹5,000", "₹1,000 - ₹5,000"
+    elif 'uttarakhandyb' in h:
         return "₹1,000 - ₹3,000", "₹1,000 - ₹3,000"
     elif 'aanushkaanexttdoorr' in h:
         return "₹2,000 - ₹6,000", "₹2,000 - ₹6,000"
@@ -113,11 +121,16 @@ def parse_pricing_details(col11_text, handle="", name=""):
     return "Can discuss", "Can discuss"
 
 def parse_followers(metrics_text, handle="", name=""):
-    h = handle.lower()
-    n = name.lower()
-    m = metrics_text.strip()
+    h = (handle or "").lower()
+    n = (name or "").lower()
+    m = (metrics_text or "").strip()
     
-    if 'ankrena' in h: return "4,983"
+    if 'rubani' in h or 'rubani' in n: return "7,500"
+    elif 'samaira' in h or 'samaira' in n: return "18.8k"
+    elif 'pritika' in h or 'pritika' in n or '_pritika001' in h: return "5,600"
+    elif 'aayush' in h or 'aayushhyrrr' in h: return "6.2k"
+    elif 'meenal' in h or 'meenal' in n: return "81,000"
+    elif 'ankrena' in h: return "4,983"
     elif 'uttarakhandyb' in h: return "11,700"
     elif 'aanushkaanexttdoorr' in h: return "2,023"
     elif 'musclestroke' in h: return "6,802"
@@ -128,7 +141,7 @@ def parse_followers(metrics_text, handle="", name=""):
     elif 'ankit.k.09' in h: return "95,000"
     elif 'whoistanaaa' in h: return "6,500"
     elif 'ananyaanotpanday' in h: return "1,667"
-    elif 'yourfirst.100k' in h: return "10,200"
+    elif 'yourfirst.100k' in h: return "10.2k"
     elif 'aanchallp' in h: return "2,705"
     elif 'sh.reyya' in h: return "12,200"
     elif 'fanish' in h: return "4,300"
@@ -138,27 +151,39 @@ def parse_followers(metrics_text, handle="", name=""):
     elif 'drishti' in h or 'rawat' in n: return "2,380"
     elif 'roshan' in h or 'sharma' in n: return "1,560"
 
-    m_clean = re.sub(r'^\s*1[\.\)]\s*', '', m, flags=re.I)
-    pat = re.search(r'(?:total\s*)?followers?[:\s-]*([\d,\.kKmM]+)', m_clean, re.I)
-    if pat:
-        val = pat.group(1).strip()
-        if val and val not in ['1', '1.']:
-            return val
-            
-    num_matches = re.findall(r'([\d,\.]+\s*[kKmM\+]*)', m_clean)
+    # Robust Dynamic extraction regex fallback
+    pat_before = re.search(r'([\d,\.]+\s*[kKmM\+]*)\s*(?:total\s*)?followers?', m, re.I)
+    if pat_before:
+        val = pat_before.group(1).strip()
+        val = re.sub(r'^\d+[\-\.]', '', val).strip()
+        if val:
+            return val.replace(" ", "")
+
+    pat_after = re.search(r'(?:total\s*)?followers?[\s:\-]*([\d,\.]+\s*[kKmM\+]*)', m, re.I)
+    if pat_after:
+        val = pat_after.group(1).strip()
+        if val and val not in ['1', '1.', '2', '3']:
+            return val.replace(" ", "")
+
+    num_matches = re.findall(r'([\d,\.]+\s*[kKmM\+]*)', m)
     for nm in num_matches:
         cleaned_nm = nm.strip()
         if cleaned_nm and cleaned_nm not in ['1', '1.', '2', '2.', '3', '3.']:
-            return cleaned_nm
+            return cleaned_nm.replace(" ", "")
         
     return "2,500"
 
 def parse_reach(metrics_text, handle="", name=""):
-    h = handle.lower()
-    n = name.lower()
-    m = metrics_text.strip()
+    h = (handle or "").lower()
+    n = (name or "").lower()
+    m = (metrics_text or "").strip()
     
-    if 'ankrena' in h: return "11.3M reach (3k avg)"
+    if 'rubani' in h or 'rubani' in n: return "5k-6k avg (400k reach)"
+    elif 'samaira' in h or 'samaira' in n: return "2.5M peak (170k reach)"
+    elif 'pritika' in h or 'pritika' in n or '_pritika001' in h: return "100k+ avg (700k reach)"
+    elif 'aayush' in h or 'aayushhyrrr' in h: return "60k avg"
+    elif 'meenal' in h or 'meenal' in n: return "500k avg"
+    elif 'ankrena' in h: return "11.3M reach (3k avg)"
     elif 'uttarakhandyb' in h: return "20k+ avg"
     elif 'aanushkaanexttdoorr' in h: return "1.8M peak"
     elif 'musclestroke' in h: return "1.1M peak"
