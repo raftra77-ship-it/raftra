@@ -456,6 +456,54 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>When a brand reaches out and sends a deal proposal on Raftra Marketplace, your status tracker will update here.</div>
               </div>
             </div>
+
+            {/* 🚨 STRICT ANTI-BYPASS & LEGAL WARNING BANNER */}
+            <div 
+              className="glow-card" 
+              style={{ 
+                padding: '24px', 
+                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.08))', 
+                border: '1.5px solid rgba(239, 68, 68, 0.5)', 
+                borderRadius: '16px',
+                boxShadow: '0 8px 32px rgba(239, 68, 68, 0.15)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <ShieldAlert size={22} color="#EF4444" />
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#EF4444', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  🚨 STRICT PLATFORM POLICY & LEGAL ACTION WARNING NOTICE
+                </h3>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    🛑 NO PERSONAL / OFF-PLATFORM CONTACT
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.45 }}>
+                    Exchanging personal phone numbers, WhatsApp contact cards, Instagram DMs, email handles, or direct GPay/UPI accounts is strictly prohibited. All brand negotiations & payments must remain inside Raftra Escrow Vault.
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    🤖 24/7 AUTOMATED AI FRAUD DETECTION
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.45 }}>
+                    Raftra AI actively scans all chat messages for obfuscated digits, hidden links, external keywords, or fraud patterns. Any bypass attempt is automatically blocked, flagged, and reported.
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚖️ LEGAL ACTION & ACCOUNT TERMINATION
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.45 }}>
+                    If scam, fraud, or off-platform contact is detected, the creator account will be <b>permanently terminated</b>, escrow payouts <b>forfeited</b>, and <b>legal action initiated under IT Act Sec 66D & IPC Sec 420</b>.
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
