@@ -50,6 +50,68 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     return DEFAULT_CREATOR_CARD;
   });
 
+  const [selectedBrandId, setSelectedBrandId] = useState('demo_brand');
+  const [brandList, setBrandList] = useState([
+    {
+      id: 'demo_brand',
+      name: 'Demo Brand',
+      logo: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80',
+      verified: true,
+      lastMsg: '⚡ Official Proposal: ₹12,000 (1 UGC Reel + 2 Stories)',
+      time: 'Just now',
+      unread: false
+    },
+    {
+      id: 'boat_lifestyle',
+      name: 'boAt Lifestyle',
+      logo: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=100&q=80',
+      verified: true,
+      lastMsg: 'Hi! We loved your recent content. Want to partner for Airdopes?',
+      time: '2h ago',
+      unread: true
+    },
+    {
+      id: 'mamaearth',
+      name: 'Mamaearth India',
+      logo: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=100&q=80',
+      verified: true,
+      lastMsg: 'Proposal accepted! Payout ₹8,000 locked in Raftra Vault.',
+      time: '1d ago',
+      unread: false
+    },
+    {
+      id: 'minimalist',
+      name: 'Minimalist Skincare',
+      logo: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=100&q=80',
+      verified: true,
+      lastMsg: 'Can you share your media kit and rate card for 2 stories?',
+      time: '2d ago',
+      unread: false
+    }
+  ]);
+
+  const [otherBrandChats, setOtherBrandChats] = useState({
+    boat_lifestyle: [
+      { sender: 'system', text: '🔒 SECURE ESCROW WORKSPACE - BOAT LIFESTYLE' },
+      { sender: 'brand', text: `Hi! We're launching our new Noise Cancelling Airdopes and love your content. Are you open for a UGC Reel partnership?` },
+      { sender: 'creator', text: 'Hey boAt Team! Yes absolutely, I love your products. My rate for 1 UGC Reel is ₹8,000.' },
+      { sender: 'brand', text: 'Awesome! We can do ₹8,000. Sending official deal proposal now.' },
+      { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 8000, deliverables: '1 High Quality UGC Unboxing Reel' }) }
+    ],
+    mamaearth: [
+      { sender: 'system', text: '🔒 SECURE ESCROW WORKSPACE - MAMAEARTH INDIA' },
+      { sender: 'brand', text: `Hi! We have an upcoming Skincare campaign and want to send you our Vitamin C Serum range.` },
+      { sender: 'creator', text: 'Hey Mamaearth team! I would love to feature your serum.' },
+      { sender: 'creator', text: JSON.stringify({ type: 'proposal_accepted', amount: 8000 }) },
+      { sender: 'system', text: '✨ DEAL ACCEPTED & ESCROW LOCKED! Brand will contact you on WhatsApp. Once deliverables are completed, upload screenshot in Payment Setup for instant payout.' }
+    ],
+    minimalist: [
+      { sender: 'system', text: '🔒 SECURE ESCROW WORKSPACE - MINIMALIST SKINCARE' },
+      { sender: 'brand', text: `Hi! Can you share your media kit and rate card for 2 stories?` },
+      { sender: 'creator', text: 'Sure! My rate for 2 Instagram Stories with product tag link is ₹2,500.' }
+    ]
+  });
+
   const [offerUGC, setOfferUGC] = useState(true);
 
   const handleToggleUGC = (checked: boolean) => {
@@ -581,7 +643,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           </div>
         )}
 
-        {/* 💬 INBOX TAB (INSTAGRAM DIRECT DM STYLE - DEMO BRAND CHAT) */}
+        {/* 💬 INBOX TAB (INSTAGRAM DIRECT DM STYLE - BRAND CHATS) */}
         {activeTab === 'inbox' && (
           <div style={{ maxWidth: '1000px', margin: '0 auto', height: 'calc(100vh - 120px)', display: 'flex', gap: '16px', background: '#0a0a0d', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
             
@@ -594,55 +656,78 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto' }}>
-                <div 
-                  style={{ 
-                    padding: '14px 18px', 
-                    cursor: 'pointer', 
-                    borderBottom: '1px solid rgba(255,255,255,0.03)',
-                    background: 'rgba(90,82,255,0.12)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px'
-                  }}
-                >
-                  <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" alt="Demo Brand" style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover' }} />
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                      <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff' }}>Demo Brand</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Just now</span>
+                {brandList.map(brand => {
+                  const isSelected = selectedBrandId === brand.id;
+                  const isDemo = brand.id === 'demo_brand';
+                  const lastMsgText = isDemo && chatMessages.length > 0
+                    ? (chatMessages[chatMessages.length - 1].text || chatMessages[chatMessages.length - 1].content || brand.lastMsg)
+                    : brand.lastMsg;
+
+                  return (
+                    <div 
+                      key={brand.id}
+                      onClick={() => setSelectedBrandId(brand.id)}
+                      style={{ 
+                        padding: '14px 18px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid rgba(255,255,255,0.03)',
+                        background: isSelected ? 'rgba(90,82,255,0.15)' : 'transparent',
+                        borderLeft: isSelected ? '3px solid var(--primary)' : '3px solid transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <img src={brand.logo} alt={brand.name} style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                          <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff' }}>{brand.name}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{brand.time}</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: isSelected ? '#00E676' : 'var(--text-secondary)', fontWeight: isSelected ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {typeof lastMsgText === 'string' && lastMsgText.includes('proposal') ? '⚡ Official Proposal' : lastMsgText}
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      ⚡ Official Proposal: ₹12,000 (1 UGC Reel + 2 Stories)
-                    </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
 
             {/* Right Pane - Chat Window with Negotiation & Deal Card */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#08080a' }}>
-              {/* Chat Header */}
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" alt="Demo Brand" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                  <div>
-                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>Demo Brand</div>
-                    <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <CheckCircle2 size={12} /> Verified Brand Partner ⚡
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={initDemoBrandChat}
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '11.5px', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  🔄 Reset Demo Chat Flow
-                </button>
-              </div>
+            {(() => {
+              const activeBrand = brandList.find(b => b.id === selectedBrandId) || brandList[0];
+              const displayMessages = selectedBrandId === 'demo_brand'
+                ? chatMessages
+                : (otherBrandChats as any)[selectedBrandId] || [];
 
-              {/* Message Feed */}
-              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {chatMessages.map((msg: any, i: number) => {
+              return (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#08080a' }}>
+                  {/* Chat Header */}
+                  <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <img src={activeBrand.logo} alt={activeBrand.name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <div>
+                        <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>{activeBrand.name}</div>
+                        <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={12} /> Verified Brand Partner ⚡
+                        </div>
+                      </div>
+                    </div>
+                    {selectedBrandId === 'demo_brand' && (
+                      <button
+                        onClick={initDemoBrandChat}
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '11.5px', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        🔄 Reset Demo Chat Flow
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Message Feed */}
+                  <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {displayMessages.map((msg: any, i: number) => {
                   const contentStr = msg.text || msg.content || '';
                   const isSystem = msg.sender === 'system' || msg.sender_type === 'system';
                   if (isSystem) {
@@ -750,9 +835,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </GlowButton>
               </form>
             </div>
+          );
+        })()}
 
-          </div>
-        )}
+      </div>
+    )}
 
         {/* 👤 PROFILE SETUP TAB (LIVE CARD PREVIEW & PROFILE PHOTO / LINK EDITOR) */}
         {activeTab === 'profile_setup' && (
