@@ -340,18 +340,167 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           })}
         </div>
 
-        {/* ==================== SECTION 1: STARTER PACKS & BUSINESS SUITES ==================== */}
-        {(activeCategory === 'allinone' || activeCategory === 'dual') && (
+        {/* ==================== SECTION 1: ALL-IN-ONE OPERATING SUITES ==================== */}
+        {activeCategory === 'allinone' && (
           <div style={{ marginBottom: '80px' }}>
             <div style={{ textAlign: 'center', marginBottom: '40px' }}>
               <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
-                🎁 RAFTRA STARTER PACKS & ALL-IN-ONE SUITES
+                COMPLETE ALL-IN-ONE EMPIRE SUITES
               </div>
               <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
-                High-Value Starter Bundles & Empire Operating Systems
+                Raftra Complete Operating System Packages
               </h2>
               <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                Save up to 18% with bundled module packages. Includes AI Credits, free Social Hub workspace, and Claude Analytics sync.
+                End-to-end AI Marketing suites combining Creative Studio, Campaign Manager, SEO & GEO, Social Hub, and Claude Max Analytics.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
+              
+              {/* 1. D2C Growth Pack ⭐ */}
+              <div
+                onMouseEnter={() => setHoveredCard('pack_d2c_growth')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('pack_d2c_growth', true)}
+              >
+                <div>
+                  <div style={{ background: '#FFB300', color: '#000', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 800, display: 'inline-block', marginBottom: '16px' }}>
+                    🛍️ D2C GROWTH PACK ⭐
+                  </div>
+
+                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>D2C Growth Pack ⭐</h3>
+
+                  <div style={{ fontSize: '36px', color: '#FFB300', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                    {formatPrice(8999, 108, 89999)}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
+                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
+                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹2,499 + ₹3,499 + ₹4,999 = ₹10,997/mo</span>
+                    </div>
+                    <div style={{ fontSize: '12.5px', color: '#FFB300', fontWeight: 700 }}>
+                      🔥 Save ₹1,998/month (~18% OFF)
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '12px', color: '#FFB300', fontWeight: 700, marginBottom: '20px', background: 'rgba(255,179,0,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                    15,000 AI Credits / month Included
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Starter</strong></li>
+                  </ul>
+                </div>
+
+                <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '32px', padding: '14px', fontSize: '14px' }}>
+                  Get D2C Growth Pack
+                </GlowButton>
+              </div>
+
+              {/* 2. All-in-One Business Suite */}
+              <div
+                onMouseEnter={() => setHoveredCard('pack_business_suite')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('pack_business_suite')}
+              >
+                <div>
+                  <div style={{ display: 'inline-block', background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.3)', color: '#7C75FF', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 700, marginBottom: '16px' }}>
+                    💎 ALL-IN-ONE BUSINESS SUITE
+                  </div>
+
+                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>All-in-One Business Suite</h3>
+
+                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                    {formatPrice(19999, 240, 199999)}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
+                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
+                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹4,999 + ₹3,499 + ₹14,999 = ₹23,497/mo</span>
+                    </div>
+                    <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
+                      🔥 Save ₹3,498/month (~15% OFF)
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                    40,000 AI Credits / month Included
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Business</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Growth</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Full Claude Analytics & Social Hub</li>
+                  </ul>
+                </div>
+
+                <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
+                  Get Business Suite
+                </button>
+              </div>
+
+              {/* 3. Enterprise Growth Suite */}
+              <div
+                onMouseEnter={() => setHoveredCard('pack_enterprise')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={getCardStyle('pack_enterprise')}
+              >
+                <div>
+                  <div style={{ display: 'inline-block', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', color: '#FFBD2E', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 700, marginBottom: '16px' }}>
+                    👑 ENTERPRISE GROWTH SUITE
+                  </div>
+
+                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Enterprise Growth Suite</h3>
+
+                  <div style={{ fontSize: '36px', color: '#FFBD2E', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                    {formatPrice(44999, 540, 449999)}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
+                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
+                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹23,497 + ₹29,999 = ₹53,496/mo</span>
+                    </div>
+                    <div style={{ fontSize: '12.5px', color: '#FFBD2E', fontWeight: 700 }}>
+                      🔥 Save ₹8,497/month (~16% OFF)
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '12px', color: '#FFBD2E', fontWeight: 700, marginBottom: '20px', background: 'rgba(255,189,46,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                    100,000 AI Credits / month Included
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Everything in Business Suite</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Dedicated SEO/GEO Specialist</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Priority Support & Custom Integrations</li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Team Members & Dedicated SLA Manager</li>
+                  </ul>
+                </div>
+
+                <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
+                  Contact Enterprise
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ==================== SECTION 2: DUAL-MODULE STARTER PACKS ==================== */}
+        {activeCategory === 'dual' && (
+          <div style={{ marginBottom: '80px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
+                HEAVILY DISCOUNTED DUAL MODULE STARTER PACKS
+              </div>
+              <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+                Dual-Module Starter Bundles
+              </h2>
+              <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                Combine 2 core marketing modules at a heavily discounted bundle rate with full Claude Analytics sync.
               </p>
             </div>
 
@@ -374,7 +523,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     {formatPrice(4999, 59, 49999)}
                   </div>
 
-                  {/* Savings & Individual Price */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
                       Individual Price: <span style={{ textDecoration: 'line-through' }}>₹2,499 + ₹3,499 = ₹5,998/mo</span>
@@ -438,134 +586,6 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                 <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
                   Get Growth Pack
-                </button>
-              </div>
-
-              {/* 3. D2C Growth Pack ⭐ */}
-              <div
-                onMouseEnter={() => setHoveredCard('pack_d2c_growth')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={getCardStyle('pack_d2c_growth', true)}
-              >
-                <div>
-                  <div style={{ background: '#FFB300', color: '#000', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 800, display: 'inline-block', marginBottom: '16px' }}>
-                    🛍️ D2C GROWTH PACK ⭐
-                  </div>
-
-                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>D2C Growth Pack ⭐</h3>
-
-                  <div style={{ fontSize: '36px', color: '#FFB300', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(8999, 108, 89999)}
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹2,499 + ₹3,499 + ₹4,999 = ₹10,997/mo</span>
-                    </div>
-                    <div style={{ fontSize: '12.5px', color: '#FFB300', fontWeight: 700 }}>
-                      🔥 Save ₹1,998/month (~18% OFF)
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: '12px', color: '#FFB300', fontWeight: 700, marginBottom: '20px', background: 'rgba(255,179,0,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    15,000 AI Credits / month Included
-                  </div>
-
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Pro</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Starter</strong></li>
-                  </ul>
-                </div>
-
-                <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '32px', padding: '14px', fontSize: '14px' }}>
-                  Get D2C Growth Pack
-                </GlowButton>
-              </div>
-
-              {/* 4. All-in-One Business Suite */}
-              <div
-                onMouseEnter={() => setHoveredCard('pack_business_suite')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={getCardStyle('pack_business_suite')}
-              >
-                <div>
-                  <div style={{ display: 'inline-block', background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.3)', color: '#7C75FF', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 700, marginBottom: '16px' }}>
-                    💎 ALL-IN-ONE BUSINESS SUITE
-                  </div>
-
-                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>All-in-One Business Suite</h3>
-
-                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(19999, 240, 199999)}
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹4,999 + ₹3,499 + ₹14,999 = ₹23,497/mo</span>
-                    </div>
-                    <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
-                      🔥 Save ₹3,498/month (~15% OFF)
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    40,000 AI Credits / month Included
-                  </div>
-
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Business</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Growth</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Full Claude Analytics & Social Hub</li>
-                  </ul>
-                </div>
-
-                <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
-                  Get Business Suite
-                </button>
-              </div>
-
-              {/* 5. Enterprise Growth Suite */}
-              <div
-                onMouseEnter={() => setHoveredCard('pack_enterprise')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={getCardStyle('pack_enterprise')}
-              >
-                <div>
-                  <div style={{ display: 'inline-block', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', color: '#FFBD2E', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 700, marginBottom: '16px' }}>
-                    👑 ENTERPRISE GROWTH SUITE
-                  </div>
-
-                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Enterprise Growth Suite</h3>
-
-                  <div style={{ fontSize: '36px', color: '#FFBD2E', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(44999, 540, 449999)}
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹23,497 + ₹29,999 = ₹53,496/mo</span>
-                    </div>
-                    <div style={{ fontSize: '12.5px', color: '#FFBD2E', fontWeight: 700 }}>
-                      🔥 Save ₹8,497/month (~16% OFF)
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: '12px', color: '#FFBD2E', fontWeight: 700, marginBottom: '20px', background: 'rgba(255,189,46,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    100,000 AI Credits / month Included
-                  </div>
-
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Everything in Business Suite</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Dedicated SEO/GEO Specialist</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Priority Support & Custom Integrations</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Team Members & Dedicated SLA Manager</li>
-                  </ul>
-                </div>
-
-                <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
-                  Contact Enterprise
                 </button>
               </div>
 
