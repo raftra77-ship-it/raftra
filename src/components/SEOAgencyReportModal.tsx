@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, PenSquare, ChevronDown, AlertTriangle, Play, Trash2, Download, TrendingUp, XCircle, History, Globe } from 'lucide-react';
+import { X, Check, CheckCheck, PenSquare, ChevronDown, AlertTriangle, Play, Trash2, Download, TrendingUp, XCircle, History, Globe, RotateCcw } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import { Markdown } from './Markdown';
 import { GitHubPanel } from './workspaces/GitHubPanel';
@@ -317,11 +317,24 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
   const doDelete = async () => {
     if (!confirmDelete) return;
     const ids = [confirmDelete.seoId, confirmDelete.geoId].filter(Boolean) as number[];
+    const failures: string[] = [];
     for (const id of ids) {
-      try { await fetch(`/api/workspaces/${workspaceId}/seo/audits/${id}`, { method: 'DELETE', headers: authHeaders() }); } catch { /* best effort */ }
+      try {
+        const r = await fetch(`/api/workspaces/${workspaceId}/seo/audits/${id}`, { method: 'DELETE', headers: authHeaders() });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          failures.push(d.detail || `HTTP ${r.status}`);
+        }
+      } catch {
+        failures.push('Could not reach the server.');
+      }
     }
     setConfirmDelete(null);
-    flash('Audit deleted.');
+    if (failures.length > 0) {
+      flash(`Could not delete: ${failures.join(', ')}`, false);
+    } else {
+      flash('Audit deleted.', true);
+    }
     fetchLatest(); fetchHistory();
   };
 
@@ -377,6 +390,45 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
       });
       flash('', true);
     } catch { /* local state already reflects the click */ }
+  };
+
+  // Categories the Apply SEO Fixes pipeline actually reads today (backend/connector_routes.py
+  // _get_approved_fixes calls) — kept in sync manually since this is UI-only convenience, not
+  // a source of truth. GEO recommendations aren't wired into any adapter yet, so they're
+  // excluded here even though some (Structured Knowledge, AI Readability) look similar to
+  // their SEO counterparts.
+  const AUTO_APPLICABLE_CATEGORIES = new Set(['Content', 'Metadata', 'Structured Data', 'Technical SEO', 'Accessibility']);
+
+  // Sequential (awaited), NOT fired concurrently: the backend's decision endpoint does a
+  // read-modify-write on one JSON blob (read keywords_data -> add key -> commit) with no
+  // locking. Firing 20-30 decide() calls at once means they all read the same starting
+  // state and race to write back — last write wins, silently dropping every other decision
+  // (found live: "Reject All" on 30 items left only 4 persisted, and one stale "approved"
+  // from an earlier test survived the race and triggered a REAL GitHub PR). Awaiting each
+  // call before starting the next makes every write see the previous one's result.
+  const approveAllAutoApplicable = async () => {
+    for (const it of (report?.priority_issues || [])) {
+      if (it.decision) continue; // don't overwrite an existing decision
+      const category = it.area.includes('·') ? it.area.split('·')[1].trim() : it.area;
+      if (it.pipeline === 'SEO' && AUTO_APPLICABLE_CATEGORIES.has(category)) {
+        await decide(it.key, it.audit_id, 'approved');
+      }
+    }
+  };
+
+  const rejectAll = async () => {
+    for (const it of (report?.priority_issues || [])) {
+      await decide(it.key, it.audit_id, 'rejected');
+    }
+  };
+
+  // Local-only reset: the backend's decision model only accepts approved/edited/rejected
+  // (no "pending" or delete), so this can't remove the saved server-side record without
+  // changing the backend — out of scope here. This resets what you SEE; reopening the
+  // report will show the previously saved decisions again unless you re-decide each one.
+  const clearAllDecisions = () => {
+    setReport((r: any) => r ? { ...r, priority_issues: r.priority_issues.map((it: any) => ({ ...it, decision: undefined, edited_text: undefined })) } : r);
+    flash('Cleared in this view. Reopening the report will show previously saved decisions — clearing does not delete them from the server.', false);
   };
 
   const issues: any[] = report?.priority_issues || [];
@@ -570,27 +622,83 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
                       <AlertTriangle size={14} style={{ color: '#ffae00' }} /> 5. AI Suggested Improvements
                     </h3>
                     <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '0 0 12px' }}>
-                      Approve, edit or reject each suggestion. The audit itself is read-only — only these
-                      recommendations carry a decision. Approved/edited items appear below, ready to implement.
+                      Approve, edit or reject each suggestion directly below — no need to open a row first.
+                      Approved/edited items appear in "Connect & Publish" above, ready to implement.
                     </p>
+
+                    {!viewingDate && (
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                        <button onClick={approveAllAutoApplicable}
+                          title="Approves every recommendation in a category the Apply SEO Fixes pipeline currently reads (Content, Metadata, Structured Data, Technical SEO, Accessibility on SEO). GEO recommendations aren't wired into auto-apply yet, so they're left as-is."
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600, color: '#00ff9d', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.35)', borderRadius: '7px', padding: '7px 12px', cursor: 'pointer' }}>
+                          <CheckCheck size={13} /> Approve All Auto-Applicable
+                        </button>
+                        <button onClick={rejectAll}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600, color: '#ff5c5c', background: 'rgba(255,92,92,0.08)', border: '1px solid rgba(255,92,92,0.35)', borderRadius: '7px', padding: '7px 12px', cursor: 'pointer' }}>
+                          <X size={13} /> Reject All
+                        </button>
+                        <button onClick={clearAllDecisions}
+                          title="Resets this view back to Pending. Note: this only clears what you see here — it doesn't delete the decisions already saved on the server, so reopening this report will show your previous approvals again unless you re-decide each one."
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '7px 12px', cursor: 'pointer' }}>
+                          <RotateCcw size={13} /> Clear Decisions
+                        </button>
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
                       {issues.map((it, i) => {
                         const isOpen = !!open[it.key];
                         const accent = it.decision === 'approved' ? '#00ff9d' : it.decision === 'edited' ? '#8B85FF' : it.decision === 'rejected' ? '#ff5c5c' : 'var(--border-color)';
+                        const statusLabel = it.decision ? it.decision.toUpperCase() : 'PENDING';
                         const evidence = report.seo && it.pipeline === 'SEO' ? findCategoryEvidence(report.seo.audit.seo, it.area)
                                         : report.geo && it.pipeline === 'GEO' ? findCategoryEvidence(report.geo.audit.geo, it.area) : [];
+                        const isEditing = editingKey === it.key;
                         return (
-                          <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${accent}`, borderLeft: `3px solid ${accent}`, borderRadius: '10px', overflow: 'hidden' }}>
-                            <button onClick={() => setOpen(o => ({ ...o, [it.key]: !o[it.key] }))} disabled={!!viewingDate}
-                              style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: viewingDate ? 'default' : 'pointer', padding: '11px 13px', display: 'flex', alignItems: 'center', gap: '9px', color: '#fff', font: 'inherit' }}>
+                          <div key={i} style={{
+                            background: it.decision === 'approved' ? 'rgba(0,255,157,0.06)' : it.decision === 'edited' ? 'rgba(139,133,255,0.06)' : 'rgba(255,255,255,0.02)',
+                            border: `1px solid ${accent}`, borderLeft: `3px solid ${accent}`, borderRadius: '10px', overflow: 'hidden',
+                          }}>
+                            <div style={{ padding: '11px 13px 9px', display: 'flex', alignItems: 'center', gap: '9px' }}>
                               <span style={{ fontSize: '9.5px', fontWeight: 700, flexShrink: 0, color: '#fff', background: it.pipeline === 'SEO' ? 'rgba(0,255,157,0.15)' : 'rgba(139,133,255,0.2)', borderRadius: '4px', padding: '2px 6px' }}>{it.pipeline}</span>
                               <span style={{ fontSize: '10px', fontWeight: 700, flexShrink: 0, color: SEV_COLOR[it.severity] || '#fff', background: `${SEV_COLOR[it.severity] || '#fff'}1f`, border: `1px solid ${SEV_COLOR[it.severity] || '#fff'}55`, borderRadius: '5px', padding: '2px 7px' }}>{it.severity}</span>
                               <span style={{ flex: 1, minWidth: 0, fontSize: '12.5px', textDecoration: it.decision === 'rejected' ? 'line-through' : 'none' }}>{it.edited_text || it.issue}</span>
-                              {it.decision && <span style={{ fontSize: '10px', fontWeight: 700, color: accent, textTransform: 'uppercase', flexShrink: 0 }}>{it.decision}</span>}
-                              <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--text-secondary)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
-                            </button>
+                              <span style={{ fontSize: '9.5px', fontWeight: 700, color: accent, textTransform: 'uppercase', flexShrink: 0, background: `${accent}1a`, border: `1px solid ${accent}55`, borderRadius: '5px', padding: '2px 7px' }}>{statusLabel}</span>
+                              <button onClick={() => setOpen(o => ({ ...o, [it.key]: !o[it.key] }))} title="Details"
+                                style={{ flexShrink: 0, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', color: 'var(--text-secondary)' }}>
+                                <ChevronDown size={14} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+                              </button>
+                            </div>
+
+                            {/* Actions are always visible — no need to expand the row first. */}
+                            {!viewingDate && (isEditing ? (
+                              <div style={{ padding: '0 13px 12px' }}>
+                                <textarea value={editText} onChange={e => setEditText(e.target.value)}
+                                  style={{ width: '100%', minHeight: '60px', resize: 'vertical', fontSize: '12.5px', color: '#fff', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 11px', fontFamily: 'inherit' }} />
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
+                                  <button onClick={() => decide(it.key, it.audit_id, 'edited', editText)} style={{ fontSize: '12px', fontWeight: 600, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '7px', padding: '6px 13px', cursor: 'pointer' }}>Save</button>
+                                  <button onClick={() => setEditingKey(null)} style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '6px 13px', cursor: 'pointer' }}>Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ padding: '0 13px 12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <button onClick={() => decide(it.key, it.audit_id, 'approved')}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: it.decision === 'approved' ? '#03121a' : '#00ff9d', background: it.decision === 'approved' ? '#00ff9d' : 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
+                                  <Check size={13} /> Approve
+                                </button>
+                                <button onClick={() => { setEditingKey(it.key); setEditText(it.edited_text || it.issue); }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: '#8B85FF', background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
+                                  <PenSquare size={13} /> Edit
+                                </button>
+                                <button onClick={() => decide(it.key, it.audit_id, 'rejected')}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: it.decision === 'rejected' ? '#03121a' : '#ff5c5c', background: it.decision === 'rejected' ? '#ff5c5c' : 'rgba(255,92,92,0.08)', border: '1px solid rgba(255,92,92,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
+                                  <X size={13} /> Reject
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* Expandable — details/evidence only, no actions hidden in here. */}
                             {isOpen && (
-                              <div style={{ padding: '0 13px 13px' }}>
+                              <div style={{ padding: '0 13px 13px', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '2px', paddingTop: '10px' }}>
                                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>{it.area} · Expected impact: {it.impact}</div>
                                 <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '9px' }}>
                                   <b style={{ color: '#fff' }}>Current Issue:</b> {it.area.includes('·') ? it.area.split('·')[1].trim() : it.area} needs attention.
@@ -599,38 +707,13 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
                                   <b style={{ color: '#fff' }}>Suggested Fix:</b> {it.issue}
                                 </div>
                                 {evidence.length > 0 && (
-                                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '9px' }}>
+                                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                                     <b style={{ color: '#fff' }}>Evidence:</b>
                                     <ul style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
                                       {evidence.map((e: string, ei: number) => <li key={ei} style={{ lineHeight: 1.5 }}>{e}</li>)}
                                     </ul>
                                   </div>
                                 )}
-                                {!viewingDate && (editingKey === it.key ? (
-                                  <>
-                                    <textarea value={editText} onChange={e => setEditText(e.target.value)}
-                                      style={{ width: '100%', minHeight: '60px', resize: 'vertical', fontSize: '12.5px', color: '#fff', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 11px', fontFamily: 'inherit' }} />
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
-                                      <button onClick={() => decide(it.key, it.audit_id, 'edited', editText)} style={{ fontSize: '12px', fontWeight: 600, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '7px', padding: '6px 13px', cursor: 'pointer' }}>Save</button>
-                                      <button onClick={() => setEditingKey(null)} style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '6px 13px', cursor: 'pointer' }}>Cancel</button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button onClick={() => decide(it.key, it.audit_id, 'approved')}
-                                      style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: it.decision === 'approved' ? '#03121a' : '#00ff9d', background: it.decision === 'approved' ? '#00ff9d' : 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
-                                      <Check size={13} /> Approve
-                                    </button>
-                                    <button onClick={() => { setEditingKey(it.key); setEditText(it.edited_text || it.issue); }}
-                                      style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: '#8B85FF', background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
-                                      <PenSquare size={13} /> Edit
-                                    </button>
-                                    <button onClick={() => decide(it.key, it.audit_id, 'rejected')}
-                                      style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: it.decision === 'rejected' ? '#03121a' : '#ff5c5c', background: it.decision === 'rejected' ? '#ff5c5c' : 'rgba(255,92,92,0.08)', border: '1px solid rgba(255,92,92,0.35)', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer' }}>
-                                      <X size={13} /> Reject
-                                    </button>
-                                  </div>
-                                ))}
                               </div>
                             )}
                           </div>
@@ -777,13 +860,55 @@ const CompareModal: React.FC<{ workspaceId: number | null; onClose: () => void }
 // duplicate OAuth flow) each platform where the site actually lives. Rendered at the top of
 // the report (highlight=true) so it isn't lost below the audit findings — it's fully
 // self-contained (own fetches), so it renders safely even before an audit has run.
+// Shared result box for the three apply-fixes actions below — distinguishes "needs
+// approval" (amber, actionable) from a real error (red) instead of showing the raw
+// backend message the same way for both.
+const ApplyResultBox: React.FC<{ result: { ok: boolean; msg: string; url?: string; needsApproval?: boolean }; urlLabel: string }> = ({ result, urlLabel }) => {
+  const color = result.ok ? '#00ff9d' : result.needsApproval ? '#ffae00' : '#ff5c5c';
+  const bg = result.ok ? 'rgba(0,255,157,0.08)' : result.needsApproval ? 'rgba(255,174,0,0.08)' : 'rgba(255,92,92,0.08)';
+  return (
+    <div style={{ marginTop: '7px', fontSize: '11px', lineHeight: 1.5, color, background: bg, border: `1px solid ${color}55`, borderRadius: '7px', padding: '8px 10px' }}>
+      {result.msg}
+      {result.url && <> <a href={result.url} target="_blank" rel="noreferrer" style={{ color: '#8B85FF', fontWeight: 700 }}>{urlLabel} →</a></>}
+    </div>
+  );
+};
+
+// Read-only "Developer Preview" of the exact UniversalSeoFix object the backend generated —
+// the same JSON every platform adapter (GitHub/WordPress/Shopify) consumes, shown as-is
+// before/alongside whatever that adapter did with it. Collapsed by default; renders nothing
+// when there's no fix to show (e.g. no Structured Data/Metadata recommendation was
+// approved, so the backend never generated one).
+const UniversalFixPreview: React.FC<{ fix: any }> = ({ fix }) => {
+  const [open, setOpen] = React.useState(false);
+  if (!fix) return null;
+  return (
+    <div style={{ marginTop: '8px', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: 'none', cursor: 'pointer', padding: '8px 11px', display: 'flex', alignItems: 'center', gap: '7px', color: 'var(--text-secondary)', font: 'inherit', fontSize: '11px', fontWeight: 600 }}>
+        <ChevronDown size={12} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }} />
+        Developer Preview — Universal SEO JSON
+      </button>
+      {open && (
+        <pre style={{
+          margin: 0, padding: '11px', fontSize: '11px', lineHeight: 1.5, color: '#c9d1d9',
+          background: '#0d1117', maxHeight: '320px', overflow: 'auto', fontFamily: 'var(--font-mono, monospace)',
+          whiteSpace: 'pre', userSelect: 'text',
+        }}>
+          {JSON.stringify(fix, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+};
+
 const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey: string; highlight?: boolean }> = ({ workspaceId, refreshKey, highlight }) => {
   const [items, setItems] = React.useState<any[]>([]);
   const [st, setSt] = React.useState<{ gh?: any; wp?: any; sh?: any }>({});
   const [ghMap, setGhMap] = React.useState<any>(null);   // GitHub repo scan summary
   const [expanded, setExpanded] = React.useState<'gh' | 'wp' | 'sh' | null>(null);
   const [applying, setApplying] = React.useState(false);
-  const [prResult, setPrResult] = React.useState<{ ok: boolean; msg: string; url?: string } | null>(null);
+  const [prResult, setPrResult] = React.useState<{ ok: boolean; msg: string; url?: string; needsApproval?: boolean; universal_fix?: any } | null>(null);
 
   const applySeoFixes = async () => {
     if (!workspaceId) return;
@@ -793,7 +918,10 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
         method: 'POST', headers: authHeaders(), body: JSON.stringify({}),
       });
       const d = await r.json();
-      if (r.ok && d.pr_url) setPrResult({ ok: true, msg: d.message || 'Pull request opened.', url: d.pr_url });
+      if (r.ok && d.pr_url) setPrResult({ ok: true, msg: d.message || 'Pull request opened.', url: d.pr_url, universal_fix: d.universal_fix });
+      else if (r.status === 409)
+        setPrResult({ ok: false, needsApproval: true,
+          msg: 'No recommendations approved yet. Go to "5. AI Suggested Improvements" below and approve at least one before applying.' });
       else setPrResult({ ok: false, msg: d.detail || 'Could not open the pull request.' });
     } catch { setPrResult({ ok: false, msg: 'Could not reach the server.' }); }
     setApplying(false);
@@ -802,7 +930,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
   // Shopify: preview the proposed SEO title/description, then apply (no PR — reviewed here).
   const [shopPreview, setShopPreview] = React.useState<any>(null);
   const [shopBusy, setShopBusy] = React.useState<'preview' | 'apply' | null>(null);
-  const [shopResult, setShopResult] = React.useState<{ ok: boolean; msg: string; url?: string } | null>(null);
+  const [shopResult, setShopResult] = React.useState<{ ok: boolean; msg: string; url?: string; needsApproval?: boolean } | null>(null);
 
   const previewShopify = async () => {
     if (!workspaceId) return;
@@ -813,6 +941,9 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
       });
       const d = await r.json();
       if (r.ok && d.proposed) setShopPreview(d);
+      else if (r.status === 409)
+        setShopResult({ ok: false, needsApproval: true,
+          msg: 'No Metadata recommendations approved yet. Go to "5. AI Suggested Improvements" below and approve at least one before applying.' });
       else setShopResult({ ok: false, msg: d.detail || 'Could not build a preview.' });
     } catch { setShopResult({ ok: false, msg: 'Could not reach the server.' }); }
     setShopBusy(null);
@@ -873,7 +1004,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
   // page title/content (fields WP core genuinely supports), never a guessed SEO-plugin field.
   const [wpPreview, setWpPreview] = React.useState<any>(null);
   const [wpBusy, setWpBusy] = React.useState<'preview' | 'apply' | null>(null);
-  const [wpResult, setWpResult] = React.useState<{ ok: boolean; msg: string; url?: string } | null>(null);
+  const [wpResult, setWpResult] = React.useState<{ ok: boolean; msg: string; url?: string; needsApproval?: boolean } | null>(null);
 
   const previewWordPress = async () => {
     if (!workspaceId) return;
@@ -884,6 +1015,9 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
       });
       const d = await r.json();
       if (r.ok && d.proposed) setWpPreview(d);
+      else if (r.status === 409)
+        setWpResult({ ok: false, needsApproval: true,
+          msg: 'No recommendations approved yet. Go to "5. AI Suggested Improvements" below and approve at least one before applying.' });
       else setWpResult({ ok: false, msg: d.detail || 'Could not build a preview.' });
     } catch { setWpResult({ ok: false, msg: 'Could not reach the server.' }); }
     setWpBusy(null);
@@ -1024,12 +1158,8 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                   style={{ width: '100%', fontSize: '12px', fontWeight: 700, color: '#03121a', background: '#8B85FF', border: 'none', borderRadius: '8px', padding: '9px', cursor: applying ? 'wait' : 'pointer', opacity: applying ? 0.7 : 1 }}>
                   {applying ? 'Applying fixes & opening PR…' : 'Apply SEO fixes → open a PR'}
                 </button>
-                {prResult && (
-                  <div style={{ marginTop: '7px', fontSize: '11px', lineHeight: 1.5, color: prResult.ok ? '#00ff9d' : '#ff5c5c', background: prResult.ok ? 'rgba(0,255,157,0.08)' : 'rgba(255,92,92,0.08)', border: `1px solid ${prResult.ok ? 'rgba(0,255,157,0.3)' : 'rgba(255,92,92,0.3)'}`, borderRadius: '7px', padding: '8px 10px' }}>
-                    {prResult.msg}
-                    {prResult.url && <> <a href={prResult.url} target="_blank" rel="noreferrer" style={{ color: '#8B85FF', fontWeight: 700 }}>Review the pull request →</a></>}
-                  </div>
-                )}
+                {prResult && <ApplyResultBox result={prResult} urlLabel="Review the pull request" />}
+                {prResult?.ok && <UniversalFixPreview fix={prResult.universal_fix} />}
                 <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
                   Opens a pull request you review &amp; merge — nothing goes live automatically.
                 </p>
@@ -1049,7 +1179,8 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                     <div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Proposed for <b style={{ color: '#fff' }}>{shopPreview.page?.title}</b>:</div>
                     <div style={{ marginBottom: '4px' }}><b style={{ color: '#fff' }}>Title:</b> {shopPreview.proposed?.seo_title}</div>
                     <div style={{ marginBottom: '8px' }}><b style={{ color: '#fff' }}>Description:</b> {shopPreview.proposed?.meta_description}</div>
-                    <div style={{ display: 'flex', gap: '7px' }}>
+                    <UniversalFixPreview fix={shopPreview.universal_fix} />
+                    <div style={{ display: 'flex', gap: '7px', marginTop: '9px' }}>
                       <button onClick={applyShopify} disabled={shopBusy === 'apply'}
                         style={{ flex: 1, fontSize: '11px', fontWeight: 700, color: '#03121a', background: '#00ff9d', border: 'none', borderRadius: '7px', padding: '8px', cursor: 'pointer' }}>
                         {shopBusy === 'apply' ? 'Applying…' : 'Apply to Shopify'}
@@ -1061,12 +1192,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                     </div>
                   </div>
                 )}
-                {shopResult && (
-                  <div style={{ marginTop: '7px', fontSize: '11px', lineHeight: 1.5, color: shopResult.ok ? '#00ff9d' : '#ff5c5c', background: shopResult.ok ? 'rgba(0,255,157,0.08)' : 'rgba(255,92,92,0.08)', border: `1px solid ${shopResult.ok ? 'rgba(0,255,157,0.3)' : 'rgba(255,92,92,0.3)'}`, borderRadius: '7px', padding: '8px 10px' }}>
-                    {shopResult.msg}
-                    {shopResult.url && <> <a href={shopResult.url} target="_blank" rel="noreferrer" style={{ color: '#8B85FF', fontWeight: 700 }}>Open in Shopify →</a></>}
-                  </div>
-                )}
+                {shopResult && <ApplyResultBox result={shopResult} urlLabel="Open in Shopify" />}
                 <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
                   You review the proposed SEO here, then it writes to your store's page (reversible in Shopify).
                 </p>
@@ -1151,7 +1277,8 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                     <div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Proposed for <b style={{ color: '#fff' }}>{wpPreview.page?.title}</b>:</div>
                     <div style={{ marginBottom: '4px' }}><b style={{ color: '#fff' }}>Title:</b> {wpPreview.proposed?.title}</div>
                     <div style={{ marginBottom: '8px' }}><b style={{ color: '#fff' }}>Content:</b> updated (see WordPress after applying)</div>
-                    <div style={{ display: 'flex', gap: '7px' }}>
+                    <UniversalFixPreview fix={wpPreview.universal_fix} />
+                    <div style={{ display: 'flex', gap: '7px', marginTop: '9px' }}>
                       <button onClick={applyWordPress} disabled={wpBusy === 'apply'}
                         style={{ flex: 1, fontSize: '11px', fontWeight: 700, color: '#03121a', background: '#00ff9d', border: 'none', borderRadius: '7px', padding: '8px', cursor: 'pointer' }}>
                         {wpBusy === 'apply' ? 'Applying…' : 'Apply to WordPress'}
@@ -1163,12 +1290,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                     </div>
                   </div>
                 )}
-                {wpResult && (
-                  <div style={{ marginTop: '7px', fontSize: '11px', lineHeight: 1.5, color: wpResult.ok ? '#00ff9d' : '#ff5c5c', background: wpResult.ok ? 'rgba(0,255,157,0.08)' : 'rgba(255,92,92,0.08)', border: `1px solid ${wpResult.ok ? 'rgba(0,255,157,0.3)' : 'rgba(255,92,92,0.3)'}`, borderRadius: '7px', padding: '8px 10px' }}>
-                    {wpResult.msg}
-                    {wpResult.url && <> <a href={wpResult.url} target="_blank" rel="noreferrer" style={{ color: '#8B85FF', fontWeight: 700 }}>Open in WordPress →</a></>}
-                  </div>
-                )}
+                {wpResult && <ApplyResultBox result={wpResult} urlLabel="Open in WordPress" />}
                 <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
                   Page title/content are auto-edited, and real Organization JSON-LD is embedded in the page —
                   SEO meta title/description tags need a plugin, so those stay manual.

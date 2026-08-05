@@ -648,12 +648,13 @@ export function BrandDashboard() {
       method: 'POST',
       headers,
       body: JSON.stringify({ 
-        prompt, 
-        reference_ad: referenceAd, 
+        prompt,
+        reference_ad: referenceAd,
         model: config?.model || 'gemini-2.5-flash',
         ad_format: config?.format || 'Video',
         ad_ratio: config?.ratio || '9:16',
-        ad_length: config?.length || '15s'
+        ad_length: config?.length || '15s',
+        engine_mode: config?.mode || 'Video Ad'
       })
     }).catch(err => console.error("Error running creative studio agent:", err));
   };

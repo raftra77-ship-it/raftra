@@ -444,6 +444,20 @@ class ApplySeoFixesBody(BaseModel):
     dry_run: bool = False            # true = don't open a PR, just return the planned change
 
 
+def _resolve_page_url(route: Optional[str], base_url: Optional[str]) -> str:
+    """The repo scanner's page `url` (publishing/repo_scanner.py) is only ever a
+    SITE-RELATIVE ROUTE derived from file-based routing (e.g. "/frontend", "/about") — never
+    a live URL. Using it alone as a canonical/target URL produces garbage like "/frontend"
+    instead of a real address. This resolves it against the workspace's actual base URL."""
+    import urllib.parse as _urlparse
+    if not base_url:
+        return route or ""
+    base = base_url.strip()
+    if not base.lower().startswith(("http://", "https://")):
+        base = f"https://{base}"
+    return _urlparse.urljoin(base, route or "/")
+
+
 def _get_approved_fixes(audit_row, categories: set) -> list:
     """Recommendations from the given categories that the user has actually approved or
     edited via the per-item decision endpoint (/seo/audits/{id}/decision) — NOT every
@@ -526,12 +540,21 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
     if not audit_row:
         raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
 
-    # Two independent, approval-gated fix sources: structural/content fixes still go through
-    # a full-file LLM rewrite (they aren't tag VALUES, so they don't fit the universal fix);
-    # Metadata + Structured Data go through the universal fix -> adapter path everyone else uses.
-    structural_fixes = _get_approved_fixes(audit_row, {"Technical SEO", "Accessibility"})
+    # Structural/content fixes still go through a full-file LLM rewrite (they aren't tag
+    # VALUES, so they don't fit the universal fix); Metadata + Structured Data go through
+    # the universal fix -> adapter path everyone else uses. Technical SEO is further split:
+    # "robots.txt"/"sitemap" recommendations ask for REAL SEPARATE FILES at the repo root,
+    # not an edit to the scanned page — sending them into the same-file rewrite (the old
+    # behavior) silently produced no useful change. Everything else (e.g. removing a noindex
+    # meta tag) is a genuine same-file fix and stays on that path.
+    all_technical = _get_approved_fixes(audit_row, {"Technical SEO"})
+    accessibility_fixes = _get_approved_fixes(audit_row, {"Accessibility"})
+    robots_fix = [f for f in all_technical if "robots.txt" in f.lower()]
+    sitemap_fix = [f for f in all_technical if "sitemap" in f.lower() and "robots.txt" not in f.lower()]
+    same_file_technical = [f for f in all_technical if f not in robots_fix and f not in sitemap_fix]
+    same_file_fixes = same_file_technical + accessibility_fixes
     tag_fixes = _get_approved_fixes(audit_row, {"Metadata", "Structured Data"})
-    if not structural_fixes and not tag_fixes:
+    if not same_file_fixes and not tag_fixes and not robots_fix and not sitemap_fix:
         raise HTTPException(status_code=409,
                             detail="No approved fixes yet — approve at least one recommendation in the audit report before applying.")
 
@@ -542,9 +565,9 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
         raise HTTPException(status_code=413, detail=f"{file_path} is too large to auto-edit safely — apply it manually.")
 
     new_content = content
-    if structural_fixes:
+    if same_file_fixes:
         try:
-            new_content = await _apply_fixes_to_file(new_content, structural_fixes, file_path)
+            new_content = await _apply_fixes_to_file(new_content, same_file_fixes, file_path)
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Could not generate the fixed file: {e}")
 
@@ -559,38 +582,63 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
         brand = get_brand_context(workspace_id, query="SEO title and meta description")
         universal_fix = await generate_universal_seo_fix(
             current_title=(title_match.group(1).strip() if title_match else ""),
-            target_url=target.get("url") or (ws.company_url if ws else ""),
+            target_url=_resolve_page_url(target.get("url"), ws.company_url if ws else None),
             brand_context=brand,
             workspace_name=ws.name if ws else None,
             workspace_url=ws.company_url if ws else None,
             workspace_logo=ws.brand_logo if ws else None,
             approved_fixes=tag_fixes,
+            page_content=new_content,
         )
         new_content = seo_adapters.apply_to_html(new_content, universal_fix)
 
-    fixes = structural_fixes + tag_fixes
-    if not new_content or new_content.strip() == content.strip():
-        raise HTTPException(status_code=422, detail="The approved fixes produced no change to this file.")
+    # Real site-level files — built only from data the repo scan and workspace already have
+    # (the site's own domain, and the pages the scanner actually discovered), never invented.
+    from core import site_files
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+    base_url = ws.company_url if ws else None
+    files_to_commit = []
+    if new_content.strip() != content.strip():
+        files_to_commit.append({"path": file_path, "content": new_content})
+    if robots_fix:
+        files_to_commit.append({"path": "robots.txt", "content": site_files.build_robots_txt(base_url)})
+    if sitemap_fix:
+        routes = [p.get("url") for p in (mapping.pages or []) if p.get("type") == "page" and p.get("url")]
+        files_to_commit.append({"path": "sitemap.xml", "content": site_files.build_sitemap_xml(base_url, routes)})
+
+    fixes = same_file_fixes + tag_fixes + robots_fix + sitemap_fix
+    if not files_to_commit:
+        raise HTTPException(status_code=422, detail="The approved fixes produced no change to any file.")
 
     if body.dry_run:
         return {"status": "preview", "file_path": file_path, "fixes": fixes,
+                "files": [f["path"] for f in files_to_commit],
                 "universal_fix": universal_fix.dict() if universal_fix else None,
                 "size_change": len(new_content) - len(content)}
 
+    schema_note = universal_fix.schema_note if universal_fix else None
+    pr_body = ("Automated on-page SEO fixes from your Raftra audit. **Review the diff and merge to publish.**\n\n"
+              "Fixes applied:\n" + "\n".join(f"- {f}" for f in fixes) +
+              "\n\nFiles changed:\n" + "\n".join(f"- {f['path']}" for f in files_to_commit))
+    if schema_note:
+        pr_body += f"\n\n**Note on structured data:** {schema_note}"
     try:
-        result = await gh.commit_file_update(
-            conn, file_path, new_content,
+        result = await gh.commit_files_update(
+            conn, files_to_commit,
             commit_message="Apply on-page SEO fixes (via Raftra)",
             pr_title="[Raftra] Apply approved SEO fixes",
-            pr_body=("Automated on-page SEO fixes from your Raftra audit. **Review the diff and merge to publish.**\n\n"
-                     "Fixes applied:\n" + "\n".join(f"- {f}" for f in fixes)),
+            pr_body=pr_body,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not open the pull request: {e}")
 
+    message = f"Opened a pull request with {len(fixes)} fix(es) across {len(files_to_commit)} file(s) — review and merge to publish."
+    if schema_note:
+        message += f" {schema_note}"
     return {"status": "success", "pr_url": result["pr_url"], "branch": result["branch"],
-            "file_path": file_path, "fixes": fixes,
-            "message": f"Opened a pull request with {len(fixes)} fix(es) — review and merge to publish."}
+            "files": [f["path"] for f in files_to_commit], "fixes": fixes,
+            "schema_note": schema_note, "message": message,
+            "universal_fix": universal_fix.dict() if universal_fix else None}
 
 
 # ================================================================ Meta Ads
@@ -1385,7 +1433,7 @@ async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
         return {"status": "preview",
                 "page": {"id": target["id"], "title": target["title"]},
                 "current": {"seo_title": target.get("seo_title"), "seo_description": target.get("seo_description")},
-                "proposed": page_fields, "fixes": metadata_fixes}
+                "proposed": page_fields, "fixes": metadata_fixes, "universal_fix": fix.dict()}
 
     try:
         result = await shop.update_page_seo(conn, target["id"], page_fields["seo_title"], page_fields["meta_description"])
@@ -1393,7 +1441,8 @@ async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
         raise HTTPException(status_code=502, detail=f"Could not update the Shopify page: {e}")
     return {"status": "success", "admin_url": result["admin_url"],
             "page": {"id": target["id"], "title": target["title"]}, "applied": page_fields,
-            "message": "Updated the page's SEO title and meta description in Shopify."}
+            "message": "Updated the page's SEO title and meta description in Shopify.",
+            "universal_fix": fix.dict()}
 
 
 async def _apply_fixes_to_wp_page(current_title: str, current_content: str, fixes: list) -> dict:
@@ -1486,6 +1535,8 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
         updated = {"title": current["title"], "content": current["content"]}
 
     skipped = []
+    schema_note = None
+    fix = None
     if tag_fixes:
         from core.seo_fix_schema import generate_universal_seo_fix
         from core import seo_adapters
@@ -1499,7 +1550,9 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
             workspace_url=ws.company_url if ws else None,
             workspace_logo=ws.brand_logo if ws else None,
             approved_fixes=tag_fixes,
+            page_content=updated["content"],
         )
+        schema_note = fix.schema_note
         adapted = seo_adapters.apply_to_wordpress(updated["title"], updated["content"], fix)
         updated = {"title": adapted["title"], "content": adapted["content"]}
         skipped = adapted["skipped"]
@@ -1510,7 +1563,8 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
 
     if body.dry_run:
         return {"status": "preview", "page": {"id": target["id"], "title": target["title"]},
-                "current": current, "proposed": updated, "fixes": fixes, "skipped": skipped}
+                "current": current, "proposed": updated, "fixes": fixes, "skipped": skipped,
+                "schema_note": schema_note, "universal_fix": fix.dict() if fix else None}
 
     try:
         result = await wp.update_page_content(conn, target["id"], updated["title"], updated["content"])
@@ -1519,9 +1573,11 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
     message = "Updated the page's title/content in WordPress."
     if skipped:
         message += f" ({', '.join(skipped)} need an SEO plugin — not applied.)"
+    if schema_note:
+        message += f" {schema_note}"
     return {"status": "success", "edit_url": result["edit_url"], "link": result["link"],
             "page": {"id": target["id"], "title": target["title"]}, "fixes": fixes, "skipped": skipped,
-            "message": message}
+            "schema_note": schema_note, "message": message, "universal_fix": fix.dict() if fix else None}
 
 
 @router.delete("/shopify/{workspace_id}")

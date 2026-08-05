@@ -413,7 +413,7 @@ async def schema_agent_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Schema Agent", "running")
-    
+
     try:
         with open("prompts/seo-specialist.md", "r", encoding="utf-8") as f:
             system_prompt = f.read()
@@ -447,7 +447,7 @@ async def schema_agent_node(state: SEOState) -> SEOState:
         f"Please run a comprehensive SEO Strategy audit and provide a detailed markdown report tailored to this company, "
         f"referencing the measured metrics above where relevant."
     )
-    
+
     try:
         llm = GeminiProvider()
         response = await llm.generate_text(prompt=prompt, system_prompt=system_prompt)
@@ -455,7 +455,7 @@ async def schema_agent_node(state: SEOState) -> SEOState:
     except Exception as e:
         print(f"LLM Error in seo_geo: {e}")
         mock_report = f"# Comprehensive SEO & AEO Strategy Report\nTarget: {state['target_url']}\n[LLM Generation Failed]"
-    
+
     # audit_score was already set from the real computed score in technical_seo_node —
     # do NOT overwrite it with a hardcoded number. Prepend the deterministic scorecard so
     # the report's headline numbers are guaranteed correct regardless of the narrative.
@@ -621,7 +621,7 @@ async def run_seo_publish_pipeline(workspace_id: int):
     }
     await manager.broadcast_agent_log("SEO Agent", "Human approval received. Commencing publishing sequence.", "running")
     result = await seo_publish_graph.ainvoke(initial_state)
-    
+
     # Broadcast final completion
     await manager.broadcast_node_update("seo_geo", "Pipeline", "completed")
     return result

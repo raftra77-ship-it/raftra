@@ -37,3 +37,4 @@ __pycache__/
 
 # Generated activity export (contains user data)
 activity_log.csv
+.vercel

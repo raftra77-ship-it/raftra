@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from core.websocket import manager, current_workspace_id
@@ -21,36 +22,44 @@ Create a premium advertisement-quality image.
 User Request:
 {user_prompt}
 
+CRITICAL — the User Request above is the source of truth:
+- Preserve every explicit subject, object, color, setting, and style choice the user stated.
+  Never substitute or drop a detail they specifically asked for.
+- If the user named an art style (e.g. illustration, cartoon, flat design, watercolor,
+  minimalist, 3D render, anime), use THAT style instead of photorealistic photography.
+  Only default to photorealistic commercial photography when the user did not specify a style.
+- If the user explicitly asked for visible text, words, or a slogan in the image, keep that
+  instruction. Only exclude on-image text when the user did not ask for it.
+- Everything below is polish to apply AROUND the user's request — it must never replace or
+  override what they specifically asked for.
+
 Requirements:
 
-Transform the user's request into a visually stunning commercial advertisement.
+Elevate the user's request into a visually stunning commercial advertisement in the style
+established above.
 
 The image should look like it was designed by a professional advertising agency.
 
-Use cinematic composition, premium lighting, realistic shadows, rich colors, modern styling, and professional marketing aesthetics.
+Use cinematic composition, premium lighting, realistic shadows (or the stylistic equivalent for
+non-photorealistic styles), rich colors, modern styling, and professional marketing aesthetics.
 
 The image must have:
-- One clear hero subject
+- One clear hero subject (as described by the user)
 - Strong focal point
-- Premium commercial photography
-- Luxury color grading
-- Realistic environment
+- Premium production quality for the chosen style
+- Rich, cohesive color grading
 - High visual impact
-- Natural depth of field
 - Balanced composition
-- Photorealistic quality
 
 Reserve clean negative space:
 - Top area for headline
 - Bottom area for CTA
 - Keep these areas visually clean without distracting objects
 
-DO NOT generate:
-- Text
+Unless the user explicitly requested them, avoid:
 - Logos
 - Watermarks
 - Buttons
-- Labels
 - UI elements
 - Brand names
 
@@ -62,16 +71,12 @@ The image should feel suitable for:
 - Landing pages
 
 Style:
-Photorealistic
-Commercial photography
-Luxury advertising
-Modern branding
 Award-winning creative direction
-Studio lighting
 Sharp focus
 Ultra detailed
 Premium quality
-8K"""
+(Photorealistic, studio-lit, 8K commercial photography — unless the user's request specifies a
+different art style, in which case follow that style at the same quality bar.)"""
 
 # --- Schema Definitions ---
 
@@ -299,8 +304,14 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
     except LLMProviderError:
         # Fall back to the raw request (still the subject) rather than the strategy essay.
         image_prompt = state.get("prompt", "advertisement")
-    # Style/safety suffix so results look like ad creative and avoid garbled text overlays.
-    image_prompt = f"{image_prompt}. Commercial advertising photography, high detail, sharp focus, no text, no logos, no watermarks."
+    # Light quality suffix only - must not re-impose a style or strip text the user asked for,
+    # since CREATIVE_DIRECTOR_PROMPT above already decided style/text based on the user's request.
+    # "no text" is only added when the user's own prompt didn't ask for visible text/words/a
+    # slogan; otherwise appending it here would silently undo that decision.
+    wants_text = bool(re.search(r"\b(text|word|words|slogan|caption|headline|title|written|says?|reads?)\b",
+                                 state.get("prompt", ""), re.IGNORECASE))
+    no_text_clause = "" if wants_text else ", no text,"
+    image_prompt = f"{image_prompt}. High detail, sharp focus{no_text_clause} no watermarks."
 
     try:
         image_url = await img_provider.generate_image(image_prompt, aspect_ratio=state.get("ad_ratio", "16:9"))
