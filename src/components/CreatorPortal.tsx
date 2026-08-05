@@ -156,15 +156,36 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       const savedChat = localStorage.getItem(creatorStorageKey) || localStorage.getItem('raftra_creator_inbox_chat');
       if (savedChat) {
         try {
-          setChatMessages(JSON.parse(savedChat));
+          const parsed = JSON.parse(savedChat);
+          if (parsed && parsed.length > 0) {
+            setChatMessages(parsed);
+          } else {
+            initDemoBrandChat();
+          }
         } catch (e) {
-          setChatMessages([]);
+          initDemoBrandChat();
         }
       } else {
-        setChatMessages([]);
+        initDemoBrandChat();
       }
     }
   }, [activeTab]);
+
+  const initDemoBrandChat = () => {
+    const initialMsgs = [
+      { sender: 'system', text: '🔒 SECURE ESCROW END-TO-END WORKSPACE ACTIVATED' },
+      { sender: 'brand', text: "Hi Ankit (@ankrena)! We loved your recent viral content. We're launching our new campaign and want to partner with you for a dedicated UGC video reel." },
+      { sender: 'creator', text: "Hey Demo Brand team! Thanks for reaching out. What exact deliverables are you expecting and what is your campaign timeline?" },
+      { sender: 'brand', text: "We need 1 High-Quality UGC Reel (30-45 sec with product unboxing + feature demonstration) + 2 Instagram Story Swipe-ups with link tag." },
+      { sender: 'creator', text: "Got it! My rate for 1 UGC Reel + 2 Stories is ₹12,000. I will deliver the first draft within 3 days after deal acceptance." },
+      { sender: 'brand', text: "₹12,000 works great for us! I am sending the official deal proposal now with final deliverables & price breakdown." },
+      { sender: 'brand', text: JSON.stringify({ type: 'proposal', amount: 12000, deliverables: '1 UGC Reel (30-45s) + 2 Instagram Story Links' }) }
+    ];
+    setChatMessages(initialMsgs);
+    localStorage.setItem(creatorStorageKey, JSON.stringify(initialMsgs));
+    localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(initialMsgs));
+    return initialMsgs;
+  };
 
   const isAntiBypassViolation = (text: string): boolean => {
     const lower = text.toLowerCase();
@@ -234,6 +255,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       text: JSON.stringify({ type: 'proposal_accepted', amount }),
       content: JSON.stringify({ type: 'proposal_accepted', amount })
     };
+    const autoDoneMsg = {
+      sender: 'system' as const,
+      sender_type: 'system',
+      text: '✨ DEAL CONFIRMED & DONE! Proposal accepted for ₹' + amount.toLocaleString() + '. Escrow funds locked in Raftra Vault.'
+    };
     const paymentMsg = {
       sender: 'brand' as const,
       sender_type: 'brand',
@@ -241,7 +267,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       content: JSON.stringify({ type: 'payment_complete', amount })
     };
     const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
-    const updated = [...currentMsgs, acceptMsg, paymentMsg];
+    const updated = [...currentMsgs, acceptMsg, autoDoneMsg, paymentMsg];
     setChatMessages(updated);
     localStorage.setItem(creatorStorageKey, JSON.stringify(updated));
     localStorage.setItem('raftra_creator_inbox_chat', JSON.stringify(updated));
@@ -421,7 +447,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           </div>
         )}
 
-        {/* 💬 INBOX TAB (INSTAGRAM DIRECT DM STYLE - ZERO STATE) */}
+        {/* 💬 INBOX TAB (INSTAGRAM DIRECT DM STYLE - DEMO BRAND CHAT) */}
         {activeTab === 'inbox' && (
           <div style={{ maxWidth: '1000px', margin: '0 auto', height: 'calc(100vh - 120px)', display: 'flex', gap: '16px', background: '#0a0a0d', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
             
@@ -433,18 +459,148 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </h3>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', padding: '24px 16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                No active conversations yet.
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div 
+                  style={{ 
+                    padding: '14px 18px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                    background: 'rgba(90,82,255,0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}
+                >
+                  <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" alt="Demo Brand" style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover' }} />
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                      <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff' }}>Demo Brand</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Just now</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      ⚡ Official Proposal: ₹12,000 (1 UGC Reel + 2 Stories)
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Right Pane - Chat Window Empty State */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#08080a', padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              <MessageCircle size={48} color="var(--primary)" style={{ opacity: 0.4, marginBottom: '16px' }} />
-              <h3 style={{ fontSize: '18px', margin: '0 0 6px 0', color: '#fff', fontFamily: 'var(--font-heading)' }}>Your Direct Messages</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, maxWidth: '400px', lineHeight: 1.5 }}>
-                When brands discover your profile on Raftra Marketplace and send a message or proposal, your direct chats will appear here.
-              </p>
+            {/* Right Pane - Chat Window with Negotiation & Deal Card */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#08080a' }}>
+              {/* Chat Header */}
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.02)' }}>
+                <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" alt="Demo Brand" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>Demo Brand</div>
+                  <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle2 size={12} /> Verified Brand Partner ⚡
+                  </div>
+                </div>
+              </div>
+
+              {/* Message Feed */}
+              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {chatMessages.map((msg: any, i: number) => {
+                  const contentStr = msg.text || msg.content || '';
+                  const isSystem = msg.sender === 'system' || msg.sender_type === 'system';
+                  if (isSystem) {
+                    return (
+                      <div key={i} style={{ textAlign: 'center', margin: '8px 0' }}>
+                        <span style={{ fontSize: '11px', color: '#00E676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', padding: '6px 16px', borderRadius: '14px', fontWeight: 700 }}>
+                          {contentStr}
+                        </span>
+                      </div>
+                    );
+                  }
+                  let parsedContent: any = null;
+                  try {
+                    if (typeof contentStr === 'string' && contentStr.trim().startsWith('{')) {
+                      parsedContent = JSON.parse(contentStr);
+                    }
+                  } catch (e) {}
+
+                  if (parsedContent && parsedContent.type === 'proposal') {
+                    return (
+                      <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '480px' }}>
+                        <div style={{ background: 'linear-gradient(135deg, rgba(90,82,255,0.15), rgba(120,50,255,0.2))', border: '1.5px solid var(--primary)', padding: '22px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 8px 24px rgba(90,82,255,0.2)' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                            🤝 OFFICIAL BRAND DEAL PROPOSAL
+                          </div>
+                          <div style={{ fontSize: '32px', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
+                            ₹{(parsedContent.amount || 12000).toLocaleString()}
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 700, marginBottom: '16px', background: 'rgba(0,230,118,0.1)', padding: '6px 12px', borderRadius: '8px', display: 'inline-block' }}>
+                            Deliverables: {parsedContent.deliverables || '1 UGC Reel (30-45s) + 2 Instagram Stories'}
+                          </div>
+                          <div>
+                            <GlowButton variant="glow" onClick={() => handleAcceptProposal(parsedContent.amount || 12000)} style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 700 }}>
+                              Accept Proposal & Start Project
+                            </GlowButton>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (parsedContent && parsedContent.type === 'proposal_accepted') {
+                    return (
+                      <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '480px' }}>
+                        <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', padding: '16px', borderRadius: '14px', textAlign: 'center', color: '#00E676' }}>
+                          <CheckCircle2 size={28} style={{ marginBottom: '6px' }} />
+                          <div style={{ fontWeight: 800, fontSize: '16px' }}>Deal Accepted for ₹{(parsedContent.amount || 12000).toLocaleString()}!</div>
+                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', marginTop: '4px' }}>Waiting for brand to deposit funds into Raftra Escrow Vault...</div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (parsedContent && parsedContent.type === 'payment_complete') {
+                    return (
+                      <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '480px' }}>
+                        <div style={{ background: 'rgba(255,215,0,0.12)', border: '1px solid rgba(255,215,0,0.4)', padding: '16px', borderRadius: '14px', textAlign: 'center', color: '#ffd700' }}>
+                          <DollarSign size={28} style={{ marginBottom: '6px' }} />
+                          <div style={{ fontWeight: 800, fontSize: '16px' }}>Escrow Payment Deposited! 🟢</div>
+                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', marginTop: '4px' }}>₹{((parsedContent.amount || 12000) * 0.9).toLocaleString()} (90% net payout) is now locked in Raftra Vault for you.</div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const isMe = msg.sender === 'creator' || msg.sender_type === 'influencer';
+                  return (
+                    <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
+                        {isMe ? 'You (Ankit)' : 'Demo Brand'}
+                      </div>
+                      <div style={{ 
+                        background: isMe ? 'linear-gradient(135deg, #5A52FF, #7832FF)' : 'rgba(255,255,255,0.06)', 
+                        padding: '12px 16px', 
+                        borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                        color: '#fff',
+                        fontSize: '13px',
+                        lineHeight: '1.45'
+                      }}>
+                        {contentStr}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Chat Input Bar */}
+              <form onSubmit={handleSendChat} style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', background: '#0a0a0d', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Message Demo Brand..."
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '24px', color: '#fff', outline: 'none', fontSize: '13px' }}
+                />
+                <GlowButton variant="glow" type="submit" style={{ borderRadius: '50%', width: '42px', height: '42px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Send size={16} />
+                </GlowButton>
+              </form>
             </div>
 
           </div>
