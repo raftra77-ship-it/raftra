@@ -229,8 +229,8 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
             <h3 style={{ fontSize: '22px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 12px 0', lineHeight: 1.4 }}>
               AI handles execution. Specialists handle strategy, creativity, relationships, and business decisions.
             </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6, margin: 0, maxWidth: '900px' }}>
-              Raftra specialists use the Raftra platform to automate repetitive work, generate AI-powered insights, publish changes, and provide transparent reporting—so more time is spent on strategy and growth instead of manual tasks.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6, margin: '0 0 8px 0', maxWidth: '900px' }}>
+              Every Raftra Specialist is trained to work directly inside Raftra. No external tools or complex workflows required. Specialists execute, optimize, and report directly from your Raftra workspace.
             </p>
           </div>
         </div>
