@@ -95,6 +95,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
           <p style={{ fontSize: '17px', color: 'var(--text-secondary)', maxWidth: '750px', margin: '0 auto', lineHeight: 1.5 }}>
             Choose complete All-in-One Operating Suites, Dual-Module Starter Packs, or individual AI tools. Includes free core tools, creator escrow protection, and zero hidden costs.
+          </p>
+        </motion.div>
+
         {/* IMPORTANT PRICING & BUDGET DISCLAIMER BANNER */}
         <div style={{ 
           maxWidth: '1000px', 
