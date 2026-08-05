@@ -121,11 +121,41 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const payloadBase64 = token.split('.')[1];
+        if (payloadBase64) {
+          const decoded = JSON.parse(atob(payloadBase64));
+          const name = decoded.name || (decoded.first_name ? `${decoded.first_name} ${decoded.last_name || ''}`.trim() : (decoded.email ? decoded.email.split('@')[0] : 'Ankit Kumar'));
+          const handle = decoded.handle || `@${(name || 'ankrena').toLowerCase().replace(/[^a-z0-9_]/g, '')}`;
+          
+          setCardCustomizer(prev => {
+            const updated = {
+              ...prev,
+              name: name || prev.name,
+              handle: handle.startsWith('@') ? handle : `@${handle}`
+            };
+            return updated;
+          });
+        }
+      } catch (e) {}
+    }
+
     fetch('/api/auth/me', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       setMe(data);
-    });
+      if (data && (data.first_name || data.email)) {
+        const name = `${data.first_name || ''} ${data.last_name || ''}`.trim() || data.email.split('@')[0];
+        const handle = `@${name.toLowerCase().replace(/[^a-z0-9_]/g, '')}`;
+        setCardCustomizer(prev => ({
+          ...prev,
+          name: name || prev.name,
+          handle: handle
+        }));
+      }
+    }).catch(() => {});
+
     fetch('/api/workspaces/influencer/me', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
@@ -134,6 +164,16 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         if (data.handle) {
           setVerificationStatus('verified');
         }
+        setCardCustomizer(prev => ({
+          ...prev,
+          name: data.name || prev.name,
+          handle: data.handle || prev.handle,
+          avatar: data.avatar || prev.avatar,
+          followers: data.followers || prev.followers,
+          expectedPrice: data.base_rate ? `₹${data.base_rate.toLocaleString()}` : prev.expectedPrice,
+          niche: data.niche || prev.niche,
+          location: data.location || prev.location
+        }));
         setProfileForm({
           avatar: data.avatar || '',
           recent_posts: data.recent_posts || [],
@@ -141,7 +181,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           recent_reviews: data.recent_reviews || []
         });
       }
-    });
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -183,12 +223,15 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         initDemoBrandChat();
       }
     }
-  }, [activeTab]);
+  }, [activeTab, cardCustomizer.name, cardCustomizer.handle]);
 
   const initDemoBrandChat = () => {
+    const creatorName = cardCustomizer.name || 'Ankit Kumar';
+    const creatorHandle = cardCustomizer.handle || '@ankrena';
+
     const initialMsgs = [
       { sender: 'system', text: '🔒 SECURE ESCROW END-TO-END WORKSPACE ACTIVATED' },
-      { sender: 'brand', text: "Hi Ankit (@ankrena)! We loved your recent viral content. We're launching our new campaign and want to partner with you for a dedicated UGC video reel." },
+      { sender: 'brand', text: `Hi ${creatorName} (${creatorHandle})! We loved your recent viral content. We're launching our new campaign and want to partner with you for a dedicated UGC video reel.` },
       { sender: 'creator', text: "Hey Demo Brand team! Thanks for reaching out. What exact deliverables are you expecting and what is your campaign timeline?" },
       { sender: 'brand', text: "We need 1 High-Quality UGC Reel (30-45 sec with product unboxing + feature demonstration) + 2 Instagram Story Swipe-ups with link tag." },
       { sender: 'creator', text: "Got it! My rate for 1 UGC Reel + 2 Stories is ₹12,000. I will deliver the first draft within 3 days after deal acceptance." },
