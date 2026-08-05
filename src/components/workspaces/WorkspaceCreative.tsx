@@ -2028,8 +2028,21 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   </div>
                 </div>
 
-                {/* MODAL ACTION BUTTON - ONLY OPEN IN EDITOR */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                {/* MODAL ACTION BUTTONS */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                  {/* Remove from Recent Projects */}
+                  <button
+                    onClick={() => {
+                      setProjectsList(prev => prev.filter(p => p.id !== selectedProjectModal.id));
+                      setSelectedProjectModal(null);
+                      triggerToast('Removed from Recent Projects! 🗑️');
+                    }}
+                    style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
+                  >
+                    <X size={14} /> Remove from Projects
+                  </button>
+
+                  {/* Open in Editor */}
                   <GlowButton
                     variant="glow"
                     onClick={() => {
@@ -2074,14 +2087,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             {projectsList.filter(p => p.status === 'Approved').map(proj => (
               <div
                 key={proj.id}
-                onClick={() => setSelectedProjectModal(proj)}
                 className="glow-card"
                 style={{
                   padding: '20px',
                   background: '#0c0c14',
                   border: '1px solid rgba(0,230,118,0.3)',
                   borderRadius: '16px',
-                  cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '12px'
@@ -2107,7 +2118,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>"{proj.headline}"</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{proj.date}</span>
-                  <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 700 }}>Open in Editor 🎨 →</span>
+                  <button
+                    onClick={() => {
+                      setProjectsList(prev => prev.filter(p => p.id !== proj.id));
+                      triggerToast('Removed from Ad Library! 🗑️');
+                    }}
+                    style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '5px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                  >
+                    <X size={11} /> Remove from Library
+                  </button>
                 </div>
               </div>
             ))}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, ExternalLink, BadgeCheck, Camera, Check } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
 interface CreatorPortalProps {
@@ -7,7 +7,7 @@ interface CreatorPortalProps {
 }
 
 export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inbox' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inbox' | 'profile_setup' | 'payment_setup'>('dashboard');
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
@@ -349,7 +349,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { id: 'inbox', label: 'Inbox', icon: MessageCircle },
-            { id: 'settings', label: 'Settings', icon: Settings },
+            { id: 'profile_setup', label: 'Profile Setup', icon: User },
+            { id: 'payment_setup', label: 'Payment Setup', icon: CreditCard },
           ].map(item => (
             <button
               key={item.id}
@@ -372,73 +373,453 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         </button>
       </div>
 
-      {/* Main Content */}
+        {/* Main Content */}
       <div style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
+
+        {/* 📊 DASHBOARD TAB */}
         {activeTab === 'dashboard' && (
           <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-            <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', marginBottom: '24px' }}>Welcome back{me?.first_name ? `, ${me.first_name}` : ''}!</h1>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', marginBottom: '40px' }}>
-              <div className="glow-card" style={{ padding: '24px' }}>
-                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>Total Escrowed Funds</div>
-                <div style={{ fontSize: '32px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: 'var(--success)', fontSize: '28px', fontWeight: 800 }}>₹</span> 98,500
-                </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h1 style={{ fontSize: '26px', fontFamily: 'var(--font-heading)', margin: '0 0 4px 0', color: '#fff' }}>
+                  Creator Dashboard 📊
+                </h1>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Overview of your active brand campaigns, earnings, and escrow funds.
+                </p>
               </div>
-              <div className="glow-card" style={{ padding: '24px' }}>
-                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>Active Deals</div>
-                <div style={{ fontSize: '32px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <CheckCircle2 color="var(--primary)" size={28}/> 3
-                </div>
-              </div>
-              <div className="glow-card" style={{ padding: '24px' }}>
-                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>Profile Views (30d)</div>
-                <div style={{ fontSize: '32px', fontWeight: 700 }}>842</div>
+              <div style={{ padding: '6px 14px', background: 'rgba(0,230,118,0.12)', border: '1px solid #00E676', borderRadius: '100px', fontSize: '12px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <BadgeCheck size={16} /> Verified Creator Partner
               </div>
             </div>
 
-            <div className="glow-card" style={{ padding: '24px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>Recent Deal Requests</h3>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>Raftra AI Demo Brand</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>UGC Video • Requested 2 hours ago</div>
+            {/* Stat Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '32px' }}>
+              <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>TOTAL PAYOUTS DISBURSED</div>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  ₹98,500
                 </div>
-                <GlowButton variant="glow" onClick={() => setActiveTab('inbox')}>View Message</GlowButton>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Net 90% received in bank</div>
+              </div>
+
+              <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>ACTIVE BRAND DEALS</div>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle2 color="var(--primary)" size={24} /> 3 Funded
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Secured in Raftra Vault</div>
+              </div>
+
+              <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>PROFILE REACH</div>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#00C4CC' }}>11.3M</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Total Marketplace Views</div>
+              </div>
+
+              <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>APPROVAL RATING</div>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#FFB300' }}>4.9 ★</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>100% Brand Satisfaction</div>
               </div>
             </div>
 
-            {/* STEP-BY-STEP PAYOUT EXPLANATION GUIDE */}
-            <div className="glow-card" style={{ padding: '24px', marginTop: '24px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 14px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                📖 How Creator Payout Verification Works (Step-by-Step)
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+            {/* Recent Deals Table */}
+            <div className="glow-card" style={{ padding: '24px', marginBottom: '32px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '16px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>Recent Brand Collaborations & Deals</h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Live Status Tracker</span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {[
-                  { step: '1', title: 'Deliver Content', desc: 'Send final video reel to brand on WhatsApp/Insta as per contract.' },
-                  { step: '2', title: 'Get Approval Msg', desc: 'Brand reviews work and sends official timestamped verification message.' },
-                  { step: '3', title: 'Upload Proof & Bank', desc: 'Upload chat screenshot proof & enter your Bank/UPI details below.' },
-                  { step: '4', title: 'Human Audit', desc: 'Team Raftra Auditor conducts manual verification of SS (15-30 mins).' },
-                  { step: '5', title: 'Bank Payout & Invoice', desc: 'Funds disbursed to Bank/UPI + Download official Tax Invoice PDF!' }
-                ].map(item => (
-                  <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '12px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', marginBottom: '4px' }}>STEP {item.step}</div>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>{item.title}</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{item.desc}</div>
+                  { brand: 'Ambrane India', campaign: 'UGC Video Reel + 2 Stories', amount: '₹10,000', status: 'Escrow Funded 🟢', code: 'RAFTRA-VERIFIED-98241', date: '05 Aug 2026, 12:15 PM' },
+                  { brand: 'BoAt Audio', campaign: '2 Instagram Stories + Post', amount: '₹15,000', status: 'Disbursed ✨', code: 'RAFTRA-VERIFIED-44102', date: '01 Aug 2026, 04:30 PM' },
+                  { brand: 'Mamaearth', campaign: 'Skincare Video Integration', amount: '₹12,000', status: 'Under Verification 🔍', code: 'RAFTRA-VERIFIED-71049', date: '30 Jul 2026, 11:00 AM' },
+                  { brand: 'Zepto', campaign: '10 Min Delivery UGC Reel', amount: '₹8,000', status: 'Disbursed ✨', code: 'RAFTRA-VERIFIED-33910', date: '25 Jul 2026, 06:20 PM' }
+                ].map((deal, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>{deal.brand}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{deal.campaign} • {deal.date}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: '#00E676' }}>{deal.amount}</div>
+                        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{deal.code}</div>
+                      </div>
+                      <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', background: deal.status.includes('Disbursed') ? 'rgba(0,230,118,0.15)' : deal.status.includes('Funded') ? 'rgba(90,82,255,0.15)' : 'rgba(255,179,0,0.15)', color: deal.status.includes('Disbursed') ? '#00E676' : deal.status.includes('Funded') ? 'var(--primary)' : '#FFB300', fontWeight: 700 }}>
+                        {deal.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 💬 INBOX TAB (INSTAGRAM DIRECT DM STYLE) */}
+        {activeTab === 'inbox' && (
+          <div style={{ maxWidth: '1000px', margin: '0 auto', height: 'calc(100vh - 120px)', display: 'flex', gap: '16px', background: '#0a0a0d', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
+            
+            {/* Left Pane - Instagram Style Chat List */}
+            <div style={{ width: '320px', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.01)' }}>
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '16px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MessageCircle size={18} color="#00E676" /> Brand Direct Messages
+                </h3>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {[
+                  { id: 1, name: 'Ambrane India', avatar: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80', lastMsg: 'Deal accepted! Proceeding to Escrow payment.', time: '2m', unread: true },
+                  { id: 2, name: 'BoAt Audio', avatar: 'https://images.unsplash.com/photo-1572021335469-31706a17aaef?auto=format&fit=crop&w=100&q=80', lastMsg: 'Awesome video reel! Payout disbursed.', time: '1d', unread: false },
+                  { id: 3, name: 'Mamaearth', avatar: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=100&q=80', lastMsg: 'Can you send the draft by tomorrow?', time: '3d', unread: false }
+                ].map(chat => (
+                  <div 
+                    key={chat.id} 
+                    onClick={() => setChatWorkspaceId(chat.id)}
+                    style={{ 
+                      padding: '14px 18px', 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      background: chatWorkspaceId === chat.id ? 'rgba(90,82,255,0.12)' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px'
+                    }}
+                  >
+                    <img src={chat.avatar} alt={chat.name} style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                        <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff' }}>{chat.name}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{chat.time}</span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: chat.unread ? '#fff' : 'var(--text-secondary)', fontWeight: chat.unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {chat.lastMsg}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* HUMAN VERIFICATION & PAYOUT PROOF SUBMISSION BOX */}
-            <div className="glow-card" style={{ padding: '24px', marginTop: '24px', background: 'linear-gradient(135deg, rgba(12,12,20,0.9), rgba(20,20,35,0.95))', border: '1px solid rgba(0, 230, 118, 0.3)' }}>
+            {/* Right Pane - Instagram Style Direct Chat Screen */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#08080a' }}>
+              {/* Chat Header */}
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.02)' }}>
+                <img src={chatWorkspaceId === 1 ? "https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=100&q=80" : "https://images.unsplash.com/photo-1572021335469-31706a17aaef?auto=format&fit=crop&w=100&q=80"} alt="Brand" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>{chatWorkspaceId === 1 ? 'Ambrane India' : 'BoAt Audio'}</div>
+                  <div style={{ fontSize: '11.5px', color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle2 size={12} /> Verified Brand Partner
+                  </div>
+                </div>
+              </div>
+
+              {/* Message Feed */}
+              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ alignSelf: 'flex-start', maxWidth: '70%', background: 'rgba(255,255,255,0.06)', padding: '12px 16px', borderRadius: '16px 16px 16px 4px', fontSize: '13px', color: '#fff', lineHeight: 1.4 }}>
+                  Hi Ankit! We loved your recent tech reel. We would like to collaborate on an upcoming powerbank launch campaign.
+                </div>
+                <div style={{ alignSelf: 'flex-end', maxWidth: '70%', background: 'linear-gradient(135deg, #5A52FF, #7832FF)', padding: '12px 16px', borderRadius: '16px 16px 4px 16px', fontSize: '13px', color: '#fff', lineHeight: 1.4 }}>
+                  Hey Ambrane team! Thanks a lot. Sounds great, please share the deliverable requirements and budget.
+                </div>
+                
+                <div style={{ alignSelf: 'center', width: '100%', maxWidth: '450px', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.3)', padding: '18px', borderRadius: '14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', marginBottom: '6px' }}>🤝 BRAND DEAL PROPOSAL</div>
+                  <div style={{ fontSize: '26px', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>₹10,000</div>
+                  <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 600 }}>Deliverables: 1 UGC Reel + 2 Instagram Stories</div>
+                </div>
+
+                <div style={{ alignSelf: 'flex-end', maxWidth: '70%', background: 'linear-gradient(135deg, #5A52FF, #7832FF)', padding: '12px 16px', borderRadius: '16px 16px 4px 16px', fontSize: '13px', color: '#fff', lineHeight: 1.4 }}>
+                  Deal Accepted! Looking forward to working together. Please proceed to Escrow funding.
+                </div>
+              </div>
+
+              {/* Chat Input Bar */}
+              <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', background: '#0a0a0d', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Message brand..."
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '24px', color: '#fff', outline: 'none', fontSize: '13px' }}
+                />
+                <GlowButton variant="glow" style={{ borderRadius: '50%', width: '42px', height: '42px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Send size={16} />
+                </GlowButton>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* 👤 PROFILE SETUP TAB (LIVE CARD PREVIEW & PROFILE PHOTO / LINK EDITOR) */}
+        {activeTab === 'profile_setup' && (
+          <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+            
+            <div>
+              <h1 style={{ fontSize: '26px', fontFamily: 'var(--font-heading)', margin: '0 0 4px 0', color: '#fff' }}>
+                Profile Setup & Live Card Customizer 👤
+              </h1>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                See how your creator card appears to Brands in the Marketplace & edit your public profile details.
+              </p>
+            </div>
+
+            {/* LIVE MARKETPLACE CARD PREVIEW */}
+            <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(20,20,35,0.9), rgba(10,10,20,0.95))', border: '1.5px solid #00E676' }}>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkles size={16} /> LIVE MARKETPLACE CARD PREVIEW (HOW BRANDS SEE YOU)
+              </div>
+
+              <div className="glow-card" style={{ padding: '20px', background: '#0a0a0d', border: '1px solid var(--border)', borderRadius: '16px', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <img
+                  src={cardCustomizer.avatar || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80"}
+                  alt={cardCustomizer.name}
+                  style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #00E676' }}
+                />
+                
+                <div style={{ flex: 1, minWidth: '220px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ fontSize: '18px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>{cardCustomizer.name}</h3>
+                    <BadgeCheck size={18} color="#00E676" />
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--primary)', fontWeight: 600, marginTop: '2px' }}>
+                    {cardCustomizer.handle} • {cardCustomizer.niche}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    👥 <b>{cardCustomizer.followers}</b> Followers • 👁️ {cardCustomizer.avgViews}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#00E676' }}>{cardCustomizer.expectedPrice}</div>
+                  <a
+                    href={cardCustomizer.profileLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <ExternalLink size={13} /> View Instagram Profile
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* EDIT PROFILE FORM */}
+            <div className="glow-card" style={{ padding: '28px' }}>
+              <h3 style={{ fontSize: '18px', margin: '0 0 20px 0', color: '#fff' }}>Edit Public Creator Profile</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Profile Photo URL (Replaces Avatar):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Paste image URL (e.g. https://images.unsplash.com/...)"
+                    value={cardCustomizer.avatar}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, avatar: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Instagram / Social Profile Link:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. https://www.instagram.com/ankrena"
+                    value={cardCustomizer.profileLink}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, profileLink: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Creator Name:
+                  </label>
+                  <input
+                    type="text"
+                    value={cardCustomizer.name}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, name: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Handle:
+                  </label>
+                  <input
+                    type="text"
+                    value={cardCustomizer.handle}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, handle: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Niche / Category:
+                  </label>
+                  <input
+                    type="text"
+                    value={cardCustomizer.niche}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, niche: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Starting Rate (₹):
+                  </label>
+                  <input
+                    type="text"
+                    value={cardCustomizer.expectedPrice}
+                    onChange={e => setCardCustomizer({ ...cardCustomizer, expectedPrice: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <GlowButton variant="glow" onClick={() => alert("Profile updated successfully!")} style={{ padding: '12px 28px' }}>
+                  Save Profile Changes
+                </GlowButton>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* 💳 PAYMENT SETUP TAB (RAZORPAY INTEGRATION & BANK DETAILS) */}
+        {activeTab === 'payment_setup' && (
+          <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+            
+            <div>
+              <h1 style={{ fontSize: '26px', fontFamily: 'var(--font-heading)', margin: '0 0 4px 0', color: '#fff' }}>
+                Payment Setup & Razorpay Escrow Direct Payout 💳
+              </h1>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                Configure your Bank Account & UPI ID for direct 90% net payout disbursal upon Team Raftra Human Audit approval.
+              </p>
+            </div>
+
+            {/* EXPLANATION CARD */}
+            <div className="glow-card" style={{ padding: '24px', background: 'rgba(0,196,204,0.08)', border: '1px solid rgba(0,196,204,0.3)' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 10px 0', color: '#00C4CC', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ⚡ How Razorpay Escrow Payout Works for Creators
+              </h3>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', margin: 0, lineHeight: 1.5 }}>
+                Raftra AI operates on a <b>90/10 split</b>. Upon deal completion, 90% of the gross deal value is routed via <b>Razorpay Route Direct Disbursal</b> directly into your linked Bank Account / UPI ID once screenshot proof is verified by Team Raftra Human Auditors.
+              </p>
+            </div>
+
+            {/* RAZORPAY & BANK ACCOUNT SETUP FORM */}
+            <div className="glow-card" style={{ padding: '28px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <h3 style={{ fontSize: '18px', margin: 0, color: '#fff' }}>Razorpay Payout & Linked Bank Account</h3>
+                <div style={{ padding: '6px 14px', background: 'rgba(0,230,118,0.15)', border: '1px solid #00E676', color: '#00E676', borderRadius: '100px', fontSize: '11px', fontWeight: 800 }}>
+                  VERIFIED FOR DIRECT DISBURSAL ⚡
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Razorpay Payout Account ID:
+                  </label>
+                  <input
+                    type="text"
+                    value="acc_M3k9sD28x1 (Razorpay Route Linked)"
+                    disabled
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Account Holder Name:
+                  </label>
+                  <input
+                    type="text"
+                    value={bankDetails.accountHolder}
+                    onChange={e => setBankDetails({ ...bankDetails, accountHolder: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Bank Name & Branch:
+                  </label>
+                  <input
+                    type="text"
+                    value={bankDetails.bankName}
+                    onChange={e => setBankDetails({ ...bankDetails, bankName: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Bank Account Number:
+                  </label>
+                  <input
+                    type="text"
+                    value={bankDetails.accountNumber}
+                    onChange={e => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    IFSC Code:
+                  </label>
+                  <input
+                    type="text"
+                    value={bankDetails.ifscCode}
+                    onChange={e => setBankDetails({ ...bankDetails, ifscCode: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                    Instant UPI ID (e.g. GPay/Paytm):
+                  </label>
+                  <input
+                    type="text"
+                    value={bankDetails.upiId}
+                    onChange={e => setBankDetails({ ...bankDetails, upiId: e.target.value })}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <GlowButton variant="glow" onClick={() => alert("Razorpay payout bank account updated!")} style={{ padding: '12px 28px' }}>
+                Save Payment Account Details
+              </GlowButton>
+            </div>
+
+            {/* ESCROW PROOF SUBMISSION & HUMAN VERIFICATION PORTAL */}
+            <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(12,12,20,0.9), rgba(20,20,35,0.95))', border: '1px solid rgba(0, 230, 118, 0.3)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
                   <h3 style={{ fontSize: '18px', margin: '0 0 4px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <ShieldAlert size={20} color="#00E676" /> Escrow Payout & Human Verification Portal
+                    <ShieldAlert size={20} color="#00E676" /> Submit Deliverables Proof for Payout Disbursal
                   </h3>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                    Work complete? Upload your brand approval screenshot (WhatsApp/IG DM) & verification code for Team Raftra Human Verification.
+                    Upload your brand satisfaction screenshot (WhatsApp/IG DM) & verification token for Team Raftra Human Audit.
                   </p>
                 </div>
                 <div style={{ padding: '6px 14px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, background: proofVerificationStatus === 'verified_payout' ? 'rgba(0,230,118,0.2)' : proofVerificationStatus === 'under_review' ? 'rgba(0,196,204,0.2)' : 'rgba(255,179,0,0.2)', color: proofVerificationStatus === 'verified_payout' ? '#00E676' : proofVerificationStatus === 'under_review' ? '#00C4CC' : '#FFB300', border: '1px solid currentColor' }}>
@@ -489,47 +870,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </div>
               ) : (
                 <form onSubmit={handleSubmitProofToTeamRaftra} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  
-                  {/* Bank Details Inputs */}
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', padding: '16px', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <DollarSign size={16} /> PAYOUT BANK & UPI DETAILS
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                      <div>
-                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Bank Name:</label>
-                        <input
-                          type="text"
-                          value={bankDetails.bankName}
-                          onChange={e => setBankDetails({ ...bankDetails, bankName: e.target.value })}
-                          style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Account Number:</label>
-                        <input
-                          type="text"
-                          value={bankDetails.accountNumber}
-                          onChange={e => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
-                          style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>UPI ID:</label>
-                        <input
-                          type="text"
-                          value={bankDetails.upiId}
-                          onChange={e => setBankDetails({ ...bankDetails, upiId: e.target.value })}
-                          style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div>
                       <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                        1. Verification Code / Message (from Brand):
+                        1. Verification Code / Token (from Brand):
                       </label>
                       <input
                         type="text"
@@ -541,7 +885,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                     </div>
                     <div>
                       <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                        2. Chat Screenshot Proof (WhatsApp / IG DM / Email):
+                        2. Chat Screenshot Proof (WhatsApp / IG DM):
                       </label>
                       <input
                         ref={proofFileInputRef}
@@ -560,560 +904,15 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   </div>
 
                   <GlowButton variant="glow" type="submit" style={{ padding: '12px 24px', alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Send size={15} /> Submit Proof for Team Raftra Human Verification & Payout
-                  </GlowButton>
-                </form>
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'inbox' && (
-          <div style={{ maxWidth: '1000px', margin: '0 auto', height: 'calc(100vh - 80px)', display: 'flex', gap: '20px', padding: '20px' }}>
-            {/* Left Pane - Chat List */}
-            <div style={{ width: '300px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontWeight: 600 }}>Active Messages</div>
-                <button 
-                  onClick={() => setShowDiscover(true)} 
-                  style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }}>
-                  + New
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                {activeChats.length === 0 ? (
-                  <div style={{ padding: '20px', color: 'var(--text-secondary)', fontSize: '14px', textAlign: 'center' }}>No messages yet. Click "+ New" to find brands!</div>
-                ) : (
-                  activeChats.map(chat => (
-                    <div 
-                      key={chat.id} 
-                      onClick={() => { setChatWorkspaceId(chat.id); setShowDiscover(false); }}
-                      style={{ 
-                        padding: '16px 20px', 
-                        cursor: 'pointer', 
-                        borderBottom: '1px solid var(--border)',
-                        background: chatWorkspaceId === chat.id && !showDiscover ? 'rgba(255,255,255,0.05)' : 'transparent'
-                      }}
-                    >
-                      <div style={{ fontWeight: 500 }}>{chat.name}</div>
-                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {chat.messages.length > 0 ? (chat.messages[chat.messages.length - 1]?.text || chat.messages[chat.messages.length - 1]?.content || 'Active discussion') : 'No messages'}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Right Pane - Chat Window or Discover */}
-            <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              {showDiscover ? (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <div style={{ padding: '20px', borderBottom: '1px solid var(--border)' }}>
-                    <h2 style={{ fontSize: '18px', margin: 0 }}>Discover Brands</h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Select a brand to initiate a conversation.</p>
-                  </div>
-                  <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {allBrands.length === 0 && <div style={{ color: 'var(--text-secondary)' }}>No brands found.</div>}
-                    {allBrands.map(brand => (
-                      <div key={brand.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                        <div style={{ fontWeight: 600 }}>{brand.name}</div>
-                        <GlowButton variant="glow" onClick={() => { setChatWorkspaceId(brand.id); setShowDiscover(false); }}>Message</GlowButton>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : activeChats.length === 0 && chatWorkspaceId === 1 && groupedChats[1] === undefined ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-                  Select a conversation to start chatting
-                </div>
-              ) : (
-                <>
-                  <div style={{ padding: '20px', borderBottom: '1px solid var(--border)' }}>
-                    <h2 style={{ fontSize: '18px', margin: 0 }}>Conversation with {groupedChats[chatWorkspaceId]?.name || 'Brand'}</h2>
-                  </div>
-                  
-                  <div className="chat-messages" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {currentChatMessages.map((msg: any, i: number) => {
-                      const contentStr = msg.text || msg.content || '';
-                      const isSystem = msg.sender === 'system' || msg.sender_type === 'system';
-                      if (isSystem) {
-                        return (
-                          <div key={i} style={{ textAlign: 'center', margin: '8px 0' }}>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: '12px' }}>
-                              {contentStr}
-                            </span>
-                          </div>
-                        );
-                      }
-                      let parsedContent = null;
-                      try {
-                        if (typeof contentStr === 'string' && contentStr.trim().startsWith('{')) {
-                          parsedContent = JSON.parse(contentStr);
-                        }
-                      } catch (e) {}
-
-                      if (parsedContent && parsedContent.type === 'proposal') {
-                        return (
-                          <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
-                            <div style={{ background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.3)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
-                              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', color: '#fff' }}>Brand Proposed a Deal</h3>
-                              <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--success)', marginBottom: '16px' }}>
-                                ₹{parsedContent.amount.toLocaleString()}
-                              </div>
-                              <GlowButton variant="glow" onClick={() => handleAcceptProposal(parsedContent.amount)}>
-                                Accept Deal
-                              </GlowButton>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      if (parsedContent && parsedContent.type === 'proposal_accepted') {
-                        return (
-                          <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
-                            <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: 'var(--success)' }}>
-                              <CheckCircle2 size={24} style={{ marginBottom: '8px' }} />
-                              <div style={{ fontWeight: 'bold' }}>Deal Accepted for ₹{parsedContent.amount.toLocaleString()}</div>
-                              <div style={{ fontSize: '13px', marginTop: '4px' }}>Waiting for brand to complete payment...</div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      if (parsedContent && parsedContent.type === 'payment_complete') {
-                        return (
-                          <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%' }}>
-                            <div style={{ background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', padding: '16px', borderRadius: '12px', textAlign: 'center', color: '#ffd700' }}>
-                              <DollarSign size={24} style={{ marginBottom: '8px' }} />
-                              <div style={{ fontWeight: 'bold' }}>Payment Received!</div>
-                              <div style={{ fontSize: '13px', marginTop: '4px' }}>₹{(parsedContent.amount * 0.9).toLocaleString()} added to your Escrowed Funds (90% cut).</div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      const isMe = msg.sender === 'creator' || msg.sender_type === 'influencer';
-                      return (
-                        <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
-                            {isMe ? 'You' : (groupedChats[chatWorkspaceId]?.name || 'Brand Partner')}
-                          </div>
-                          <div style={{ 
-                            background: isMe ? 'rgba(90, 82, 255, 0.15)' : 'rgba(255,255,255,0.05)', 
-                            border: '1px solid', borderColor: isMe ? 'rgba(90, 82, 255, 0.3)' : 'var(--border)',
-                            padding: '12px 16px', 
-                            borderRadius: isMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
-                            fontSize: '14px', lineHeight: 1.5
-                          }}>
-                            {contentStr}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div ref={chatEndRef} />
-                  </div>
-
-                  <div style={{ padding: '20px', borderTop: '1px solid var(--border)' }}>
-                    <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '12px' }}>
-                      <input
-                        type="text"
-                        placeholder="Reply to the brand..."
-                        value={chatInput}
-                        onChange={e => setChatInput(e.target.value)}
-                        style={{ flex: 1, padding: '14px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', outline: 'none' }}
-                      />
-                      <GlowButton variant="glow" type="submit" style={{ padding: '0 24px' }}>
-                        <Send size={18} />
-                      </GlowButton>
-                    </form>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'settings' && (
-          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-            <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', marginBottom: '32px' }}>Profile & Payout Settings</h1>
-            
-            <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles color="#00E676" size={18} /> Marketplace Badge Settings
-              </h3>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '15px', color: '#fff' }}>Offer UGC Video Creation</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Toggle the <span style={{ color: '#00E676', fontWeight: 600 }}>✨ UGC Available</span> badge on your Marketplace card.
-                  </div>
-                </div>
-                <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={offerUGC}
-                    onChange={(e) => handleToggleUGC(e.target.checked)}
-                    style={{ opacity: 0, width: 0, height: 0 }} 
-                  />
-                  <span style={{ 
-                    position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, 
-                    backgroundColor: offerUGC ? '#00E676' : 'rgba(255,255,255,0.2)', 
-                    borderRadius: '34px', transition: '.3s' 
-                  }} />
-                </label>
-              </div>
-            </div>
-
-            <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '24px' }}>Payout Methods</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-                <div style={{ width: '48px', height: '48px', background: '#635BFF', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <DollarSign color="#fff" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: '16px', marginBottom: '4px' }}>Stripe Connect</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Receive 90% payouts securely to your bank account.</div>
-                </div>
-                <button style={{ padding: '10px 20px', background: '#fff', color: '#000', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
-                  Connect Stripe
-                </button>
-              </div>
-            </div>
-
-            <div className="glow-card" style={{ padding: '32px', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <CheckCircle2 color="var(--primary)" size={18} /> Social Account Verification
-              </h3>
-              
-              {verificationStatus === 'verified' ? (
-                <div style={{ padding: '16px', background: 'rgba(0, 255, 128, 0.1)', border: '1px solid var(--success)', borderRadius: '8px', color: 'var(--success)' }}>
-                  ✅ Your account is verified and active! Your portfolio has been auto-generated via AI scraping.
-                </div>
-              ) : (
-                <form onSubmit={handleVerifyProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                    Connect your Instagram to generate your portfolio. Our AI will scan your profile, calculate real engagement, and extract recent collaborations.
-                  </p>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '13px', color: '#888', marginBottom: '8px' }}>Instagram Username</label>
-                      <input 
-                        type="text" 
-                        style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} 
-                        placeholder="@username"
-                        value={verifyForm.username}
-                        onChange={e => setVerifyForm({...verifyForm, username: e.target.value})}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '13px', color: '#888', marginBottom: '8px' }}>Primary Category / Niche</label>
-                      <input 
-                        type="text" 
-                        style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} 
-                        placeholder="e.g. Tech, Beauty, Gaming"
-                        value={verifyForm.niche}
-                        onChange={e => setVerifyForm({...verifyForm, niche: e.target.value})}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '13px', color: '#888', marginBottom: '8px' }}>Base Rate per Post (INR)</label>
-                      <input 
-                        type="number" 
-                        style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} 
-                        placeholder="e.g. 5000"
-                        value={verifyForm.base_rate || ''}
-                        onChange={e => setVerifyForm({...verifyForm, base_rate: parseInt(e.target.value) || 0})}
-                      />
-                    </div>
-                  </div>
-                  {verificationStatus === 'rejected' && (
-                    <div style={{ color: 'var(--warning)', fontSize: '13px' }}>Verification failed. Please ensure your profile is public and authentic.</div>
-                  )}
-                  <GlowButton variant="glow" type="submit" disabled={isVerifying} style={{ alignSelf: 'flex-start', marginTop: '8px' }}>
-                    {isVerifying ? 'Scanning Profile...' : 'Verify Profile'}
+                    <Send size={15} /> Submit Proof for Verification & Disbursal
                   </GlowButton>
                 </form>
               )}
             </div>
 
-            {verificationStatus === 'verified' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
-                
-                {/* MARKETPLACE CARD CUSTOMIZER & LIVE PREVIEW */}
-                <div className="glow-card" style={{ padding: '28px', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '16px', background: '#0d0d14' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
-                    <div>
-                      <h3 style={{ fontSize: '18px', margin: 0, color: '#fff', fontWeight: 700 }}>🎴 Marketplace Card Customizer</h3>
-                      <p style={{ color: '#8e8e9e', fontSize: '13px', margin: '4px 0 0 0' }}>Customize exactly what brands see on your Influencer Marketplace card.</p>
-                    </div>
-                    <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', color: '#00E676', padding: '3px 10px', borderRadius: '100px', fontWeight: 700 }}>Live Marketplace Card Editor</span>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px', alignItems: 'start' }}>
-                    
-                    {/* EDITABLE FIELDS FORM */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>FULL NAME</label>
-                          <input
-                            type="text"
-                            value={cardCustomizer.name}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, name: e.target.value })}
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>INSTAGRAM HANDLE</label>
-                          <input
-                            type="text"
-                            value={cardCustomizer.handle}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, handle: e.target.value })}
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontWeight: 600 }}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>PROFILE AVATAR PHOTO URL</label>
-                        <input
-                          type="text"
-                          value={cardCustomizer.avatar}
-                          onChange={e => setCardCustomizer({ ...cardCustomizer, avatar: e.target.value })}
-                          placeholder="Paste image URL..."
-                          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '12.5px' }}
-                        />
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>PRIMARY NICHE</label>
-                          <select
-                            value={cardCustomizer.niche}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, niche: e.target.value })}
-                            style={{ width: '100%', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
-                          >
-                            <option value="Lifestyle">Lifestyle</option>
-                            <option value="Fashion">Fashion</option>
-                            <option value="Fitness">Fitness</option>
-                            <option value="Tech">Tech</option>
-                            <option value="Art">Art</option>
-                            <option value="Education">Education</option>
-                            <option value="Local / City-based">Local / City-based</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>LOCATION (CITY / STATE)</label>
-                          <input
-                            type="text"
-                            value={cardCustomizer.location}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, location: e.target.value })}
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>EXACT FOLLOWER COUNT</label>
-                          <input
-                            type="text"
-                            value={cardCustomizer.followers}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, followers: e.target.value })}
-                            placeholder="e.g. 4,983 or 95,000"
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>AVG VIEWS / TOTAL REACH</label>
-                          <input
-                            type="text"
-                            value={cardCustomizer.avgViews}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, avgViews: e.target.value })}
-                            placeholder="e.g. 11.3M total views (3k avg)"
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontWeight: 600 }}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>EXPECTED REEL PRICE (₹)</label>
-                          <input
-                            type="text"
-                            value={cardCustomizer.expectedPrice}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, expectedPrice: e.target.value })}
-                            placeholder="e.g. ₹10,000"
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#00E676', fontSize: '13px', fontWeight: 700 }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>DIRECT INSTAGRAM LINK</label>
-                          <input
-                            type="text"
-                            value={cardCustomizer.profileLink}
-                            onChange={e => setCardCustomizer({ ...cardCustomizer, profileLink: e.target.value })}
-                            placeholder="https://www.instagram.com/..."
-                            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: '#12121c', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '12.5px' }}
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          localStorage.setItem('raftra_creator_card_custom', JSON.stringify(cardCustomizer));
-                          alert('Saved Marketplace Card Details! Your card will now show these exact custom details on the Brand Marketplace.');
-                        }}
-                        style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #00E676 0%, #00B0FF 100%)', color: '#000', border: 'none', borderRadius: '8px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer', marginTop: '6px', alignSelf: 'flex-start' }}
-                      >
-                        💾 Save Profile & Update Marketplace Card
-                      </button>
-                    </div>
-
-                    {/* LIVE MARKETPLACE CARD PREVIEW */}
-                    <div style={{ background: '#07070e', border: '1px solid rgba(0,230,118,0.4)', borderRadius: '14px', padding: '18px', display: 'flex', flexDirection: 'column' }}>
-                      <div style={{ fontSize: '10.5px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.5px' }}>
-                        👁️ Live Marketplace Preview
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <img
-                            src={cardCustomizer.avatar || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80"}
-                            alt={cardCustomizer.name}
-                            style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(0,230,118,0.5)' }}
-                          />
-                          <div>
-                            <h4 style={{ fontSize: '15px', margin: '0 0 2px 0', color: '#fff', fontWeight: 700 }}>
-                              {cardCustomizer.name || 'Creator Name'}
-                            </h4>
-                            <div style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 600 }}>{cardCustomizer.handle || '@handle'}</div>
-                            {cardCustomizer.location && (
-                              <div style={{ fontSize: '10px', color: '#8e8e9e', marginTop: '2px' }}>📍 {cardCustomizer.location}</div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', fontSize: '12.5px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#8e8e9e' }}>Followers</span>
-                          <span style={{ color: '#fff', fontWeight: 700 }}>{cardCustomizer.followers}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#8e8e9e' }}>Avg Views</span>
-                          <span style={{ color: '#00E676', fontWeight: 700 }}>{cardCustomizer.avgViews}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#8e8e9e' }}>Expected Price</span>
-                          <span style={{ color: '#00E676', fontWeight: 800 }}>{cardCustomizer.expectedPrice}</span>
-                        </div>
-                      </div>
-
-                      <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px 10px', borderRadius: '6px', fontSize: '10.5px', color: '#bbb' }}>
-                        Visible to all brands on Raftra Marketplace
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-
-                {/* EDIT PORTFOLIO DETAILS */}
-                <div className="glow-card" style={{ padding: '32px' }}>
-                  <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>Edit Portfolio Details</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px' }}>
-                  Your profile was generated by AI. You can manually adjust your recent posts, collaborations, and reviews below.
-                </p>
-                <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Profile Avatar Photo URL</label>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <img
-                        src={profileForm.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80"}
-                        alt="Avatar Preview"
-                        style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(0,230,118,0.5)' }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Paste image URL (e.g. https://images.unsplash.com/...)"
-                        value={profileForm.avatar || ''}
-                        onChange={e => setProfileForm({ ...profileForm, avatar: e.target.value })}
-                        style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }}
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Recent Posts</label>
-                      <button type="button" onClick={() => setProfileForm({...profileForm, recent_posts: [...profileForm.recent_posts, {url: '', type: 'link'}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Post</button>
-                    </div>
-                    {profileForm.recent_posts.map((post, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                        <input type="text" placeholder="Image/Reel URL" value={post.url} onChange={e => {
-                          const newPosts = [...profileForm.recent_posts];
-                          newPosts[idx].url = e.target.value;
-                          setProfileForm({...profileForm, recent_posts: newPosts});
-                        }} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                        <button type="button" onClick={() => {
-                          const newPosts = [...profileForm.recent_posts];
-                          newPosts.splice(idx, 1);
-                          setProfileForm({...profileForm, recent_posts: newPosts});
-                        }} style={{ padding: '0 12px', background: 'rgba(255,0,0,0.1)', color: '#ff4444', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>✕</button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>Recent Brand Collaborations (Comma separated)</label>
-                    <input type="text" placeholder="e.g. Nike, Zara, Gymshark" value={profileForm.recent_collabs.join(', ')} onChange={e => {
-                      const val = e.target.value;
-                      setProfileForm({...profileForm, recent_collabs: val.split(',').map(s => s.trim()).filter(Boolean)});
-                    }} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Top Reviews</label>
-                      <button type="button" onClick={() => setProfileForm({...profileForm, recent_reviews: [...profileForm.recent_reviews, {author: '', text: ''}]})} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px' }}>+ Add Review</button>
-                    </div>
-                    {profileForm.recent_reviews.map((rev, idx) => (
-                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px', padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '8px', position: 'relative' }}>
-                        <button type="button" onClick={() => {
-                          const newRevs = [...profileForm.recent_reviews];
-                          newRevs.splice(idx, 1);
-                          setProfileForm({...profileForm, recent_reviews: newRevs});
-                        }} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer' }}>✕</button>
-                        <input type="text" placeholder="Author (e.g. Marketing Director, Nike)" value={rev.author} onChange={e => {
-                          const newRevs = [...profileForm.recent_reviews];
-                          newRevs[idx].author = e.target.value;
-                          setProfileForm({...profileForm, recent_reviews: newRevs});
-                        }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '90%' }} />
-                        <textarea placeholder="Review text" value={rev.text} onChange={e => {
-                          const newRevs = [...profileForm.recent_reviews];
-                          newRevs[idx].text = e.target.value;
-                          setProfileForm({...profileForm, recent_reviews: newRevs});
-                        }} style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', width: '100%', minHeight: '60px', fontFamily: 'inherit' }} />
-                      </div>
-                    ))}
-                  </div>
-                  <GlowButton variant="glow" type="submit" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>Save Changes</GlowButton>
-                </form>
-              </div>
-            </div>
-            )}
-
-            <div className="glow-card" style={{ padding: '32px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ShieldAlert size={18} color="var(--warning)" /> Platform Policy
-              </h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>
-                Raftra AI operates a strict 90/10 revenue split. The brand's payment is held in escrow upon deal finalization. Once you submit the deliverables, 90% of the funds are automatically routed to your Stripe account. Attempts to circumvent the platform for direct payment may result in account termination.
-              </p>
-            </div>
           </div>
         )}
+
       </div>
 
       {/* TAX INVOICE DOWNLOAD MODAL FOR CREATOR */}
