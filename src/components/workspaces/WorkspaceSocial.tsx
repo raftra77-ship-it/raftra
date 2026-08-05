@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Activity, Users, MessageCircle, Heart, Zap, Sparkles, UserCheck, 
   ShieldCheck, CheckCircle2, Briefcase, TrendingUp, Search, 
-  Bot, DollarSign, Clock, ChevronRight, Send, Share2
+  Bot, DollarSign, Clock, ChevronRight, Send, Share2, Megaphone
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -45,46 +45,77 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
     setTimeout(() => setToastMessage(null), 5000);
   };
 
-  // Specialist Roles Data (Social Media Manager & SEO/GEO Specialist run full Raftra package on behalf of client)
+  // Specialist Roles Data (Social Media Manager, SEO/GEO Specialist, Paid Ads Specialist)
   const specialistRoles = [
     {
       id: 'social',
       title: 'Social Media Manager',
-      price: 'Starting from ₹25,000/month',
+      price: 'From ₹25,000/month',
       basePrice: 25000,
       icon: Share2,
       color: '#7C75FF',
-      automates: [
-        'AI Content Ideas & Captions',
-        'Hashtag Strategy & Planning',
-        'Content Calendar Scheduling',
-        'Social Analytics & Reports'
+      whatTheyDo: [
+        'Content Strategy',
+        'Content Calendar',
+        'Community Management',
+        'Trend Planning',
+        'Manual Content Creation',
+        'Brand Communication'
       ],
-      specialistDoes: [
-        'Core Specialist Social Media Duties',
-        'Full Raftra AI Growth Package Management for Client',
-        'Brand Communication & Community Management',
-        'Campaign Strategy & Trend-based Decisions'
+      usingRaftra: [
+        'AI-generated posts review',
+        'Schedule & publish content',
+        'Analyze performance',
+        'Generate new creatives',
+        'Use Campaign Manager',
+        'Manage comments & DMs (where supported)',
+        'Client reporting'
       ]
     },
     {
       id: 'seo',
       title: 'SEO & GEO Specialist',
-      price: 'Starting from ₹20,000/month',
+      price: 'From ₹20,000/month',
       basePrice: 20000,
       icon: Search,
       color: '#00E676',
-      automates: [
-        'Website & GEO AI Audit',
-        'Keyword & Competitor Research',
-        'Blog Generation & Meta Tags',
-        'Schema & Internal Linking'
+      whatTheyDo: [
+        'SEO Strategy',
+        'Content Planning',
+        'Authority Building',
+        'Backlink Outreach',
+        'Digital PR',
+        'Technical Review'
       ],
-      specialistDoes: [
-        'Core Specialist SEO & GEO Duties',
-        'Full Raftra AI Growth Package Management for Client',
-        'Advanced Technical SEO & Backlinks',
-        'Digital PR & Content Approval'
+      usingRaftra: [
+        'Review AI audits',
+        'One-click publishing',
+        'Generate blogs & landing pages',
+        'Monitor GSC & GA4',
+        'AI visibility optimization',
+        'Weekly reports'
+      ]
+    },
+    {
+      id: 'paid_ads',
+      title: 'Paid Ads Specialist',
+      price: 'From ₹25,000/month',
+      basePrice: 25000,
+      icon: Megaphone,
+      color: '#FFB300',
+      whatTheyDo: [
+        'Campaign Strategy',
+        'Budget Allocation',
+        'Scaling Decisions',
+        'Creative Testing',
+        'Funnel Optimization'
+      ],
+      usingRaftra: [
+        'AI creative generation',
+        'Campaign publishing',
+        'Performance analytics',
+        'Claude recommendations',
+        'Creative optimization'
       ]
     }
   ];
@@ -195,32 +226,17 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
           </div>
 
           <div>
-            <h3 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 12px 0', lineHeight: 1.3 }}>
-              Need expert assistance? Hire a Raftra Verified Specialist who works inside Raftra, not outside it.
+            <h3 style={{ fontSize: '22px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 12px 0', lineHeight: 1.4 }}>
+              AI handles execution. Specialists handle strategy, creativity, relationships, and business decisions.
             </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: '0 0 16px 0', maxWidth: '900px' }}>
-              Unlike traditional agencies, our specialists don't spend hours on repetitive tasks. Raftra automates audits, reporting, content generation, campaign monitoring, publishing, analytics, and recommendations—allowing specialists to focus on strategy and business growth.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6, margin: 0, maxWidth: '900px' }}>
+              Raftra specialists use the Raftra platform to automate repetitive work, generate AI-powered insights, publish changes, and provide transparent reporting—so more time is spent on strategy and growth instead of manual tasks.
             </p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>The result?</span>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <span style={{ background: 'rgba(124,117,255,0.2)', color: '#7C75FF', border: '1px solid rgba(124,117,255,0.3)', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <Zap size={13} /> Faster execution
-              </span>
-              <span style={{ background: 'rgba(0,230,118,0.2)', color: 'var(--success)', border: '1px solid rgba(0,230,118,0.3)', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <DollarSign size={13} /> Lower costs
-              </span>
-              <span style={{ background: 'rgba(238,130,238,0.2)', color: 'violet', border: '1px solid rgba(238,130,238,0.3)', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <TrendingUp size={13} /> Better outcomes
-              </span>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* 4. SPECIALIST ROLES BREAKDOWN (WHAT RAFTRA AUTOMATES vs WHAT SPECIALIST DOES) */}
+      {/* 4. SPECIALIST ROLES BREAKDOWN (WHAT THEY DO vs USING RAFTRA) */}
       <div>
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0' }}>
@@ -296,20 +312,42 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
           {/* 2-Column Comparison Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
             
-            {/* Column 1: What Raftra Automates */}
+            {/* Column 1: What They Do */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ width: '32px', height: '32px', background: `${currentSpecialist.color}25`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserCheck size={18} color={currentSpecialist.color} />
+                </div>
+                <div>
+                  <h5 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 600 }}>What They Do</h5>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Strategy, creativity & business decisions</span>
+                </div>
+              </div>
+
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {currentSpecialist.whatTheyDo.map((item, idx) => (
+                  <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#e0e0e0' }}>
+                    <ChevronRight size={16} color={currentSpecialist.color} style={{ flexShrink: 0 }} />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Column 2: Using Raftra */}
             <div style={{ background: 'rgba(90,82,255,0.05)', border: '1px solid rgba(90,82,255,0.15)', borderRadius: '14px', padding: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                 <div style={{ width: '32px', height: '32px', background: 'rgba(90,82,255,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Bot size={18} color="#7C75FF" />
                 </div>
                 <div>
-                  <h5 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 600 }}>What Raftra Automates</h5>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>60% – 80% automated repetitive work</span>
+                  <h5 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 600 }}>Using Raftra</h5>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Automated execution & AI tools</span>
                 </div>
               </div>
 
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {currentSpecialist.automates.map((item, idx) => (
+                {currentSpecialist.usingRaftra.map((item, idx) => (
                   <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#e0e0e0' }}>
                     <CheckCircle2 size={16} color="#7C75FF" style={{ flexShrink: 0 }} />
                     <span>{item}</span>
@@ -318,29 +356,13 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
               </ul>
             </div>
 
-            {/* Column 2: What the Specialist Does */}
-            <div style={{ background: 'rgba(0,230,118,0.05)', border: '1px solid rgba(0,230,118,0.15)', borderRadius: '14px', padding: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <div style={{ width: '32px', height: '32px', background: 'rgba(0,230,118,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <UserCheck size={18} color="var(--success)" />
-                </div>
-                <div>
-                  <h5 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 600 }}>What the Specialist Does</h5>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Strategy, creativity & business decisions</span>
-                </div>
-              </div>
-
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {currentSpecialist.specialistDoes.map((item, idx) => (
-                  <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#e0e0e0' }}>
-                    <ChevronRight size={16} color="var(--success)" style={{ flexShrink: 0 }} />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
           </div>
+
+          {/* Bottom Banner Note */}
+          <div style={{ marginTop: '24px', padding: '16px 20px', background: 'rgba(124,117,255,0.08)', border: '1px solid rgba(124,117,255,0.2)', borderRadius: '12px', color: 'rgba(255,255,255,0.85)', fontSize: '13px', lineHeight: 1.6 }}>
+            ⚡ <strong>Raftra specialists use the Raftra platform</strong> to automate repetitive work, generate AI-powered insights, publish changes, and provide transparent reporting—so more time is spent on strategy and growth instead of manual tasks.
+          </div>
+
         </div>
       </div>
 
