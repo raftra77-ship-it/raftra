@@ -109,7 +109,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     }
 
     setProofVerificationStatus('under_review');
-    setProofSubmissionToast('📩 Proof Emailed to Team Raftra Admin (audits@raftra.com)! Human auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
+    setProofSubmissionToast('📩 Proof Emailed to Team Raftra Admin (raftra.77@gmail.com)! Human auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
     setTimeout(() => setProofSubmissionToast(null), 6000);
   };
 
