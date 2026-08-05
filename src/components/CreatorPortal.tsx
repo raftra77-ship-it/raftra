@@ -272,12 +272,12 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     const autoDoneMsg = {
       sender: 'system' as const,
       sender_type: 'system',
-      text: '✨ DEAL CONFIRMED & DONE! Proposal accepted for ₹' + amount.toLocaleString() + '. Escrow funds locked in Raftra Vault.'
+      text: '✨ DEAL ACCEPTED & ESCROW LOCKED! Brand will contact you on WhatsApp. Once deliverables are completed, get the satisfactory message from Brand & upload screenshot in Payment Setup for instant payout.'
     };
     const currentMsgs = JSON.parse(localStorage.getItem(creatorStorageKey) || JSON.stringify(chatMessages));
     const filtered = currentMsgs.filter((m: any) => {
       const str = m.text || m.content || '';
-      return !str.includes('proposal_accepted') && !str.includes('DEAL CONFIRMED');
+      return !str.includes('proposal_accepted') && !str.includes('DEAL ACCEPTED');
     });
     const updated = [...filtered, acceptMsg, autoDoneMsg];
     setChatMessages(updated);
@@ -613,10 +613,16 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   if (parsedContent && parsedContent.type === 'proposal_accepted') {
                     return (
                       <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '480px' }}>
-                        <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', padding: '16px', borderRadius: '14px', textAlign: 'center', color: '#00E676' }}>
+                        <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', padding: '18px', borderRadius: '14px', textAlign: 'center', color: '#00E676' }}>
                           <CheckCircle2 size={28} style={{ marginBottom: '6px' }} />
-                          <div style={{ fontWeight: 800, fontSize: '16px' }}>Deal Accepted for ₹{(parsedContent.amount || 12000).toLocaleString()}!</div>
-                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', marginTop: '4px' }}>Waiting for brand to deposit funds into Raftra Escrow Vault...</div>
+                          <div style={{ fontWeight: 800, fontSize: '16px', marginBottom: '8px' }}>Deal Accepted for ₹{(parsedContent.amount || 12000).toLocaleString()}!</div>
+                          <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.9)', textAlign: 'left', background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', lineHeight: 1.55 }}>
+                            <b>📲 WHAT HAPPENS NEXT:</b><br />
+                            1️⃣ <b>WhatsApp Outreach:</b> Brand will reach out directly to your registered WhatsApp number with brief & assets.<br />
+                            2️⃣ <b>Complete Deliverables:</b> Create & share the content with the Brand.<br />
+                            3️⃣ <b>Satisfactory Message:</b> Once approved by Brand, get their <b>Satisfactory Confirmation Message</b>.<br />
+                            4️⃣ <b>Claim Instant Payout:</b> Upload screenshot proof in your <b>Payment Setup</b> tab to receive your disburse!
+                          </div>
                         </div>
                       </div>
                     );
