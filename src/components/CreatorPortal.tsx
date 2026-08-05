@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, ExternalLink, BadgeCheck, Camera, Check } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, ExternalLink, BadgeCheck, Camera, Check, Activity } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
 interface CreatorPortalProps {
@@ -628,43 +628,109 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </p>
             </div>
 
-            {/* LIVE MARKETPLACE CARD PREVIEW */}
-            <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(20,20,35,0.9), rgba(10,10,20,0.95))', border: '1.5px solid #00E676' }}>
+            {/* LIVE MARKETPLACE CARD PREVIEW - EXACT REPLICA OF MARKETPLACE */}
+            <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(20,20,35,0.95), rgba(10,10,20,0.98))', border: '1.5px solid #00E676' }}>
               <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Sparkles size={16} /> LIVE MARKETPLACE CARD PREVIEW (HOW BRANDS SEE YOU)
+                <Sparkles size={16} /> LIVE MARKETPLACE CARD (HOW BRANDS SEE YOU)
               </div>
 
-              <div className="glow-card" style={{ padding: '20px', background: '#0a0a0d', border: '1px solid var(--border)', borderRadius: '16px', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <img
-                  src={cardCustomizer.avatar || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80"}
-                  alt={cardCustomizer.name}
-                  style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #00E676' }}
-                />
+              {/* Exact Marketplace Card Component */}
+              <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', background: '#0a0a0d', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '420px', margin: '0 auto' }}>
                 
-                <div style={{ flex: 1, minWidth: '220px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h3 style={{ fontSize: '18px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>{cardCustomizer.name}</h3>
-                    <BadgeCheck size={18} color="#00E676" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <img
+                      src={cardCustomizer.avatar || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80"}
+                      alt={cardCustomizer.name}
+                      style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)' }}
+                    />
+                    <div>
+                      <h4 style={{ fontSize: '16px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px', color: '#fff' }}>
+                        {cardCustomizer.name} <BadgeCheck size={14} color="#00E676" />
+                      </h4>
+                      <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 600 }}>{cardCustomizer.handle}</div>
+                      {cardCustomizer.location && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>📍 {cardCustomizer.location}</div>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '13px', color: 'var(--primary)', fontWeight: 600, marginTop: '2px' }}>
-                    {cardCustomizer.handle} • {cardCustomizer.niche}
+                  <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                    {(cardCustomizer.niche || 'LIFESTYLE').toUpperCase()}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Followers</span>
+                    <span style={{ color: '#fff', fontWeight: 700 }}>{cardCustomizer.followers}</span>
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    👥 <b>{cardCustomizer.followers}</b> Followers • 👁️ {cardCustomizer.avgViews}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
+                    <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Activity size={13} /> {cardCustomizer.avgViews}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
+                    <span style={{ color: '#00E676', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <ShieldAlert size={14} /> 0.8% (Verified Real)
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Collaboration Price Range</span>
+                    <span style={{ color: '#00E676', fontWeight: 700 }}>
+                      {cardCustomizer.expectedPrice}
+                    </span>
+                  </div>
+                  
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>AVAILABLE FOR:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(cardCustomizer.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post']).map(d => (
+                        <span
+                          key={d}
+                          style={{
+                            fontSize: '11px',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            background: d.toLowerCase().includes('ugc') ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255,255,255,0.05)',
+                            color: d.toLowerCase().includes('ugc') ? '#00E676' : '#fff',
+                            border: '1px solid',
+                            borderColor: d.toLowerCase().includes('ugc') ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255,255,255,0.1)'
+                          }}
+                        >
+                          {d}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#00E676' }}>{cardCustomizer.expectedPrice}</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <a
                     href={cardCustomizer.profileLink}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      fontWeight: 600
+                    }}
                   >
                     <ExternalLink size={13} /> View Instagram Profile
                   </a>
                 </div>
+
               </div>
             </div>
 
