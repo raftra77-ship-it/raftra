@@ -421,8 +421,8 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
               <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>FOLLOWER REACH</div>
-                <div style={{ fontSize: '28px', fontWeight: 800, color: '#00C4CC' }}>0 Reach</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Pending Profile Connect</div>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#00C4CC' }}>{cardCustomizer.followers}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Synced with {cardCustomizer.handle} ({cardCustomizer.avgViews})</div>
               </div>
 
               <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
