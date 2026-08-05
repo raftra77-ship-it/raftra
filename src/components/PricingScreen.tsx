@@ -739,9 +739,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 style={getCardStyle('seo_starter')}
               >
                 <div>
-                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Starter</div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>SEO Starter</div>
                   <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
-                    {formatPrice(5499, 65, 54999)}
+                    {formatPrice(3499, 42, 34999)}
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
@@ -765,12 +765,12 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               >
                 <div>
                   <div style={{ background: '#7C75FF', color: '#fff', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800, display: 'inline-block', marginBottom: '10px' }}>
-                    POPULAR SEO TIER
+                    POPULAR SEO TIER ⭐
                   </div>
 
-                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Growth</div>
+                  <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>SEO Growth</div>
                   <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
-                    {formatPrice(15999, 189, 159999)}
+                    {formatPrice(10000, 119, 100000)}
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#ccc' }}>
