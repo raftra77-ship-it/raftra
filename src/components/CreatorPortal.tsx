@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, ExternalLink, BadgeCheck, Camera, Check, Activity, Building2 } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, ExternalLink, BadgeCheck, Camera, Check, Activity, LogOut } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import parsedCreatorsData from '../data/influencers_parsed.json';
 
@@ -542,7 +542,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   return (
     <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', display: 'flex', fontFamily: 'var(--font-sans)' }}>
       {/* Sidebar */}
-      <div style={{ width: '250px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: '250px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', padding: '24px', display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '48px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #5A52FF 0%, #B252FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
             C
@@ -573,35 +573,29 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           ))}
         </nav>
 
-        <button 
-          onClick={() => {
-            const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-            const payload = btoa(JSON.stringify({ role: 'brand', email: 'brand@raftra.ai' }));
-            localStorage.setItem('token', `${header}.${payload}.signature`);
-            navigate('/dashboard');
-          }} 
-          style={{ 
-            padding: '10px 14px', 
-            background: 'rgba(90,82,255,0.15)', 
-            color: '#7C75FF', 
-            border: '1px solid rgba(124,117,255,0.3)', 
-            borderRadius: '8px', 
-            cursor: 'pointer',
-            marginBottom: '10px',
-            fontSize: '13px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px'
-          }}
-        >
-          <Building2 size={16} /> Switch to Brand Workspace
-        </button>
-
-        <button onClick={onLogout} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }}>
-          Log Out
-        </button>
+        <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <button 
+            onClick={onLogout} 
+            style={{ 
+              width: '100%',
+              padding: '12px', 
+              background: 'rgba(255,77,77,0.1)', 
+              color: '#FF4D4D', 
+              border: '1px solid rgba(255,77,77,0.3)', 
+              borderRadius: '8px', 
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.2s'
+            }}
+          >
+            <LogOut size={16} /> Log Out
+          </button>
+        </div>
       </div>
 
         {/* Main Content */}
