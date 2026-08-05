@@ -233,26 +233,17 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'inbox') {
-      const savedChat = localStorage.getItem('raftra_global_live_chat') || localStorage.getItem(creatorStorageKey) || localStorage.getItem('raftra_creator_inbox_chat');
-      if (savedChat) {
-        try {
-          const parsed = JSON.parse(savedChat);
-          const str = JSON.stringify(parsed);
-          // Purge old test junk from localStorage
-          const hasJunk = str.includes('BLOCKED') || str.includes('Asitis') || str.includes('instagram dm') || str.includes('Whey Protein') || str.includes('Ankit') || str.includes('ankrena');
-          if (parsed && parsed.length > 0 && !hasJunk) {
-            setChatMessages(parsed);
-          } else {
-            initDemoBrandChat();
-          }
-        } catch (e) {
-          initDemoBrandChat();
+    const savedChat = localStorage.getItem('raftra_global_live_chat');
+    if (savedChat) {
+      try {
+        const parsed = JSON.parse(savedChat);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(parsed);
+          return;
         }
-      } else {
-        initDemoBrandChat();
-      }
+      } catch (e) {}
     }
+    initDemoBrandChat();
   }, [activeTab]);
 
   const initDemoBrandChat = () => {
