@@ -23,12 +23,45 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
     localStorage.setItem('currency', curr);
   };
 
-  const formatPrice = (inrMonthly: number, usdMonthly: number, inrAnnual?: number) => {
+  const formatPrice = (inrMonthly: number, usdMonthly: number, inrAnnual?: number, customColor?: string) => {
     if (billingCycle === 'annual') {
-      const price = inrAnnual || inrMonthly * 10;
-      if (currency === 'USD') return `$${Math.round(usdMonthly * 10).toLocaleString()}/yr`;
-      return `₹${price.toLocaleString('en-IN')}/yr`;
+      const discountedInr = inrAnnual || inrMonthly * 10;
+      const originalInr = inrMonthly * 12;
+      
+      const discountedUsd = Math.round(usdMonthly * 10);
+      const originalUsd = usdMonthly * 12;
+
+      if (currency === 'USD') {
+        return (
+          <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+            <span style={{ fontSize: '0.55em', color: 'rgba(255,100,100,0.85)', textDecoration: 'line-through', fontWeight: 600 }}>
+              ${originalUsd.toLocaleString()}/yr
+            </span>
+            <span style={{ color: customColor || 'inherit' }}>
+              ${discountedUsd.toLocaleString()}/yr
+            </span>
+            <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: '#00E676', padding: '2px 8px', borderRadius: '100px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              🔥 2 Months FREE (Pay 10, Get 12)
+            </span>
+          </span>
+        );
+      }
+
+      return (
+        <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+          <span style={{ fontSize: '0.55em', color: 'rgba(255,100,100,0.85)', textDecoration: 'line-through', fontWeight: 600 }}>
+            ₹{originalInr.toLocaleString('en-IN')}/yr
+          </span>
+          <span style={{ color: customColor || 'inherit' }}>
+            ₹{discountedInr.toLocaleString('en-IN')}/yr
+          </span>
+          <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: '#00E676', padding: '2px 8px', borderRadius: '100px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            🔥 2 Months FREE (Pay 10, Get 12)
+          </span>
+        </span>
+      );
     }
+
     if (currency === 'USD') return `$${usdMonthly.toLocaleString()}/mo`;
     return `₹${inrMonthly.toLocaleString('en-IN')}/mo`;
   };
@@ -232,14 +265,19 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               }} />
             </div>
 
-            <span style={{ 
-              fontSize: '13.5px', 
-              fontWeight: billingCycle === 'annual' ? 700 : 500, 
-              color: billingCycle === 'annual' ? '#00E676' : '#ffffff',
-              transition: 'all 0.2s ease'
-            }}>
-              Yearly
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ 
+                fontSize: '13.5px', 
+                fontWeight: billingCycle === 'annual' ? 700 : 500, 
+                color: billingCycle === 'annual' ? '#00E676' : '#ffffff',
+                transition: 'all 0.2s ease'
+              }}>
+                Yearly
+              </span>
+              <span style={{ fontSize: '10px', background: 'rgba(0,230,118,0.2)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
+                Pay 10, Get 12 🔥
+              </span>
+            </div>
           </div>
 
         </div>
