@@ -751,6 +751,59 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
               {/* Chat Input */}
             <div style={{ padding: '16px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
+              
+              {/* Brand Approval Message Generator Banner */}
+              <div style={{ background: 'rgba(0, 230, 118, 0.08)', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '12px', padding: '12px 16px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <CheckCircle2 size={15} /> Brand Work Completion & Approval Verification Message
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, marginBottom: '10px' }}>
+                  Work complete? Generate & send this official timestamped satisfaction statement to the creator on WhatsApp or IG DM. Creator will upload screenshot proof to <b>Team Raftra for Human Verification & Escrow Payout release</b>.
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                      const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                      const token = `RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}`;
+
+                      const customMsg = `--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Influencer Deliverable Approval\nBrand Partner: Brand Workspace\nCreator: ${activeChat.name} (${activeChat.handle})\nTimestamp: ${dateStr}, ${timeStr} IST\nVerification Code: ${token}\n\n"We hereby confirm that the campaign deliverables for this collaboration have been received, reviewed, published, and we are 100% satisfied with the work! Creator ${activeChat.handle} has fulfilled all contract terms. You may submit a screenshot of this message to Team Raftra for instant Escrow payout release."\n--------------------------------------------------`;
+
+                      navigator.clipboard.writeText(customMsg);
+                      alert(`Copied Custom Brand Approval Message!\n\nSend this text to ${activeChat.name} on WhatsApp or IG DM:\n\n${customMsg}`);
+
+                      const storageKey = `raftra_chat_${activeChat.id}`;
+                      const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
+
+                      const systemCardMsg = {
+                        sender: 'system' as const,
+                        text: `📋 OFFICIAL BRAND APPROVAL GENERATED: Code ${token} at ${dateStr}, ${timeStr} IST. Sent to creator for WhatsApp/IG DM screenshot proof & Team Raftra Human Verification.`
+                      };
+                      const updated = [...currentMsgs, systemCardMsg];
+                      setChatMessages(updated as any);
+                      localStorage.setItem(storageKey, JSON.stringify(updated));
+                      window.dispatchEvent(new Event('storage'));
+                    }}
+                    style={{ background: '#00E676', color: '#000', border: 'none', padding: '8px 14px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    📋 Copy Custom Approval Msg (With Date/Time & Token)
+                  </button>
+
+                  {activeChat.phone && (
+                    <a
+                      href={`https://wa.me/${activeChat.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${activeChat.name}! We reviewed the deliverable and we are 100% satisfied! Here is your Raftra verification token: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)} on ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}. Please upload screenshot proof to your Raftra Creator Portal for Escrow Payout!`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ background: 'rgba(37, 211, 102, 0.2)', border: '1px solid #25D366', color: '#25D366', padding: '8px 14px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      📲 Open WhatsApp Chat
+                    </a>
+                  )}
+                </div>
+              </div>
+
               {showFinalize ? (
                 <form onSubmit={handleLockDeal} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Final Price ($):</span>

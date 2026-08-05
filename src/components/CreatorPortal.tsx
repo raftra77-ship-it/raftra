@@ -64,6 +64,40 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const [allBrands, setAllBrands] = useState<{id: number, name: string}[]>([]);
   const [showDiscover, setShowDiscover] = useState(false);
 
+  // Proof Submission & Human Verification State
+  const [proofTokenInput, setProofTokenInput] = useState('');
+  const [proofFileScreenshot, setProofFileScreenshot] = useState<string | null>(null);
+  const [proofVerificationStatus, setProofVerificationStatus] = useState<'idle' | 'under_review' | 'verified_payout'>('idle');
+  const [proofSubmissionToast, setProofSubmissionToast] = useState<string | null>(null);
+
+  const proofFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleProofFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setProofFileScreenshot(url);
+    }
+  };
+
+  const handleSubmitProofToTeamRaftra = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!proofTokenInput && !proofFileScreenshot) {
+      alert("Please paste the verification token or upload a screenshot of your WhatsApp/IG DM chat approval.");
+      return;
+    }
+
+    setProofVerificationStatus('under_review');
+    setProofSubmissionToast('Proof submitted! Team Raftra Human Auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
+    setTimeout(() => setProofSubmissionToast(null), 5000);
+  };
+
+  const handleSimulateHumanApproval = () => {
+    setProofVerificationStatus('verified_payout');
+    setProofSubmissionToast('✅ Human Verification Approved by Team Raftra! ₹9,000 (90% net payout) disbursed to your bank account via Razorpay/UPI.');
+    setTimeout(() => setProofSubmissionToast(null), 6000);
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     fetch('/api/auth/me', {
@@ -362,6 +396,99 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </div>
                 <GlowButton variant="glow" onClick={() => setActiveTab('inbox')}>View Message</GlowButton>
               </div>
+            </div>
+
+            {/* HUMAN VERIFICATION & PAYOUT PROOF SUBMISSION BOX */}
+            <div className="glow-card" style={{ padding: '24px', marginTop: '24px', background: 'linear-gradient(135deg, rgba(12,12,20,0.9), rgba(20,20,35,0.95))', border: '1px solid rgba(0, 230, 118, 0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h3 style={{ fontSize: '18px', margin: '0 0 4px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ShieldAlert size={20} color="#00E676" /> Escrow Payout & Human Verification Portal
+                  </h3>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                    Work complete? Upload your brand approval screenshot (WhatsApp/IG DM) & verification code for Team Raftra Human Verification.
+                  </p>
+                </div>
+                <div style={{ padding: '6px 14px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, background: proofVerificationStatus === 'verified_payout' ? 'rgba(0,230,118,0.2)' : proofVerificationStatus === 'under_review' ? 'rgba(0,196,204,0.2)' : 'rgba(255,179,0,0.2)', color: proofVerificationStatus === 'verified_payout' ? '#00E676' : proofVerificationStatus === 'under_review' ? '#00C4CC' : '#FFB300', border: '1px solid currentColor' }}>
+                  {proofVerificationStatus === 'verified_payout' ? '🟢 ESCROW PAYOUT DISBURSED' : proofVerificationStatus === 'under_review' ? '🔵 UNDER HUMAN VERIFICATION (TEAM RAFTRA)' : '🟡 PENDING PROOF SUBMISSION'}
+                </div>
+              </div>
+
+              {proofSubmissionToast && (
+                <div style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid #00E676', color: '#00E676', padding: '12px 16px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 600, marginBottom: '16px' }}>
+                  {proofSubmissionToast}
+                </div>
+              )}
+
+              {proofVerificationStatus === 'verified_payout' ? (
+                <div style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', padding: '20px', borderRadius: '12px', textAlign: 'center' }}>
+                  <CheckCircle2 size={32} color="#00E676" style={{ marginBottom: '8px' }} />
+                  <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 6px 0' }}>₹9,000 Payout Successfully Disbursed!</h4>
+                  <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)', margin: 0 }}>
+                    Team Raftra Human Verification complete. Funds transferred to your registered UPI / Bank Account. Ref: RAFTRA-PAYOUT-{Date.now().toString().slice(-6)}.
+                  </p>
+                </div>
+              ) : proofVerificationStatus === 'under_review' ? (
+                <div style={{ background: 'rgba(0,196,204,0.1)', border: '1px solid rgba(0,196,204,0.3)', padding: '20px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Sparkles size={20} color="#00C4CC" />
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>Proof Under Human Verification by Team Raftra 🔍</div>
+                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>Est. Verification Time: 15-30 minutes. Raftra Auditor is checking your chat screenshot & timestamp.</div>
+                    </div>
+                  </div>
+                  {proofFileScreenshot && (
+                    <div style={{ position: 'relative', width: '120px', height: '80px', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)' }}>
+                      <img src={proofFileScreenshot} alt="Uploaded Proof" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  )}
+                  <button
+                    onClick={handleSimulateHumanApproval}
+                    style={{ alignSelf: 'flex-start', background: '#00E676', color: '#000', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    ⚡ Simulate Team Raftra Human Verification Approval (Demo Test)
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitProofToTeamRaftra} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                        1. Verification Code / Message (from Brand):
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Paste RAFTRA-VERIFIED-XXXXX or approval text"
+                        value={proofTokenInput}
+                        onChange={e => setProofTokenInput(e.target.value)}
+                        style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', fontSize: '12.5px', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                        2. Chat Screenshot Proof (WhatsApp / IG DM / Email):
+                      </label>
+                      <input
+                        ref={proofFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleProofFileUpload}
+                        style={{ display: 'none' }}
+                      />
+                      <div
+                        onClick={() => proofFileInputRef.current?.click()}
+                        style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '8px', color: proofFileScreenshot ? '#00E676' : 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {proofFileScreenshot ? '📸 Screenshot Attached! Click to Change' : '📁 Click to Upload Screenshot Proof (.png / .jpg)'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <GlowButton variant="glow" type="submit" style={{ padding: '12px 24px', alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Send size={15} /> Submit Proof for Team Raftra Human Verification & Payout
+                  </GlowButton>
+                </form>
+              )}
             </div>
           </div>
         )}
