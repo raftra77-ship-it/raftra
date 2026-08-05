@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, ExternalLink, BadgeCheck, Camera, Check, Activity } from 'lucide-react';
 import { GlowButton } from './GlowButton';
+import parsedCreatorsData from '../data/influencers_parsed.json';
 
 interface CreatorPortalProps {
   onLogout: () => void;
@@ -43,11 +44,6 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     if (savedCard) {
       try {
         const parsed = JSON.parse(savedCard);
-        // Reset old hardcoded default cards if needed
-        if (parsed.handle === '@ankrena' || parsed.name === 'Ankit Kumar' || parsed.handle === '@samrao112') {
-          localStorage.setItem('raftra_creator_card_custom', JSON.stringify(DEFAULT_CREATOR_CARD));
-          return DEFAULT_CREATOR_CARD;
-        }
         return { ...DEFAULT_CREATOR_CARD, ...parsed };
       } catch (e) {}
     }
@@ -129,6 +125,46 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    let loggedUser = '';
+    if (token) {
+      try {
+        const payloadBase64 = token.split('.')[1];
+        if (payloadBase64) {
+          const decoded = JSON.parse(atob(payloadBase64));
+          loggedUser = (decoded.username || decoded.handle || decoded.email || decoded.first_name || '').toLowerCase();
+        }
+      } catch (e) {}
+    }
+
+    // Match logged-in user with parsed influencers database sheet
+    if (loggedUser) {
+      const matched = (parsedCreatorsData as any[]).find(c => {
+        const handleClean = (c.handle || '').toLowerCase().replace('@', '');
+        const nameClean = (c.name || '').toLowerCase();
+        const emailClean = (c.email || '').toLowerCase();
+        return loggedUser.includes(handleClean) || loggedUser.includes(nameClean) || loggedUser.includes(emailClean) || handleClean.includes(loggedUser);
+      });
+
+      if (matched) {
+        const matchedCard = {
+          name: matched.name,
+          handle: matched.handle,
+          avatar: matched.avatar || DEFAULT_CREATOR_CARD.avatar,
+          niche: matched.niche || 'Lifestyle',
+          category: (matched.category || 'MICRO').toUpperCase(),
+          location: matched.location || 'India',
+          followers: matched.followers || '10k+',
+          avgViews: matched.avgViews || '20k+ avg',
+          fakeFollowerScore: `${matched.fakeFollowerScore || 1}%`,
+          expectedPrice: matched.expectedPrice || matched.priceRange || '₹1,000 - ₹3,000',
+          profileLink: matched.profileLink || `https://www.instagram.com/${matched.handle.replace('@', '')}`,
+          deliverables: matched.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post']
+        };
+        setCardCustomizer(matchedCard);
+        localStorage.setItem('raftra_creator_card_custom', JSON.stringify(matchedCard));
+      }
+    }
+
     fetch('/api/auth/me', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
