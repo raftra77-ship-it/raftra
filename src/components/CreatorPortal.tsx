@@ -70,6 +70,16 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const [proofVerificationStatus, setProofVerificationStatus] = useState<'idle' | 'under_review' | 'verified_payout'>('idle');
   const [proofSubmissionToast, setProofSubmissionToast] = useState<string | null>(null);
 
+  // Payout Bank Details & Tax Invoice State
+  const [bankDetails, setBankDetails] = useState({
+    accountHolder: 'Ankit Kumar',
+    bankName: 'HDFC Bank',
+    accountNumber: '50100293849182',
+    ifscCode: 'HDFC0001234',
+    upiId: 'ankit@okaxis'
+  });
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+
   const proofFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleProofFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -398,6 +408,28 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </div>
             </div>
 
+            {/* STEP-BY-STEP PAYOUT EXPLANATION GUIDE */}
+            <div className="glow-card" style={{ padding: '24px', marginTop: '24px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 14px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                📖 How Creator Payout Verification Works (Step-by-Step)
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                {[
+                  { step: '1', title: 'Deliver Content', desc: 'Send final video reel to brand on WhatsApp/Insta as per contract.' },
+                  { step: '2', title: 'Get Approval Msg', desc: 'Brand reviews work and sends official timestamped verification message.' },
+                  { step: '3', title: 'Upload Proof & Bank', desc: 'Upload chat screenshot proof & enter your Bank/UPI details below.' },
+                  { step: '4', title: 'Human Audit', desc: 'Team Raftra Auditor conducts manual verification of SS (15-30 mins).' },
+                  { step: '5', title: 'Bank Payout & Invoice', desc: 'Funds disbursed to Bank/UPI + Download official Tax Invoice PDF!' }
+                ].map(item => (
+                  <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '12px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', marginBottom: '4px' }}>STEP {item.step}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>{item.title}</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{item.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* HUMAN VERIFICATION & PAYOUT PROOF SUBMISSION BOX */}
             <div className="glow-card" style={{ padding: '24px', marginTop: '24px', background: 'linear-gradient(135deg, rgba(12,12,20,0.9), rgba(20,20,35,0.95))', border: '1px solid rgba(0, 230, 118, 0.3)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
@@ -421,12 +453,18 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               )}
 
               {proofVerificationStatus === 'verified_payout' ? (
-                <div style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', padding: '20px', borderRadius: '12px', textAlign: 'center' }}>
-                  <CheckCircle2 size={32} color="#00E676" style={{ marginBottom: '8px' }} />
-                  <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 6px 0' }}>₹9,000 Payout Successfully Disbursed!</h4>
-                  <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)', margin: 0 }}>
-                    Team Raftra Human Verification complete. Funds transferred to your registered UPI / Bank Account. Ref: RAFTRA-PAYOUT-{Date.now().toString().slice(-6)}.
+                <div style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', padding: '24px', borderRadius: '14px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                  <CheckCircle2 size={36} color="#00E676" />
+                  <h4 style={{ fontSize: '18px', color: '#fff', margin: 0 }}>₹9,000 Payout Disbursed & Verified!</h4>
+                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', margin: 0, maxWidth: '500px' }}>
+                    Team Raftra Human Verification completed. 90% net payout transferred to your <b>{bankDetails.bankName}</b> (A/C: {bankDetails.accountNumber}) & UPI (<b>{bankDetails.upiId}</b>).
                   </p>
+                  <button
+                    onClick={() => setShowInvoiceModal(true)}
+                    style={{ marginTop: '8px', background: '#00E676', color: '#000', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    📄 Download Official Raftra Tax Invoice & Receipt
+                  </button>
                 </div>
               ) : proofVerificationStatus === 'under_review' ? (
                 <div style={{ background: 'rgba(0,196,204,0.1)', border: '1px solid rgba(0,196,204,0.3)', padding: '20px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -450,7 +488,44 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmitProofToTeamRaftra} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <form onSubmit={handleSubmitProofToTeamRaftra} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  
+                  {/* Bank Details Inputs */}
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', padding: '16px', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <DollarSign size={16} /> PAYOUT BANK & UPI DETAILS
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Bank Name:</label>
+                        <input
+                          type="text"
+                          value={bankDetails.bankName}
+                          onChange={e => setBankDetails({ ...bankDetails, bankName: e.target.value })}
+                          style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Account Number:</label>
+                        <input
+                          type="text"
+                          value={bankDetails.accountNumber}
+                          onChange={e => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
+                          style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>UPI ID:</label>
+                        <input
+                          type="text"
+                          value={bankDetails.upiId}
+                          onChange={e => setBankDetails({ ...bankDetails, upiId: e.target.value })}
+                          style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div>
                       <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
@@ -1040,6 +1115,56 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           </div>
         )}
       </div>
+
+      {/* TAX INVOICE DOWNLOAD MODAL FOR CREATOR */}
+      {showInvoiceModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)', padding: '20px' }}>
+          <div className="glow-card" style={{ width: '600px', background: '#0a0a0d', border: '1px solid #00E676', borderRadius: '20px', padding: '32px', position: 'relative' }}>
+            <button onClick={() => setShowInvoiceModal(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#fff', fontSize: '24px', cursor: 'pointer' }}>&times;</button>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '20px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>OFFICIAL TAX INVOICE & PAYOUT RECEIPT</h3>
+                <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, marginTop: '2px' }}>INV-RAFTRA-2026-84920</div>
+              </div>
+              <div style={{ padding: '6px 12px', background: 'rgba(0,230,118,0.15)', color: '#00E676', borderRadius: '8px', fontSize: '11px', fontWeight: 800, border: '1px solid #00E676' }}>
+                PAID & DISBURSED
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '13px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px' }}>
+              <div><span style={{ color: 'var(--text-muted)' }}>Billed To:</span> <br/><b style={{ color: '#fff' }}>Ambrane India (Brand Partner)</b></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Creator Beneficiary:</span> <br/><b style={{ color: '#fff' }}>Ankit Kumar (@ankrena)</b></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Bank Name:</span> <b style={{ color: '#fff' }}>{bankDetails.bankName}</b></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Account No:</span> <b style={{ color: '#fff' }}>{bankDetails.accountNumber}</b></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>UPI ID:</span> <b style={{ color: '#fff' }}>{bankDetails.upiId}</b></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Human Audit Stamp:</span> <b style={{ color: '#00C4CC' }}>Team Raftra Verified 🔍</b></div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '14px 0', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Gross Campaign Deal Value:</span>
+                <span style={{ color: '#fff', fontWeight: 700 }}>₹10,000</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Raftra AI Platform Fee (10%):</span>
+                <span style={{ color: '#f87171' }}>- ₹1,000</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 800, color: '#00E676', paddingTop: '8px', borderTop: '1px dashed rgba(255,255,255,0.1)' }}>
+                <span>Net Disbursed Payout:</span>
+                <span>₹9,000</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => window.print()}
+              style={{ width: '100%', padding: '14px', background: '#00E676', color: '#000', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+            >
+              🖨️ Print / Save PDF Invoice
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

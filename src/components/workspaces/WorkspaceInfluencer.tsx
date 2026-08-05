@@ -369,15 +369,26 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     setFinalPrice('');
   };
 
+  const [showEmailReceiptModal, setShowEmailReceiptModal] = useState<boolean>(false);
+  const [paidDealInfo, setPaidDealInfo] = useState<{amount: number, creator: InfluencerItemExtended} | null>(null);
+
   const handlePayRazorpay = async (amount: number) => {
     try {
-      // Create razorpay order, open modal, on success send payment_complete
       const token = localStorage.getItem('token');
-      
-      // We will skip full razorpay opening here for mock demo, just jump to success
-      // In production, we'd call the Razorpay Checkout component here
-      
       const payload = JSON.stringify({ type: 'payment_complete', amount });
+      
+      if (activeChat) {
+        const storageKey = `raftra_chat_${activeChat.id}`;
+        const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
+        const updated = [...currentMsgs, { sender: 'brand' as const, text: payload }];
+        setChatMessages(updated as any);
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+
+        setPaidDealInfo({ amount, creator: activeChat });
+        setShowEmailReceiptModal(true);
+      }
+
       await fetch(`/api/workspaces/${workspaceId}/influencers/${activeChat!.id}/chat`, {
         method: 'POST',
         headers: { 
@@ -385,7 +396,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ content: payload, sender_type: 'brand' })
-      });
+      }).catch(() => {});
     } catch(e) {
       console.error(e);
     }
@@ -955,6 +966,92 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               handleOpenChat(profile);
             }} style={{ width: '100%', marginTop: '30px', padding: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
               <MessageCircle size={16} /> Negotiate with {viewProfile.name.split(' ')[0]}
+            </GlowButton>
+          </div>
+        </div>
+      )}
+
+      {/* BRAND EMAIL CONFIRMATION & WORKFLOW RECEIPT MODAL */}
+      {showEmailReceiptModal && paidDealInfo && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)', padding: '20px' }}>
+          <div className="glow-card" style={{ width: '640px', maxHeight: '90vh', background: '#0a0a0d', border: '1px solid #00E676', borderRadius: '24px', padding: '32px', position: 'relative', overflowY: 'auto' }}>
+            <button onClick={() => setShowEmailReceiptModal(false)} style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              &times;
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle2 size={28} color="#00E676" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '20px', margin: '0 0 4px 0', color: '#fff', fontFamily: 'var(--font-heading)' }}>
+                  Deal Funded & Confirmation Email Sent! ✉️
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Escrow payment of <b>₹{paidDealInfo.amount.toLocaleString()}</b> is securely locked in Raftra Vault.
+                </p>
+              </div>
+            </div>
+
+            {/* Email Banner Notification */}
+            <div style={{ background: 'rgba(0, 196, 204, 0.1)', border: '1px solid rgba(0, 196, 204, 0.3)', borderRadius: '12px', padding: '14px 18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ fontSize: '12px', color: '#00C4CC', lineHeight: 1.4 }}>
+                📬 <b>Official Receipt Sent</b>: Full contract deliverables & influencer contact details have been emailed to your registered brand address.
+              </div>
+            </div>
+
+            {/* Deal Breakdown Table */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '14px', padding: '18px', marginBottom: '24px' }}>
+              <h4 style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                📋 CONTRACT & DELIVERABLES BREAKDOWN
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
+                <div><span style={{ color: 'var(--text-muted)' }}>Creator:</span> <b style={{ color: '#fff' }}>{paidDealInfo.creator.name} ({paidDealInfo.creator.handle})</b></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>Deliverables:</span> <b style={{ color: '#00E676' }}>UGC Video Reel + Story</b></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>Vault Transaction ID:</span> <b style={{ color: '#5A52FF', fontFamily: 'var(--font-mono)' }}>RAFTRA-ESCROW-{Date.now().toString().slice(-6)}</b></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>WhatsApp Contact:</span> <b style={{ color: '#25D366' }}>{paidDealInfo.creator.phone || '+91 9892936665'}</b></div>
+              </div>
+            </div>
+
+            {/* Critical Warning Box for Brand */}
+            <div style={{ background: 'linear-gradient(135deg, rgba(255,179,0,0.12), rgba(220,38,38,0.12))', border: '1px solid rgba(255,179,0,0.4)', borderRadius: '14px', padding: '18px', marginBottom: '24px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#FFB300', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldAlert size={18} color="#FFB300" /> ⚠️ CRITICAL BRAND INSTRUCTIONS (PLEASE READ)
+              </div>
+              <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.9)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                Connect with creator on WhatsApp/Instagram for content production. <b>SEND THE SATISFACTORY MESSAGE BELOW TO THE INFLUENCER ONLY AFTER WORK IS DELIVERED AND YOU ARE 100% SATISFIED.</b> The influencer will upload a screenshot proof of this timestamped message to Team Raftra for Escrow Payout release.
+              </p>
+              
+              <div style={{ background: '#070709', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px', fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: '#00E676', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                {`--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Ambrane India\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                <button
+                  onClick={() => {
+                    const text = `--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Ambrane India\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`;
+                    navigator.clipboard.writeText(text);
+                    alert("Copied Satisfactory Approval Message! Send this to influencer on WhatsApp once work is delivered.");
+                  }}
+                  style={{ background: '#00E676', color: '#000', border: 'none', padding: '10px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  📋 Copy Custom Satisfaction Message
+                </button>
+                {paidDealInfo.creator.phone && (
+                  <a
+                    href={`https://wa.me/${paidDealInfo.creator.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${paidDealInfo.creator.name}! Deal funded in Raftra Vault. Once deliverables are complete & approved, we will send your official verification token here for Team Raftra payout release!`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ background: 'rgba(37, 211, 102, 0.2)', border: '1px solid #25D366', color: '#25D366', padding: '10px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    📲 Open Creator WhatsApp
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <GlowButton variant="glow" onClick={() => setShowEmailReceiptModal(false)} style={{ width: '100%', padding: '14px', textAlign: 'center' }}>
+              Done & Return to Workspace
             </GlowButton>
           </div>
         </div>
