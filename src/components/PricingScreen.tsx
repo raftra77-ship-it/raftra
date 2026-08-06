@@ -32,7 +32,7 @@ const AD_SPEND_TIERS: AdSpendTierData[] = [
     inr: 999, usd: 12, inrAnnual: 9999,
     d2c: { inr: 6899, usd: 82, annual: 68999, indInr: 8497, saveInr: 1598 },
     business: { inr: 17899, usd: 214, annual: 178999, indInr: 20997, saveInr: 3098 },
-    creatorLaunch: { inr: 2999, usd: 36, annual: 29999, indInr: 3498, saveInr: 499 },
+    creatorLaunch: { inr: 3199, usd: 38, annual: 31999, indInr: 3498, saveInr: 299 },
     growthPack: { inr: 4899, usd: 58, annual: 48999, indInr: 5998, saveInr: 1099 }
   },
   {
@@ -41,7 +41,7 @@ const AD_SPEND_TIERS: AdSpendTierData[] = [
     inr: 1899, usd: 23, inrAnnual: 18999,
     d2c: { inr: 7599, usd: 90, annual: 75999, indInr: 9397, saveInr: 1798 },
     business: { inr: 18599, usd: 223, annual: 185999, indInr: 21897, saveInr: 3298 },
-    creatorLaunch: { inr: 3699, usd: 44, annual: 36999, indInr: 4398, saveInr: 699 },
+    creatorLaunch: { inr: 3899, usd: 46, annual: 38999, indInr: 4398, saveInr: 499 },
     growthPack: { inr: 5599, usd: 67, annual: 55999, indInr: 6898, saveInr: 1299 }
   },
   {
@@ -50,7 +50,7 @@ const AD_SPEND_TIERS: AdSpendTierData[] = [
     inr: 2799, usd: 34, inrAnnual: 27999,
     d2c: { inr: 8299, usd: 99, annual: 82999, indInr: 10297, saveInr: 1998 },
     business: { inr: 19299, usd: 231, annual: 192999, indInr: 22797, saveInr: 3498 },
-    creatorLaunch: { inr: 4399, usd: 52, annual: 43999, indInr: 5298, saveInr: 899 },
+    creatorLaunch: { inr: 4699, usd: 56, annual: 46999, indInr: 5298, saveInr: 599 },
     growthPack: { inr: 6299, usd: 75, annual: 62999, indInr: 7798, saveInr: 1499 }
   },
   {
@@ -59,7 +59,7 @@ const AD_SPEND_TIERS: AdSpendTierData[] = [
     inr: 3499, usd: 42, inrAnnual: 34999,
     d2c: { inr: 8999, usd: 108, annual: 89999, indInr: 10997, saveInr: 1998 },
     business: { inr: 19999, usd: 240, annual: 199999, indInr: 23497, saveInr: 3498 },
-    creatorLaunch: { inr: 4999, usd: 59, annual: 49999, indInr: 5998, saveInr: 999 },
+    creatorLaunch: { inr: 5399, usd: 64, annual: 53999, indInr: 5998, saveInr: 599 },
     growthPack: { inr: 6999, usd: 84, annual: 69999, indInr: 8498, saveInr: 1499 }
   },
   {
@@ -68,7 +68,7 @@ const AD_SPEND_TIERS: AdSpendTierData[] = [
     inr: 4599, usd: 55, inrAnnual: 45999,
     d2c: { inr: 9899, usd: 118, annual: 98999, indInr: 12097, saveInr: 2198 },
     business: { inr: 20999, usd: 252, annual: 209999, indInr: 24597, saveInr: 3598 },
-    creatorLaunch: { inr: 5899, usd: 70, annual: 58999, indInr: 7098, saveInr: 1199 },
+    creatorLaunch: { inr: 6399, usd: 76, annual: 63999, indInr: 7098, saveInr: 699 },
     growthPack: { inr: 7899, usd: 94, annual: 78999, indInr: 9598, saveInr: 1699 }
   },
   {
@@ -686,7 +686,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </div>
 
                   <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    15,000 AI Credits / month Included
+                    10,000 AI Credits / month Included
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
