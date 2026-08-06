@@ -47,7 +47,7 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 14.5px;
+  font-size: 16px;
   line-height: 1.6;
   letter-spacing: -0.01em;
   overflow-x: hidden;
@@ -80,7 +80,7 @@ body {
 
 .dashboard-container {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 260px 1fr;
   min-height: 100vh;
   background-color: transparent;
 }
@@ -93,20 +93,20 @@ body {
 
 /* Typography Scale - Clean, Spacious, Highly Readable */
 h1 {
-  font-size: 2.2rem;
-  line-height: 1.25;
+  font-size: 2.8rem;
+  line-height: 1.2;
 }
 h2 {
-  font-size: 1.65rem;
-  line-height: 1.3;
+  font-size: 2.1rem;
+  line-height: 1.25;
 }
 h3 {
-  font-size: 1.25rem;
-  line-height: 1.35;
+  font-size: 1.5rem;
+  line-height: 1.3;
 }
 h4 {
-  font-size: 1.05rem;
-  line-height: 1.4;
+  font-size: 1.2rem;
+  line-height: 1.35;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -119,7 +119,7 @@ h1, h2, h3, h4, h5, h6 {
 p {
   color: var(--text-secondary);
   line-height: 1.6;
-  font-size: 13.5px;
+  font-size: 15.5px;
 }
 
 /* Utility Classes */

@@ -45,7 +45,7 @@ export const FeaturePage = () => {
       {/* Background decorations */}
       <div style={{ position: 'absolute', top: '10%', left: '50%', transform: 'translateX(-50%)', width: '600px', height: '600px', background: 'var(--primary)', filter: 'blur(250px)', opacity: 0.1, borderRadius: '50%', zIndex: 0 }}></div>
       
-      <div style={{ flex: 1, maxWidth: '1200px', margin: '0 auto', padding: '40px', position: 'relative', zIndex: 1, width: '100%' }}>
+      <div style={{ flex: 1, maxWidth: '1600px', margin: '0 auto', padding: '40px 60px', position: 'relative', zIndex: 1, width: '100%' }}>
         <button 
           onClick={() => navigate('/')}
           style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '32px' }}

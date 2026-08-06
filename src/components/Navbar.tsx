@@ -253,13 +253,13 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         .nav-link-btn {
           background: transparent;
           border: none;
-          color: #b0b0cc;
-          font-size: 13.5px;
+          color: #c0c0e0;
+          font-size: 15px;
           font-weight: 500;
           cursor: pointer;
           transition: all 0.15s ease;
           position: relative;
-          padding: 6px 8px;
+          padding: 6px 10px;
           white-space: nowrap;
         }
         .nav-link-btn:hover {
@@ -267,12 +267,12 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
         .creator-portal-btn {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          color: #e0e0ff;
-          font-size: 13px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          color: #ffffff;
+          font-size: 14px;
           font-weight: 600;
-          padding: 8px 16px;
+          padding: 9px 18px;
           border-radius: 100px;
           cursor: pointer;
           transition: all 0.2s ease;

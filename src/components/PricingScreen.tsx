@@ -180,7 +180,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
       {/* SHADER MESH MESH GRADIENT FLOWY BACKGROUND */}
       <FlowyBackground />
 
-      <div style={{ maxWidth: '1400px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+      <div style={{ maxWidth: '1720px', margin: '0 auto', padding: '0 40px', position: 'relative', zIndex: 1 }}>
         
         {/* HEADER HERO */}
         <motion.div
@@ -189,15 +189,15 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           transition={{ duration: 0.5 }}
           style={{ textAlign: 'center', marginBottom: '40px' }}
         >
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(124,117,255,0.12)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '16px', color: '#7C75FF', fontWeight: 600, fontSize: '13px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(124,117,255,0.12)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '16px', color: '#7C75FF', fontWeight: 600, fontSize: '13.5px' }}>
             <Sparkles size={14} /> RAFTRA TRANSPARENT PRICING & GROWTH PLANS
           </div>
           
-          <h1 style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', fontWeight: 800, lineHeight: 1.2 }}>
+          <h1 style={{ fontSize: '52px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', fontWeight: 800, lineHeight: 1.2 }}>
             Scale Your Brand with Flexible AI Suites.<br/>Simple, Transparent & Value-Packed.
           </h1>
 
-          <p style={{ fontSize: '17px', color: 'var(--text-secondary)', maxWidth: '750px', margin: '0 auto', lineHeight: 1.5 }}>
+          <p style={{ fontSize: '19px', color: 'var(--text-secondary)', maxWidth: '1150px', margin: '0 auto', lineHeight: 1.5 }}>
             Choose complete All-in-One Operating Suites, Dual-Module Starter Packs, or individual AI tools. Includes free core tools, creator escrow protection, and zero hidden costs.
           </p>
 
@@ -208,16 +208,16 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             alignItems: 'center', 
             gap: '10px', 
             margin: '24px auto 0 auto', 
-            padding: '14px 24px', 
+            padding: '16px 28px', 
             background: 'rgba(0, 230, 118, 0.06)', 
             border: '1px solid rgba(0, 230, 118, 0.25)', 
             borderRadius: '16px', 
-            maxWidth: '920px' 
+            maxWidth: '1350px' 
           }}>
-            <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <div style={{ fontSize: '13.5px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               ✓ ALL PAID PLANS INCLUDE:
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '16px', fontSize: '13.5px', color: '#ffffff', fontWeight: 600 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px', fontSize: '14.5px', color: '#ffffff', fontWeight: 600 }}>
               <span>✓ AI Assistant</span>
               <span>✓ Smart AI Routing</span>
               <span>✓ Automatic Publishing</span>
@@ -230,9 +230,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
         {/* IMPORTANT PRICING & BUDGET DISCLAIMER BANNER */}
         <div style={{ 
-          maxWidth: '1000px', 
+          maxWidth: '1450px', 
           margin: '0 auto 36px auto', 
-          padding: '18px 24px', 
+          padding: '20px 28px', 
           background: 'rgba(255, 179, 0, 0.08)', 
           border: '1px solid rgba(255, 179, 0, 0.3)', 
           borderRadius: '16px', 

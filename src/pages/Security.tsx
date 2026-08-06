@@ -13,7 +13,7 @@ export const Security = () => {
       <div style={{ position: 'absolute', top: '5%', left: '10%', width: '600px', height: '600px', background: 'var(--primary)', filter: 'blur(300px)', opacity: 0.1, borderRadius: '50%' }}></div>
       <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: '500px', height: '500px', background: 'var(--accent)', filter: 'blur(250px)', opacity: 0.05, borderRadius: '50%' }}></div>
       
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px', position: 'relative', zIndex: 1 }}>
+      <div style={{ maxWidth: '1680px', margin: '0 auto', padding: '40px 60px', position: 'relative', zIndex: 1 }}>
         <div style={{ textAlign: 'center', marginBottom: '80px' }}>
           <motion.div 
             initial={{ opacity: 0, scale: 0.8 }}
@@ -21,17 +21,17 @@ export const Security = () => {
             style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: 'rgba(90,82,255,0.1)', borderRadius: '100px', border: '1px solid rgba(90,82,255,0.2)', marginBottom: '24px' }}
           >
             <ShieldAlert size={16} color="var(--primary)" />
-            <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--primary)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Enterprise-Grade</span>
+            <span style={{ fontSize: '15px', fontWeight: '600', color: 'var(--primary)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Enterprise-Grade</span>
           </motion.div>
           <motion.h1 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-            style={{ fontSize: '56px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
+            style={{ fontSize: '64px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
           >
             Why Raftra AI Is Secure
           </motion.h1>
           <motion.p 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-            style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}
+            style={{ color: 'var(--text-secondary)', fontSize: '22px', maxWidth: '1150px', margin: '0 auto', lineHeight: 1.6 }}
           >
             Raftra AI is built with a security-first architecture designed for businesses that connect advertising accounts, analytics platforms, websites, and AI workflows. Your data remains isolated, encrypted, and accessible only to authorized users and services.
           </motion.p>
