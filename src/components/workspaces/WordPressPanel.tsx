@@ -32,7 +32,15 @@ export const WordPressPanel: React.FC<{ workspaceId: number | null }> = ({ works
   const loadStatus = () => {
     if (!workspaceId) return;
     fetch(`${base()}/status`, { headers: authHeaders() })
-      .then(r => r.json()).then((s: Status) => setStatus(s)).catch(() => {});
+      .then(r => r.json())
+      .then((s: Status) => setStatus(s))
+      .catch(() => {
+        // Never leave `status` null on a failed fetch — the panel used to render nothing
+        // at all in that case, so clicking "Connect WordPress" silently did nothing.
+        // Fall back to a not-connected shape so the connect form is always reachable.
+        setStatus({ configured: true, connected: false, site_url: null, site_name: null, username: null });
+        setMsg('Could not read the WordPress connection status (is the backend running?). You can still try connecting below.');
+      });
   };
 
   useEffect(() => { loadStatus(); /* eslint-disable-next-line */ }, [workspaceId]);

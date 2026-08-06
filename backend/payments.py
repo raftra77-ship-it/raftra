@@ -22,6 +22,11 @@ client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 SUBSCRIPTION_PRICE_INR = 2000.0
 
+# billing_balance is tracked in USD-equivalent credits (see BrandDashboard.tsx), but
+# Razorpay always charges in INR. This must match the $1 = ₹83 rate hardcoded on the
+# frontend (BrandDashboard.tsx), which is what amount_inr was derived from.
+USD_TO_INR_RATE = 83
+
 
 def get_optional_user(token: str = Depends(auth.oauth2_scheme), db: Session = Depends(database.get_db)):
     """Same as auth.get_current_user, but returns None instead of raising when
@@ -132,7 +137,7 @@ def verify_payment(payload: VerifyPaymentRequest, db: Session = Depends(database
     tx.status = "paid"
 
     if tx.purpose == "topup":
-        user.billing_balance += tx.amount
+        user.billing_balance += tx.amount / USD_TO_INR_RATE
     else:
         user.payment_status = "paid"
 

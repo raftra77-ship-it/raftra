@@ -45,7 +45,14 @@ export const SearchConsolePanel: React.FC<{ workspaceId: number | null; onRunAud
   const loadStatus = () => {
     if (!workspaceId) return;
     fetch(`${base()}/status`, { headers: authHeaders() })
-      .then(r => r.json()).then((s: Status) => setStatus(s)).catch(() => {});
+      .then(r => r.json()).then((s: Status) => setStatus(s))
+      .catch(() => {
+        // Never leave `status` null on a failed fetch — the panel used to render nothing
+        // at all in that case, so the Connect button silently disappeared. Fall back to a
+        // not-connected shape so it stays reachable.
+        setStatus({ configured: true, connected: false, email: null, site_url: null });
+        setMsg('Could not read the Search Console connection status (is the backend running?). You can still try connecting below.');
+      });
   };
 
   useEffect(() => {

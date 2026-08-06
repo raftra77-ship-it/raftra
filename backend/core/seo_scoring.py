@@ -6,6 +6,20 @@ Anything we cannot verify is reported as status="not_verified" and EXCLUDED from
 score (the total is re-normalised over the verified categories) rather than guessed.
 
 The LLM never produces the numbers — it only narrates the evidence produced here.
+
+TWO MEASUREMENT SOURCES — this matters when reconciling numbers against browser devtools:
+
+  * `metrics` (word_count, h1/h2 counts, internal/external links) comes from the crawler's
+    MARKDOWN conversion, which strips navigation/footer boilerplate. These therefore
+    describe the page's MAIN CONTENT and will read lower than a raw DOM count. That is
+    deliberate — it mirrors how search engines weight a page — but it means e.g. an <h2>
+    used for a nav logo is (correctly) not counted as a content heading.
+  * `soup` / `signals` (title, meta description, canonical, OG, JSON-LD, semantic
+    landmarks, anchor text, HTTPS/robots/sitemap) come from the FULL rendered HTML, so
+    they do match a devtools inspection one-for-one.
+
+Evidence strings say "in main content" wherever the first source is used, so a reader can
+tell which basis a number came from instead of assuming the audit is wrong.
 """
 from __future__ import annotations
 
@@ -101,25 +115,25 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
     h1, h2, h3 = metrics.get("h1_count", 0), metrics.get("h2_count", 0), metrics.get("h3plus_count", 0)
     ev, rec, pts = [], [], 0.0
     if wc >= 800:
-        pts += 8; ev.append(f"Word count {wc} (>=800) → 8/8")
+        pts += 8; ev.append(f"Word count {wc} in main content (>=800) → 8/8")
     elif wc >= 300:
-        pts += 5; ev.append(f"Word count {wc} (300-799) → 5/8")
+        pts += 5; ev.append(f"Word count {wc} in main content (300-799) → 5/8")
         rec.append("Expand the page past 800 words of substantive content.")
     else:
-        ev.append(f"Word count {wc} (<300 = thin content) → 0/8")
+        ev.append(f"Word count {wc} in main content (<300 = thin content) → 0/8")
         rec.append(f"Thin content: only {wc} words. Expand to 800+ words.")
     if h1 == 1:
-        pts += 4; ev.append("Exactly one H1 → 4/4")
+        pts += 4; ev.append("Exactly one H1 in main content → 4/4")
     else:
-        ev.append(f"H1 count = {h1} (should be exactly 1) → 0/4")
+        ev.append(f"H1 count = {h1} in main content (should be exactly 1) → 0/4")
         rec.append(f"Page has {h1} H1 tags; use exactly one.")
     if h2 >= 2:
-        pts += 4; ev.append(f"{h2} H2 sections → 4/4")
+        pts += 4; ev.append(f"{h2} H2 sections in main content → 4/4")
     elif h2 == 1:
-        pts += 2; ev.append("1 H2 section → 2/4")
+        pts += 2; ev.append("1 H2 section in main content → 2/4")
         rec.append("Add more H2 sections to structure the content.")
     else:
-        ev.append("No H2 sections → 0/4")
+        ev.append("No H2 sections in main content → 0/4")
         rec.append("Add H2 subheadings to give the page a clear structure.")
     top = metrics.get("top_keywords", []) or []
     title_txt = (soup.title.get_text() if (soup and soup.title) else "").lower()
@@ -133,7 +147,10 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
             rec.append(f"Align the title/H1 with the page's dominant term ('{term}').")
     else:
         ev.append("No keyword signal extracted → 0/4")
-    cats.append(_cat("Content", 20, pts, f"{wc} words, {h1} H1 / {h2} H2, heading + topical checks",
+    cats.append(_cat("Content", 20, pts,
+                     f"{wc} words, {h1} H1 / {h2} H2 — measured on main content only "
+                     f"(navigation/footer boilerplate excluded, matching how search engines "
+                     f"weight a page), so these can be lower than a raw devtools count",
                      ev, rec, "High" if pts < 12 else "Medium"))
 
     # ---- 2. Metadata (15)
@@ -276,12 +293,12 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
     ev, rec, pts = [], [], 0.0
     il, el = metrics.get("internal_links", 0), metrics.get("external_links", 0)
     if il >= 10:
-        pts += 5; ev.append(f"{il} internal links → 5/5")
+        pts += 5; ev.append(f"{il} internal links in main content → 5/5")
     elif il >= 3:
-        pts += 3; ev.append(f"{il} internal links (10+ preferred) → 3/5")
+        pts += 3; ev.append(f"{il} internal links in main content (10+ preferred) → 3/5")
         rec.append("Add more internal links to key pages.")
     else:
-        ev.append(f"Only {il} internal links → 0/5")
+        ev.append(f"Only {il} internal links in main content → 0/5")
         rec.append("Very weak internal linking — link to your main pages.")
     anchors = [(a.get_text() or "").strip().lower() for a in (soup.find_all("a") if soup else [])]
     anchors = [a for a in anchors if a]
@@ -301,7 +318,9 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
         pts += 1; ev.append("No <nav> element detected → 1/2")
         rec.append("Wrap primary navigation in a <nav> element.")
     ev.append("Orphan pages: Not Verified (needs a full-site crawl)")
-    cats.append(_cat("Internal Linking", 10, pts, f"{il} internal / {el} external links, anchor quality",
+    cats.append(_cat("Internal Linking", 10, pts,
+                     f"{il} internal / {el} external links in main content (nav/footer excluded), "
+                     f"anchor quality across the whole page",
                      ev, rec))
 
     # ---- 7. Structured Data (10)

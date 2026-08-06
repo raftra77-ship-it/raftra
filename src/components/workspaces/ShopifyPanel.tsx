@@ -39,7 +39,13 @@ export const ShopifyPanel: React.FC<{ workspaceId: number | null }> = ({ workspa
     fetch(`${base()}/status`, { headers: authHeaders() })
       .then(r => r.json())
       .then((s: Status) => { setStatus(s); if (s.connected) loadBlogs(); })
-      .catch(() => {});
+      .catch(() => {
+        // Never leave `status` null on a failed fetch — the panel used to render nothing
+        // at all in that case, so clicking "Connect Shopify" silently did nothing. Fall
+        // back to a not-connected shape so the connect form is always reachable.
+        setStatus({ configured: true, connected: false, shop_domain: null, shop_name: null, blog_id: null });
+        setMsg('Could not read the Shopify connection status (is the backend running?). You can still try connecting below.');
+      });
   };
 
   useEffect(() => {

@@ -907,6 +907,15 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
   const [st, setSt] = React.useState<{ gh?: any; wp?: any; sh?: any }>({});
   const [ghMap, setGhMap] = React.useState<any>(null);   // GitHub repo scan summary
   const [expanded, setExpanded] = React.useState<'gh' | 'wp' | 'sh' | null>(null);
+  // The expanded connector panel renders BELOW the three cards, which on a short viewport
+  // puts it off-screen — clicking "Connect WordPress" then looks like nothing happened.
+  // Scroll it into view so the form the user just asked for is actually visible.
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (expanded && panelRef.current) {
+      panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [expanded]);
   const [applying, setApplying] = React.useState(false);
   const [prResult, setPrResult] = React.useState<{ ok: boolean; msg: string; url?: string; needsApproval?: boolean; universal_fix?: any } | null>(null);
 
@@ -1306,7 +1315,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
         if (!c) return null;
         const Panel = c.Panel;
         return (
-          <div style={{ marginBottom: '14px' }}>
+          <div ref={panelRef} style={{ marginBottom: '14px' }}>
             <Panel workspaceId={workspaceId} />
           </div>
         );
