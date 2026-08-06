@@ -29,7 +29,8 @@ export default function App() {
       const role = decoded.role;
 
       // Only auto-redirect when user lands on home / or login page
-      if (location.pathname === '/' || location.pathname === '/login') {
+      const pathLower = location.pathname.toLowerCase();
+      if (pathLower === '/' || pathLower === '/login' || pathLower === '/home') {
         if (role === 'creator') {
           navigate('/creator-dashboard', { replace: true });
         } else if (role === 'brand') {
@@ -62,6 +63,18 @@ export default function App() {
       <FlowyBackground />
       <Routes>
         <Route path="/" element={
+          <LandingPage 
+            onStartFree={() => navigate('/login')}
+            onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}
+          />
+        } />
+        <Route path="/home" element={
+          <LandingPage 
+            onStartFree={() => navigate('/login')}
+            onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}
+          />
+        } />
+        <Route path="/HOME" element={
           <LandingPage 
             onStartFree={() => navigate('/login')}
             onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}

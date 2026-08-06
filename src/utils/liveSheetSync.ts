@@ -1,4 +1,4 @@
-import { InfluencerItemExtended } from '../components/workspaces/WorkspaceInfluencer';
+import type { InfluencerItemExtended } from '../types/influencer';
 
 export const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1aV0JVDriVZNxXt8C2Tj7X6yV0eiHRdwlez36xAjCyDw/export?format=csv';
 
