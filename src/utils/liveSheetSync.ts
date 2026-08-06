@@ -1,4 +1,27 @@
-import { InfluencerItemExtended } from '../components/workspaces/WorkspaceInfluencer';
+export interface InfluencerItemExtended {
+  id: string;
+  name: string;
+  handle: string;
+  avatar?: string;
+  platform: 'Facebook' | 'Instagram' | 'YouTube';
+  niche: string;
+  allNiches?: string[];
+  category: 'Nano' | 'Micro' | 'Macro';
+  expectedPrice: string;
+  deliverables: string[];
+  followers: string;
+  avgViews?: string;
+  location?: string;
+  email?: string;
+  phone?: string;
+  profileLink?: string;
+  fakeFollowerScore: number;
+  rating: number;
+  reviewsCount: number;
+  recentWorks: string[];
+  topComments: { author: string; text: string }[];
+  recentPosts?: { id: string; url: string; likes: string; comments: string }[];
+}
 
 export const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1aV0JVDriVZNxXt8C2Tj7X6yV0eiHRdwlez36xAjCyDw/export?format=csv';
 
@@ -266,13 +289,29 @@ function getCategory(followersStr: string): 'Nano' | 'Micro' | 'Macro' {
   return "Nano";
 }
 
-export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExtended[]> {
+let cachedCreators: InfluencerItemExtended[] = [];
+let cachedCsvText = '';
+let lastFetchTime = 0;
+const CACHE_TTL_MS = 30000;
+
+export async function fetchLiveGoogleSheetCreators(force = false): Promise<InfluencerItemExtended[]> {
+  const now = Date.now();
+  if (!force && cachedCreators.length > 0 && (now - lastFetchTime) < CACHE_TTL_MS) {
+    return cachedCreators;
+  }
+
   try {
-    const res = await fetch(`${GOOGLE_SHEET_CSV_URL}&t=${Date.now()}`);
+    const res = await fetch(`${GOOGLE_SHEET_CSV_URL}&t=${now}`);
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     const csvText = await res.text();
+
+    if (csvText === cachedCsvText && cachedCreators.length > 0) {
+      lastFetchTime = now;
+      return cachedCreators;
+    }
+
     const rows = parseCSV(csvText);
-    if (rows.length < 2) return [];
+    if (rows.length < 2) return cachedCreators;
 
     const dataRows = rows.slice(1);
     const creators: InfluencerItemExtended[] = [];
@@ -331,9 +370,13 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
       });
     });
 
+    cachedCsvText = csvText;
+    cachedCreators = creators;
+    lastFetchTime = now;
+
     return creators;
   } catch (error) {
     console.warn('Failed to fetch live Google Sheet creators:', error);
-    return [];
+    return cachedCreators;
   }
 }
