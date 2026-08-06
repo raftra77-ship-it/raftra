@@ -467,35 +467,35 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             </div>
           </div>
 
-          {/* Side Bento Column (Span 5 - 3 Compact Bento Pills) */}
-          <div className="bento-col-5" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div className="bento-pill" style={{ textAlign: 'left' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,71,87,0.12)', border: '1px solid rgba(255,71,87,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <TrendingDown size={20} color="var(--danger)" />
+          {/* Side Bento Column (Span 5 - 3 Prominent Bento Pills) */}
+          <div className="bento-col-5" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="bento-pill" style={{ textAlign: 'left', padding: '24px 28px', borderRadius: '18px', gap: '18px', display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,71,87,0.12)', border: '1px solid rgba(255,71,87,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <TrendingDown size={26} color="var(--danger)" />
               </div>
               <div>
-                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Rising Ad CPA & Wasted Spend</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Ad fatigue kills ROAS when static creatives aren't dynamically generated or auto-paused.</p>
+                <h4 style={{ fontSize: '17.5px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Rising Ad CPA & Wasted Spend</h4>
+                <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>Ad fatigue kills ROAS when static creatives aren't dynamically generated or auto-paused.</p>
               </div>
             </div>
 
-            <div className="bento-pill" style={{ textAlign: 'left' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Globe size={20} color="var(--success)" />
+            <div className="bento-pill" style={{ textAlign: 'left', padding: '24px 28px', borderRadius: '18px', gap: '18px', display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Globe size={26} color="var(--success)" />
               </div>
               <div>
-                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Ignored AI Search Visibility</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>If ChatGPT, Claude & Perplexity lack JSON-LD entity schema, your brand is invisible to AI search.</p>
+                <h4 style={{ fontSize: '17.5px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Ignored AI Search Visibility</h4>
+                <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>If ChatGPT, Claude & Perplexity lack JSON-LD entity schema, your brand is invisible to AI search.</p>
               </div>
             </div>
 
-            <div className="bento-pill" style={{ textAlign: 'left' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <BarChart3 size={20} color="var(--warning)" />
+            <div className="bento-pill" style={{ textAlign: 'left', padding: '24px 28px', borderRadius: '18px', gap: '18px', display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <BarChart3 size={26} color="var(--warning)" />
               </div>
               <div>
-                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Overwhelming Static Dashboards</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Raw graphs without actionable AI insights leave marketing managers guessing next steps.</p>
+                <h4 style={{ fontSize: '17.5px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Overwhelming Static Dashboards</h4>
+                <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>Raw graphs without actionable AI insights leave marketing managers guessing next steps.</p>
               </div>
             </div>
           </div>
