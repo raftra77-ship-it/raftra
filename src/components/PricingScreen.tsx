@@ -377,44 +377,44 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
           </div>
 
-        {/* GLOBAL MONTHLY AD SPEND SELECTOR BAR */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          margin: '0 auto 28px auto',
-          padding: '10px 20px',
-          background: 'rgba(124, 117, 255, 0.08)',
-          border: '1px solid rgba(124, 117, 255, 0.3)',
-          borderRadius: '16px',
-          maxWidth: '620px'
-        }}>
-          <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Layers size={14} /> Select Monthly Ad Spend Range:
-          </span>
-          <select
-            value={adSpendIndex}
-            onChange={(e) => setAdSpendIndex(Number(e.target.value))}
-            style={{
-              background: '#0b0b14',
-              border: '1.5px solid #7C75FF',
-              borderRadius: '8px',
-              color: '#ffffff',
-              padding: '6px 12px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              outline: 'none',
-              flex: 1
-            }}
-          >
-            {AD_SPEND_TIERS.map((tier, idx) => (
-              <option key={idx} value={idx} style={{ background: '#0b0b14', color: '#fff' }}>
-                {tier.range} {tier.isEnterprise ? '(Enterprise Quote)' : `(${currency === 'USD' ? `$${tier.usd}/mo` : `₹${tier.inr.toLocaleString('en-IN')}/mo`})`}
-              </option>
-            ))}
-          </select>
+          {/* Global Monthly Ad Spend Selector */}
+          <div style={{
+            background: 'rgba(124, 117, 255, 0.08)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            padding: '6px 14px',
+            borderRadius: '100px',
+            border: '1px solid rgba(124, 117, 255, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Layers size={13} /> Monthly Ad Spend:
+            </span>
+            <select
+              value={adSpendIndex}
+              onChange={(e) => setAdSpendIndex(Number(e.target.value))}
+              style={{
+                background: '#0b0b14',
+                border: '1px solid #7C75FF',
+                borderRadius: '100px',
+                color: '#ffffff',
+                padding: '4px 10px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              {AD_SPEND_TIERS.map((tier, idx) => (
+                <option key={idx} value={idx} style={{ background: '#0b0b14', color: '#fff' }}>
+                  {tier.range} {tier.isEnterprise ? '(Enterprise Quote)' : `(${currency === 'USD' ? `$${tier.usd}/mo` : `₹${tier.inr.toLocaleString('en-IN')}/mo`})`}
+                </option>
+              ))}
+            </select>
+          </div>
+
         </div>
 
         {/* CATEGORY NAV TABS (SELECTION GREEN - NON SELECTION PURE WHITE) */}
