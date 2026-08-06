@@ -417,16 +417,19 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
         </div>
 
-        {/* CATEGORY NAV TABS (SELECTION GREEN - NON SELECTION PURE WHITE) */}
+        {/* CATEGORY NAV TABS (SINGLE ROW HORIZONTAL SPAN — LARGE TEXT & PADDED BUTTONS) */}
         <div style={{ 
           display: 'flex', 
-          justifyContent: 'center', 
+          justifyContent: 'space-between', 
           alignItems: 'center', 
-          gap: '8px', 
-          flexWrap: 'wrap', 
-          maxWidth: '1280px',
+          gap: '10px', 
+          flexWrap: 'nowrap', 
+          width: '100%',
+          maxWidth: '1600px',
           margin: '0 auto 48px auto',
-          padding: '0 10px'
+          padding: '0 20px',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch'
         }}>
           {[
             { id: 'allinone', label: 'All-in-One Operating Suites', icon: Layers },
@@ -444,31 +447,33 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 key={tab.id}
                 onClick={() => setActiveCategory(tab.id as any)}
                 style={{
+                  flex: '1 1 auto',
                   background: isSelected 
                     ? '#000000' 
-                    : 'rgba(255, 255, 255, 0.03)',
+                    : 'rgba(255, 255, 255, 0.04)',
                   backdropFilter: 'blur(16px)',
                   WebkitBackdropFilter: 'blur(16px)',
                   border: isSelected 
-                    ? '1px solid rgba(0, 230, 118, 0.4)' 
-                    : '1px solid rgba(255, 255, 255, 0.08)',
+                    ? '1.5px solid rgba(0, 230, 118, 0.5)' 
+                    : '1px solid rgba(255, 255, 255, 0.12)',
                   color: isSelected ? '#00E676' : '#ffffff',
-                  padding: '8px 14px',
+                  padding: '12px 20px',
                   borderRadius: '100px',
-                  fontSize: '12.5px',
-                  fontWeight: isSelected ? 700 : 500,
+                  fontSize: '15.5px',
+                  fontWeight: isSelected ? 800 : 600,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  justifyContent: 'center',
+                  gap: '8px',
                   whiteSpace: 'nowrap',
                   boxShadow: isSelected 
-                    ? '0 4px 16px rgba(0, 230, 118, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1)' 
+                    ? '0 4px 20px rgba(0, 230, 118, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15)' 
                     : '0 2px 8px rgba(0,0,0,0.2)',
                   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
               >
-                <Icon size={14} color={isSelected ? '#00E676' : '#ffffff'} />
+                <Icon size={18} color={isSelected ? '#00E676' : '#ffffff'} />
                 <span>{tab.label}</span>
               </button>
             );
