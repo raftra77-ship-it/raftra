@@ -252,29 +252,29 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </ul>
         </div>
 
-        {/* CURRENCY & BILLING TOGGLES (ULTRA-MODERN MINIMAL SEGMENTED CONTROL) */}
+        {/* TOP CONTROLS BAR: CURRENCY (LEFT), AD SPEND (CENTER), BILLING (RIGHT) */}
         <div style={{ 
           display: 'flex', 
-          justifyContent: 'center', 
+          justifyContent: 'space-between', 
           alignItems: 'center', 
           flexWrap: 'wrap', 
-          gap: '24px', 
-          maxWidth: '960px', 
-          margin: '0 auto 24px auto', 
-          padding: '0 12px' 
+          gap: '20px', 
+          maxWidth: '1280px', 
+          margin: '0 auto 40px auto', 
+          padding: '0 20px' 
         }}>
           
-          {/* Currency Toggle */}
+          {/* Left: Currency Toggle (Fully Rounded Edges) */}
           <div style={{ 
-            background: 'rgba(255, 255, 255, 0.03)', 
+            background: 'rgba(255, 255, 255, 0.04)', 
             backdropFilter: 'blur(16px)', 
             WebkitBackdropFilter: 'blur(16px)', 
-            padding: '4px', 
-            borderRadius: '12px', 
-            border: '1px solid rgba(255, 255, 255, 0.08)', 
+            padding: '6px', 
+            borderRadius: '100px', 
+            border: '1px solid rgba(255, 255, 255, 0.12)', 
             display: 'flex', 
             alignItems: 'center',
-            gap: '4px'
+            gap: '6px'
           }}>
             <button 
               onClick={() => handleCurrencyChange('INR')}
@@ -282,10 +282,10 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 background: currency === 'INR' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent', 
                 color: currency === 'INR' ? '#00E676' : '#ffffff', 
                 border: currency === 'INR' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent', 
-                padding: '8px 20px', 
-                borderRadius: '8px', 
-                fontSize: '13.5px', 
-                fontWeight: currency === 'INR' ? 700 : 500, 
+                padding: '10px 24px', 
+                borderRadius: '100px', 
+                fontSize: '15.5px', 
+                fontWeight: currency === 'INR' ? 800 : 600, 
                 cursor: 'pointer',
                 boxShadow: currency === 'INR' ? '0 4px 14px rgba(0, 230, 118, 0.15)' : 'none',
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -299,10 +299,10 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 background: currency === 'USD' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent', 
                 color: currency === 'USD' ? '#00E676' : '#ffffff', 
                 border: currency === 'USD' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent', 
-                padding: '8px 20px', 
-                borderRadius: '8px', 
-                fontSize: '13.5px', 
-                fontWeight: currency === 'USD' ? 700 : 500, 
+                padding: '10px 24px', 
+                borderRadius: '100px', 
+                fontSize: '15.5px', 
+                fontWeight: currency === 'USD' ? 800 : 600, 
                 cursor: 'pointer',
                 boxShadow: currency === 'USD' ? '0 4px 14px rgba(0, 230, 118, 0.15)' : 'none',
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -312,93 +312,20 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </button>
           </div>
 
-          {/* Billing Cycle Toggle with Interactive Slider Switch */}
-          <div 
-            onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'annual' : 'monthly')}
-            style={{ 
-              background: 'rgba(255, 255, 255, 0.03)', 
-              backdropFilter: 'blur(16px)', 
-              WebkitBackdropFilter: 'blur(16px)', 
-              padding: '6px 18px', 
-              borderRadius: '100px', 
-              border: '1px solid rgba(255, 255, 255, 0.1)', 
-              display: 'flex', 
-              alignItems: 'center',
-              gap: '14px',
-              cursor: 'pointer',
-              userSelect: 'none',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <span style={{ 
-              fontSize: '13.5px', 
-              fontWeight: billingCycle === 'monthly' ? 700 : 500, 
-              color: billingCycle === 'monthly' ? '#00E676' : '#ffffff',
-              transition: 'all 0.2s ease'
-            }}>
-              Monthly
-            </span>
-
-            {/* Toggle Switch Pill */}
-            <div style={{
-              width: '46px',
-              height: '24px',
-              background: billingCycle === 'annual' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'rgba(255, 255, 255, 0.08)',
-              borderRadius: '100px',
-              border: billingCycle === 'annual' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255, 255, 255, 0.18)',
-              position: 'relative',
-              padding: '2px',
-              boxShadow: billingCycle === 'annual' ? '0 4px 12px rgba(0, 230, 118, 0.15)' : 'none',
-              transition: 'all 0.25s ease'
-            }}>
-              <div style={{
-                width: '18px',
-                height: '18px',
-                borderRadius: '50%',
-                background: billingCycle === 'annual' ? '#00E676' : '#ffffff',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
-                transform: billingCycle === 'annual' ? 'translateX(22px)' : 'translateX(0px)',
-                transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
-              }} />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ 
-                fontSize: '13.5px', 
-                fontWeight: billingCycle === 'annual' ? 700 : 500, 
-                color: billingCycle === 'annual' ? '#00E676' : '#ffffff',
-                transition: 'all 0.2s ease'
-              }}>
-                Yearly
-              </span>
-              <span style={{ fontSize: '10px', background: 'rgba(0,230,118,0.2)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
-                Pay 10, Get 12 🔥
-              </span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* CENTER-ALIGNED GLOBAL MONTHLY AD SPEND SELECTOR BAR */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          margin: '0 auto 40px auto'
-        }}>
+          {/* Center: Ad Spend Selector Bar */}
           <div style={{
             background: 'rgba(124, 117, 255, 0.08)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            padding: '8px 20px',
+            padding: '8px 24px',
             borderRadius: '100px',
             border: '1px solid rgba(124, 117, 255, 0.3)',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px'
+            gap: '12px'
           }}>
-            <span style={{ fontSize: '12px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Layers size={14} /> Select Monthly Ad Spend Range:
+            <span style={{ fontSize: '13.5px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Layers size={16} /> Ad Spend:
             </span>
             <select
               value={adSpendIndex}
@@ -408,8 +335,8 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 border: '1.5px solid #7C75FF',
                 borderRadius: '100px',
                 color: '#ffffff',
-                padding: '6px 14px',
-                fontSize: '13px',
+                padding: '8px 18px',
+                fontSize: '15px',
                 fontWeight: 700,
                 cursor: 'pointer',
                 outline: 'none'
@@ -417,11 +344,77 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             >
               {AD_SPEND_TIERS.map((tier, idx) => (
                 <option key={idx} value={idx} style={{ background: '#0b0b14', color: '#fff' }}>
-                  {tier.range} {tier.isEnterprise ? '(Enterprise Quote)' : `(${currency === 'USD' ? `$${tier.usd}/mo` : `₹${tier.inr.toLocaleString('en-IN')}/mo`})`}
+                  {tier.range}
                 </option>
               ))}
             </select>
           </div>
+
+          {/* Right: Billing Cycle Toggle */}
+          <div 
+            onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'annual' : 'monthly')}
+            style={{ 
+              background: 'rgba(255, 255, 255, 0.04)', 
+              backdropFilter: 'blur(16px)', 
+              WebkitBackdropFilter: 'blur(16px)', 
+              padding: '8px 24px', 
+              borderRadius: '100px', 
+              border: '1px solid rgba(255, 255, 255, 0.12)', 
+              display: 'flex', 
+              alignItems: 'center',
+              gap: '16px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <span style={{ 
+              fontSize: '16px', 
+              fontWeight: billingCycle === 'monthly' ? 800 : 500, 
+              color: billingCycle === 'monthly' ? '#00E676' : '#ffffff',
+              transition: 'all 0.2s ease'
+            }}>
+              Monthly
+            </span>
+
+            {/* Switch Pill */}
+            <div style={{
+              width: '50px',
+              height: '26px',
+              background: billingCycle === 'annual' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '100px',
+              border: billingCycle === 'annual' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255, 255, 255, 0.18)',
+              position: 'relative',
+              padding: '2px',
+              boxShadow: billingCycle === 'annual' ? '0 4px 12px rgba(0, 230, 118, 0.15)' : 'none',
+              transition: 'all 0.25s ease'
+            }}>
+              <div style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                background: billingCycle === 'annual' ? '#00E676' : '#ffffff',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                transform: billingCycle === 'annual' ? 'translateX(24px)' : 'translateX(0px)',
+                transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+              }} />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ 
+                fontSize: '16px', 
+                fontWeight: billingCycle === 'annual' ? 800 : 500, 
+                color: billingCycle === 'annual' ? '#00E676' : '#ffffff',
+                transition: 'all 0.2s ease'
+              }}>
+                Yearly
+              </span>
+              <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.2)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
+                Pay 10, Get 12 🔥
+              </span>
+            </div>
+          </div>
+
         </div>
 
         {/* CATEGORY NAV TABS (SELECTION GREEN - NON SELECTION PURE WHITE) */}
