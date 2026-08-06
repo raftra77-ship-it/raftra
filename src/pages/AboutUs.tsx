@@ -50,8 +50,25 @@ export const AboutUs = () => {
                 </p>
               </div>
             </div>
-            <div style={{ width: '120px', height: '120px', background: 'linear-gradient(135deg, rgba(90,82,255,0.2) 0%, rgba(255,82,150,0.2) 100%)', borderRadius: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <Target size={56} color="var(--primary)" />
+            <div style={{ 
+              width: '140px', 
+              height: '140px', 
+              background: 'linear-gradient(135deg, rgba(90, 82, 255, 0.25) 0%, rgba(0, 255, 157, 0.15) 100%)', 
+              borderRadius: '28px', 
+              display: 'flex', 
+              flexDirection: 'column',
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '2px',
+              border: '1px solid rgba(90, 82, 255, 0.45)',
+              boxShadow: '0 12px 40px -10px rgba(90, 82, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Cpu size={32} color="var(--accent)" />
+                <span style={{ fontSize: '38px', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#ffffff', letterSpacing: '-0.03em' }}>R</span>
+              </div>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--success)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>RAFTRA AI</span>
             </div>
           </motion.div>
 
