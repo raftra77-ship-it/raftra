@@ -59,11 +59,20 @@ export const FeatureAnalytics = () => {
           <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--warning)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Decision Engine</span>
         </motion.div>
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
-          Analytics & Claude Intelligence
+          Growth Analytics
         </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}>
-          Combines advertising, analytics, SEO, and revenue data into one intelligent decision-making workspace.
+        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '950px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+          Track every important business metric in one place. Combine campaign performance, website traffic, SEO progress, and AI-powered insights to understand what's working and what to improve next.
         </motion.p>
+
+        {/* INCLUDES TAGS */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', maxWidth: '1000px', margin: '0 auto' }}>
+          {["Marketing Dashboard", "Campaign Analytics", "SEO Analytics", "ROI Tracking", "AI Growth Insights", "Executive Reports", "Performance Trends", "Custom Reports"].map((tag, i) => (
+            <span key={i} style={{ background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', color: '#ffffff', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Info Grid */}

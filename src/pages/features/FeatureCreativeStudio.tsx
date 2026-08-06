@@ -64,9 +64,18 @@ export const FeatureCreativeStudio = () => {
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
           AI Creative Studio
         </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}>
-          Creates high-converting ads, videos, hooks, headlines, voiceovers, and campaign creatives from your website, logo, product images, and brand assets.
+        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '950px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+          Create high-converting ad creatives in minutes. Generate image ads, product photography, carousels, and videos from your brand guidelines or product images. Edit creatives with built-in AI tools, analyze competitor ads, and publish winning assets faster—all powered by Raftra Credits.
         </motion.p>
+        
+        {/* INCLUDES TAGS */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', maxWidth: '1000px', margin: '0 auto' }}>
+          {["AI Image Generation", "Product Photography", "Carousel Ads", "AI Video Generation", "AI Editing Suite", "Competitor Ad Library", "Creative Performance Insights", "AI UGC (Coming Soon)"].map((tag, i) => (
+            <span key={i} style={{ background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.3)', color: '#ffffff', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Info Grid */}

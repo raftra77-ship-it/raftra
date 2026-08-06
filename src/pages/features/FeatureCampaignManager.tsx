@@ -63,9 +63,18 @@ export const FeatureCampaignManager = () => {
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
           AI Campaign Manager
         </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}>
-          Builds, publishes, and optimizes campaigns across Meta Ads, Google Ads, and YouTube.
+        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '950px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+          Launch and optimize campaigns across Meta and Google from a single dashboard. Build campaigns, manage budgets, monitor performance, receive AI-powered recommendations, and improve results with intelligent optimization—without switching platforms.
         </motion.p>
+
+        {/* INCLUDES TAGS */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', maxWidth: '1000px', margin: '0 auto' }}>
+          {["Meta & Google Publishing", "Campaign Builder", "Budget Management", "Performance Dashboard", "AI Campaign Optimization", "A/B Test Recommendations", "Audience Insights", "Multi-Platform Management"].map((tag, i) => (
+            <span key={i} style={{ background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', color: '#ffffff', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Info Grid */}

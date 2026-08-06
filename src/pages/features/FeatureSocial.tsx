@@ -49,11 +49,20 @@ export const FeatureSocial = () => {
           <span style={{ fontSize: '14px', fontWeight: '600', color: 'violet', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Always-On</span>
         </motion.div>
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
-          Social Media AI
+          Social Hub
         </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}>
-          Plans, creates, schedules, publishes, and manages social media activity across multiple platforms.
+        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '950px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+          Need additional expertise? Hire certified marketing professionals who work directly inside Raftra. Whether it's SEO, paid ads, social media, CRO, or digital PR, specialists use your Raftra workspace to execute, optimize, and report—without disrupting your workflow.
         </motion.p>
+
+        {/* INCLUDES TAGS */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', maxWidth: '1000px', margin: '0 auto' }}>
+          {["SEO & GEO Specialists", "Paid Ads Specialists", "Social Media Managers", "Digital PR & CRO Experts"].map((tag, i) => (
+            <span key={i} style={{ background: 'rgba(238,130,238,0.12)', border: '1px solid rgba(238,130,238,0.3)', color: '#ffffff', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Info Grid */}

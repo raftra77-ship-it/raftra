@@ -52,9 +52,18 @@ export const FeatureInfluencer = () => {
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
           Influencer Marketplace
         </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}>
-          Helps brands discover and collaborate with influencers based on audience quality, niche, budget, and conversion potential.
+        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '950px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+          Discover verified creators, review profiles, negotiate collaborations, and manage campaigns from one workspace. Brands can hire influencers or UGC creators, while creators receive verified opportunities and performance tracking.
         </motion.p>
+
+        {/* INCLUDES TAGS */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', maxWidth: '1000px', margin: '0 auto' }}>
+          {["Verified Creators", "Smart Search & Filters", "Brand Collaboration", "Secure Chat", "Campaign Tracking", "Deliverable Management", "Contract Workflow", "Secure Payout Requests"].map((tag, i) => (
+            <span key={i} style={{ background: 'rgba(255,71,87,0.12)', border: '1px solid rgba(255,71,87,0.3)', color: '#ffffff', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Info Grid */}

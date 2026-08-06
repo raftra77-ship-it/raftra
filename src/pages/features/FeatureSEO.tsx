@@ -66,11 +66,20 @@ export const FeatureSEO = () => {
           <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--success)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Search Visibility</span>
         </motion.div>
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
-          SEO & GEO/AEO
+          SEO & GEO
         </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}>
-          Improves visibility on both traditional search engines and AI-powered search platforms like ChatGPT, Claude, Gemini, and Perplexity.
+        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '950px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+          Improve visibility across Google Search and AI search engines with continuous audits, content optimization, technical improvements, and publishing. Connect your CMS, Google Search Console, and GA4 to monitor performance and apply AI-generated improvements from one workspace.
         </motion.p>
+
+        {/* INCLUDES TAGS */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', maxWidth: '1000px', margin: '0 auto' }}>
+          {["Website Audits", "AI Search (GEO) Audits", "Technical SEO", "AI Content Generation", "CMS Publishing", "GSC & GA4 Integration", "AI Visibility Tracking", "Keyword Intelligence"].map((tag, i) => (
+            <span key={i} style={{ background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.3)', color: '#ffffff', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Info Grid */}
