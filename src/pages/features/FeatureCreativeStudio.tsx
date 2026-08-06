@@ -285,14 +285,7 @@ export const FeatureCreativeStudio = () => {
         </div>
       </section>
 
-      {/* MOTION DESIGN EXPLAINER DEMO */}
-      <FeatureExplainerVideo
-        title="AI Creative Studio Engine"
-        subtitle="How Raftra AI generates videos, UGC presenters, carousel banners, and ad hooks automatically."
-        badgeText="INTERACTIVE MOTION DEMO"
-        steps={creativeExplainerSteps}
-        ctaText="Unlock Creative Engine"
-      />
+
 
       {/* REAL DASHBOARD CREATIVE STUDIO INTERACTIVE PREVIEW */}
       <section style={{ marginBottom: '80px', marginTop: '40px' }}>
@@ -312,7 +305,7 @@ export const FeatureCreativeStudio = () => {
                 <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>Creative Studio</span>
               </div>
               <span style={{ fontSize: '12px', background: 'rgba(0,230,118,0.12)', color: '#00E676', border: '1px solid rgba(0,230,118,0.3)', padding: '3px 10px', borderRadius: '100px', fontWeight: 700 }}>
-                ● Active Brand: Ambrane
+                ● Active Brand: Demo Brand
               </span>
             </div>
 
@@ -352,7 +345,7 @@ export const FeatureCreativeStudio = () => {
                 <input 
                   type="text" 
                   readOnly 
-                  value="https://ambrane.com/products/powerbank-20000mah" 
+                  value="https://yourbrand.com/products/smart-pro-edition" 
                   style={{ width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '14px', fontFamily: 'monospace' }}
                 />
               </div>
@@ -412,11 +405,22 @@ export const FeatureCreativeStudio = () => {
                 
                 {/* Generated Card 1 */}
                 <div style={{ background: 'linear-gradient(135deg, #181824 0%, #0d0d14 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ height: '140px', background: 'linear-gradient(to bottom right, #2a0845, #6441A5)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '12px', color: '#fff' }}>
+                  <div style={{ 
+                    height: '150px', 
+                    backgroundImage: 'linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.85)), url(https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80)',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    borderRadius: '10px', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    justify: 'space-between', 
+                    padding: '12px', 
+                    color: '#fff' 
+                  }}>
                     <span style={{ fontSize: '10px', background: '#00E676', color: '#000', padding: '2px 8px', borderRadius: '100px', fontWeight: 800, alignSelf: 'flex-start' }}>FLAT 30% OFF</span>
                     <div>
-                      <div style={{ fontSize: '15px', fontWeight: 900, lineHeight: 1.2 }}>Charge Anything Anywhere</div>
-                      <div style={{ fontSize: '10px', opacity: 0.8 }}>20,000mAh Powerbank</div>
+                      <div style={{ fontSize: '15px', fontWeight: 900, lineHeight: 1.2 }}>Elevate Your Daily Style</div>
+                      <div style={{ fontSize: '10px', opacity: 0.8 }}>Premium Smart Edition</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
@@ -427,10 +431,21 @@ export const FeatureCreativeStudio = () => {
 
                 {/* Generated Card 2 */}
                 <div style={{ background: 'linear-gradient(135deg, #181824 0%, #0d0d14 100%)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ height: '140px', background: 'linear-gradient(to bottom right, #004d40, #00bfa5)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '12px', color: '#fff' }}>
+                  <div style={{ 
+                    height: '150px', 
+                    backgroundImage: 'linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.85)), url(https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80)',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    borderRadius: '10px', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    justify: 'space-between', 
+                    padding: '12px', 
+                    color: '#fff' 
+                  }}>
                     <span style={{ fontSize: '10px', background: '#FFB300', color: '#000', padding: '2px 8px', borderRadius: '100px', fontWeight: 800, alignSelf: 'flex-start' }}>CAROUSEL #1</span>
                     <div>
-                      <div style={{ fontSize: '15px', fontWeight: 900, lineHeight: 1.2 }}>Ultra Fast 65W PD</div>
+                      <div style={{ fontSize: '15px', fontWeight: 900, lineHeight: 1.2 }}>Studio Quality Acoustics</div>
                       <div style={{ fontSize: '10px', opacity: 0.9 }}>Slide 1 of 5</div>
                     </div>
                   </div>
