@@ -521,7 +521,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                   <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(90, 82, 255, 0.15)', color: 'var(--accent)' }}>
                     <Sparkles size={22} />
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em' }}>🎨 CREATIVE STUDIO</span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em' }}>CREATIVE STUDIO</span>
                 </div>
                 <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
                   Explore Studio →
@@ -555,7 +555,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                   <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 189, 46, 0.15)', color: '#FFBD2E' }}>
                     <Megaphone size={22} />
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em' }}>📢 CAMPAIGN MANAGER</span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em' }}>CAMPAIGN MANAGER</span>
                 </div>
                 <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
                   Explore Campaigns →
@@ -589,7 +589,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                   <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(0, 255, 157, 0.12)', color: 'var(--success)' }}>
                     <Globe size={22} />
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--success)', letterSpacing: '0.08em' }}>📈 SEO & GEO WORKSPACE</span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--success)', letterSpacing: '0.08em' }}>SEO & GEO WORKSPACE</span>
                 </div>
                 <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
                   Explore SEO & GEO →
@@ -623,7 +623,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                   <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 174, 0, 0.12)', color: 'var(--warning)' }}>
                     <BarChart3 size={22} />
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--warning)', letterSpacing: '0.08em' }}>📊 GROWTH ANALYTICS</span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--warning)', letterSpacing: '0.08em' }}>GROWTH ANALYTICS</span>
                 </div>
                 <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
                   Explore Analytics →
@@ -657,7 +657,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                   <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 71, 87, 0.12)', color: 'var(--danger)' }}>
                     <Users2 size={22} />
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--danger)', letterSpacing: '0.08em' }}>🤝 INFLUENCER MARKETPLACE</span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--danger)', letterSpacing: '0.08em' }}>INFLUENCER MARKETPLACE</span>
                 </div>
                 <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
                   Explore Influencers →
@@ -691,7 +691,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
                   <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(238, 130, 238, 0.12)', color: 'violet' }}>
                     <Share2 size={22} />
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'violet', letterSpacing: '0.08em' }}>👨‍💼 SOCIAL HUB & SPECIALISTS</span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'violet', letterSpacing: '0.08em' }}>SOCIAL HUB & SPECIALISTS</span>
                 </div>
                 <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
                   Explore Social Hub →

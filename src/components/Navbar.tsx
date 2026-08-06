@@ -25,12 +25,12 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
   }, []);
 
   const features = [
-    { name: 'Social Media Manager', path: '/features/social-manager' },
-    { name: 'SEO & Geo Analytics', path: '/features/seo' },
-    { name: 'Influencer Discovery', path: '/features/influencer' },
-    { name: 'Creative Studio', path: '/features/creative' },
+    { name: 'AI Creative Studio', path: '/features/creative' },
     { name: 'Campaign Manager', path: '/features/campaign' },
-    { name: 'Brand Review System', path: '/features/review' }
+    { name: 'SEO & GEO', path: '/features/seo' },
+    { name: 'Growth Analytics', path: '/features/review' },
+    { name: 'Influencer Marketplace', path: '/features/influencer' },
+    { name: 'Social Hub', path: '/features/social-manager' }
   ];
 
   const handleScrollToFriction = () => {
