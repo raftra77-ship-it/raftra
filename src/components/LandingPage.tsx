@@ -500,99 +500,221 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             </div>
           </div>
         </div>
-      </section>
-
-      {/* Solution Section (Asymmetric Bento Grid Redesign) */}
+      </      {/* Solution Section (Unified Growth OS Redesign) */}
       <section id="solution" className="section-container" style={{ scrollMarginTop: '100px' }}>
         <span className="section-tag" style={{ color: '#00E676', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
-          THE SOLUTIONS
+          THE SOLUTION
         </span>
         <h2 className="section-title" style={{ fontSize: '52px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
-          Meet Raftra AI. The Unified Growth Suite.
+          Everything Your Brand Needs to Grow — In One Platform
         </h2>
-        <p className="section-desc" style={{ fontSize: '19px', color: 'rgba(255,255,255,0.7)', maxWidth: '680px' }}>Six specialized AI workspaces operating as a coordinated growth network to replace your entire marketing stack.</p>
+        <p className="section-desc" style={{ fontSize: '19.5px', color: 'rgba(255,255,255,0.7)', maxWidth: '950px' }}>
+          Six specialized AI workspaces operating as a coordinated growth network to replace your entire marketing stack.
+        </p>
 
-        <div className="bento-grid" style={{ marginTop: '40px' }}>
-          {/* Bento Hero Showcase Card (Span 8) */}
-          <div className="bento-card-hero bento-col-8" onClick={() => navigate('/features/creative')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div className="solution-icon-wrapper" style={{ margin: 0 }}>
-                  <Sparkles size={20} />
-                </div>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em' }}>FLAGSHIP WORKSPACE</span>
-              </div>
-              <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
-                Explore Studio & Campaigns →
-              </span>
-            </div>
-            <h3 style={{ fontSize: '26px', color: '#fff', marginBottom: '10px' }}>
-              AI Creative Studio & Campaign Manager
-            </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', marginBottom: '24px', maxWidth: '650px' }}>
-              Instantly generate high-converting Carousel Ads, AI UGC video clips, and ad copy. Automatically launch campaigns across Meta & Google Ads with budget redistribution safety.
-            </p>
-
-            {/* Interactive Showcase Pill Bar inside Bento Hero */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', background: 'rgba(0,0,0,0.4)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-                <Zap size={14} color="#00E676" /> Carousel Ads Generator
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-                <Sparkles size={14} color="var(--primary)" /> AI UGC Creator Clips
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-                <Megaphone size={14} color="#FFBD2E" /> Meta/Google Auto-Deployer
-              </div>
-            </div>
-          </div>
-
-          {/* Bento Secondary Card (Span 4) — Influencer Marketplace */}
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/influencer')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <div className="bento-grid" style={{ marginTop: '44px', gap: '24px' }}>
+          {/* Card 1: AI Creative Studio (Span 6) */}
+          <div className="bento-card-hero bento-col-6" onClick={() => navigate('/features/creative')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
-              <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 71, 87, 0.08)', color: 'var(--danger)', marginBottom: '16px' }}>
-                <Users2 size={22} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(90, 82, 255, 0.15)', color: 'var(--accent)' }}>
+                    <Sparkles size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em' }}>🎨 CREATIVE STUDIO</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Studio →
+                </span>
               </div>
-              <h3 style={{ fontSize: '20px', color: '#fff', marginBottom: '8px' }}>Influencer Marketplace</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Filter out fake followers, evaluate creator authenticity, and lock campaign deals with escrow safety.
+              <h3 style={{ fontSize: '26px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                AI Creative Studio
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.65, marginBottom: '24px' }}>
+                Create high-converting ad creatives in minutes. Generate image ads, product photography, carousels, and videos from your brand guidelines or product images. Edit creatives with built-in AI tools, analyze competitor ads, and publish winning assets faster—all powered by Raftra Credits.
               </p>
             </div>
-            <div style={{ marginTop: '20px', padding: '10px 14px', background: 'rgba(0,230,118,0.1)', borderRadius: '10px', border: '1px solid rgba(0,230,118,0.25)', fontSize: '11px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>✓ 98% Authenticity Passed</span>
-              <span>Escrow Protected</span>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["AI Image Generation", "Product Photography", "Carousel Ads", "AI Video Generation", "AI Editing Suite", "Competitor Ad Library", "Creative Performance Insights", "AI UGC (Coming Soon)"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Bottom Bento Row: 3 Equal Bento Cards (Span 4 each) */}
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/seo')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(0, 255, 157, 0.08)', color: 'var(--success)', marginBottom: '16px' }}>
-              <Globe size={22} />
+          {/* Card 2: Campaign Manager (Span 6) */}
+          <div className="bento-card-hero bento-col-6" onClick={() => navigate('/features/campaign')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 189, 46, 0.15)', color: '#FFBD2E' }}>
+                    <Megaphone size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em' }}>📢 CAMPAIGN MANAGER</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Campaigns →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '26px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Campaign Manager
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.65, marginBottom: '24px' }}>
+                Launch and optimize campaigns across Meta and Google from a single dashboard. Build campaigns, manage budgets, monitor performance, receive AI-powered recommendations, and improve results with intelligent optimization—without switching platforms.
+              </p>
             </div>
-            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>SEO + GEO/AEO Dominance</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Maximize citations on ChatGPT & Perplexity while ranking on Google Search with auto-repaired JSON-LD schemas.
-            </p>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Meta & Google Publishing", "Campaign Builder", "Budget Management", "Performance Dashboard", "AI Campaign Optimization", "A/B Test Recommendations", "Audience Insights", "Multi-Platform Management"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/review')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 174, 0, 0.08)', color: 'var(--warning)', marginBottom: '16px' }}>
-              <BarChart3 size={22} />
+          {/* Card 3: SEO & GEO (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/seo')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(0, 255, 157, 0.12)', color: 'var(--success)' }}>
+                    <Globe size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--success)', letterSpacing: '0.08em' }}>📈 SEO & GEO WORKSPACE</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore SEO & GEO →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                SEO & GEO
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Improve visibility across Google Search and AI search engines with continuous audits, content optimization, technical improvements, and publishing. Connect your CMS, Google Search Console, and GA4 to monitor performance and apply AI-generated improvements from one workspace.
+              </p>
             </div>
-            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>Analytics & Brand Review</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Transform raw metrics into actionable natural-language decisions. Auto-detect ad fatigue before CPC spikes.
-            </p>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Website Audits", "AI Search (GEO) Audits", "Technical SEO", "AI Content Generation", "CMS Publishing", "GSC & GA4 Integration", "AI Visibility Tracking", "Keyword Intelligence"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/social-manager')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(238, 130, 238, 0.08)', color: 'violet', marginBottom: '16px' }}>
-              <Share2 size={22} />
+          {/* Card 4: Growth Analytics (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/review')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 174, 0, 0.12)', color: 'var(--warning)' }}>
+                    <BarChart3 size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--warning)', letterSpacing: '0.08em' }}>📊 GROWTH ANALYTICS</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Analytics →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Growth Analytics
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Track every important business metric in one place. Combine campaign performance, website traffic, SEO progress, and AI-powered insights to understand what's working and what to improve next.
+              </p>
             </div>
-            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>Social Hub AI</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              30-day visual social media calendar planner with &lt;2s automated customer DM checkout responses.
-            </p>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Marketing Dashboard", "Campaign Analytics", "SEO Analytics", "ROI Tracking", "AI Growth Insights", "Executive Reports", "Performance Trends", "Custom Reports"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: Influencer Marketplace (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/influencer')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 71, 87, 0.12)', color: 'var(--danger)' }}>
+                    <Users2 size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--danger)', letterSpacing: '0.08em' }}>🤝 INFLUENCER MARKETPLACE</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Influencers →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Influencer Marketplace
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Discover verified creators, review profiles, negotiate collaborations, and manage campaigns from one workspace. Brands can hire influencers or UGC creators, while creators receive verified opportunities and performance tracking.
+              </p>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Verified Creators", "Smart Search & Filters", "Brand Collaboration", "Secure Chat", "Campaign Tracking", "Deliverable Management", "Contract Workflow", "Secure Payout Requests"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Card 6: Social Hub (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/social-manager')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(238, 130, 238, 0.12)', color: 'violet' }}>
+                    <Share2 size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'violet', letterSpacing: '0.08em' }}>👨‍💼 SOCIAL HUB & SPECIALISTS</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Social Hub →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Social Hub
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Need additional expertise? Hire certified marketing professionals who work directly inside Raftra. Whether it's SEO, paid ads, social media, CRO, or digital PR, specialists use your Raftra workspace to execute, optimize, and report—without disrupting your workflow.
+              </p>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["SEO & GEO Specialists", "Paid Ads Specialists", "Social Media Managers", "Digital PR & CRO Experts"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
