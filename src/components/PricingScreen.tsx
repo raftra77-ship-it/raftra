@@ -12,11 +12,21 @@ interface PricingScreenProps {
   onComplete: () => void;
 }
 
+const AD_SPEND_TIERS = [
+  { range: '₹0 – ₹10,000', label: '₹0 – ₹10,000 / mo', inr: 999, usd: 12, inrAnnual: 9999 },
+  { range: '₹10,001 – ₹25,000', label: '₹10,001 – ₹25,000 / mo', inr: 1899, usd: 23, inrAnnual: 18999 },
+  { range: '₹25,001 – ₹50,000', label: '₹25,001 – ₹50,000 / mo', inr: 2799, usd: 34, inrAnnual: 27999 },
+  { range: '₹50,001 – ₹2,00,000', label: '₹50,001 – ₹2,00,000 / mo', inr: 3499, usd: 42, inrAnnual: 34999 },
+  { range: '₹2,00,000+', label: '₹2,00,000+ / mo', inr: 4599, usd: 55, inrAnnual: 45999 },
+  { range: '₹10,00,000+ (Enterprise)', label: '₹10,00,000+ (Enterprise)', inr: 0, usd: 0, isEnterprise: true }
+];
+
 export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   const [activeCategory, setActiveCategory] = useState<'allinone' | 'dual' | 'creative' | 'campaign' | 'seo' | 'included' | 'credits'>('allinone');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'INR');
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [adSpendIndex, setAdSpendIndex] = useState<number>(3); // Default ₹50,001 – ₹2,00,000 tier
 
   const handleCurrencyChange = (curr: 'INR' | 'USD') => {
     setCurrency(curr);
@@ -757,22 +767,56 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             >
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '36px', alignItems: 'center', width: '100%' }}>
                 
-                {/* Left Column: Title, Price & Action CTA */}
+                {/* Left Column: Title, Ad Spend Dropdown, Price & Action CTA */}
                 <div style={{ borderRight: '1px solid rgba(255, 255, 255, 0.1)', paddingRight: '28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
                     <div style={{ background: 'linear-gradient(90deg, #7C75FF 0%, #00E676 100%)', color: '#000', padding: '4px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: 800, display: 'inline-block', marginBottom: '10px', letterSpacing: '0.05em' }}>
                       RECOMMENDED CAMPAIGN SUITE ⭐
                     </div>
-                    <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)', lineHeight: 1.2 }}>
+                    <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)', lineHeight: 1.2 }}>
                       Campaign Manager Pro ⭐
                     </h3>
-                    <div style={{ fontSize: '36px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
-                      {formatPrice(3499, 42, 34999)}
+
+                    {/* DYNAMIC MONTHLY AD SPEND TIER SELECTOR */}
+                    <div style={{ background: 'rgba(124, 117, 255, 0.08)', border: '1px solid rgba(124, 117, 255, 0.3)', padding: '12px 14px', borderRadius: '14px', marginBottom: '16px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                        <Layers size={13} /> SELECT YOUR MONTHLY AD SPEND:
+                      </label>
+                      <select 
+                        value={adSpendIndex} 
+                        onChange={(e) => setAdSpendIndex(Number(e.target.value))}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          background: '#0b0b14',
+                          border: '1.5px solid #7C75FF',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          outline: 'none'
+                        }}
+                      >
+                        {AD_SPEND_TIERS.map((tier, idx) => (
+                          <option key={idx} value={idx} style={{ background: '#0b0b14', color: '#fff' }}>
+                            {tier.range} {tier.isEnterprise ? '(Custom Enterprise)' : `(${currency === 'USD' ? `$${tier.usd}/mo` : `₹${tier.inr.toLocaleString('en-IN')}/mo`})`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+                      {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
+                        <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Pricing</span>
+                      ) : (
+                        formatPrice(AD_SPEND_TIERS[adSpendIndex].inr, AD_SPEND_TIERS[adSpendIndex].usd, AD_SPEND_TIERS[adSpendIndex].inrAnnual)
+                      )}
                     </div>
                   </div>
 
                   <GlowButton variant="glow" onClick={onComplete} style={{ width: '100%', padding: '14px 24px', fontSize: '14.5px' }}>
-                    Get Campaign Pro
+                    {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? 'Contact Enterprise Sales' : 'Get Campaign Pro'}
                   </GlowButton>
                 </div>
 

@@ -28,9 +28,9 @@ export default function App() {
       const decoded = JSON.parse(atob(payloadBase64));
       const role = decoded.role;
 
-      // Only auto-redirect when user lands on home / or login page
+      // Only auto-redirect when user explicitly lands on /login page
       const pathLower = location.pathname.toLowerCase();
-      if (pathLower === '/' || pathLower === '/login' || pathLower === '/home') {
+      if (pathLower === '/login') {
         if (role === 'creator') {
           navigate('/creator-dashboard', { replace: true });
         } else if (role === 'brand') {
