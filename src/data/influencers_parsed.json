@@ -848,5 +848,39 @@
       "D2C Brand Collab"
     ],
     "profileLink": "https://www.instagram.com/samairaa.r?igsh=cGl3bWgwNHA0Mmpx"
+  },
+  {
+    "id": "creator_26",
+    "name": "Damia Arya",
+    "creatorBrand": "Damia Arya",
+    "handle": "@damiaarya",
+    "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fitness, Fashion, Lifestyle, Food",
+    "allNiches": [
+      "Fitness, Fashion, Lifestyle, Food"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹5,000",
+    "priceRange": "₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "28k",
+    "avgViews": "15k avg",
+    "location": "East Delhi India",
+    "email": "damiaarya19@gmail.com",
+    "phone": "9810584263",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "damiaaryaa"
   }
 ]

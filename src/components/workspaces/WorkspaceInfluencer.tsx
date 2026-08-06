@@ -3,6 +3,7 @@ import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, Do
 import { GlowButton } from '../GlowButton';
 
 import parsedCreatorsData from '../../data/influencers_parsed.json';
+import { fetchLiveGoogleSheetCreators } from '../../utils/liveSheetSync';
 
 export interface InfluencerItemExtended {
   id: string;
@@ -137,7 +138,23 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   };
 
   useEffect(() => {
+    let isMounted = true;
+
+    const syncLiveSheet = async () => {
+      try {
+        const liveSheetCreators = await fetchLiveGoogleSheetCreators();
+        if (isMounted && liveSheetCreators && liveSheetCreators.length > 0) {
+          setCreators(mergeCustomProfile(liveSheetCreators));
+        }
+      } catch (err) {
+        console.warn('Live sheet sync error:', err);
+      }
+    };
+
     loadCreatorsData();
+    syncLiveSheet();
+
+    const interval = setInterval(syncLiveSheet, 15000);
 
     const handleSync = () => {
       setCreators(prev => mergeCustomProfile(prev));
@@ -147,6 +164,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     window.addEventListener('creatorProfileUpdated', handleSync);
 
     return () => {
+      isMounted = false;
+      clearInterval(interval);
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('creatorProfileUpdated', handleSync);
     };
