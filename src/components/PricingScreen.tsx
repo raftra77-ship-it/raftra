@@ -12,13 +12,74 @@ interface PricingScreenProps {
   onComplete: () => void;
 }
 
-const AD_SPEND_TIERS = [
-  { range: '₹0 – ₹10,000', label: '₹0 – ₹10,000 / mo', inr: 999, usd: 12, inrAnnual: 9999 },
-  { range: '₹10,001 – ₹25,000', label: '₹10,001 – ₹25,000 / mo', inr: 1899, usd: 23, inrAnnual: 18999 },
-  { range: '₹25,001 – ₹50,000', label: '₹25,001 – ₹50,000 / mo', inr: 2799, usd: 34, inrAnnual: 27999 },
-  { range: '₹50,001 – ₹2,00,000', label: '₹50,001 – ₹2,00,000 / mo', inr: 3499, usd: 42, inrAnnual: 34999 },
-  { range: '₹2,00,000+', label: '₹2,00,000+ / mo', inr: 4599, usd: 55, inrAnnual: 45999 },
-  { range: '₹10,00,000+ (Enterprise)', label: '₹10,00,000+ (Enterprise)', inr: 0, usd: 0, isEnterprise: true }
+interface AdSpendTierData {
+  range: string;
+  label: string;
+  inr: number;
+  usd: number;
+  inrAnnual: number;
+  isEnterprise?: boolean;
+  d2c: { inr: number; usd: number; annual: number; indInr: number; saveInr: number };
+  business: { inr: number; usd: number; annual: number; indInr: number; saveInr: number };
+  creatorLaunch: { inr: number; usd: number; annual: number; indInr: number; saveInr: number };
+  growthPack: { inr: number; usd: number; annual: number; indInr: number; saveInr: number };
+}
+
+const AD_SPEND_TIERS: AdSpendTierData[] = [
+  {
+    range: '₹0 – ₹10,000',
+    label: '₹0 – ₹10,000 / mo',
+    inr: 999, usd: 12, inrAnnual: 9999,
+    d2c: { inr: 6899, usd: 82, annual: 68999, indInr: 8497, saveInr: 1598 },
+    business: { inr: 17899, usd: 214, annual: 178999, indInr: 20997, saveInr: 3098 },
+    creatorLaunch: { inr: 2999, usd: 36, annual: 29999, indInr: 3498, saveInr: 499 },
+    growthPack: { inr: 4899, usd: 58, annual: 48999, indInr: 5998, saveInr: 1099 }
+  },
+  {
+    range: '₹10,001 – ₹25,000',
+    label: '₹10,001 – ₹25,000 / mo',
+    inr: 1899, usd: 23, inrAnnual: 18999,
+    d2c: { inr: 7599, usd: 90, annual: 75999, indInr: 9397, saveInr: 1798 },
+    business: { inr: 18599, usd: 223, annual: 185999, indInr: 21897, saveInr: 3298 },
+    creatorLaunch: { inr: 3699, usd: 44, annual: 36999, indInr: 4398, saveInr: 699 },
+    growthPack: { inr: 5599, usd: 67, annual: 55999, indInr: 6898, saveInr: 1299 }
+  },
+  {
+    range: '₹25,001 – ₹50,000',
+    label: '₹25,001 – ₹50,000 / mo',
+    inr: 2799, usd: 34, inrAnnual: 27999,
+    d2c: { inr: 8299, usd: 99, annual: 82999, indInr: 10297, saveInr: 1998 },
+    business: { inr: 19299, usd: 231, annual: 192999, indInr: 22797, saveInr: 3498 },
+    creatorLaunch: { inr: 4399, usd: 52, annual: 43999, indInr: 5298, saveInr: 899 },
+    growthPack: { inr: 6299, usd: 75, annual: 62999, indInr: 7798, saveInr: 1499 }
+  },
+  {
+    range: '₹50,001 – ₹2,00,000',
+    label: '₹50,001 – ₹2,00,000 / mo',
+    inr: 3499, usd: 42, inrAnnual: 34999,
+    d2c: { inr: 8999, usd: 108, annual: 89999, indInr: 10997, saveInr: 1998 },
+    business: { inr: 19999, usd: 240, annual: 199999, indInr: 23497, saveInr: 3498 },
+    creatorLaunch: { inr: 4999, usd: 59, annual: 49999, indInr: 5998, saveInr: 999 },
+    growthPack: { inr: 6999, usd: 84, annual: 69999, indInr: 8498, saveInr: 1499 }
+  },
+  {
+    range: '₹2,00,000+',
+    label: '₹2,00,000+ / mo',
+    inr: 4599, usd: 55, inrAnnual: 45999,
+    d2c: { inr: 9899, usd: 118, annual: 98999, indInr: 12097, saveInr: 2198 },
+    business: { inr: 20999, usd: 252, annual: 209999, indInr: 24597, saveInr: 3598 },
+    creatorLaunch: { inr: 5899, usd: 70, annual: 58999, indInr: 7098, saveInr: 1199 },
+    growthPack: { inr: 7899, usd: 94, annual: 78999, indInr: 9598, saveInr: 1699 }
+  },
+  {
+    range: '₹10,00,000+ (Enterprise)',
+    label: '₹10,00,000+ (Enterprise)',
+    inr: 0, usd: 0, inrAnnual: 0, isEnterprise: true,
+    d2c: { inr: 0, usd: 0, annual: 0, indInr: 0, saveInr: 0 },
+    business: { inr: 0, usd: 0, annual: 0, indInr: 0, saveInr: 0 },
+    creatorLaunch: { inr: 0, usd: 0, annual: 0, indInr: 0, saveInr: 0 },
+    growthPack: { inr: 0, usd: 0, annual: 0, indInr: 0, saveInr: 0 }
+  }
 ];
 
 export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
@@ -316,6 +377,44 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
           </div>
 
+        {/* GLOBAL MONTHLY AD SPEND SELECTOR BAR */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          margin: '0 auto 28px auto',
+          padding: '10px 20px',
+          background: 'rgba(124, 117, 255, 0.08)',
+          border: '1px solid rgba(124, 117, 255, 0.3)',
+          borderRadius: '16px',
+          maxWidth: '620px'
+        }}>
+          <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Layers size={14} /> Select Monthly Ad Spend Range:
+          </span>
+          <select
+            value={adSpendIndex}
+            onChange={(e) => setAdSpendIndex(Number(e.target.value))}
+            style={{
+              background: '#0b0b14',
+              border: '1.5px solid #7C75FF',
+              borderRadius: '8px',
+              color: '#ffffff',
+              padding: '6px 12px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              outline: 'none',
+              flex: 1
+            }}
+          >
+            {AD_SPEND_TIERS.map((tier, idx) => (
+              <option key={idx} value={idx} style={{ background: '#0b0b14', color: '#fff' }}>
+                {tier.range} {tier.isEnterprise ? '(Enterprise Quote)' : `(${currency === 'USD' ? `$${tier.usd}/mo` : `₹${tier.inr.toLocaleString('en-IN')}/mo`})`}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* CATEGORY NAV TABS (SELECTION GREEN - NON SELECTION PURE WHITE) */}
@@ -407,16 +506,22 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>D2C Growth Pack ⭐</h3>
 
                   <div style={{ fontSize: '36px', color: '#FFB300', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(8999, 108, 89999)}
+                    {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
+                      <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
+                    ) : (
+                      formatPrice(AD_SPEND_TIERS[adSpendIndex].d2c.inr, AD_SPEND_TIERS[adSpendIndex].d2c.usd, AD_SPEND_TIERS[adSpendIndex].d2c.annual)
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹2,499 + ₹3,499 + ₹4,999 = ₹10,997/mo</span>
+                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹2,499 + ₹{AD_SPEND_TIERS[adSpendIndex].inr.toLocaleString('en-IN')} + ₹4,999 = ₹{AD_SPEND_TIERS[adSpendIndex].d2c.indInr.toLocaleString('en-IN')}/mo</span>
                     </div>
-                    <div style={{ fontSize: '12.5px', color: '#FFB300', fontWeight: 700 }}>
-                      🔥 Save ₹1,998/month (~18% OFF)
-                    </div>
+                    {!AD_SPEND_TIERS[adSpendIndex].isEnterprise && (
+                      <div style={{ fontSize: '12.5px', color: '#FFB300', fontWeight: 700 }}>
+                        🔥 Save ₹{AD_SPEND_TIERS[adSpendIndex].d2c.saveInr.toLocaleString('en-IN')}/month
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ fontSize: '12px', color: '#FFB300', fontWeight: 700, marginBottom: '20px', background: 'rgba(255,179,0,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
@@ -425,13 +530,13 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Pro</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager ({AD_SPEND_TIERS[adSpendIndex].range})</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Starter</strong></li>
                   </ul>
                 </div>
 
                 <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '32px', padding: '14px', fontSize: '14px' }}>
-                  Get D2C Growth Pack
+                  {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? 'Contact Enterprise Sales' : 'Get D2C Growth Pack'}
                 </GlowButton>
               </div>
 
@@ -449,16 +554,22 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>All-in-One Business Suite</h3>
 
                   <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(19999, 240, 199999)}
+                    {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
+                      <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
+                    ) : (
+                      formatPrice(AD_SPEND_TIERS[adSpendIndex].business.inr, AD_SPEND_TIERS[adSpendIndex].business.usd, AD_SPEND_TIERS[adSpendIndex].business.annual)
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹4,999 + ₹3,499 + ₹14,999 = ₹23,497/mo</span>
+                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹4,999 + ₹{AD_SPEND_TIERS[adSpendIndex].inr.toLocaleString('en-IN')} + ₹14,999 = ₹{AD_SPEND_TIERS[adSpendIndex].business.indInr.toLocaleString('en-IN')}/mo</span>
                     </div>
-                    <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
-                      🔥 Save ₹3,498/month (~15% OFF)
-                    </div>
+                    {!AD_SPEND_TIERS[adSpendIndex].isEnterprise && (
+                      <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
+                        🔥 Save ₹{AD_SPEND_TIERS[adSpendIndex].business.saveInr.toLocaleString('en-IN')}/month
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
@@ -467,14 +578,14 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Business</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager ({AD_SPEND_TIERS[adSpendIndex].range})</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Growth</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Full Claude Analytics Recommendations & Social Hub</li>
                   </ul>
                 </div>
 
                 <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
-                  Get Business Suite
+                  {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? 'Contact Enterprise Sales' : 'Get Business Suite'}
                 </button>
               </div>
 
@@ -556,16 +667,22 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Creator Launch Pack</h3>
                   
                   <div style={{ fontSize: '36px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(4999, 59, 49999)}
+                    {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
+                      <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
+                    ) : (
+                      formatPrice(AD_SPEND_TIERS[adSpendIndex].creatorLaunch.inr, AD_SPEND_TIERS[adSpendIndex].creatorLaunch.usd, AD_SPEND_TIERS[adSpendIndex].creatorLaunch.annual)
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹2,499 + ₹3,499 = ₹5,998/mo</span>
+                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹2,499 + ₹{AD_SPEND_TIERS[adSpendIndex].inr.toLocaleString('en-IN')} = ₹{AD_SPEND_TIERS[adSpendIndex].creatorLaunch.indInr.toLocaleString('en-IN')}/mo</span>
                     </div>
-                    <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
-                      🔥 Save ₹999/month (~17% OFF)
-                    </div>
+                    {!AD_SPEND_TIERS[adSpendIndex].isEnterprise && (
+                      <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
+                        🔥 Save ₹{AD_SPEND_TIERS[adSpendIndex].creatorLaunch.saveInr.toLocaleString('en-IN')}/month
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
@@ -574,13 +691,13 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Creative Studio Pro</strong></li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager ({AD_SPEND_TIERS[adSpendIndex].range})</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Claude Analytics Recommendations</li>
                   </ul>
                 </div>
 
                 <GlowButton variant="glow" onClick={onComplete} style={{ marginTop: '32px', padding: '14px', fontSize: '14px' }}>
-                  Get Creator Launch Pack
+                  {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? 'Contact Enterprise Sales' : 'Get Creator Launch Pack'}
                 </GlowButton>
               </div>
 
@@ -601,27 +718,33 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </p>
 
                   <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(6999, 84, 69999)}
+                    {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
+                      <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
+                    ) : (
+                      formatPrice(AD_SPEND_TIERS[adSpendIndex].growthPack.inr, AD_SPEND_TIERS[adSpendIndex].growthPack.usd, AD_SPEND_TIERS[adSpendIndex].growthPack.annual)
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
                     <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹3,499 + ₹4,999 = ₹8,498/mo</span>
+                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹{AD_SPEND_TIERS[adSpendIndex].inr.toLocaleString('en-IN')} + ₹4,999 = ₹{AD_SPEND_TIERS[adSpendIndex].growthPack.indInr.toLocaleString('en-IN')}/mo</span>
                     </div>
-                    <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
-                      🔥 Save ₹1,499/month (~18% OFF)
-                    </div>
+                    {!AD_SPEND_TIERS[adSpendIndex].isEnterprise && (
+                      <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
+                        🔥 Save ₹{AD_SPEND_TIERS[adSpendIndex].growthPack.saveInr.toLocaleString('en-IN')}/month
+                      </div>
+                    )}
                   </div>
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager Pro</strong></li>
+                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>Campaign Manager ({AD_SPEND_TIERS[adSpendIndex].range})</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> <strong>SEO & GEO Starter</strong></li>
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Full Analytics & Reports</li>
                   </ul>
                 </div>
 
                 <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
-                  Get Growth Pack
+                  {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? 'Contact Enterprise Sales' : 'Get Growth Pack'}
                 </button>
               </div>
 
