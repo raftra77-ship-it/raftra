@@ -500,7 +500,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             </div>
           </div>
         </div>
-      </      {/* Solution Section (Unified Growth OS Redesign) */}
+      </section>
+
+      {/* Solution Section (Unified Growth OS Redesign) */}
       <section id="solution" className="section-container" style={{ scrollMarginTop: '100px' }}>
         <span className="section-tag" style={{ color: '#00E676', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
           THE SOLUTION
