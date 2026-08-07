@@ -6,7 +6,7 @@ import {
   FileText, Award, DollarSign, Users, Sparkles
 } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
-import { useNavigate } from 'react-router-down';
+import { useNavigate } from 'react-router-dom';
 
 export const FeatureSocial = () => {
   const navigate = useNavigate();

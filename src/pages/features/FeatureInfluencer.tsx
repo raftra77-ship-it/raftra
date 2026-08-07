@@ -1,215 +1,408 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users2, Bot, CheckCircle2, ShieldCheck, UserCheck, Star, Activity, MapPin } from 'lucide-react';
+import { 
+  Users2, Bot, CheckCircle2, ShieldCheck, UserCheck, Star, Activity, MapPin, 
+  ArrowRight, Search, DollarSign, MessageSquare, Zap, FileText, Check, Award,
+  Lock, Sparkles
+} from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
-import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
+import { useNavigate } from 'react-router-dom';
 
 export const FeatureInfluencer = () => {
-  const influencerExplainerSteps = [
+  const navigate = useNavigate();
+  const [inviteSent, setInviteSent] = useState(false);
+
+  const whatYouCanDo = [
     {
-      title: "1. AI Creator Discovery & Fake Follower Audit",
-      agent: "Creator Discovery Agent",
-      description: "Crawls Instagram, YouTube & Facebook to index creators by niche, engagement authenticity, and fake follower ratios.",
-      badge: "VERIFIED CREATORS",
-      visualType: "influencer_escrow" as const,
-      metrics: [
-        { label: "Authenticity", value: "98%", color: "#00E676" },
-        { label: "Fake Follower Check", value: "Passed", color: "#5A52FF" }
-      ]
+      title: "Discover Verified Creators",
+      desc: "Search creators across multiple niches and platforms using advanced filters like location, reach, and budget.",
+      icon: <Users2 size={28} color="#00D2FF" />
     },
     {
-      title: "2. Brand Fit Scoring & Easy Hiring",
-      agent: "Pricing Intelligence Agent",
-      description: "Calculates an instant Brand Fit Score and calculates fair market rate recommendations for easy creator hiring.",
-      badge: "SCORED MATCH",
-      visualType: "influencer_escrow" as const,
-      metrics: [
-        { label: "Brand Fit Score", value: "96 / 100", color: "#00E676" },
-        { label: "Base Rate", value: "₹15,000 / Reel", color: "#FFBD2E" }
-      ]
+      title: "Verify Audience Quality",
+      desc: "Analyze audience authenticity, engagement quality, demographics, and fake follower percentage before hiring.",
+      icon: <ShieldCheck size={28} color="#00E676" />
     },
     {
-      title: "3. Easy Direct Escrow Deal Lock & Content Delivery",
-      agent: "Campaign Collaboration Agent",
-      description: "Locks deal contracts securely in escrow with automated platform commission processing and direct video deliverable review.",
-      badge: "DEAL LOCKED",
-      visualType: "influencer_escrow" as const,
-      metrics: [
-        { label: "Escrow Status", value: "Secured", color: "#00E676" },
-        { label: "Platform Fee", value: "10%", color: "#5A52FF" }
-      ]
+      title: "Find Your Best Match",
+      desc: "AI compares creators with your brand, target audience, campaign goals, and previous collaborations to generate a Brand Fit Score.",
+      icon: <Bot size={28} color="#FFB300" />
+    },
+    {
+      title: "Collaborate Easily",
+      desc: "Negotiate pricing, discuss deliverables, and finalize campaigns through Raftra's secure collaboration workspace.",
+      icon: <MessageSquare size={28} color="#7C75FF" />
+    },
+    {
+      title: "Track Deliverables",
+      desc: "Manage campaign progress, review submitted content, and approve completed deliverables before releasing funds.",
+      icon: <FileText size={28} color="#FF5296" />
+    },
+    {
+      title: "Secure Payments",
+      desc: "Creators submit payout requests after campaign completion, while brands verify delivery before manual team approval.",
+      icon: <DollarSign size={28} color="#A855F7" />
     }
   ];
+
+  const featuresIncluded = [
+    "Verified Creator Profiles", "AI Creator Discovery", "Smart Search & Filters", "Audience Authenticity Analysis",
+    "Fake Follower Detection", "Engagement Quality Analysis", "Brand Match Score", "Campaign Fit Prediction",
+    "Collaboration Workspace", "Secure Chat", "Deliverable Tracking", "Brand Approval Workflow",
+    "Campaign Timeline", "Contract Management", "Payout Requests", "Portfolio & Previous Campaigns",
+    "Creator Performance History", "Saved Creator Lists", "Team Collaboration"
+  ];
+
+  const howItWorksFlow = [
+    { step: "01", title: "Search Creators", desc: "Filter by Platform, Niche, Location, Followers & Budget." },
+    { step: "02", title: "AI Audit & Verification", desc: "Checks Audience Authenticity, Engagement Quality & Fake Followers." },
+    { step: "03", title: "Brand Fit Score", desc: "AI calculates match score based on campaign goals & demographics." },
+    { step: "04", title: "Start Collaboration", desc: "Negotiate requirements, timelines, pricing & deliverables in chat." },
+    { step: "05", title: "Submit Deliverables", desc: "Creator uploads UGC Videos, Reels, Stories & Photos." },
+    { step: "06", title: "Review & Payout", desc: "Brand approves work and creator requests secure payout." }
+  ];
+
   return (
-    <div style={{ animation: 'fadeIn 0.5s ease' }}>
+    <div style={{ animation: 'fadeIn 0.5s ease', color: '#fff' }}>
       
-      {/* Header */}
+      {/* HERO SECTION */}
       <div style={{ textAlign: 'center', marginBottom: '64px' }}>
-        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: 'rgba(0,210,255,0.1)', borderRadius: '100px', border: '1px solid rgba(0,210,255,0.2)', marginBottom: '24px' }}>
-          <Users2 size={16} color="#00d2ff" />
-          <span style={{ fontSize: '14px', fontWeight: '600', color: '#00d2ff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>AI Matching</span>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8 }} 
+          animate={{ opacity: 1, scale: 1 }} 
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 24px', background: 'rgba(0,210,255,0.12)', borderRadius: '100px', border: '1px solid rgba(0,210,255,0.3)', marginBottom: '24px' }}
+        >
+          <Users2 size={18} color="#00D2FF" />
+          <span style={{ fontSize: '15px', fontWeight: 700, color: '#00D2FF', letterSpacing: '0.06em', textTransform: 'uppercase' }}>INFLUENCER MARKETPLACE</span>
         </motion.div>
-        <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ fontSize: '48px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
-          Influencer Marketplace
+        
+        <motion.h1 
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} 
+          style={{ fontSize: '60px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.8))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.15, fontWeight: 800 }}
+        >
+          Discover, Hire & Manage Verified Creators — All in One Workspace
         </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '950px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
-          Discover verified creators, review profiles, negotiate collaborations, and manage campaigns from one workspace. Brands can hire influencers or UGC creators, while creators receive verified opportunities and performance tracking.
+
+        <motion.p 
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} 
+          style={{ color: 'var(--text-secondary)', fontSize: '22px', maxWidth: '1050px', margin: '0 auto 40px auto', lineHeight: 1.6 }}
+        >
+          Find the right influencers, verify audience authenticity, negotiate deals, track deliverables, and manage collaborations from discovery to payout without leaving Raftra.
         </motion.p>
 
-        {/* INCLUDES TAGS */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', maxWidth: '1000px', margin: '0 auto' }}>
-          {["Verified Creators", "Smart Search & Filters", "Brand Collaboration", "Secure Chat", "Campaign Tracking", "Deliverable Management", "Contract Workflow", "Secure Payout Requests"].map((tag, i) => (
-            <span key={i} style={{ background: 'rgba(255,71,87,0.12)', border: '1px solid rgba(255,71,87,0.3)', color: '#ffffff', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600 }}>
-              ✓ {tag}
-            </span>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' }}>
+          <GlowButton variant="glow" onClick={() => navigate('/dashboard')} style={{ fontSize: '17px', padding: '16px 36px' }}>
+            Find Your Next Creator <ArrowRight size={18} />
+          </GlowButton>
+        </div>
+      </div>
+
+      {/* STREAMLINED WORKSPACE OVERVIEW */}
+      <section style={{ marginBottom: '80px' }}>
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.08) 0%, rgba(10, 10, 16, 0.98) 100%)',
+          border: '1px solid rgba(0, 210, 255, 0.3)',
+          borderRadius: '24px',
+          padding: '44px 56px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
+        }}>
+          <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', margin: '0 0 20px 0', color: '#fff', fontWeight: 800 }}>
+            Intelligent Creator Matching & Escrow Collaboration
+          </h2>
+          <p style={{ fontSize: '18.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.7, margin: '0 0 24px 0' }}>
+            Influencer Marketplace connects brands with verified creators through intelligent matching, audience verification, and collaboration management. Instead of manually searching Instagram, YouTube, spreadsheets, and DMs, Raftra helps brands discover creators based on niche, audience quality, engagement, location, pricing, and campaign goals.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '17px', color: '#00E676', fontWeight: 600 }}>
+            <CheckCircle2 size={22} color="#00E676" style={{ flexShrink: 0 }} /> 
+            <span>From the first search to final payout, every collaboration is managed inside a single workspace.</span>
+          </div>
+        </div>
+      </section>
+
+      {/* WHAT YOU CAN DO (6 CARDS GRID) */}
+      <section style={{ marginBottom: '80px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '44px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 800, color: '#00D2FF', letterSpacing: '0.12em', textTransform: 'uppercase' }}>CORE FEATURES</span>
+          <h2 style={{ fontSize: '42px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>What You Can Do</h2>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px' }}>
+          {whatYouCanDo.map((item, idx) => (
+            <div 
+              key={idx}
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '20px',
+                padding: '36px',
+                display: 'flex',
+                gap: '20px',
+                alignItems: 'flex-start'
+              }}
+            >
+              <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {item.icon}
+              </div>
+              <div>
+                <h3 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px', color: '#fff' }}>{item.title}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '16.5px', lineHeight: 1.6, margin: 0 }}>{item.desc}</p>
+              </div>
+            </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Info Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px', marginBottom: '64px' }}>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glow-card" style={{ padding: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: 'var(--primary)' }}><Bot size={20} /> AI Agents Used</h3>
-            <span style={{ background: 'rgba(90,82,255,0.2)', color: 'var(--primary)', padding: '4px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 'bold' }}>6 AGENTS</span>
-          </div>
-          <ul style={{ padding: 0, margin: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', color: '#ccc' }}>
-            {["Creator Discovery Agent", "Audience Verification Agent", "Fake Follower Detection Agent", "Brand Match Agent", "Pricing Intelligence Agent", "Campaign Collaboration Agent"].map((agent, i) => (
-              <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}><CheckCircle2 size={16} color="var(--primary)" /> {agent}</li>
+      {/* HOW IT WORKS: CONNECTED ARROW STEPPER */}
+      <section style={{ marginBottom: '80px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '44px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 800, color: '#00D2FF', letterSpacing: '0.12em', textTransform: 'uppercase' }}>WORKFLOW FLOW</span>
+          <h2 style={{ fontSize: '42px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>How It Works</h2>
+        </div>
+
+        <div style={{
+          background: 'rgba(0,0,0,0.4)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '24px',
+          padding: '48px 40px'
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '28px', position: 'relative' }}>
+            {howItWorksFlow.map((s, idx) => (
+              <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 900, color: '#00D2FF', background: 'rgba(0,210,255,0.15)', padding: '6px 14px', borderRadius: '100px', letterSpacing: '0.08em' }}>
+                    STEP {s.step}
+                  </span>
+                  {idx !== howItWorksFlow.length - 1 && (
+                    <ArrowRight size={20} color="rgba(255,255,255,0.3)" style={{ display: 'block' }} />
+                  )}
+                </div>
+                <h3 style={{ fontSize: '21px', fontWeight: 700, color: '#fff', margin: 0 }}>{s.title}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15.5px', lineHeight: 1.55, margin: 0 }}>{s.desc}</p>
+              </div>
             ))}
-          </ul>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="glow-card" style={{ padding: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: '#00d2ff' }}>How it works</h3>
-            <span style={{ background: 'rgba(0,210,255,0.2)', color: '#00d2ff', padding: '4px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 'bold' }}>SCORED MATCHING</span>
           </div>
-          <ul style={{ padding: 0, margin: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', color: '#ccc' }}>
-            {["Search creators by niche and platform", "Analyze audience authenticity", "Calculate engagement quality", "Generate Brand Fit Score", "Predict campaign success potential", "Manage collaboration from one workspace"].map((step, i) => (
-              <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', fontSize: '14px' }}>
-                <span style={{ background: 'rgba(255,255,255,0.1)', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', fontSize: '10px', flexShrink: 0, marginTop: '2px' }}>{i + 1}</span> 
-                {step}
-              </li>
-            ))}
-          </ul>
-        </motion.div>
+        </div>
+      </section>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="glow-card" style={{ padding: '32px', background: 'rgba(0,210,255,0.05)' }}>
-          <h3 style={{ fontSize: '20px', marginBottom: '16px', color: '#fff' }}>How it improves results</h3>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '24px', fontSize: '15px' }}>
-            Reduces time spent searching for creators and increases the chances of choosing influencers whose audience actually matches your ideal customers.
+      {/* WHY BRANDS CHOOSE vs WHY CREATORS JOIN */}
+      <section style={{ marginBottom: '80px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '32px' }}>
+        {/* For Brands */}
+        <div style={{ padding: '40px', background: 'rgba(0,210,255,0.04)', border: '1px solid rgba(0,210,255,0.25)', borderRadius: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
+            <Award size={28} color="#00D2FF" />
+            <h3 style={{ fontSize: '26px', fontWeight: 800, margin: 0 }}>Why Brands Choose Raftra</h3>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '17px', lineHeight: 1.6, marginBottom: '24px' }}>
+            Hire creator talent based on authentic audience data rather than vanity follower metrics.
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {["Better creator fit", "Less manual research", "Higher campaign potential"].map((tag, i) => (
-              <span key={i} style={{ background: 'rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '100px', fontSize: '13px', color: '#fff' }}>{tag}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+            {[
+              "Find the right creators 5x faster with AI search",
+              "Detect and avoid fake followers and bot metrics",
+              "Hire based on audience quality & engagement",
+              "Manage DMs, briefs & deliverables in 1 workspace",
+              "Maintain full campaign history & contract records",
+              "Simplify creator payouts with manual verification"
+            ].map((brandOpt, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '16px', color: '#fff' }}>
+                <Check size={18} color="#00D2FF" style={{ flexShrink: 0 }} /> {brandOpt}
+              </div>
             ))}
           </div>
-        </motion.div>
-      </div>
-
-      {/* Motion Design Explainer Video */}
-      <FeatureExplainerVideo
-        title="Influencer Marketplace & AI Matching"
-        subtitle="How Raftra AI discovers creators, verifies real audiences, and locks escrow deals."
-        badgeText="CREATOR MOTION DEMO"
-        steps={influencerExplainerSteps}
-        ctaText="Unlock Influencer Marketplace"
-      />
-
-      {/* Interactive Visual Demo */}
-      <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden', maxWidth: '800px', margin: '0 auto' }}>
-        <div style={{ padding: '24px 32px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>Match Preview <span style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 'normal' }}>| AI finds the best creators</span></h3>
-          </div>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#888' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00d2ff', boxShadow: '0 0 10px #00d2ff' }}></span> Verified audience
-          </span>
         </div>
-        
-        <div style={{ padding: '40px', background: 'radial-gradient(circle at top right, rgba(0,210,255,0.1) 0%, transparent 50%)' }}>
-          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', padding: '32px', position: 'relative', overflow: 'hidden' }}>
+
+        {/* For Creators */}
+        <div style={{ padding: '40px', background: 'rgba(0,230,118,0.04)', border: '1px solid rgba(0,230,118,0.25)', borderRadius: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
+            <UserCheck size={28} color="#00E676" />
+            <h3 style={{ fontSize: '26px', fontWeight: 800, margin: 0 }}>Why Creators Join Raftra</h3>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '17px', lineHeight: 1.6, marginBottom: '24px' }}>
+            Get discovered by top brands looking for verified creators with active campaigns.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+            {[
+              "Get discovered by brands actively hiring creators",
+              "Receive verified high-paying campaign requests",
+              "Showcase authenticated portfolio & metrics",
+              "Manage brand campaigns from one creator portal",
+              "Submit payouts securely after work approval",
+              "Free for the first 100 verified creators"
+            ].map((creatorOpt, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '16px', color: '#fff' }}>
+                <Check size={18} color="#00E676" style={{ flexShrink: 0 }} /> {creatorOpt}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURES INCLUDED LIST (STREAMLINED 2-COLUMN LIST) */}
+      <section style={{ marginBottom: '80px', background: 'rgba(255,255,255,0.02)', borderRadius: '24px', padding: '48px 56px', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ marginBottom: '32px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 800, color: '#00D2FF', letterSpacing: '0.12em', textTransform: 'uppercase' }}>FULL INVENTORY</span>
+          <h2 style={{ fontSize: '38px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>Features Included</h2>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+          {featuresIncluded.map((feat, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <CheckCircle2 size={20} color="#00E676" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: '17px', fontWeight: 600, color: '#f0f0ff' }}>{feat}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* REAL DASHBOARD INFLUENCER MARKETPLACE INTERACTIVE PREVIEW */}
+      <section style={{ marginBottom: '80px', marginTop: '40px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 800, color: '#00D2FF', letterSpacing: '0.12em', textTransform: 'uppercase' }}>INTERACTIVE DASHBOARD PREVIEW</span>
+          <h2 style={{ fontSize: '38px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>Explore Creator Matching Engine</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '17px' }}>Live creator search, brand fit score & collaboration workspace UI.</p>
+        </div>
+
+        <div style={{ background: '#0a0a0d', borderRadius: '24px', border: '1px solid rgba(0,210,255,0.3)', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
+          
+          {/* Top Dashboard Header Bar */}
+          <div style={{ padding: '20px 32px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Users2 size={20} color="#00D2FF" />
+                <span style={{ fontSize: '16px', fontWeight: 800, color: '#fff' }}>Creator Discovery Portal</span>
+              </div>
+              <span style={{ fontSize: '12px', background: 'rgba(0,230,118,0.12)', color: '#00E676', border: '1px solid rgba(0,230,118,0.3)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                ● 2,384 Verified Creators Indexed
+              </span>
+            </div>
+
+            <div style={{ fontSize: '14px', color: '#00D2FF', fontWeight: 700 }}>
+              10% Platform Commission on Completed Deals
+            </div>
+          </div>
+
+          {/* Live Creator Card Preview */}
+          <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
             
-            <div style={{ position: 'absolute', top: '0', right: '0', background: 'rgba(0,210,255,0.1)', color: '#00d2ff', padding: '8px 16px', borderBottomLeftRadius: '16px', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Star size={14} /> BEST MATCH
-            </div>
-
-            <div style={{ display: 'flex', gap: '24px', alignItems: 'center', marginBottom: '32px' }}>
-              <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#222', backgroundImage: 'url(https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&q=80)', backgroundSize: 'cover', backgroundPosition: 'center', border: '2px solid rgba(255,255,255,0.1)' }}></div>
-              <div>
-                <h2 style={{ margin: '0 0 8px 0', fontSize: '28px', color: '#fff' }}>Sarah Jain</h2>
-                <div style={{ display: 'flex', gap: '12px', color: '#888', fontSize: '14px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Star size={14} /> Lifestyle</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Activity size={14} /> Instagram</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={14} /> Delhi</span>
+            {/* Featured Creator Card */}
+            <div style={{ background: 'linear-gradient(135deg, rgba(20,20,32,0.9), rgba(10,10,16,0.98))', border: '1px solid rgba(0,210,255,0.3)', borderRadius: '20px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                  <div style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'linear-gradient(135deg, #00D2FF, #00E676)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 900, color: '#000' }}>
+                    SJ
+                  </div>
+                  <div>
+                    <h4 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: '#fff' }}>Sarah Jain</h4>
+                    <span style={{ fontSize: '13px', color: '#00D2FF', fontWeight: 600 }}>Lifestyle & Tech Creator • Delhi</span>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
-              <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', padding: '16px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#10b981' }}>92%</div>
+                <span style={{ background: 'rgba(0,230,118,0.15)', color: '#00E676', border: '1px solid rgba(0,230,118,0.4)', padding: '4px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 800 }}>
+                  94% BRAND FIT
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '12px', textAlign: 'center' }}>
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#fff' }}>Brand Fit</div>
-                  <div style={{ fontSize: '12px', color: '#888' }}>Style & tone match</div>
+                  <div style={{ fontSize: '11px', color: '#888', fontWeight: 700 }}>FOLLOWERS</div>
+                  <div style={{ fontSize: '17px', fontWeight: 800, color: '#fff' }}>128K</div>
                 </div>
-              </div>
-              <div style={{ background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.2)', padding: '16px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--primary)' }}>88%</div>
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#fff' }}>Audience Match</div>
-                  <div style={{ fontSize: '12px', color: '#888' }}>Target demographic</div>
+                  <div style={{ fontSize: '11px', color: '#888', fontWeight: 700 }}>ENGAGEMENT</div>
+                  <div style={{ fontSize: '17px', fontWeight: 800, color: '#00E676' }}>6.8%</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#888', fontWeight: 700 }}>AUTHENTICITY</div>
+                  <div style={{ fontSize: '17px', fontWeight: 800, color: '#00D2FF' }}>98%</div>
                 </div>
               </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '14px' }}>
+                <span style={{ color: '#aaa' }}>Est. Rate: <strong style={{ color: '#fff' }}>₹18,000 / Reel</strong></span>
+                <span style={{ color: '#00E676', fontWeight: 700 }}>Sales Potential: High</span>
+              </div>
+
+              <button 
+                onClick={() => setInviteSent(!inviteSent)}
+                style={{
+                  padding: '12px',
+                  background: inviteSent ? '#00E676' : 'linear-gradient(135deg, #00D2FF 0%, #0099FF 100%)',
+                  color: inviteSent ? '#000' : '#fff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontSize: '14px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                {inviteSent ? <CheckCircle2 size={16} /> : <Zap size={16} />}
+                {inviteSent ? 'Collaboration Invite Sent!' : 'Send Collaboration Invite (1-Click)'}
+              </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>128K</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>Followers</div>
+            {/* Realtime Negotiation WebChat & Escrow Funds Locked Widget */}
+            <div style={{ background: 'linear-gradient(135deg, rgba(20,20,32,0.9), rgba(10,10,16,0.98))', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              
+              {/* WebChat Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', pb: '12px', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MessageSquare size={18} color="#00D2FF" />
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>Live Deal Chat with Sarah</span>
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', color: '#00E676', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>● ONLINE</span>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>6.8%</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>Engagement</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>₹18K</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>Est. Cost</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>High</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>Sales Potential</div>
-              </div>
-            </div>
 
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px', marginBottom: '32px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ color: '#ccc', display: 'flex', alignItems: 'center', gap: '8px' }}><ShieldCheck size={16} color="var(--success)" /> Audience authenticity verified</span>
-                  <span style={{ fontWeight: 'bold' }}>97%</span>
+              {/* Chat Messages Feed */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
+                <div style={{ background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.2)', padding: '10px 14px', borderRadius: '12px 12px 12px 2px', alignSelf: 'flex-start', maxWidth: '85%' }}>
+                  <strong style={{ color: '#00D2FF', display: 'block', fontSize: '11px', marginBottom: '2px' }}>Brand Manager</strong>
+                  "Hey Sarah! We love your 6.8% engagement. Can you deliver 1 Reel + 2 Stories for ₹18,000?"
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ color: '#ccc', display: 'flex', alignItems: 'center', gap: '8px' }}><UserCheck size={16} color="var(--primary)" /> Female audience (18–34)</span>
-                  <span style={{ fontWeight: 'bold' }}>72%</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ color: '#ccc', display: 'flex', alignItems: 'center', gap: '8px' }}><Activity size={16} color="#00d2ff" /> Previous beauty & fashion campaigns</span>
-                  <span style={{ fontWeight: 'bold' }}>14</span>
+
+                <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px 14px', borderRadius: '12px 12px 2px 12px', alignSelf: 'flex-end', maxWidth: '85%' }}>
+                  <strong style={{ color: '#00E676', display: 'block', fontSize: '11px', marginBottom: '2px' }}>Sarah Jain (Creator)</strong>
+                  "Hi! Absolutely! I can deliver the Reel by Friday with custom UTM links."
                 </div>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-              <button className="btn btn-secondary" style={{ padding: '12px 24px', fontSize: '14px' }}>View Profile</button>
-              <GlowButton variant="glow" onClick={() => {}}>
-                Start Collaboration
-              </GlowButton>
+              {/* Funds Locked Escrow Banner */}
+              <div style={{ background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '14px', padding: '14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <ShieldCheck size={26} color="#00E676" style={{ flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#00E676' }}>🔒 ₹18,000 Locked in Raftra Escrow</div>
+                  <div style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.7)', marginTop: '2px' }}>Funds are safely held & only released after brand approves deliverable video.</div>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => navigate('/dashboard')}
+                style={{ padding: '12px 24px', background: '#00D2FF', color: '#000', borderRadius: '10px', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                Open Creator Hub in Dashboard <ArrowRight size={16} />
+              </button>
             </div>
 
           </div>
+
         </div>
-      </motion.div>
+      </section>
+
+      {/* FINAL CTA SECTION */}
+      <section style={{ textAlign: 'center', padding: '72px 40px', background: 'linear-gradient(180deg, rgba(0,210,255,0.12), rgba(10,10,16,0.98))', borderRadius: '28px', border: '1px solid rgba(0,210,255,0.35)' }}>
+        <h2 style={{ fontSize: '44px', fontFamily: 'var(--font-heading)', marginBottom: '18px', fontWeight: 800 }}>
+          Build Better Creator Partnerships
+        </h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '850px', margin: '0 auto 36px auto', lineHeight: 1.6 }}>
+          Discover verified creators, hire with confidence, manage collaborations, track deliverables, and grow your brand through authentic influencer marketing—all from one intelligent marketplace.
+        </p>
+        <GlowButton variant="glow" onClick={() => navigate('/dashboard')} style={{ margin: '0 auto', fontSize: '17px', padding: '16px 40px' }}>
+          Find Your Next Creator <ArrowRight size={20} />
+        </GlowButton>
+      </section>
 
     </div>
   );
