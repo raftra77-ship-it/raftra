@@ -30,7 +30,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       const custom = JSON.parse(customCardStr);
       let matched = false;
       const updatedList = list.map(c => {
-        if (c.handle === custom.handle || c.name === custom.name || c.id === 'creator_11' || c.id === custom.id) {
+        if (c.handle === custom.handle || c.name === custom.name || c.id === custom.id) {
           matched = true;
           const deliverables = Array.from(new Set(['UGC Video', ...(custom.deliverables || c.deliverables || ['Reel', 'Story'])]));
           return { ...c, ...custom, deliverables };

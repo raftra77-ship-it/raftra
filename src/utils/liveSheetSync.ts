@@ -276,11 +276,15 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
 
     const dataRows = rows.slice(1);
     const creators: InfluencerItemExtended[] = [];
+    // Track seen handles + emails to deduplicate
+    const seenHandles = new Set<string>();
+    const seenEmails = new Set<string>();
+    let uniqueIdx = 0;
 
-    dataRows.forEach((row, idx) => {
+    dataRows.forEach((row) => {
       if (!row || row.length < 3) return;
 
-      const email = row[1] ? row[1].trim() : '';
+      const email = row[1] ? row[1].trim().toLowerCase() : '';
       const name = row[2] ? row[2].trim() : '';
       const brand = row[3] ? row[3].trim() : '';
       const phone = row[5] ? row[5].trim() : '';
@@ -294,6 +298,15 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
       if (!name && !brand && !profileLink) return;
 
       const handle = extractHandle(profileLink, brand || name);
+      const handleKey = handle.toLowerCase().replace('@', '');
+
+      // --- DEDUPLICATE: skip if we've already seen this handle or email ---
+      if (seenHandles.has(handleKey)) return;
+      if (email && seenEmails.has(email)) return;
+
+      seenHandles.add(handleKey);
+      if (email) seenEmails.add(email);
+
       const followers = parseFollowers(metrics, handle, name);
       const { expectedPrice } = parsePricingDetails(col11Price, handle, name);
       const avgViews = parseReach(metrics, handle, name);
@@ -301,14 +314,17 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
       const cat = getCategory(followers);
 
       const textFull = `${col11Price} ${col12Offer}`.toLowerCase();
-      const isUGC = idx + 1 <= 21 || textFull.includes('ugc') || textFull.includes('video') || textFull.includes('reel') || !textFull;
+      const isUGC = uniqueIdx < 21 || textFull.includes('ugc') || textFull.includes('video') || textFull.includes('reel') || !textFull;
       const deliverables = isUGC ? ["UGC Video", "Reel", "Story", "Static Post"] : ["Reel", "Story", "Static Post"];
 
+      // Use stable handle-based ID so same person always gets same ID regardless of row position
+      const stableId = `creator_gs_${handleKey.replace(/[^a-z0-9]/g, '_')}`;
+
       creators.push({
-        id: `creator_${idx + 1}`,
-        name: name || brand || `Creator ${idx + 1}`,
+        id: stableId,
+        name: name || brand || `Creator ${uniqueIdx + 1}`,
         handle,
-        avatar: getAvatar(name, idx),
+        avatar: getAvatar(name, uniqueIdx),
         platform: 'Instagram',
         niche: niche || 'Lifestyle',
         allNiches: [niche || 'Lifestyle'],
@@ -329,6 +345,8 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
         ],
         profileLink
       });
+
+      uniqueIdx++;
     });
 
     return creators;
