@@ -299,6 +299,10 @@ class SearchConsoleConnection(Base):
     access_token = Column(String, nullable=True)
     token_expiry = Column(DateTime, nullable=True)
     scopes = Column(String, nullable=True)
+    # The single "Connect Google" grant covers GA4 too (see core/search_console.py SCOPES),
+    # so the selected GA4 property lives on this same connection rather than a second row.
+    ga4_property_id = Column(String, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)  # last time Search Console data was pulled
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -357,6 +361,12 @@ class MetaAdsConnection(Base):
     token_expiry = Column(DateTime, nullable=True)
     connected_name = Column(String, nullable=True)   # connected Meta user
     ad_account_id = Column(String, nullable=True)    # selected act_ id (without prefix)
+    # Every ad creative must be attributed to a Facebook Page — an ad cannot be created
+    # without one, so this is required before publishing (not just nice to have).
+    page_id = Column(String, nullable=True)
+    page_name = Column(String, nullable=True)
+    # Default destination URL for ads; falls back to the workspace's company_url.
+    default_link_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

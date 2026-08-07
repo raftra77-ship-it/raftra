@@ -204,6 +204,17 @@ class PublishCampaignRequest(BaseModel):
     """Which platforms to publish to. Omit to publish to every platform that is set up."""
     platforms: Optional[List[str]] = None      # e.g. ["meta"], ["google"], ["meta","google"]
 
+    # Creative for the real Meta ad. Each falls back to the campaign's own
+    # strategy (campaign.metrics) when omitted, so an older client that sends
+    # only `platforms` still works.
+    image_url: Optional[str] = None            # https URL or a data: URL from an upload
+    headline: Optional[str] = None
+    primary_text: Optional[str] = None
+    cta: Optional[str] = None
+    link_url: Optional[str] = None             # falls back to the connection / workspace URL
+    country: Optional[str] = None              # ISO-2, defaults to IN
+    meta_placements: Optional[List[str]] = None  # defaults to ["facebook", "instagram"]
+
 
 class PlatformsBody(BaseModel):
     """Which platforms this campaign targets."""

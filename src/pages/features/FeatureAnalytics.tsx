@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, Bot, CheckCircle2, MessageSquare, Loader2, AlertTriangle, ArrowRightLeft, Sparkles, Check } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
@@ -21,8 +21,8 @@ export const FeatureAnalytics = () => {
       visualType: "analytics_chart" as const,
       metrics: [
         { label: "Blended ROAS", value: "4.8x", color: "#00E676" },
-        { label: "Total Spend", value: "₹9,80,000", color: "#fff" },
-        { label: "Net Revenue", value: "₹47,00,000", color: "#5A52FF" }
+        { label: "Total Spend", value: "â‚¹9,80,000", color: "#fff" },
+        { label: "Net Revenue", value: "â‚¹47,00,000", color: "#5A52FF" }
       ]
     },
     {
@@ -43,7 +43,7 @@ export const FeatureAnalytics = () => {
       badge: "ACTION EXECUTED",
       visualType: "analytics_chart" as const,
       metrics: [
-        { label: "Budget Rebalanced", value: "₹12,000 / day", color: "#00E676" },
+        { label: "Budget Rebalanced", value: "â‚¹12,000 / day", color: "#00E676" },
         { label: "Execution Status", value: "Success", color: "#5A52FF" }
       ]
     }
@@ -202,7 +202,7 @@ export const FeatureAnalytics = () => {
                       </div>
                       <span style={{ background: 'rgba(16,185,129,0.2)', color: '#10b981', padding: '2px 8px', borderRadius: '100px', fontSize: '11px', textTransform: 'uppercase' }}>Recommended</span>
                     </div>
-                    <p style={{ margin: 0, fontSize: '14px', color: '#ccc' }}>Move ₹15,000 from Campaign A to Campaign C. Estimated impact: <span style={{ color: 'var(--success)' }}>+22% ROAS</span>.</p>
+                    <p style={{ margin: 0, fontSize: '14px', color: '#ccc' }}>Move â‚¹15,000 from Campaign A to Campaign C. Estimated impact: <span style={{ color: 'var(--success)' }}>+22% ROAS</span>.</p>
                   </div>
 
                   {/* Next Action */}
@@ -211,7 +211,7 @@ export const FeatureAnalytics = () => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '15px' }}>
                         <Bot size={18} /> Suggested Next Action
                       </div>
-                      <span style={{ background: 'rgba(90,82,255,0.2)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '100px', fontSize: '11px', textTransform: 'uppercase' }}>Auto-ready • 5 min</span>
+                      <span style={{ background: 'rgba(90,82,255,0.2)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '100px', fontSize: '11px', textTransform: 'uppercase' }}>Auto-ready â€¢ 5 min</span>
                     </div>
                     <p style={{ margin: 0, fontSize: '14px', color: '#ccc' }}>Replace video hook and refresh CTA copy for Campaign A creatives.</p>
                   </div>

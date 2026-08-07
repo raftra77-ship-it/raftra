@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Eye, Check, Send, Trash, Edit3, Save } from 'lucide-react';
-import { GlowButton } from '../GlowButton';
+import { Sparkles, Eye, Check, Trash, Edit3, Save } from 'lucide-react';
 
 interface CreativeAsset {
   id: string;
@@ -32,7 +31,6 @@ interface WorkspaceCreativeProps {
 }
 
 export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
-  brandUrl,
   assets,
   onOpenReview,
   onGenerate,
@@ -197,7 +195,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       formData.append('file', file);
       
       const token = localStorage.getItem('token');
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
       
       try {
         const res = await fetch(`/api/workspaces/${workspaceId}/upload`, {

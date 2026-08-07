@@ -164,11 +164,12 @@ export const WordPressPanel: React.FC<{ workspaceId: number | null }> = ({ works
     if (!r.ok) { setMsg('Could not change the auto-apply setting.'); loadStatus(); return; }
     if (!enabled) { setMsg('Auto-apply is off — approved fixes wait for you to press Apply.'); return; }
     const d = await r.json().catch(() => ({}));
-    // Turning it on applies whatever is already approved, so report what actually happened
-    // rather than a generic "setting saved".
-    setMsg(d.applied
-      ? `Auto-apply is on. ${d.message || 'Applied your approved fixes.'}`
-      : `Auto-apply is on, but nothing was applied yet: ${d.message || 'no approved fixes for this site.'}`);
+    // Turning it on stages whatever is already approved, so report what is actually waiting
+    // rather than a generic "setting saved". Nothing is written until the user confirms the
+    // before/after preview.
+    setMsg(d.prepared
+      ? `Auto-apply is on. ${d.message || 'Changes are ready.'} Review the before/after and confirm to publish.`
+      : `Auto-apply is on, but nothing is ready yet: ${d.message || 'no approved fixes for this site.'}`);
   };
 
   const disconnect = async () => {

@@ -902,6 +902,68 @@ const UniversalFixPreview: React.FC<{ fix: any }> = ({ fix }) => {
   );
 };
 
+// Per-change before/after for WordPress content edits. Shows only the changed region —
+// the backend returns the targeted node's old and new HTML, never the whole page, so a
+// small fix stays reviewable instead of becoming a wall of markup.
+const ContentChangeDiff: React.FC<{ changes: any[]; manualReview: any[] }> = ({ changes, manualReview }) => {
+  const [open, setOpen] = React.useState<number | null>(changes.length === 1 ? 0 : null);
+  if (!changes.length && !manualReview.length) return null;
+
+  const ACTION_LABEL: Record<string, string> = { replace: 'Replaces', insert: 'Inserts', delete: 'Deletes' };
+  return (
+    <div style={{ marginTop: '9px' }}>
+      {changes.length > 0 && (
+        <div style={{ fontSize: '11px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
+          {changes.length} content change{changes.length === 1 ? '' : 's'} ready
+        </div>
+      )}
+      {changes.map((c, i) => (
+        <div key={i} style={{ border: '1px solid var(--border-color)', borderRadius: '7px', marginBottom: '6px', overflow: 'hidden' }}>
+          <button onClick={() => setOpen(o => (o === i ? null : i))}
+            style={{ width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: 'none', cursor: 'pointer', padding: '7px 9px', display: 'flex', alignItems: 'center', gap: '7px', color: '#fff', font: 'inherit', fontSize: '11px' }}>
+            <span style={{ fontWeight: 700, color: '#00ff9d', flexShrink: 0 }}>{i + 1}.</span>
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {c.fix || c.reason}
+            </span>
+            <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', flexShrink: 0 }}>
+              {ACTION_LABEL[c.action] || c.action} &lt;{c.target_tag}&gt;
+            </span>
+            <ChevronDown size={12} style={{ flexShrink: 0, transform: open === i ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+          </button>
+          {open === i && (
+            <div style={{ padding: '9px', fontSize: '10.5px', fontFamily: 'var(--font-mono, monospace)' }}>
+              {c.reason && (
+                <div style={{ fontFamily: 'inherit', fontSize: '10.5px', color: 'var(--text-secondary)', marginBottom: '7px' }}>{c.reason}</div>
+              )}
+              <div style={{ color: '#ff5c5c', fontWeight: 700, marginBottom: '3px' }}>BEFORE</div>
+              <pre style={{ margin: '0 0 8px', padding: '7px', background: 'rgba(255,92,92,0.07)', border: '1px solid rgba(255,92,92,0.2)', borderRadius: '5px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#e6a4a4', maxHeight: '160px', overflow: 'auto' }}>
+                {c.before || '(nothing — this is new content)'}
+              </pre>
+              <div style={{ color: '#00ff9d', fontWeight: 700, marginBottom: '3px' }}>AFTER</div>
+              <pre style={{ margin: 0, padding: '7px', background: 'rgba(0,255,157,0.07)', border: '1px solid rgba(0,255,157,0.2)', borderRadius: '5px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#9fe6c4', maxHeight: '200px', overflow: 'auto' }}>
+                {c.after || '(removed)'}
+              </pre>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {manualReview.length > 0 && (
+        <div style={{ marginTop: '8px', padding: '8px 10px', background: 'rgba(255,174,0,0.08)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '7px' }}>
+          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#ffae00', marginBottom: '5px' }}>
+            {manualReview.length} need{manualReview.length === 1 ? 's' : ''} manual review — not applied
+          </div>
+          {manualReview.map((m, i) => (
+            <div key={i} style={{ fontSize: '10.5px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '3px' }}>
+              <span style={{ color: '#fff' }}>{m.fix || m.target || 'Change'}</span> — {m.error}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey: string; highlight?: boolean }> = ({ workspaceId, refreshKey, highlight }) => {
   const [items, setItems] = React.useState<any[]>([]);
   const [st, setSt] = React.useState<{ gh?: any; wp?: any; sh?: any }>({});
@@ -1013,7 +1075,7 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
   // page title/content (fields WP core genuinely supports), never a guessed SEO-plugin field.
   const [wpPreview, setWpPreview] = React.useState<any>(null);
   const [wpBusy, setWpBusy] = React.useState<'preview' | 'apply' | null>(null);
-  const [wpResult, setWpResult] = React.useState<{ ok: boolean; msg: string; url?: string; needsApproval?: boolean } | null>(null);
+  const [wpResult, setWpResult] = React.useState<{ ok: boolean; msg: string; url?: string; needsApproval?: boolean; revisionId?: number } | null>(null);
 
   const previewWordPress = async () => {
     if (!workspaceId) return;
@@ -1040,9 +1102,29 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
         method: 'POST', headers: authHeaders(), body: JSON.stringify({ page_id: wpPreview.page?.id }),
       });
       const d = await r.json();
-      if (r.ok) { setWpResult({ ok: true, msg: d.message || 'Updated in WordPress.', url: d.edit_url }); setWpPreview(null); }
-      else setWpResult({ ok: false, msg: d.detail || 'Could not update WordPress.' });
+      if (r.ok) {
+        // Keep the revision id so Undo is available right here, at the moment the user is
+        // looking at the result — not only buried in the connector panel's history list.
+        setWpResult({ ok: true, msg: d.message || 'Updated in WordPress.', url: d.edit_url,
+                      revisionId: d.revision_id });
+        setWpPreview(null);
+      } else setWpResult({ ok: false, msg: d.detail || 'Could not update WordPress.' });
     } catch { setWpResult({ ok: false, msg: 'Could not reach the server.' }); }
+    setWpBusy(null);
+  };
+
+  const undoWordPress = async (revisionId?: number) => {
+    if (!workspaceId) return;
+    setWpBusy('apply');
+    try {
+      const r = await fetch(`/api/connectors/wordpress/${workspaceId}/undo`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ revision_id: revisionId ?? null }),
+      });
+      const d = await r.json();
+      setWpResult(r.ok
+        ? { ok: true, msg: d.message || 'Change successfully undone.', url: d.edit_url }
+        : { ok: false, msg: d.detail || 'Could not undo that change.' });
+    } catch { setWpResult({ ok: false, msg: 'Could not reach the server to undo.' }); }
     setWpBusy(null);
   };
 
@@ -1284,13 +1366,22 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                 ) : (
                   <div style={{ fontSize: '11px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 11px' }}>
                     <div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Proposed for <b style={{ color: '#fff' }}>{wpPreview.page?.title}</b>:</div>
-                    <div style={{ marginBottom: '4px' }}><b style={{ color: '#fff' }}>Title:</b> {wpPreview.proposed?.title}</div>
-                    <div style={{ marginBottom: '8px' }}><b style={{ color: '#fff' }}>Content:</b> updated (see WordPress after applying)</div>
+                    {wpPreview.proposed?.title !== wpPreview.current?.title && (
+                      <div style={{ marginBottom: '6px' }}>
+                        <b style={{ color: '#fff' }}>Page title:</b>{' '}
+                        <span style={{ color: '#e6a4a4', textDecoration: 'line-through' }}>{wpPreview.current?.title}</span>{' → '}
+                        <span style={{ color: '#9fe6c4' }}>{wpPreview.proposed?.title}</span>
+                      </div>
+                    )}
+                    <ContentChangeDiff changes={wpPreview.content_changes || []}
+                                       manualReview={wpPreview.manual_review || []} />
                     <UniversalFixPreview fix={wpPreview.universal_fix} />
                     <div style={{ display: 'flex', gap: '7px', marginTop: '9px' }}>
                       <button onClick={applyWordPress} disabled={wpBusy === 'apply'}
                         style={{ flex: 1, fontSize: '11px', fontWeight: 700, color: '#03121a', background: '#00ff9d', border: 'none', borderRadius: '7px', padding: '8px', cursor: 'pointer' }}>
-                        {wpBusy === 'apply' ? 'Applying…' : 'Apply to WordPress'}
+                        {wpBusy === 'apply'
+                          ? 'Applying…'
+                          : `Apply ${(wpPreview.content_changes || []).length || ''} change${(wpPreview.content_changes || []).length === 1 ? '' : 's'} to WordPress`.replace('  ', ' ')}
                       </button>
                       <button onClick={() => setWpPreview(null)} disabled={wpBusy === 'apply'}
                         style={{ fontSize: '11px', color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '7px', padding: '8px 12px', cursor: 'pointer' }}>
@@ -1300,6 +1391,14 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
                   </div>
                 )}
                 {wpResult && <ApplyResultBox result={wpResult} urlLabel="Open in WordPress" />}
+                {wpResult?.ok && wpResult.revisionId && (
+                  // Undo restores the snapshot taken before the write — it does not ask the
+                  // model to reverse its own edit, which would produce a third version.
+                  <button onClick={() => undoWordPress(wpResult.revisionId)} disabled={wpBusy === 'apply'}
+                    style={{ marginTop: '6px', width: '100%', fontSize: '11px', fontWeight: 600, color: '#ffae00', background: 'rgba(255,174,0,0.1)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '7px', padding: '7px', cursor: 'pointer' }}>
+                    {wpBusy === 'apply' ? 'Undoing…' : 'Undo this change'}
+                  </button>
+                )}
                 <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '5px' }}>
                   Page title/content are auto-edited, and real Organization JSON-LD is embedded in the page —
                   SEO meta title/description tags need a plugin, so those stay manual.

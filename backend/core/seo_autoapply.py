@@ -20,11 +20,16 @@ def _notify(db, user_id: int, title: str, message: str, action_url: str | None =
     db.commit()
 
 
-async def apply_wordpress_after_approval(workspace_id: int, user_id: int):
-    """Apply currently-approved fixes to the workspace's WordPress site, if auto-apply is on.
+async def prepare_wordpress_after_approval(workspace_id: int, user_id: int):
+    """Auto-apply, staged: PREPARE the change and tell the user it is ready to confirm.
 
-    Safe to call after every approval: it no-ops when there is no connection, when
-    auto-apply is off, or when the approved set produces no actual change to the page.
+    Deliberately a dry run. Auto-apply removes the busywork of remembering to open the panel
+    and press Apply — it does not remove the human's final say over a live write to their
+    site. The user reviews a per-change before/after in the WordPress panel and confirms
+    there, at which point the real write (and its snapshot) happens.
+
+    Safe to call after every approval: no-ops when there is no connection, when auto-apply is
+    off, or when the approved set produces no actual change to the page.
     """
     from database import SessionLocal
     import models
@@ -44,32 +49,48 @@ async def apply_wordpress_after_approval(workspace_id: int, user_id: int):
         from fastapi import HTTPException
 
         try:
-            result = await apply_wp_seo_fixes(workspace_id, db, dry_run=False,
-                                              require_same_site=True)
+            preview = await apply_wp_seo_fixes(workspace_id, db, dry_run=True,
+                                               require_same_site=True)
         except HTTPException as e:
-            # 409/422 are the ordinary "nothing to do yet" cases — one approved
-            # recommendation is often not enough to change the page on its own. Those are
-            # not worth interrupting the user over.
             if e.status_code == 409 and "connected to" in str(e.detail):
                 # Site mismatch — the user needs to know, because otherwise auto-apply
                 # looks silently broken when it is actually refusing to do the wrong thing.
                 _notify(db, user_id, "Auto-apply skipped — wrong site", str(e.detail))
                 return
             if e.status_code in (409, 422):
-                print(f"[autoapply] workspace {workspace_id}: nothing to apply ({e.detail})")
+                print(f"[autoapply] workspace {workspace_id}: nothing to prepare ({e.detail})")
                 return
-            _notify(db, user_id, "Auto-apply failed",
-                    f"Could not apply the approved SEO fix to your WordPress site: {e.detail}")
+            _notify(db, user_id, "Auto-apply could not prepare the change",
+                    f"Could not prepare the approved SEO fix for your WordPress site: {e.detail}")
             return
         except Exception as e:
             print(f"[autoapply] workspace {workspace_id} failed: {e}")
-            _notify(db, user_id, "Auto-apply failed",
-                    f"Could not apply the approved SEO fix to your WordPress site: {e}")
+            _notify(db, user_id, "Auto-apply could not prepare the change",
+                    f"Could not prepare the approved SEO fix for your WordPress site: {e}")
             return
+
+        changes = preview.get("content_changes") or []
+        needs_review = preview.get("manual_review") or []
+        page = (preview.get("page") or {}).get("title") or "your page"
+        if not changes and not preview.get("plugin_meta") and not needs_review:
+            return
+
+        # Name the individual changes: "3 changes ready" with a list is reviewable, whereas
+        # "changes are ready" tells the user nothing about what is about to touch their site.
+        lines = [f"{i}. {c.get('fix') or c.get('reason') or c.get('action')}"
+                 for i, c in enumerate(changes, 1)]
+        summary = f"{len(changes)} change(s) ready for '{page}'."
+        if lines:
+            summary += "\n" + "\n".join(lines)
+        if needs_review:
+            summary += f"\n{len(needs_review)} could not be placed automatically and need manual review."
+        summary += "\nOpen the WordPress panel to review the before/after and confirm."
 
         conn.last_synced_at = datetime.datetime.utcnow()
         db.commit()
-        _notify(db, user_id, "SEO fix applied automatically",
-                result.get("message") or "Applied the approved SEO fix to your WordPress site.",
-                action_url=result.get("edit_url"))
-        print(f"[autoapply] workspace {workspace_id}: {result.get('message')}")
+        _notify(db, user_id, "SEO changes ready to review", summary)
+        print(f"[autoapply] workspace {workspace_id}: prepared {len(changes)} change(s), awaiting confirmation")
+
+
+# Back-compat alias: the previous name described the old immediate-write behaviour.
+apply_wordpress_after_approval = prepare_wordpress_after_approval

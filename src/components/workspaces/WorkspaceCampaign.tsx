@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, Check, CheckCircle2, Clock, AlertTriangle, Rocket, Activity,
-  Image as ImageIcon, ShieldCheck, Edit3, RefreshCw, XCircle,
+  Image as ImageIcon, ShieldCheck, RefreshCw, XCircle,
   OctagonX, ArrowRight, FileUp, Download, Copy, Database, Upload,
   TrendingUp, ShoppingCart, GitBranch, BarChart3,
 } from 'lucide-react';
@@ -18,6 +18,10 @@ interface WorkspaceCampaignProps {
   creativeAssets?: any[];
   onOpenReview?: (itemId: string) => void;
   onToggleStatus?: (id: string) => void;
+  // Jump to Creative Studio seeded with a prompt. BrandDashboard already supplies this, but
+  // no control in this component calls it yet — declared so the parent wiring type-checks
+  // and stays intact for whoever adds the trigger.
+  onOpenCreativeStudio?: (seed: string) => void;
 }
 
 const authHeaders = (): Record<string, string> => {
@@ -55,7 +59,9 @@ const btnGhost: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
 };
 
-const Pill: React.FC<{ status: string }> = ({ status }) => {
+// `label` is optional: it only changes the text, never the colour, so a caller can say
+// "Google: REAL" while still being coloured by the underlying status.
+const Pill: React.FC<{ status: string; label?: string }> = ({ status, label }) => {
   const map: Record<string, { c: string; b: string }> = {
     Completed: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
     Approved: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
@@ -69,10 +75,11 @@ const Pill: React.FC<{ status: string }> = ({ status }) => {
     Pending: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)' },
     MOCK: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     DEMO: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
+    REAL: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
     SAMPLE: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
   };
   const s = map[status] || map.Pending;
-  return <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.4px', color: s.c, background: s.b, border: `1px solid ${s.c}33`, borderRadius: '20px', padding: '3px 10px', whiteSpace: 'nowrap' }}>{status}</span>;
+  return <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.4px', color: s.c, background: s.b, border: `1px solid ${s.c}33`, borderRadius: '20px', padding: '3px 10px', whiteSpace: 'nowrap' }}>{label ?? status}</span>;
 };
 
 // Short values sit on one line (label left, value right). Long values — audience, placements —
@@ -148,7 +155,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
   // Real Meta ad-account connection (from the Meta connector), the publish popup, and the
   // persistent list of campaigns already published.
-  const [metaAccount, setMetaAccount] = useState<{ configured?: boolean; connected?: boolean; name?: string; ad_account_id?: string | null }>({});
+  // Mirrors GET /api/connectors/meta/{ws}/status. `ready_to_publish` is the one
+  // flag to gate real publishing on: an ad needs both an ad account (who pays)
+  // and a Page (who it publishes as).
+  const [metaAccount, setMetaAccount] = useState<{
+    configured?: boolean; connected?: boolean; name?: string;
+    ad_account_id?: string | null; page_id?: string | null; page_name?: string | null;
+    default_link_url?: string | null; ready_to_publish?: boolean;
+  }>({});
   const [publishPopup, setPublishPopup] = useState(false);
   const [recentPublished, setRecentPublished] = useState<any[]>([]);
   const [analyticsView, setAnalyticsView] = useState<any | null>(null);   // opened analytics modal payload
@@ -261,6 +275,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const googleSetup = spec.google_setup || {};
   const split = spec.budget_split || {};
   const heroImage: string | null = spec.image_url || null;
+  // Meta ad copy from the approved strategy — this is what actually gets sent
+  // to Meta as the creative when publishing for real.
+  const metaCopy = spec.meta || {};
   const headlines: string[] = spec.google_headlines || [];
   const descriptions: string[] = spec.google_descriptions || [];
   const keywords: string[] = spec.top_keywords || [];
@@ -417,8 +434,18 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     if (!campaign || targets.length === 0) return;
     setBusy(`publish-${targets.join('-')}`);
     try {
+      // Send the approved creative so the backend can build a real ad. Without
+      // it Meta only gets a campaign shell, which can never deliver.
+      const metaCreative = targets.includes('meta') ? {
+        image_url: selectedImage || undefined,
+        headline: metaCopy.headline || undefined,
+        primary_text: metaCopy.primary_text || undefined,
+        cta: metaCopy.cta || undefined,
+        meta_placements: ['facebook', 'instagram'],
+      } : {};
       const r = await fetch(`/api/workspaces/${workspaceId}/campaigns/${campaign.id}/publish`, {
-        method: 'POST', headers: authHeaders(), body: JSON.stringify({ platforms: targets }),
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ platforms: targets, ...metaCreative }),
       });
       const d = await r.json();
       if (r.ok) {
@@ -717,7 +744,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               <h3 style={{ ...sectionTitle, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '9px' }}>
                 <CheckCircle2 size={18} color="#00e676" /> {campaign.name || 'Campaign'} <Pill status="Published" />
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500 }}>Version {campaign.version || 1}</span>
-                <Pill status="DEMO" />
+                {/* Per-platform publish mode. A real campaign must never read as DEMO, and a
+                    mock one must never read as REAL — so this comes from published_modes
+                    rather than being assumed. */}
+                {(spec.published_platforms || []).map((p: string) => (
+                  <Pill key={p} status={(spec.published_modes || {})[p] === 'real' ? 'REAL' : 'DEMO'}
+                    label={`${p === 'meta' ? 'Meta' : 'Google'}: ${(spec.published_modes || {})[p] === 'real' ? 'REAL' : 'DEMO'}`} />
+                ))}
               </h3>
               <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 <span>Platforms: <b style={{ color: '#fff' }}>{(spec.published_platforms || []).map((p: string) => p === 'meta' ? 'Meta' : 'Google').join(' & ') || '—'}</b></span>
@@ -1267,13 +1300,31 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         </div>
       </Gated>
 
-      {/* ── mock notice ── */}
-      <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.22)' }}>
-        <AlertTriangle size={16} color="#ffae00" style={{ flexShrink: 0 }} />
-        <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-          <b style={{ color: '#fff' }}>Meta &amp; Google are in mock mode.</b> Their API keys aren't set up yet, so connect, launch and publish are simulated end-to-end so you can test the whole flow — no ad account is touched and no money is spent.
-        </span>
-      </div>
+      {/* ── publish-mode notice: real once Meta is connected AND a Page is picked ── */}
+      {metaAccount?.ready_to_publish ? (
+        <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(0,230,118,0.05)', border: '1px solid rgba(0,230,118,0.22)' }}>
+          <Check size={16} color="#00e676" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+            <b style={{ color: '#fff' }}>Meta is live.</b> Publishing creates a real ad on Facebook and Instagram
+            as <b style={{ color: '#fff' }}>{metaAccount.page_name || 'your Page'}</b>, billed to ad account{' '}
+            {metaAccount.ad_account_id}. It is created <b style={{ color: '#fff' }}>paused</b> — activate it in Meta
+            Ads Manager to start spending. Google Ads is still simulated.
+          </span>
+        </div>
+      ) : (
+        <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.22)' }}>
+          <AlertTriangle size={16} color="#ffae00" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+            <b style={{ color: '#fff' }}>Publishing is simulated.</b>{' '}
+            {!metaAccount?.connected
+              ? 'Connect your Meta account above to publish real ads to Facebook and Instagram.'
+              : !metaAccount?.ad_account_id
+                ? 'Meta is connected — now select the ad account to bill.'
+                : 'Meta is connected — now select the Facebook Page to publish as. Meta cannot create an ad without one.'}
+            {' '}Until then no ad account is touched and no money is spent.
+          </span>
+        </div>
+      )}
 
       {/* ── recent activity ── */}
       <div style={card}>

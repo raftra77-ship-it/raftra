@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 import { Users2, Target, Cpu, CheckCircle2, ArrowRight, Building2, Zap, LayoutDashboard, Search, BarChart3, Share2, Users } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -129,7 +128,7 @@ export const AboutUs = () => {
               </p>
               <div style={{ padding: '16px', background: 'rgba(255,82,150,0.05)', borderRadius: '12px', border: '1px solid rgba(255,82,150,0.1)' }}>
                 <p style={{ color: '#ccc', margin: 0, fontSize: '13px', lineHeight: 1.6 }}>
-                  <strong>What “Working” Means:</strong> The information shown is intended to reflect the actual capabilities of the platform. If a feature appears here, it is connected to a functional backend workflow rather than a placeholder.
+                  <strong>What â€œWorkingâ€ Means:</strong> The information shown is intended to reflect the actual capabilities of the platform. If a feature appears here, it is connected to a functional backend workflow rather than a placeholder.
                 </p>
               </div>
             </div>

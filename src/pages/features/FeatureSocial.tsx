@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 import { Share2, Bot, CheckCircle2, Calendar, MessageCircle, TrendingUp, Image as ImageIcon, Briefcase, Video, Loader2, Check } from 'lucide-react';
 
 export const FeatureSocial = () => {
@@ -149,7 +148,7 @@ export const FeatureSocial = () => {
                       </div>
                     </div>
                     <div style={{ fontSize: '13px', color: '#888', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Check size={14} color="var(--success)" /> Published • 3.2k views
+                      <Check size={14} color="var(--success)" /> Published â€¢ 3.2k views
                     </div>
                   </div>
                 </div>
@@ -167,7 +166,7 @@ export const FeatureSocial = () => {
                       </div>
                     </div>
                     <div style={{ fontSize: '13px', color: '#888', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Check size={14} color="var(--success)" /> Published • 142 reactions
+                      <Check size={14} color="var(--success)" /> Published â€¢ 142 reactions
                     </div>
                   </div>
                 </div>

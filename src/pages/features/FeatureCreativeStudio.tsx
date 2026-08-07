@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Bot, CheckCircle2, Loader2, ArrowRight, Upload, Play, Image as ImageIcon } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';

@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Globe, Check, ExternalLink, TrendingUp, ChevronDown, GitBranch, ShoppingBag, PenSquare,
+  Globe, Check, ExternalLink, TrendingUp, GitBranch, ShoppingBag, PenSquare,
   Search, ShieldCheck, Lightbulb, FileText, Link2, Wrench, Sparkles, ClipboardList,
   Radar, MessageSquare, Eye, Star, Network, Wand2,
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
-import { GitHubPanel } from './GitHubPanel';
-import { ShopifyPanel } from './ShopifyPanel';
-import { WordPressPanel } from './WordPressPanel';
 import { SearchConsolePanel } from './SearchConsolePanel';
 import { GA4Panel } from './GA4Panel';
 import { SEOAgencyReportModal, type RunStatus } from '../SEOAgencyReportModal';
@@ -48,11 +45,29 @@ const GEO_STAGE_LABELS: { key: string; label: string; description: string; Icon:
   { key: 'Reporting', label: 'GEO Report', description: 'Your full report with clear next steps', Icon: ClipboardList },
 ];
 
+// How long to keep showing the optimistic "queued" state after a trigger before giving up
+// and trusting whatever the server reports (covers a run that died before writing its first
+// RUNNING row, so the UI can never be stuck pretending an audit is queued).
+const QUEUED_GRACE_MS = 45000;
+
 // Polls run-status continuously (fast while running, slow otherwise) so the report reflects
 // the real backend state — including a run started from another tab.
-function useRunStatus(workspaceId: number | null | undefined, pipeline: 'SEO' | 'GEO'): [RunStatus, () => void] {
+//
+// Returns [status, refresh, markQueued]. markQueued() is called the instant a trigger POST
+// succeeds: the pipeline writes its first RUNNING row asynchronously, so for a second or two
+// the endpoint still returns the PREVIOUS run — which made a freshly clicked audit render the
+// last run's finished report, as if it had already run. We hold an optimistic "queued" state
+// and ignore polled results until `started_at` changes (record_agent_task stamps a fresh one
+// with reset=True at the top of every run), so the UI only ever shows the run just started.
+function useRunStatus(
+  workspaceId: number | null | undefined,
+  pipeline: 'SEO' | 'GEO',
+): [RunStatus, () => void, () => void] {
   const [status, setStatus] = useState<RunStatus>(IDLE_RUN);
   const [nonce, setNonce] = useState(0);
+  // started_at of the run that was showing when we triggered; anything still carrying it is stale.
+  const staleStartedAt = React.useRef<string | null>(null);
+  const queuedUntil = React.useRef<number>(0);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -63,9 +78,14 @@ function useRunStatus(workspaceId: number | null | undefined, pipeline: 'SEO' | 
         .then(r => (r.ok ? r.json() : null))
         .then(d => {
           if (!alive) return;
-          if (d) setStatus(d);
-          const delay = d && (d.status === 'running' || d.status === 'queued') ? 2500 : 8000;
-          timer = setTimeout(poll, delay);
+          const waitingForNewRun =
+            Date.now() < queuedUntil.current && d && d.started_at === staleStartedAt.current;
+          if (d && !waitingForNewRun) {
+            queuedUntil.current = 0;
+            setStatus(d);
+          }
+          const busy = waitingForNewRun || (d && (d.status === 'running' || d.status === 'queued'));
+          timer = setTimeout(poll, busy ? 2500 : 8000);
         })
         .catch(() => { if (alive) timer = setTimeout(poll, 6000); });
     };
@@ -73,7 +93,15 @@ function useRunStatus(workspaceId: number | null | undefined, pipeline: 'SEO' | 
     return () => { alive = false; clearTimeout(timer); };
   }, [workspaceId, pipeline, nonce]);
 
-  return [status, () => setNonce(n => n + 1)];
+  const markQueued = () => {
+    staleStartedAt.current = status.started_at ?? null;
+    queuedUntil.current = Date.now() + QUEUED_GRACE_MS;
+    // Clear the finished run's stages immediately — the new run starts from an empty checklist.
+    setStatus(s => ({ ...s, status: 'queued', running: true, stages_done: [], current_stage: null }));
+    setNonce(n => n + 1);
+  };
+
+  return [status, () => setNonce(n => n + 1), markQueued];
 }
 
 // Month-over-month comparison card — reads the /seo/comparison endpoint and shows the deltas
@@ -267,41 +295,20 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
   );
 };
 
-// The "connect your website & data" hub — reuses the already-built connector panels, each of
-// which shows its own connect / "keys missing" placeholder state.
-const ConnectSection: React.FC<{ workspaceId?: number | null }> = ({ workspaceId }) => {
-  const [open, setOpen] = useState(true);
-  const wid = workspaceId ?? null;
-  return (
-    <div className="glow-card">
-      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 0, color: '#fff' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', fontWeight: 600 }}>
-          <Globe size={16} style={{ color: '#00ff9d' }} /> Connect your website &amp; data sources
-        </span>
-        <ChevronDown size={18} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', color: 'var(--text-secondary)' }} />
-      </button>
-      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '6px 0 0' }}>
-        Publish approved changes to your site, and pull in real Google rankings + traffic. Connect what you have — the rest stay as placeholders until keys are added.
-      </p>
-      {open && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginTop: '16px' }}>
-          <GitHubPanel workspaceId={wid} />
-          <ShopifyPanel workspaceId={wid} />
-          <WordPressPanel workspaceId={wid} />
-          <SearchConsolePanel workspaceId={wid} />
-          <GA4Panel workspaceId={wid} />
-        </div>
-      )}
-    </div>
-  );
-};
+// The connector panels that used to live here in a "connect your website & data" hub are now
+// reached from the report modal's Connect & Publish tab (SEOAgencyReportModal), which is where
+// approved fixes are actually published from.
 
-interface BlogDraft {
+// Exported because BrandDashboard holds the state that is passed into `blogs` below —
+// both sides must agree on the shape.
+export interface BlogDraft {
   id: string;
   title: string;
   excerpt: string;
   keywords: string;
-  status: 'pending_review' | 'published';
+  // 'approved' means the user accepted the strategy but nothing was pushed to their site —
+  // it is deliberately distinct from 'published'. BrandDashboard sets it on approval.
+  status: 'pending_review' | 'approved' | 'published';
 }
 
 interface WorkspaceSEOProps {
@@ -345,21 +352,25 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
   // graph highlighting below and the combined report modal. SEO and GEO stay two fully
   // independent pipelines (separate trigger, separate single-flight state, separate
   // scoring) but always render into the ONE report modal — never a second report.
-  const [seoRun, refreshSeoRun] = useRunStatus(workspaceId, 'SEO');
-  const [geoRun, refreshGeoRun] = useRunStatus(workspaceId, 'GEO');
+  const [seoRun, refreshSeoRun, markSeoQueued] = useRunStatus(workspaceId, 'SEO');
+  const [geoRun, refreshGeoRun, markGeoQueued] = useRunStatus(workspaceId, 'GEO');
   const seoRunning = seoRun.status === 'running' || seoRun.status === 'queued';
   const geoRunning = geoRun.status === 'running' || geoRun.status === 'queued';
 
   const flash = (msg: string, ok = true) => { if (!ok) setToast({ msg }); };
 
   const triggerPipeline = async (pipeline: 'SEO' | 'GEO', url: string) => {
-    if (!url.trim()) return;
+    if (!workspaceId) { setToast({ msg: 'No workspace selected — open a workspace first.' }); return; }
+    // A blank target used to make the button a silent no-op, which reads as "the button is
+    // broken". Say what's missing instead.
+    if (!url.trim()) { setToast({ msg: 'Enter the website address you want audited first.' }); return; }
     try {
       const r = await fetch(`/api/agents/${workspaceId}/${pipeline.toLowerCase()}`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),
       });
       if (r.ok) {
-        (pipeline === 'SEO' ? refreshSeoRun : refreshGeoRun)();
+        // Only after the server accepted the run: show it as queued and open the live report.
+        (pipeline === 'SEO' ? markSeoQueued : markGeoQueued)();
         setReportOpen(true); // the report updates live instead of the user having to go find it
       } else if (r.status === 409) {
         setToast({ msg: 'An audit is already running for this website.', pipeline });

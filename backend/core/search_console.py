@@ -155,6 +155,61 @@ def fetch_search_analytics(conn, days: int = 28, row_limit: int = 25) -> dict:
     return {"rows": rows, "totals": totals, "range_days": days}
 
 
+def _query_by(svc, site_url: str, start: str, end: str, dimension: str | None, row_limit: int) -> list:
+    """One Search Analytics call. `dimension=None` returns the single site-wide totals row."""
+    body = {"startDate": start, "endDate": end, "rowLimit": row_limit}
+    if dimension:
+        body["dimensions"] = [dimension]
+    resp = svc.searchanalytics().query(siteUrl=site_url, body=body).execute()
+    return resp.get("rows", [])
+
+
+def _row_view(r: dict) -> dict:
+    return {
+        "key": (r.get("keys") or [""])[0],
+        "clicks": int(r.get("clicks", 0)),
+        "impressions": int(r.get("impressions", 0)),
+        "ctr": round(r.get("ctr", 0) * 100, 2),      # percent
+        "position": round(r.get("position", 0), 1),
+    }
+
+
+def fetch_overview(conn, days: int = 28, row_limit: int = 10) -> dict:
+    """Everything the Search Console panel shows, in one round trip from the caller's
+    point of view: site-wide totals (clicks / impressions / CTR / average position) plus
+    the top queries, pages, countries and devices.
+
+    Note Search Console data lags ~2-3 days, so the window ends 3 days back — ending it
+    today reliably returns zeros for the most recent days and makes a healthy site look
+    dead. Each breakdown is fetched independently: one failing dimension (devices, say)
+    returns an empty list rather than blanking the whole panel."""
+    svc = _service(conn)
+    end = datetime.date.today() - datetime.timedelta(days=3)
+    start = end - datetime.timedelta(days=days)
+    s, e = start.isoformat(), end.isoformat()
+
+    total_rows = _query_by(svc, conn.site_url, s, e, None, 1)
+    totals = _row_view(total_rows[0]) if total_rows else {"key": "", "clicks": 0, "impressions": 0, "ctr": 0, "position": 0}
+    totals.pop("key", None)
+
+    breakdowns = {}
+    for name, dim in (("queries", "query"), ("pages", "page"), ("countries", "country"), ("devices", "device")):
+        try:
+            breakdowns[name] = [_row_view(r) for r in _query_by(svc, conn.site_url, s, e, dim, row_limit)]
+        except Exception as ex:
+            print(f"[gsc] {name} breakdown failed for {conn.site_url}: {ex}")
+            breakdowns[name] = []
+
+    return {
+        "site_url": conn.site_url,
+        "range_days": days,
+        "start_date": s,
+        "end_date": e,
+        "totals": totals,
+        **breakdowns,
+    }
+
+
 def submit_sitemap(conn, sitemap_url: str) -> None:
     """Submit a sitemap so Google discovers the site's pages (request indexing)."""
     svc = _service(conn)

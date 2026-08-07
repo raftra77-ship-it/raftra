@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 import { ShieldAlert, Database, Lock, CheckCircle2, Key, Globe, Cpu, XCircle, Building2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Megaphone, Bot, CheckCircle2, Globe, MousePointerClick, RefreshCcw, Check, Users2 } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
@@ -21,7 +21,7 @@ export const FeatureCampaignManager = () => {
       visualType: "oauth_campaign" as const,
       metrics: [
         { label: "Target ROAS", value: "4.5x", color: "#00E676" },
-        { label: "Budget Split", value: "₹40,000 / day", color: "#fff" },
+        { label: "Budget Split", value: "â‚¹40,000 / day", color: "#fff" },
         { label: "Placements", value: "Meta & Google", color: "#5A52FF" }
       ]
     },
@@ -40,12 +40,12 @@ export const FeatureCampaignManager = () => {
     {
       title: "3. Auto-Kill & Smart Rotation Triggers",
       agent: "Creative Fatigue Agent",
-      description: "Monitors real-time performance. Automatically kills ads exceeding Frequency Cap (5x) or CPA Threshold (₹2,000) and rotates fresh creatives.",
+      description: "Monitors real-time performance. Automatically kills ads exceeding Frequency Cap (5x) or CPA Threshold (â‚¹2,000) and rotates fresh creatives.",
       badge: "AUTO-OPTIMIZING",
       visualType: "oauth_campaign" as const,
       metrics: [
         { label: "Fatigued Ads Killed", value: "2 Ads", color: "#FF5F56" },
-        { label: "CPA Saved", value: "₹1,500", color: "#00E676" },
+        { label: "CPA Saved", value: "â‚¹1,500", color: "#00E676" },
         { label: "Auto-Rotation", value: "Enabled", color: "#5A52FF" }
       ]
     }
@@ -191,7 +191,7 @@ export const FeatureCampaignManager = () => {
               </div>
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Daily Budget</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>₹5,000</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>â‚¹5,000</div>
               </div>
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Expected ROAS</div>
@@ -207,7 +207,7 @@ export const FeatureCampaignManager = () => {
               </div>
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Schedule</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>6 PM – 11 PM</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>6 PM â€“ 11 PM</div>
               </div>
             </div>
 

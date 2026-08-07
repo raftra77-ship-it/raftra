@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Check, Zap, Star, Shield, Building2, Coins, Image as ImageIcon, Video, Database, Target, FileText, BarChart3, Calendar, Users2 } from 'lucide-react';
+import { Sparkles, Check, Zap, Coins, Image as ImageIcon, Video, Database, Target, FileText, BarChart3, Calendar, Users2 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
 interface PricingScreenProps {

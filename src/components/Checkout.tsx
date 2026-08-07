@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CreditCard, Zap, CheckCircle2 } from 'lucide-react';
-import { useRazorpay, RazorpayOrderOptions } from 'react-razorpay';
+import { useRazorpay } from 'react-razorpay';
 import '../App.css';
 
 interface CheckoutProps {

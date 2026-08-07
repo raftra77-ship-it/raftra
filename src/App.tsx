@@ -18,6 +18,11 @@ const CreatorPortal = lazy(() => import('./components/CreatorPortal').then(m => 
 const Security = lazy(() => import('./pages/Security').then(m => ({ default: m.Security })));
 const AboutUs = lazy(() => import('./pages/AboutUs').then(m => ({ default: m.AboutUs })));
 const FeaturePage = lazy(() => import('./pages/FeaturePage').then(m => ({ default: m.FeaturePage })));
+// Public legal pages. Meta/Google/Razorpay require these to be reachable before granting
+// production API access, so they must stay outside the authenticated routes below.
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+const Terms = lazy(() => import('./pages/Terms').then(m => ({ default: m.Terms })));
+const DataDeletion = lazy(() => import('./pages/DataDeletion').then(m => ({ default: m.DataDeletion })));
 
 // Deferred so the WebGL shader library never blocks first paint. It's a background at
 // z-index -10, so arriving a moment after the content is not noticeable.
@@ -45,7 +50,7 @@ export default function App() {
     }
   };
 
-  const handleOnboardingComplete = (data: any) => {
+  const handleOnboardingComplete = () => {
     // BrandDashboard will refetch and register the workspace if not yet created.
     navigate('/dashboard');
   };
@@ -67,6 +72,10 @@ export default function App() {
           <Route path="/security" element={<Security />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/features/:featureId" element={<FeaturePage />} />
+
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/data-deletion" element={<DataDeletion />} />
 
           <Route path="/login" element={
             <AuthScreen onLoginComplete={handleLoginComplete} />

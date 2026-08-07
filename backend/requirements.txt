@@ -29,6 +29,12 @@ qdrant-client
 langgraph
 supabase
 google-generativeai
+# Search Console + GA4 (core/search_console.py, core/ga4.py). These currently arrive as
+# transitive deps of google-generativeai; pinned here explicitly so a future change to that
+# package can't silently break the Google connectors at runtime.
+google-api-python-client
+google-auth
+google-auth-oauthlib
 requests
 websockets
 

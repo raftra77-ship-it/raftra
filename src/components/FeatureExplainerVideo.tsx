@@ -52,7 +52,7 @@ export const FeatureExplainerVideo: React.FC<FeatureExplainerVideoProps> = ({
 
       <div style={{ background: '#0a0a0a', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          {steps.map((s, i) => (
+          {steps.map((_s, i) => (
             <button
               key={i}
               onClick={() => setActive(i)}

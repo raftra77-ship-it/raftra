@@ -3,11 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   AlertTriangle,
-  Cpu,
   BarChart3,
   Globe,
   Sparkles,
-  ArrowLeft,
   Users2,
   Share2,
   Megaphone,
@@ -29,10 +27,11 @@ import { Footer } from './Footer';
 
 interface LandingPageProps {
   onStartFree: () => void;
+  // Callers still pass this, but no button on the page is wired to it yet.
   onBookDemo: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDemo }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
   const [currentSubView, setCurrentSubView] = useState<'main' | 'pricing'>('main');
   const navigate = useNavigate();
   
@@ -620,7 +619,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
               padding: '28px',
               display: 'flex',
               flexDirection: 'column',
-              justify: 'space-between'
+              justifyContent: 'space-between'
             }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', marginBottom: '12px' }}>
@@ -643,7 +642,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
               padding: '28px',
               display: 'flex',
               flexDirection: 'column',
-              justify: 'space-between'
+              justifyContent: 'space-between'
             }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#00E676', letterSpacing: '0.08em', marginBottom: '12px' }}>
@@ -666,7 +665,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
               padding: '28px',
               display: 'flex',
               flexDirection: 'column',
-              justify: 'space-between'
+              justifyContent: 'space-between'
             }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em', marginBottom: '12px' }}>
@@ -947,7 +946,7 @@ const FreeAuditSandboxEngine: React.FC<{ onStartFree: () => void }> = ({ onStart
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            justify: 'space-between',
+            justifyContent: 'space-between',
             padding: '16px 20px',
             background: 'rgba(255, 95, 86, 0.08)',
             border: '1px solid rgba(255, 95, 86, 0.25)',

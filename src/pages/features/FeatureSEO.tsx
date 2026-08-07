@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Bot, CheckCircle2, TrendingUp, Globe, Activity, Eye, Zap, ArrowUpRight } from 'lucide-react';
+import { Search, Bot, CheckCircle2, TrendingUp, Globe, Eye, Zap, ArrowUpRight } from 'lucide-react';
 
 export const FeatureSEO = () => {
   const [score, setScore] = useState(74);

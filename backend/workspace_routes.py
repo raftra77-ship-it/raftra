@@ -425,6 +425,140 @@ def campaign_ad_setup(workspace_id: int, campaign_id: int, req: schemas.AdSetupR
     return {"status": "success", "platform": platform, "action": action, "mock": True, "setup": setup}
 
 
+async def _launch_meta_ad(camp, spec: dict, conn, req, db: Session, workspace_id: int) -> dict:
+    """Build a complete, PAUSED Meta ad (campaign + ad set + creative + ad) on
+    Facebook and Instagram from the campaign's approved strategy.
+
+    Creating only a campaign — which is what this used to do — produces a shell
+    with nothing inside it, so it can never deliver even once activated. The
+    creative comes from the publish request when the user picked one in the UI,
+    otherwise from the strategy the agent generated.
+    """
+    meta_spec = (spec.get("meta") or {}) if isinstance(spec.get("meta"), dict) else {}
+
+    image_url = (req.image_url if req else None) or spec.get("image_url")
+    headline = (req.headline if req else None) or meta_spec.get("headline") or camp.name
+    primary_text = (req.primary_text if req else None) or meta_spec.get("primary_text") or ""
+    cta = (req.cta if req else None) or meta_spec.get("cta") or "LEARN_MORE"
+
+    # Destination: explicit → the connection's default → the workspace's site.
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+    link_url = ((req.link_url if req else None)
+                or conn.default_link_url
+                or (ws.company_url if ws else None))
+    if not link_url:
+        raise RuntimeError(
+            "No destination URL. Set one on the Meta connection or add your website "
+            "to the workspace — an ad with nowhere to click cannot be created."
+        )
+
+    if not conn.page_id:
+        raise RuntimeError(
+            "No Facebook Page selected. Pick the Page to publish as in the Meta "
+            "setup step — Meta cannot create an ad without one."
+        )
+
+    # Meta's CTA enum is upper snake case; the strategy may phrase it as "Learn more".
+    cta_enum = str(cta).strip().upper().replace(" ", "_").replace("-", "_")
+
+    return await meta.launch(
+        conn,
+        name=camp.name or "Raftra Campaign",
+        objective=camp.objective or "traffic",
+        page_id=conn.page_id,
+        headline=headline,
+        primary_text=primary_text,
+        link_url=link_url,
+        cta=cta_enum,
+        image_url=image_url,
+        daily_budget_major=camp.daily_budget or camp.budget or 200.0,
+        country=(req.country if req and req.country else None) or "IN",
+        platforms=(req.meta_placements if req and req.meta_placements else ["facebook", "instagram"]),
+    )
+
+
+def _resolve_google_payload(camp, spec: dict, db: Session, workspace_id: int) -> dict:
+    """Collapse the approved strategy into the exact fields a Google Search campaign needs.
+
+    Precedence is always: the Step 5 platform review (`google_review`, what the user edited) →
+    the strategy's own `google` block → the flat back-compat keys the older setup screens
+    wrote. An edited headline must beat the AI's original, so the review always wins.
+    """
+    review = spec.get("google_review") if isinstance(spec.get("google_review"), dict) else {}
+    g = spec.get("google") if isinstance(spec.get("google"), dict) else {}
+
+    def first_list(*candidates):
+        for c in candidates:
+            if isinstance(c, (list, tuple)) and len(c):
+                return list(c)
+        return []
+
+    def first_text(*candidates):
+        for c in candidates:
+            if isinstance(c, str) and c.strip():
+                return c.strip()
+        return ""
+
+    # Google needs a DAILY budget, but the strategy allocates a total across the run. An
+    # explicit daily figure wins; otherwise divide the Google share by the campaign duration.
+    days = spec.get("duration_days") or 15
+    try:
+        days = max(1, int(days))
+    except (TypeError, ValueError):
+        days = 15
+    google_share = ((spec.get("budget_split") or {}).get("google") or {}).get("amount")
+    daily_budget = None
+    for candidate, is_total in ((review.get("daily_budget"), False), (review.get("budget"), True),
+                                (google_share, True), (camp.daily_budget, False)):
+        try:
+            value = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            daily_budget = value / days if is_total else value
+            break
+    if not daily_budget:
+        daily_budget = 200.0
+
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+    final_url = first_text(review.get("landing_page"), review.get("tracking_url"),
+                           spec.get("landing_page"), ws.company_url if ws else "")
+
+    sitelinks, callouts, ext_warnings = gads.parse_extensions(
+        first_list(review.get("extensions"), g.get("extensions")))
+
+    return {
+        "name": first_text(review.get("campaign_name"), camp.name) or "Raftra Campaign",
+        "objective": camp.objective or "",
+        "headlines": first_list(review.get("headlines"), g.get("headlines"), spec.get("google_headlines")),
+        "descriptions": first_list(review.get("descriptions"), g.get("descriptions"),
+                                   spec.get("google_descriptions")),
+        "keywords": first_list(review.get("keywords"), g.get("keywords"), spec.get("top_keywords")),
+        "final_url": final_url,
+        "sitelinks": sitelinks,
+        "callouts": callouts,
+        "daily_budget_major": round(daily_budget, 2),
+        "geo_locations": (spec.get("geo_targeting") or {}).get("locations") or [],
+        "duration_days": days,
+        "campaign_type": first_text(review.get("campaign_type"), spec.get("google_campaign_type")) or "Search",
+        "_extension_warnings": ext_warnings,
+    }
+
+
+async def _launch_google_ad(camp, spec: dict, conn, db: Session, workspace_id: int) -> dict:
+    """Build a complete, PAUSED Google Search campaign from the approved strategy.
+
+    Creating only a campaign + budget — which is what this used to do — produces a shell with
+    no ad group, keywords or ad inside it, so it can never deliver even once activated.
+    """
+    payload = _resolve_google_payload(camp, spec, db, workspace_id)
+    extension_warnings = payload.pop("_extension_warnings", [])
+    result = await gads.launch(conn, **payload)
+    if extension_warnings:
+        result["warnings"] = extension_warnings + list(result.get("warnings") or [])
+    return result
+
+
 @router.post("/{workspace_id}/campaigns/{campaign_id}/publish")
 async def publish_campaign(workspace_id: int, campaign_id: int,
                      req: Optional[schemas.PublishCampaignRequest] = None,
@@ -450,67 +584,132 @@ async def publish_campaign(workspace_id: int, campaign_id: int,
                             detail=f"Complete the {', '.join(p.title() for p in missing)} setup before publishing.")
 
     import datetime as _dt, random as _rand
-    published = list(dict.fromkeys((m.get("published_platforms") or []) + wanted))
     ids = dict(m.get("campaign_ids") or {})
     modes = dict(m.get("published_modes") or {})
     urls = dict(m.get("campaign_urls") or {})
+    meta_error = None      # why a connected Meta account still fell back to demo
+    google_error = None    # why a connected Google account did not publish at all
+    google_warnings = []
 
     meta_conn = db.query(models.MetaAdsConnection).filter(models.MetaAdsConnection.workspace_id == workspace_id).first()
     gads_conn = db.query(models.GoogleAdsConnection).filter(models.GoogleAdsConnection.workspace_id == workspace_id).first()
 
     for p in wanted:
-        if p in ids:
-            continue  # already published on a previous call — keep the existing id/mode
+        # Already published on a previous call — keep the existing id/mode rather than creating
+        # a duplicate. A Google campaign that only ever went out in DEMO mode is the one
+        # exception: it may be re-published for real once the account is connected.
+        if p in ids and not (p == "google" and modes.get(p) == "demo"):
+            continue
         if p == "meta" and meta_conn and meta_conn.access_token and meta_conn.ad_account_id:
             try:
-                result = await meta.publish_campaign(meta_conn, name=camp.name or "Raftra Campaign", objective=camp.objective or "")
+                result = await _launch_meta_ad(camp, m, meta_conn, req, db, workspace_id)
                 ids[p] = result["campaign_id"]
                 urls[p] = result.get("url")
                 modes[p] = "real"
+                m = _append_activity(
+                    m, f"Meta ad live on {', '.join(result.get('placements') or ['facebook'])} "
+                       f"(ad {result.get('ad_id')}, PAUSED)")
+                if result.get("warning"):
+                    m = _append_activity(m, result["warning"])
+                m.setdefault("meta_objects", {})[str(result["campaign_id"])] = {
+                    k: result.get(k) for k in ("adset_id", "creative_id", "ad_id", "placements")
+                }
                 continue
             except Exception as e:
+                # Surface the reason rather than silently demoing — a connected
+                # account that quietly falls back to a mock id is how a broken
+                # publish goes unnoticed for weeks.
                 m = _append_activity(m, f"Meta real publish failed, fell back to demo: {e}")
+                meta_error = str(e)
         elif p == "google" and gads_conn and gads_conn.refresh_token and gads_conn.customer_id:
             try:
-                result = await gads.publish_campaign(gads_conn, name=camp.name or "Raftra Campaign",
-                                                      objective=camp.objective or "", daily_budget_major=camp.daily_budget or 200.0)
+                result = await _launch_google_ad(camp, m, gads_conn, db, workspace_id)
                 ids[p] = result["campaign_id"]
                 urls[p] = result.get("url")
                 modes[p] = "real"
+                google_warnings = list(result.get("warnings") or [])
+                m = _append_activity(
+                    m, f"Google Search campaign live (campaign {result['campaign_id']}, "
+                       f"ad group {result.get('ad_group_id')}, ad {result.get('ad_id')}, "
+                       f"{len(result.get('keywords') or [])} keywords, PAUSED)")
+                for w in google_warnings:
+                    m = _append_activity(m, f"Google: {w}")
+                m.setdefault("google_objects", {})[str(result["campaign_id"])] = {
+                    k: result.get(k) for k in (
+                        "customer_id", "campaign_name", "campaign_status", "campaign_budget_id",
+                        "ad_group_id", "ad_id", "keywords", "assets", "final_url", "daily_budget",
+                        "headlines", "descriptions", "geo_target_constants", "warnings")
+                }
                 continue
+            except gads.GoogleAdsValidationError as e:
+                google_error = ("Google Ads rejected the approved content before anything was "
+                                "created: " + " ".join(e.problems))
             except Exception as e:
-                m = _append_activity(m, f"Google Ads real publish failed, fell back to demo: {e}")
-        # No real connection (or the real publish above failed) — mock external campaign id.
+                google_error = getattr(e, "message", None) or str(e)
+            # A connected account that fails is NOT quietly demoted to demo — reporting a
+            # mock id as a publish is how a broken launch goes unnoticed for weeks. Leave
+            # Google unpublished and let the caller surface the reason.
+            m = _append_activity(m, f"Google Ads publish failed: {google_error}")
+            continue
+        # No real connection for this platform — mock external campaign id (DEMO mode).
         ids[p] = (f"MOCK-META-{_rand.randint(10**11, 10**12 - 1)}" if p == "meta"
                   else f"MOCK-GADS-{_rand.randint(100, 999)}-{_rand.randint(1000, 9999)}-{_rand.randint(1000, 9999)}")
         modes[p] = "demo"
 
+    # Only platforms that actually produced a campaign count as published. A connected Google
+    # account that errored is deliberately absent here, so a campaign is never recorded as
+    # published to a platform it never reached.
+    succeeded = [p for p in wanted if p in ids]
+    published = list(dict.fromkeys((m.get("published_platforms") or []) + succeeded))
+
+    if not succeeded:
+        # Nothing went out. Leave the campaign editable (status untouched, so the 7-step flow
+        # stays where it was) but persist the activity trail explaining why.
+        camp.metrics = m
+        db.commit()
+        raise HTTPException(status_code=502,
+                            detail=google_error or "Publish failed — nothing was created.")
+
     if not camp.version_group:
         camp.version_group = f"vg-{workspace_id}-{camp.id}"
     camp.status = "PUBLISHED_DEMO"
-    if any(modes.get(p) == "real" for p in wanted) and camp.meta_campaign_id is None and modes.get("meta") == "real":
+    if any(modes.get(p) == "real" for p in succeeded) and camp.meta_campaign_id is None and modes.get("meta") == "real":
         camp.meta_campaign_id = ids.get("meta")
-    overall_mode = "real" if all(modes.get(p) == "real" for p in wanted) else ("mixed" if any(modes.get(p) == "real" for p in wanted) else "demo")
+    overall_mode = "real" if all(modes.get(p) == "real" for p in succeeded) else ("mixed" if any(modes.get(p) == "real" for p in succeeded) else "demo")
     m["published_at"] = _dt.datetime.utcnow().isoformat()
     m["published_mode"] = overall_mode
     m["published_modes"] = modes
     m["published_platforms"] = published
     m["campaign_ids"] = ids
     m["campaign_urls"] = urls
-    label = ", ".join(f"{p.title()} ({modes.get(p)})" for p in wanted)
+    label = ", ".join(f"{p.title()} ({modes.get(p)})" for p in succeeded)
     m = _append_activity(m, f"Published to {label}")
     camp.metrics = m
     db.commit()
-    real_names = [p.title() for p in wanted if modes.get(p) == "real"]
-    demo_names = [p.title() for p in wanted if modes.get(p) == "demo"]
+    real_names = [p.title() for p in succeeded if modes.get(p) == "real"]
+    demo_names = [p.title() for p in succeeded if modes.get(p) == "demo"]
     parts = []
     if real_names:
-        parts.append(f"Created a real PAUSED campaign on {' & '.join(real_names)} — activate it there to start spending.")
+        placements = (m.get("meta_objects", {}).get(str(ids.get("meta")), {}) or {}).get("placements")
+        where = f" on {' + '.join(p.title() for p in placements)}" if placements else ""
+        parts.append(f"Created a real PAUSED ad on {' & '.join(real_names)}{where} — activate it there to start spending.")
     if demo_names:
         parts.append(f"Published to {' & '.join(demo_names)} in DEMO mode — connect that ad account to publish for real.")
+    if meta_error:
+        # A connected account that quietly demos is how a broken publish goes
+        # unnoticed; say exactly what stopped it.
+        parts.append(f"Meta was connected but the real publish failed: {meta_error}")
+    if google_error:
+        parts.append(f"Google Ads was connected but the publish failed, so nothing was created "
+                     f"there: {google_error}")
+    if google_warnings:
+        parts.append(" ".join(google_warnings))
     return {"status": "success", "campaign_id": camp.id, "mode": overall_mode, "new_status": camp.status,
             "version": camp.version, "platforms": wanted, "published_platforms": published,
             "campaign_ids": ids, "campaign_urls": urls, "published_modes": modes,
+            "meta_objects": m.get("meta_objects", {}), "meta_error": meta_error,
+            "google_objects": m.get("google_objects", {}), "google_error": google_error,
+            "google_warnings": google_warnings,
             "message": " ".join(parts)}
 
 
@@ -596,7 +795,8 @@ def _clone_campaign(src, *, version: int, version_group: str, status: str = "PEN
     state — used by create-version and duplicate."""
     import copy
     m = copy.deepcopy(src.metrics or {})
-    for k in ("published_at", "published_mode", "published_platforms", "campaign_ids",
+    for k in ("published_at", "published_mode", "published_modes", "published_platforms",
+              "campaign_ids", "campaign_urls", "meta_objects", "google_objects",
               "meta_setup", "google_setup", "analytics"):
         m.pop(k, None)
     m["activity"] = []
@@ -1098,8 +1298,10 @@ def set_recommendation_decision(workspace_id: int, audit_id: int, body: Recommen
     row.keywords_data = kd
     db.commit()
     if body.decision in ("approved", "edited"):
-        from core.seo_autoapply import apply_wordpress_after_approval
-        background.add_task(apply_wordpress_after_approval, workspace_id, current_user.id)
+        # Stages the change and notifies; the live write still needs the user to confirm
+        # the before/after in the WordPress panel. See core/seo_autoapply.py.
+        from core.seo_autoapply import prepare_wordpress_after_approval
+        background.add_task(prepare_wordpress_after_approval, workspace_id, current_user.id)
     return {"status": "success", "decisions": decisions}
 
 

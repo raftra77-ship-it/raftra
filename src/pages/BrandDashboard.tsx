@@ -8,7 +8,7 @@ import { WorkspaceCreative } from '../components/workspaces/WorkspaceCreative';
 import { WorkspaceCampaign } from '../components/workspaces/WorkspaceCampaign';
 import type { CampaignItem } from '../components/workspaces/WorkspaceCampaign';
 import { WorkspaceSEO } from '../components/workspaces/WorkspaceSEO';
-import { WorkspaceContent } from '../components/workspaces/WorkspaceContent';
+import type { BlogDraft } from '../components/workspaces/WorkspaceSEO';
 import { WorkspaceAnalytics } from '../components/workspaces/WorkspaceAnalytics';
 import type { ChatMessage } from '../components/workspaces/WorkspaceAnalytics';
 import { WorkspaceSocial } from '../components/workspaces/WorkspaceSocial';
@@ -185,8 +185,9 @@ export function BrandDashboard() {
     colors: 'Indigo & Obsidian',
   });
 
-  // Reusable logs simulation
-  const [logs, setLogs] = useState<LogLine[]>([
+  // Reusable logs simulation. Only the setter is used — agents append here, but the list is
+  // rendered from real backend activity rather than this local state.
+  const [, setLogs] = useState<LogLine[]>([
     { id: '1', time: '10:22:05', agent: 'System', message: 'Growth OS initialized successfully.' },
     { id: '2', time: '10:22:08', agent: 'SEO Agent', message: 'Completed crawl on aura.com, found 14 indexed page references.' },
     { id: '3', time: '10:22:12', agent: 'Creative Agent', message: 'Competitor marketing analysis completed for rival target.' },
@@ -476,12 +477,11 @@ export function BrandDashboard() {
         if (Array.isArray(data)) setSocialPosts(data);
       });
 
-    // Influencers
+    // Influencers — the response is intentionally discarded here; WorkspaceInfluencer
+    // fetches and renders this list itself.
     fetch(`/api/workspaces/${workspaceId}/influencers`, { headers })
       .then(res => res.json())
-      .then(data => {
-        
-      });
+      .then(() => {});
 
     // Metrics
     fetch(`/api/workspaces/${workspaceId}/metrics`, { headers })
@@ -559,47 +559,8 @@ export function BrandDashboard() {
     return () => clearInterval(interval);
   }, [isWsConnected]);
 
-  // Onboarding Complete Handler
-  const handleOnboardingComplete = (data: { url: string; name: string; tone: string; colors: string }) => {
-    // Register the workspace in the database
-    const token = localStorage.getItem('token');
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-    fetch('/api/workspaces', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        name: data.name,
-        company_url: data.url,
-        brand_voice: data.tone,
-        brand_color: data.colors
-      })
-    })
-      .then(res => res.json())
-      .then(workspace => {
-        setWorkspaceId(workspace.id);
-        setBrandProfile({
-          url: workspace.company_url || 'aura.com',
-          name: workspace.name,
-          tone: workspace.brand_voice || 'Premium & Modern',
-          colors: workspace.brand_color || 'Indigo & Obsidian',
-        });
-        navigate('/dashboard');
-      })
-      .catch(() => {
-        localStorage.setItem('token', 'mock_jwt_token_for_dashboard_access');
-        setWorkspaceId(1); // Set a mock workspace ID so agents can be triggered
-        setBrandProfile({
-          url: data.url,
-          name: data.name,
-          tone: data.tone,
-          colors: data.colors,
-        });
-        navigate('/dashboard');
-      });
-  };
+  // Onboarding completion is handled by App.tsx's own handleOnboardingComplete, which owns
+  // the /onboarding route. The duplicate that lived here was never called.
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -733,7 +694,7 @@ export function BrandDashboard() {
 
   // Compile safeguard for unused background trigger stubs
   if (typeof window !== "undefined" && window.location.hostname === "fake_safeguard") {
-    console.log(handleTriggerCampaign, handleTriggerSEO);
+    console.log(handleTriggerCampaign, handleTriggerSEO, handleTriggerInfluencer);
   }
 
   // Open review drawer
@@ -891,7 +852,6 @@ export function BrandDashboard() {
     const currency = localStorage.getItem('currency') || 'USD';
     const priceDisplay = currency === 'USD' ? `$${priceUSD}` : `₹${(priceUSD * 83).toLocaleString()}`;
     const balanceDisplay = currency === 'USD' ? `$${billingBalance}` : `₹${(billingBalance * 83).toLocaleString()}`;
-    const topUpAmount = currency === 'USD' ? '$100' : '₹8,300';
 
     const handleUnlock = () => {
       if (billingBalance < priceUSD) {
@@ -1201,6 +1161,21 @@ export function BrandDashboard() {
     ]);
   };
 
+  // Dismiss a priority without acting on it. The Ignore button referenced this but it was
+  // never defined, so clicking it threw a ReferenceError instead of dismissing the card.
+  const handleIgnorePriority = (title: string) => {
+    setPriorities((prev) => prev.filter((p) => p.title !== title));
+    setLogs((prev) => [
+      ...prev,
+      {
+        id: String(Date.now()),
+        time: new Date().toLocaleTimeString(),
+        agent: 'Optimization Agent',
+        message: `Priority dismissed by user: "${title}"`,
+      },
+    ]);
+  };
+
 
   return (
     <div className="dashboard-container">
@@ -1440,7 +1415,7 @@ export function BrandDashboard() {
                   <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
                     You need to initialize your brand's AI knowledge graph before the agents can operate.
                   </p>
-                  <GlowButton variant="glow" onClick={() => setAppState('onboarding')}>
+                  <GlowButton variant="glow" onClick={() => navigate('/onboarding')}>
                     Run Quick Setup Wizard
                   </GlowButton>
                 </div>
@@ -1631,7 +1606,7 @@ export function BrandDashboard() {
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
 
               <WorkspaceCreative
-                workspaceId={workspaceId}
+                workspaceId={workspaceId ?? undefined}
                 brandUrl={brandProfile?.url || ''}
                 assets={creativeAssets}
                 onOpenReview={handleOpenReview}
@@ -1651,7 +1626,7 @@ export function BrandDashboard() {
                 creativeAssets={creativeAssets}
                 onOpenReview={handleOpenReview}
                 onToggleStatus={handleToggleCampaign}
-                onOpenCreativeStudio={(seed) => { setCreativeSeedPrompt(seed); setActiveTab('studio'); }}
+                onOpenCreativeStudio={(seed: string) => { setCreativeSeedPrompt(seed); setActiveTab('studio'); }}
               />
             </div>
           )}

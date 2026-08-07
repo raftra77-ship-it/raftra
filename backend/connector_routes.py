@@ -101,6 +101,11 @@ class MetaAccountSelect(BaseModel):
     ad_account_id: str
 
 
+class MetaPageSelect(BaseModel):
+    page_id: str
+    default_link_url: Optional[str] = None
+
+
 class PublishCampaign(BaseModel):
     campaign_id: int
 
@@ -209,6 +214,20 @@ async def gsc_callback(state: str, code: str = None, error: str = None, db: Sess
     conn.connected_email = email
     conn.scopes = " ".join(gsc.SCOPES)
     db.commit()
+
+    # Pick the property automatically when the account has exactly one verified site.
+    # Every data call (/overview, /performance, /submit-sitemap) needs conn.site_url, so
+    # without this the connection lands in a state that reports "Connected" but returns
+    # 400 for everything until a property is chosen.
+    if not conn.site_url:
+        try:
+            sites = await run_in_threadpool(gsc.list_sites, conn)
+            if len(sites) == 1:
+                conn.site_url = sites[0]
+            db.commit()
+        except Exception as e:
+            print(f"GSC site auto-select skipped: {e}")
+
     return RedirectResponse(f"{frontend}/dashboard?gsc=connected")
 
 
@@ -254,6 +273,48 @@ async def gsc_performance(workspace_id: int, days: int = 28, db: Session = Depen
         return data
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not fetch Search Console data: {e}")
+
+
+# ---------------------------------------------------------------- overview (panel dashboard)
+@router.get("/search-console/{workspace_id}/overview")
+async def gsc_overview(workspace_id: int, days: int = 28, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Site-wide totals plus top queries/pages/countries/devices — the data behind the
+    Search Console panel's tiles and tables."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_conn(workspace_id, db)
+    if not conn or not conn.refresh_token:
+        raise HTTPException(status_code=400, detail="Search Console is not connected for this workspace.")
+    if not conn.site_url:
+        raise HTTPException(status_code=400, detail="No Search Console property selected yet.")
+    try:
+        data = await run_in_threadpool(gsc.fetch_overview, conn, days)
+        conn.last_synced_at = datetime.datetime.utcnow()
+        db.commit()
+        return {**data, "last_synced_at": conn.last_synced_at.isoformat()}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch Search Console data: {e}")
+
+
+# ---------------------------------------------------------------- disconnect
+@router.post("/search-console/{workspace_id}/disconnect")
+async def gsc_disconnect(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Revoke the Google grant and drop the stored tokens. Revocation is best-effort —
+    if Google rejects it (already-revoked token, network blip) we still clear our side so
+    the workspace isn't left holding credentials it can't use."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_conn(workspace_id, db)
+    if not conn:
+        return {"status": "success", "message": "Already disconnected."}
+    token = conn.refresh_token or conn.access_token
+    if token:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post("https://oauth2.googleapis.com/revoke", data={"token": token})
+        except Exception as e:
+            print(f"GSC token revoke failed (clearing locally anyway): {e}")
+    db.delete(conn)
+    db.commit()
+    return {"status": "success", "message": "Google Search Console disconnected."}
 
 
 # ---------------------------------------------------------------- submit sitemap (request indexing)
@@ -715,11 +776,17 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
 def meta_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _get_meta(workspace_id, db)
+    # `ready_to_publish` is the single flag the UI should gate the publish button on: an ad
+    # needs BOTH an ad account (where it's billed) and a Page (who it's published as).
     return {
         "configured": meta.is_configured(),
         "connected": bool(conn and conn.access_token),
         "name": conn.connected_name if conn else None,
         "ad_account_id": conn.ad_account_id if conn else None,
+        "page_id": conn.page_id if conn else None,
+        "page_name": conn.page_name if conn else None,
+        "default_link_url": conn.default_link_url if conn else None,
+        "ready_to_publish": bool(conn and conn.access_token and conn.ad_account_id and conn.page_id),
     }
 
 
@@ -787,6 +854,30 @@ def meta_select_account(workspace_id: int, body: MetaAccountSelect, db: Session 
     conn.ad_account_id = body.ad_account_id.replace("act_", "")
     db.commit()
     return {"status": "success", "ad_account_id": conn.ad_account_id}
+
+
+@router.post("/meta/{workspace_id}/page")
+async def meta_select_page(workspace_id: int, body: MetaPageSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Choose the Facebook Page ads are published as. Required before any ad can be created —
+    Meta rejects a creative with no page_id."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _meta_ready(workspace_id, db, need_account=False)
+    # Verify the Page is actually one this user manages, so a bad id fails here with a clear
+    # message instead of deep inside ad-creative creation.
+    try:
+        pages = await meta.list_pages(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not verify the Page: {e}")
+    match = next((p for p in pages if str(p["id"]) == str(body.page_id)), None)
+    if not match:
+        raise HTTPException(status_code=400, detail="That Page isn't available on the connected Meta account.")
+    conn.page_id = str(body.page_id)
+    conn.page_name = match.get("name")
+    if body.default_link_url is not None:
+        conn.default_link_url = body.default_link_url.strip() or None
+    db.commit()
+    return {"status": "success", "page_id": conn.page_id, "page_name": conn.page_name,
+            "default_link_url": conn.default_link_url}
 
 
 @router.post("/meta/{workspace_id}/publish-campaign")
@@ -1514,61 +1605,6 @@ async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
             "universal_fix": fix.dict()}
 
 
-async def _apply_fixes_to_wp_page(current_title: str, current_content: str, fixes: list,
-                                  brand_context: str = "", site_name: str = "",
-                                  page_url: str = "") -> dict:
-    """Ask the LLM to apply the given content-related SEO fixes to a WordPress page's title
-    and/or body. Returns {"title": str, "content": str}.
-
-    The markup rules below matter: WordPress renders the body through the theme, so bare
-    <div>/<span> soup inherits no theme styling and looks unstyled next to the rest of the
-    site. Plain semantic tags (h2, p, ul, blockquote) are what themes actually style, and
-    they are also what the block editor parses back into real blocks."""
-    import json as _json, re as _re
-    from core.providers.llm_providers import GeminiProvider
-    system = (
-        "You are a precise web editor applying specific on-page SEO fixes to a WordPress "
-        "page's title and body content (HTML). Apply EVERY requested fix — each one is a "
-        "change a human already approved, so silently skipping any is a failure. Preserve "
-        "existing links and working content; never invent facts, prices, claims, contact "
-        "details or testimonials.\n"
-        "MARKUP RULES (a WordPress theme styles the body, so markup decides how it looks):\n"
-        "- Use plain semantic HTML only: h2, h3, p, ul, ol, li, strong, em, a, blockquote, figure.\n"
-        "- Never emit <div>, <span>, class=, style=, id=, or inline CSS — those bypass the "
-        "theme and render unstyled.\n"
-        "- Exactly one h1 is allowed and it is the page title, never in the body.\n"
-        "- Headings must descend in order (h2 before h3) and each must be followed by real prose.\n"
-        "- Short paragraphs of 2-4 sentences. Break long sections with h2s so the page scans.\n"
-        "- Keep every existing image and link; add descriptive alt text where it is missing.\n"
-        'Return ONLY a JSON object: {"title": "...", "content": "..."} — no prose, no markdown fences.'
-    )
-    context_block = ""
-    if brand_context or site_name:
-        # Without this the model writes generic filler, which is the main reason expanded
-        # pages read as boilerplate rather than as this particular business's page.
-        context_block = (
-            f"\n\nABOUT THIS BUSINESS (use it so the writing is specific, not generic; "
-            f"do not contradict or embellish it):\nSite: {site_name}\n{brand_context}\n"
-        )
-    prompt = (
-        f"Current title: {current_title}\n"
-        f"Page URL: {page_url}" + context_block +
-        "\n\nFIXES TO APPLY:\n" + "\n".join(f"- {f}" for f in fixes) +
-        f"\n\nCURRENT CONTENT (HTML):\n{current_content}\n\n"
-        "Apply all of the fixes above, then return the updated title and content as JSON."
-    )
-    out = (await GeminiProvider().generate_text(prompt=prompt, system_prompt=system)).strip()
-    out = _re.sub(r"^```[a-zA-Z0-9]*\n", "", out)
-    out = _re.sub(r"\n```\s*$", "", out)
-    try:
-        d = _json.loads(out)
-    except Exception:
-        raise RuntimeError("The model did not return valid JSON for the page update.")
-    title = (d.get("title") or "").strip() or current_title
-    content = (d.get("content") or "").strip() or current_content
-    return {"title": title, "content": content}
-
-
 class ApplyWordPressSeoBody(BaseModel):
     page_id: Optional[int] = None    # which page to fix; defaults to the first page
     dry_run: bool = False
@@ -1673,7 +1709,13 @@ async def apply_wp_seo_fixes(workspace_id: int, db: Session, page_id: int = None
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not read the WordPress page: {e}")
 
+    # Content fixes go through the contextual editor: the model plans WHERE and WHAT to
+    # change against an outline of the page, and deterministic code performs the splice. It
+    # never sees the chance to return a whole rewritten body, so everything outside a
+    # targeted span survives byte-for-byte. See core/wp_content_editor.py.
+    content_changes, manual_review = [], []
     if content_fixes:
+        from core import wp_content_editor as wpedit
         try:
             ws_row = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
             from core.brand_context import get_brand_context
@@ -1681,16 +1723,28 @@ async def apply_wp_seo_fixes(workspace_id: int, db: Session, page_id: int = None
                 brand = get_brand_context(workspace_id, query="page content and positioning")
             except Exception:
                 brand = ""   # knowledge base offline — write without it rather than fail
-            updated = await _apply_fixes_to_wp_page(
-                current["title"], current["content"], content_fixes,
+            ops = await wpedit.generate_edit_plan(
+                html=current["content"], page_title=current["title"], fixes=content_fixes,
                 brand_context=brand or "",
                 site_name=conn.site_name or (ws_row.name if ws_row else ""),
                 page_url=target.get("link") or "")
-            # Turn the model's semantic HTML into real Gutenberg blocks so the theme's
-            # fonts and spacing apply, instead of landing as one unstyled Classic block.
-            updated["content"] = wp.to_gutenberg_blocks(updated["content"])
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Could not generate the updated page: {e}")
+            raise HTTPException(status_code=502, detail=f"Could not plan the page edits: {e}")
+
+        result_edit = wpedit.apply_operations(current["content"], ops)
+        content_changes = result_edit["applied"]
+        manual_review = result_edit["manual_review"]
+        # Anything the model declined to plan for at all — it is told to omit rather than
+        # guess, so these are surfaced for a human instead of silently dropped.
+        for f in wpedit.unplanned_fixes(content_fixes, ops):
+            manual_review.append({
+                "fix": f, "action": None, "reason": "", "target": None, "content": "",
+                "error": "Unable to safely determine where this change belongs. Manual review required.",
+            })
+        body = result_edit["content"]
+        # Only newly inserted markup needs block-wrapping; content that already carries
+        # Gutenberg annotations is returned untouched by this call.
+        updated = {"title": current["title"], "content": wp.to_gutenberg_blocks(body)}
     else:
         updated = {"title": current["title"], "content": current["content"]}
 
@@ -1726,6 +1780,13 @@ async def apply_wp_seo_fixes(workspace_id: int, db: Session, page_id: int = None
     # plugin_meta counts as a change too: a fix that only rewrites the meta description
     # leaves the post title and body identical but is still a real edit.
     if not body_changed and not plugin_meta:
+        if manual_review:
+            # Nothing was written because every targeted edit failed to locate its spot.
+            # Say so specifically — "no change" would read like the fixes were pointless.
+            reasons = "; ".join(dict.fromkeys(m["error"] for m in manual_review))
+            raise HTTPException(status_code=422, detail=(
+                f"No change applied — {len(manual_review)} approved content fix(es) need manual "
+                f"review: {reasons}"))
         raise HTTPException(status_code=422, detail="The approved fixes produced no change to this page.")
 
     plugin_label = wp.SEO_PLUGIN_META.get(conn.seo_plugin, {}).get("label") if conn.seo_plugin else None
@@ -1735,7 +1796,10 @@ async def apply_wp_seo_fixes(workspace_id: int, db: Session, page_id: int = None
                 "current": current, "proposed": updated, "fixes": fixes, "skipped": skipped,
                 "plugin_meta": plugin_meta, "seo_plugin": plugin_label,
                 "site_mismatch": site_mismatch, "unused_fixes": unused_fixes,
-                "schema_note": schema_note, "universal_fix": fix.dict() if fix else None}
+                "schema_note": schema_note, "universal_fix": fix.dict() if fix else None,
+                # Per-change section diffs, so the UI shows the changed region rather than
+                # dumping the whole page, plus what needs a human instead of a guess.
+                "content_changes": content_changes, "manual_review": manual_review}
 
     # Snapshot BEFORE any write. WordPress has no pull request and the REST write is
     # immediate, so this row is the only way back to the previous version.
@@ -1784,13 +1848,18 @@ async def apply_wp_seo_fixes(workspace_id: int, db: Session, page_id: int = None
         cats = sorted({f.split(":", 1)[0] for f in unused_fixes})
         message += (f" {len(unused_fixes)} approved fix(es) in {', '.join(cats)} were not applied — "
                     f"WordPress cannot edit those (they are not page content).")
+    if manual_review:
+        message += (f" {len(manual_review)} content change(s) need manual review — "
+                    f"the target could not be located confidently.")
     if schema_note:
         message += f" {schema_note}"
     return {"status": "success", "edit_url": result["edit_url"], "link": result["link"],
             "page": {"id": target["id"], "title": target["title"]}, "fixes": fixes, "skipped": skipped,
             "meta_applied": meta_applied, "seo_plugin": plugin_label,
             "site_mismatch": site_mismatch, "unused_fixes": unused_fixes,
-            "schema_note": schema_note, "message": message, "universal_fix": fix.dict() if fix else None}
+            "schema_note": schema_note, "message": message, "universal_fix": fix.dict() if fix else None,
+            "content_changes": content_changes, "manual_review": manual_review,
+            "revision_id": revision.id}
 
 
 @router.delete("/shopify/{workspace_id}")
@@ -2039,10 +2108,12 @@ class WordPressAutoApply(BaseModel):
 async def wp_set_auto_apply(workspace_id: int, body: WordPressAutoApply,
                             db: Session = Depends(database.get_db),
                             current_user: models.User = Depends(auth.get_current_user)):
-    """Turn auto-apply on or off. When on, approving a recommendation in the audit report
-    writes it to the live site immediately instead of waiting for a manual Apply click.
-    The approval gate itself is unchanged — nothing is ever applied without a human
-    approving it first."""
+    """Turn auto-apply on or off.
+
+    When on, approving a recommendation automatically PREPARES the edit and notifies the
+    user, rather than writing to the live site behind their back. The write itself still
+    needs the user to confirm the before/after preview — auto-apply removes the chore of
+    remembering to come back and press Apply, not the final say over a live site."""
     _require_workspace(workspace_id, db, current_user)
     conn = _get_wp(workspace_id, db)
     if not conn:
@@ -2056,12 +2127,16 @@ async def wp_set_auto_apply(workspace_id: int, body: WordPressAutoApply,
     # next approval. Without this the toggle looks broken: a user who approved their fixes
     # first (the normal order) turns auto-apply on and nothing whatsoever happens.
     try:
-        result = await apply_wp_seo_fixes(workspace_id, db, dry_run=False, require_same_site=True)
-        return {"status": "success", "auto_apply": True, "applied": True,
-                "message": result.get("message"), "edit_url": result.get("edit_url")}
+        preview = await apply_wp_seo_fixes(workspace_id, db, dry_run=True, require_same_site=True)
+        changes = preview.get("content_changes") or []
+        review = preview.get("manual_review") or []
+        return {"status": "success", "auto_apply": True, "prepared": True,
+                "change_count": len(changes), "manual_review_count": len(review),
+                "message": (f"{len(changes)} change(s) ready to review for "
+                           f"'{(preview.get('page') or {}).get('title', 'your page')}'.")}
     except HTTPException as e:
-        # Turning the setting on still succeeded; there was just nothing valid to apply yet.
-        return {"status": "success", "auto_apply": True, "applied": False, "message": str(e.detail)}
+        # Turning the setting on still succeeded; there was just nothing valid to stage yet.
+        return {"status": "success", "auto_apply": True, "prepared": False, "message": str(e.detail)}
 
 
 @router.post("/wordpress/{workspace_id}/publish-draft")

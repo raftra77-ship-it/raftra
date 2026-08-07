@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 import { Users2, Bot, CheckCircle2, ShieldCheck, UserCheck, Star, Activity, MapPin } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
 import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';
@@ -25,7 +24,7 @@ export const FeatureInfluencer = () => {
       visualType: "influencer_escrow" as const,
       metrics: [
         { label: "Brand Fit Score", value: "96 / 100", color: "#00E676" },
-        { label: "Base Rate", value: "₹15,000 / Reel", color: "#FFBD2E" }
+        { label: "Base Rate", value: "â‚¹15,000 / Reel", color: "#FFBD2E" }
       ]
     },
     {
@@ -165,7 +164,7 @@ export const FeatureInfluencer = () => {
                 <div style={{ fontSize: '12px', color: '#888' }}>Engagement</div>
               </div>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>₹18K</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>â‚¹18K</div>
                 <div style={{ fontSize: '12px', color: '#888' }}>Est. Cost</div>
               </div>
               <div style={{ textAlign: 'center' }}>
@@ -181,7 +180,7 @@ export const FeatureInfluencer = () => {
                   <span style={{ fontWeight: 'bold' }}>97%</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ color: '#ccc', display: 'flex', alignItems: 'center', gap: '8px' }}><UserCheck size={16} color="var(--primary)" /> Female audience (18–34)</span>
+                  <span style={{ color: '#ccc', display: 'flex', alignItems: 'center', gap: '8px' }}><UserCheck size={16} color="var(--primary)" /> Female audience (18â€“34)</span>
                   <span style={{ fontWeight: 'bold' }}>72%</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>

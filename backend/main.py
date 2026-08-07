@@ -145,6 +145,16 @@ def _run_light_migrations():
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS meta_campaign_id VARCHAR",
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1",
         "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS version_group VARCHAR",
+        # Google connection: GA4 property + sync stamp live on the Search Console row (one
+        # OAuth grant covers both). Without these the /status endpoint raises on every
+        # workspace that has already connected Google.
+        "ALTER TABLE search_console_connections ADD COLUMN IF NOT EXISTS ga4_property_id VARCHAR",
+        "ALTER TABLE search_console_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
+        # Meta Ads: the Facebook Page an ad's creative is published as (required to create
+        # any ad) plus a default destination URL.
+        "ALTER TABLE meta_ads_connections ADD COLUMN IF NOT EXISTS page_id VARCHAR",
+        "ALTER TABLE meta_ads_connections ADD COLUMN IF NOT EXISTS page_name VARCHAR",
+        "ALTER TABLE meta_ads_connections ADD COLUMN IF NOT EXISTS default_link_url VARCHAR",
         # Publishing foundation (backend/publishing/) — last_synced_at on existing connections.
         "ALTER TABLE github_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
         "ALTER TABLE shopify_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
