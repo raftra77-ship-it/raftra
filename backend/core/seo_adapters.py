@@ -73,9 +73,19 @@ def apply_to_html(html: str, fix: UniversalSeoFix) -> str:
     return _inject_block(html, _build_tag_block(fix, include_description=True))
 
 
-def apply_to_wordpress(current_title: str, current_content: str, fix: UniversalSeoFix) -> dict:
-    """WordPress adapter. Returns {title, content, skipped} — `skipped` lists fields this
-    adapter could not apply for real (no plugin assumed), so the caller can be honest about it."""
+def apply_to_wordpress(current_title: str, current_content: str, fix: UniversalSeoFix,
+                       seo_plugin: str | None = None) -> dict:
+    """WordPress adapter. Returns {title, content, plugin_meta, skipped}.
+
+    `plugin_meta` holds the fields WordPress core cannot store, which only exist if the site
+    runs an SEO plugin — the caller writes them via wordpress_connect.update_page_seo_meta()
+    (Yoast / Rank Math). `skipped` lists what genuinely has nowhere to go, so the caller can
+    stay honest about it instead of claiming a fix that never landed.
+
+    Note `title` and `plugin_meta["title"]` are different targets, not a duplicate: the post
+    title is the page's visible H1, while the plugin's SEO title is what becomes the <title>
+    tag. The audit's recommended title is worth applying to both.
+    """
     title = fix.title or current_title
     content = current_content
     if fix.schema_jsonld:
@@ -85,11 +95,28 @@ def apply_to_wordpress(current_title: str, current_content: str, fix: UniversalS
             content = re.sub(re.escape(_START) + r".*?" + re.escape(_END), block, content, flags=re.DOTALL)
         else:
             content = content.rstrip() + "\n\n" + block
-    skipped = [name for name, val in (
-        ("meta_description", fix.meta_description), ("canonical", fix.canonical),
-        ("open_graph", fix.open_graph), ("twitter", fix.twitter),
-    ) if val]
-    return {"title": title, "content": content, "skipped": skipped}
+
+    plugin_meta: dict = {}
+    if seo_plugin:
+        if fix.title:
+            plugin_meta["title"] = fix.title
+        if fix.meta_description:
+            plugin_meta["description"] = fix.meta_description
+        if fix.canonical:
+            plugin_meta["canonical"] = fix.canonical
+
+    # open_graph/twitter stay unsupported on WordPress even with a plugin: each plugin names
+    # those meta keys differently and they are not worth guessing at, so they are reported
+    # rather than written somewhere that would not take effect.
+    covered = {"meta_description": "description", "canonical": "canonical"}
+    skipped = [
+        name for name, val in (
+            ("meta_description", fix.meta_description), ("canonical", fix.canonical),
+            ("open_graph", fix.open_graph), ("twitter", fix.twitter),
+        )
+        if val and covered.get(name) not in plugin_meta
+    ]
+    return {"title": title, "content": content, "plugin_meta": plugin_meta, "skipped": skipped}
 
 
 def apply_to_shopify_page(fix: UniversalSeoFix) -> dict:

@@ -421,11 +421,19 @@ class ShopifyThemeDraft(Base):
 
 
 class WordPressConnection(Base):
-    """Per-workspace WordPress connection. Uses an Application Password (WP 5.6+)
-    rather than OAuth, which is what self-hosted sites support out of the box.
-    Posts are created as DRAFTS so a human still presses publish.
+    """Per-workspace WordPress connection, in one of two flavours (see `auth_type`):
 
-    NOTE: the application password is stored as-is; in production encrypt it at rest.
+      - "app_password": a self-hosted site, driven with an Application Password (WP 5.6+)
+        over Basic auth against the site's own /wp-json/.
+      - "wpcom_oauth": a WordPress.com-hosted site. Those serve no /wp-json/ and have no
+        Application Passwords screen, so they are driven with an OAuth bearer token against
+        the public-api.wordpress.com wp/v2 proxy (see core/wpcom_oauth.py).
+
+    Both speak the same wp/v2 shape, so core/wordpress_connect.py drives them with one set
+    of functions. Posts are created as DRAFTS so a human still presses publish.
+
+    NOTE: the application password / access token are stored as-is; in production encrypt
+    them at rest.
     """
     __tablename__ = "wordpress_connections"
 
@@ -438,6 +446,41 @@ class WordPressConnection(Base):
     display_name = Column(String, nullable=True)     # connected WP user
     last_synced_at = Column(DateTime, nullable=True)  # last time this connection's data (pages) was refreshed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # --- how this connection authenticates. Defaults to app_password so every row that
+    # existed before WordPress.com support keeps working untouched.
+    auth_type = Column(String, nullable=False, default="app_password")
+    access_token = Column(String, nullable=True)      # wpcom_oauth only (no expiry, no refresh token)
+    wpcom_site_id = Column(String, nullable=True)     # wpcom_oauth only — numeric blog id
+    api_base = Column(String, nullable=True)          # wpcom_oauth only — pinned wp/v2 root
+
+    # --- automation. When true, approving a recommendation applies it to the live site
+    # immediately, instead of waiting for a manual "Apply SEO fixes" click.
+    auto_apply = Column(Boolean, default=False)
+    seo_plugin = Column(String, nullable=True)        # "yoast" | "rankmath" | None, cached at connect
+
+
+class WordPressRevision(Base):
+    """A snapshot of one WordPress page taken immediately BEFORE Raftra wrote to it.
+
+    GitHub gets a pull request and Shopify writes are reversible in its admin, but a
+    WordPress REST write lands on the live page instantly with no review step of its own.
+    This table is therefore the only rollback path, and it is what makes unattended
+    auto-apply safe to offer at all: every write is undoable to the exact previous bytes.
+    """
+    __tablename__ = "wordpress_revisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+    page_id = Column(Integer)                        # the WordPress page this snapshot is of
+    page_title = Column(String, nullable=True)       # label for the undo button
+    prev_title = Column(String, nullable=True)       # exact pre-write values
+    prev_content = Column(String, nullable=True)
+    prev_meta = Column(JSON, nullable=True)          # SEO-plugin meta we overwrote, if any
+    applied_fixes = Column(JSON, nullable=True)      # what was applied, for the UI
+    auto = Column(Boolean, default=False)            # written by auto-apply vs a manual click
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    reverted_at = Column(DateTime, nullable=True)    # set once undone; never reused after
 
 
 class PageMapping(Base):

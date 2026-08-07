@@ -1073,11 +1073,16 @@ class RecommendationDecisionBody(_BaseModel):
 
 @router.post("/{workspace_id}/seo/audits/{audit_id}/decision")
 def set_recommendation_decision(workspace_id: int, audit_id: int, body: RecommendationDecisionBody,
+                                background: BackgroundTasks,
                                 db: Session = Depends(database.get_db),
                                 current_user: models.User = Depends(auth.get_current_user)):
     """Approve / Edit / Reject ONE recommendation inside the combined report. This is the
     only place approval lives — the audit report itself stays read-only. Approved/edited
-    decisions surface in the Publishing Queue."""
+    decisions surface in the Publishing Queue.
+
+    If the workspace's WordPress connection has auto_apply on, approving here also pushes
+    the fix to the live site in the background (see core/seo_autoapply.py). The gate is
+    still this endpoint: auto-apply removes the second manual click, not the review."""
     _require_workspace(workspace_id, db, current_user)
     if body.decision not in ("approved", "edited", "rejected"):
         raise HTTPException(status_code=400, detail="decision must be approved, edited or rejected")
@@ -1092,6 +1097,9 @@ def set_recommendation_decision(workspace_id: int, audit_id: int, body: Recommen
     kd["decisions"] = decisions
     row.keywords_data = kd
     db.commit()
+    if body.decision in ("approved", "edited"):
+        from core.seo_autoapply import apply_wordpress_after_approval
+        background.add_task(apply_wordpress_after_approval, workspace_id, current_user.id)
     return {"status": "success", "decisions": decisions}
 
 

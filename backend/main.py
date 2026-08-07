@@ -149,6 +149,15 @@ def _run_light_migrations():
         "ALTER TABLE github_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
         "ALTER TABLE shopify_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
         "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
+        # WordPress.com OAuth support + auto-apply (core/wpcom_oauth.py). Existing rows are
+        # all Application Password connections, hence the default.
+        "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS auth_type VARCHAR DEFAULT 'app_password'",
+        "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS access_token VARCHAR",
+        "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS wpcom_site_id VARCHAR",
+        "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS api_base VARCHAR",
+        "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS auto_apply BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS seo_plugin VARCHAR",
+        "UPDATE wordpress_connections SET auth_type = 'app_password' WHERE auth_type IS NULL",
     ]
     try:
         with database.engine.begin() as conn:

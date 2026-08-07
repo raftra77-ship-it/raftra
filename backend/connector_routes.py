@@ -12,6 +12,7 @@ Flow:
 import os
 import datetime
 import jwt
+import httpx
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, BackgroundTasks
 from fastapi.responses import RedirectResponse
@@ -27,6 +28,7 @@ from core import google_ads as gads
 from core import campaign_optimizer as optimizer
 from core import shopify_connect as shop
 from core import wordpress_connect as wp
+from core import wpcom_oauth as wpcom
 
 router = APIRouter(prefix="/api/connectors", tags=["connectors"])
 
@@ -483,6 +485,73 @@ def _get_approved_fixes(audit_row, categories: set) -> list:
         if text:
             out.append(f"{category}: {text}")
     return out[:12]
+
+
+def _match_page_to_audit(pages: list, audit_target: str) -> tuple:
+    """Pick the WordPress page the audit actually describes, by URL path.
+
+    An audit crawls one specific URL, so its recommendations ("this page is thin", "this
+    page has no H1") describe that page and nothing else. Defaulting to pages[0] meant
+    every fix landed on whichever page happened to come back first, which is how fixes for
+    the home page ended up written into About.
+
+    Returns (page, reason). A None page means we could not identify the audited page, and
+    the caller should refuse rather than guess — writing a page's fixes onto a different
+    page is exactly the failure this function exists to prevent.
+    """
+    from urllib.parse import urlsplit
+    if not pages:
+        return None, "the site has no pages"
+    path = urlsplit(audit_target or "").path.strip("/").lower()
+
+    # Home page: the audit targeted the site root.
+    if not path:
+        for p in pages:
+            if urlsplit(p.get("link") or "").path.strip("/") == "":
+                return p, "matched the site's front page"
+        for p in pages:
+            if (p.get("slug") or "").lower() in ("home", "front-page", "frontpage"):
+                return p, "matched a page slugged 'home'"
+        # A WordPress front page is often a post listing rather than a Page, so there may
+        # genuinely be nothing to edit. Say so instead of writing to an arbitrary page.
+        return None, ("the audit is for the site's front page, but no matching WordPress "
+                      "Page exists (the front page may be a posts feed, which has no editable body)")
+
+    slug = path.rsplit("/", 1)[-1]
+    for p in pages:
+        if (p.get("slug") or "").lower() == slug:
+            return p, f"matched the page slugged '{slug}'"
+    for p in pages:
+        if urlsplit(p.get("link") or "").path.strip("/").lower() == path:
+            return p, f"matched the page at /{path}"
+    known = ", ".join(f"/{p.get('slug')}" for p in pages[:8]) or "none"
+    return None, (f"no WordPress page matches the audited URL /{path}. Pages on this site: {known}")
+
+
+def _get_unused_approved_fixes(audit_row, used_categories: set) -> list:
+    """Approved recommendations that the caller's categories do NOT cover.
+
+    Every platform consumes only the categories it can actually write (WordPress cannot
+    edit robots.txt, for example). Those leftovers used to vanish without a word, which
+    reads as "I approved twelve things and one changed" — so callers surface this list and
+    say plainly what was not applied and why."""
+    kd = audit_row.keywords_data or {}
+    decisions = kd.get("decisions") or {}
+    audit = kd.get("audit") or {}
+    issues = audit.get("priority_issues") or audit.get("top_5_issues") or []
+    by_key = {f"{it.get('area')}::{it.get('issue')}": it for it in issues}
+    out = []
+    for key, d in decisions.items():
+        if d.get("decision") not in ("approved", "edited"):
+            continue
+        src = by_key.get(key, {})
+        category = (src.get("area") or key.split("::")[0]).rsplit(" · ", 1)[-1]
+        if category in used_categories:
+            continue
+        text = d.get("edited_text") or src.get("issue")
+        if text:
+            out.append(f"{category}: {text}")
+    return out
 
 
 async def _apply_fixes_to_file(file_content: str, fixes: list, file_path: str) -> str:
@@ -1445,21 +1514,48 @@ async def shop_apply_seo_fixes(workspace_id: int, body: ApplyShopifySeoBody,
             "universal_fix": fix.dict()}
 
 
-async def _apply_fixes_to_wp_page(current_title: str, current_content: str, fixes: list) -> dict:
+async def _apply_fixes_to_wp_page(current_title: str, current_content: str, fixes: list,
+                                  brand_context: str = "", site_name: str = "",
+                                  page_url: str = "") -> dict:
     """Ask the LLM to apply the given content-related SEO fixes to a WordPress page's title
-    and/or body. Returns {"title": str, "content": str}."""
+    and/or body. Returns {"title": str, "content": str}.
+
+    The markup rules below matter: WordPress renders the body through the theme, so bare
+    <div>/<span> soup inherits no theme styling and looks unstyled next to the rest of the
+    site. Plain semantic tags (h2, p, ul, blockquote) are what themes actually style, and
+    they are also what the block editor parses back into real blocks."""
     import json as _json, re as _re
     from core.providers.llm_providers import GeminiProvider
     system = (
         "You are a precise web editor applying specific on-page SEO fixes to a WordPress "
-        "page's title and body content (HTML). Apply ONLY the requested fixes. Preserve all "
-        "existing structure, links, and formatting not related to the fixes. Never invent "
-        "facts or remove working content. Return ONLY a JSON object: "
-        '{"title": "...", "content": "..."} — no prose, no markdown fences.'
+        "page's title and body content (HTML). Apply EVERY requested fix — each one is a "
+        "change a human already approved, so silently skipping any is a failure. Preserve "
+        "existing links and working content; never invent facts, prices, claims, contact "
+        "details or testimonials.\n"
+        "MARKUP RULES (a WordPress theme styles the body, so markup decides how it looks):\n"
+        "- Use plain semantic HTML only: h2, h3, p, ul, ol, li, strong, em, a, blockquote, figure.\n"
+        "- Never emit <div>, <span>, class=, style=, id=, or inline CSS — those bypass the "
+        "theme and render unstyled.\n"
+        "- Exactly one h1 is allowed and it is the page title, never in the body.\n"
+        "- Headings must descend in order (h2 before h3) and each must be followed by real prose.\n"
+        "- Short paragraphs of 2-4 sentences. Break long sections with h2s so the page scans.\n"
+        "- Keep every existing image and link; add descriptive alt text where it is missing.\n"
+        'Return ONLY a JSON object: {"title": "...", "content": "..."} — no prose, no markdown fences.'
     )
+    context_block = ""
+    if brand_context or site_name:
+        # Without this the model writes generic filler, which is the main reason expanded
+        # pages read as boilerplate rather than as this particular business's page.
+        context_block = (
+            f"\n\nABOUT THIS BUSINESS (use it so the writing is specific, not generic; "
+            f"do not contradict or embellish it):\nSite: {site_name}\n{brand_context}\n"
+        )
     prompt = (
-        f"Current title: {current_title}\n\nFIXES TO APPLY:\n" + "\n".join(f"- {f}" for f in fixes) +
-        f"\n\nCURRENT CONTENT (HTML):\n{current_content}\n\nReturn the updated title and content as JSON."
+        f"Current title: {current_title}\n"
+        f"Page URL: {page_url}" + context_block +
+        "\n\nFIXES TO APPLY:\n" + "\n".join(f"- {f}" for f in fixes) +
+        f"\n\nCURRENT CONTENT (HTML):\n{current_content}\n\n"
+        "Apply all of the fixes above, then return the updated title and content as JSON."
     )
     out = (await GeminiProvider().generate_text(prompt=prompt, system_prompt=system)).strip()
     out = _re.sub(r"^```[a-zA-Z0-9]*\n", "", out)
@@ -1489,20 +1585,31 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
     pages have no pull-request concept, human review happens via the dry_run preview in
     Raftra, same as Shopify."""
     _require_workspace(workspace_id, db, current_user)
+    return await apply_wp_seo_fixes(workspace_id, db, page_id=body.page_id, dry_run=body.dry_run)
+
+
+async def apply_wp_seo_fixes(workspace_id: int, db: Session, page_id: int = None,
+                             dry_run: bool = False, require_same_site: bool = False):
+    """The apply logic itself, with no FastAPI dependencies, so it can be called both by the
+    route above (a user pressing Apply) and by the auto-apply hook that fires when a
+    recommendation is approved (see core/seo_autoapply.py). Caller does the auth check.
+
+    `require_same_site` is set by the unattended caller: it refuses to write when the audit
+    describes a different site than the one WordPress is connected to, rather than silently
+    applying one site's recommendations to another."""
     conn = _get_wp(workspace_id, db)
-    if not conn or not conn.app_password or not conn.site_url:
+    if not conn or not (conn.app_password or conn.access_token) or not conn.site_url:
         raise HTTPException(status_code=400, detail="Connect WordPress first.")
 
     try:
         pages = await wp.list_pages(conn)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not list WordPress pages: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not list {wp.describe(conn)} pages: {e}")
     if not pages:
         raise HTTPException(status_code=409, detail="This WordPress site has no Pages to optimize yet.")
     target = None
-    if body.page_id:
-        target = next((p for p in pages if p.get("id") == body.page_id), None)
-    target = target or pages[0]
+    if page_id:
+        target = next((p for p in pages if p.get("id") == page_id), None)
 
     rows = (db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id)
             .order_by(models.SEOAudit.created_at.desc()).all())
@@ -1510,13 +1617,53 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
                       and (r.keywords_data or {}).get("audit")), None)
     if not audit_row:
         raise HTTPException(status_code=409, detail="Run an SEO audit first — there are no fixes to apply.")
+
+    # Does this audit actually describe the site we are about to write to? A workspace's
+    # audit target and its WordPress connection are set independently, so they can point at
+    # different sites (e.g. the workspace audits a Shopify storefront while WordPress is
+    # connected for publishing). Recommendations like "expand this thin page" are computed
+    # from the crawled page, so applying them elsewhere writes nonsense. Unattended writes
+    # refuse outright; a human pressing Apply gets a warning and keeps the final say.
+    audit_target = (audit_row.keywords_data or {}).get("target_url") or ""
+    site_mismatch = None
+    if audit_target and conn.site_url:
+        from urllib.parse import urlsplit
+        audit_host = urlsplit(audit_target).netloc.lower().removeprefix("www.")
+        site_host = urlsplit(conn.site_url).netloc.lower().removeprefix("www.")
+        if audit_host and site_host and audit_host != site_host:
+            site_mismatch = (
+                f"The latest SEO audit is for {audit_host}, but WordPress is connected to "
+                f"{site_host}. Those recommendations were computed by crawling {audit_host}, "
+                f"so they do not describe the WordPress page."
+            )
+            if require_same_site:
+                raise HTTPException(status_code=409, detail=site_mismatch)
+
+    # Now that we know which URL the audit describes, route its fixes to THAT page rather
+    # than to whichever page the API listed first.
+    page_reason = "chosen explicitly" if target else ""
+    if not target:
+        target, page_reason = _match_page_to_audit(pages, audit_target)
+    if not target:
+        raise HTTPException(status_code=409, detail=(
+            f"Could not decide which page to update: {page_reason}. "
+            "Re-run the audit against the page you want optimized, or pass a page_id."))
+
     # Two independent, approval-gated fix sources, same split as GitHub: Content-category
     # fixes are full-body rewrites (not tag values), Metadata/Structured Data go through the
     # shared universal fix -> WordPress adapter (title -> post title, schema -> JSON-LD in
     # content; meta_description/canonical/OG/twitter get reported as skipped, since WP core
     # has no real place to write them without a plugin).
-    content_fixes = _get_approved_fixes(audit_row, {"Content"})
-    tag_fixes = _get_approved_fixes(audit_row, {"Metadata", "Structured Data"})
+    # Accessibility belongs with Content here: alt text, heading order and link wording are
+    # all edits to the page body, which is exactly what the rewrite step can make. (The
+    # GitHub path already treats them together for the same reason.) Technical SEO stays
+    # out — robots.txt and sitemaps are not page content and WordPress cannot write them.
+    WP_CONTENT_CATEGORIES = {"Content", "Accessibility"}
+    WP_TAG_CATEGORIES = {"Metadata", "Structured Data"}
+
+    content_fixes = _get_approved_fixes(audit_row, WP_CONTENT_CATEGORIES)
+    tag_fixes = _get_approved_fixes(audit_row, WP_TAG_CATEGORIES)
+    unused_fixes = _get_unused_approved_fixes(audit_row, WP_CONTENT_CATEGORIES | WP_TAG_CATEGORIES)
     if not content_fixes and not tag_fixes:
         raise HTTPException(status_code=409,
                             detail="No approved fixes yet — approve at least one recommendation in the audit report before applying.")
@@ -1528,13 +1675,27 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
 
     if content_fixes:
         try:
-            updated = await _apply_fixes_to_wp_page(current["title"], current["content"], content_fixes)
+            ws_row = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
+            from core.brand_context import get_brand_context
+            try:
+                brand = get_brand_context(workspace_id, query="page content and positioning")
+            except Exception:
+                brand = ""   # knowledge base offline — write without it rather than fail
+            updated = await _apply_fixes_to_wp_page(
+                current["title"], current["content"], content_fixes,
+                brand_context=brand or "",
+                site_name=conn.site_name or (ws_row.name if ws_row else ""),
+                page_url=target.get("link") or "")
+            # Turn the model's semantic HTML into real Gutenberg blocks so the theme's
+            # fonts and spacing apply, instead of landing as one unstyled Classic block.
+            updated["content"] = wp.to_gutenberg_blocks(updated["content"])
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Could not generate the updated page: {e}")
     else:
         updated = {"title": current["title"], "content": current["content"]}
 
     skipped = []
+    plugin_meta = {}
     schema_note = None
     fix = None
     if tag_fixes:
@@ -1553,30 +1714,82 @@ async def wp_apply_seo_fixes(workspace_id: int, body: ApplyWordPressSeoBody,
             page_content=updated["content"],
         )
         schema_note = fix.schema_note
-        adapted = seo_adapters.apply_to_wordpress(updated["title"], updated["content"], fix)
+        adapted = seo_adapters.apply_to_wordpress(updated["title"], updated["content"], fix,
+                                                  seo_plugin=conn.seo_plugin)
         updated = {"title": adapted["title"], "content": adapted["content"]}
         skipped = adapted["skipped"]
+        plugin_meta = adapted["plugin_meta"]
 
     fixes = content_fixes + tag_fixes
-    if updated["title"] == current["title"] and updated["content"].strip() == current["content"].strip():
+    body_changed = not (updated["title"] == current["title"]
+                        and updated["content"].strip() == current["content"].strip())
+    # plugin_meta counts as a change too: a fix that only rewrites the meta description
+    # leaves the post title and body identical but is still a real edit.
+    if not body_changed and not plugin_meta:
         raise HTTPException(status_code=422, detail="The approved fixes produced no change to this page.")
 
-    if body.dry_run:
+    plugin_label = wp.SEO_PLUGIN_META.get(conn.seo_plugin, {}).get("label") if conn.seo_plugin else None
+
+    if dry_run:
         return {"status": "preview", "page": {"id": target["id"], "title": target["title"]},
                 "current": current, "proposed": updated, "fixes": fixes, "skipped": skipped,
+                "plugin_meta": plugin_meta, "seo_plugin": plugin_label,
+                "site_mismatch": site_mismatch, "unused_fixes": unused_fixes,
                 "schema_note": schema_note, "universal_fix": fix.dict() if fix else None}
 
-    try:
-        result = await wp.update_page_content(conn, target["id"], updated["title"], updated["content"])
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not update the WordPress page: {e}")
-    message = "Updated the page's title/content in WordPress."
+    # Snapshot BEFORE any write. WordPress has no pull request and the REST write is
+    # immediate, so this row is the only way back to the previous version.
+    revision = models.WordPressRevision(
+        workspace_id=workspace_id, page_id=target["id"], page_title=target.get("title"),
+        prev_title=current["title"], prev_content=current["content"],
+        prev_meta=None, applied_fixes=fixes, auto=require_same_site,
+    )
+    if plugin_meta and conn.seo_plugin:
+        try:
+            revision.prev_meta = await wp.read_page_seo_meta(conn, target["id"], conn.seo_plugin)
+        except Exception:
+            revision.prev_meta = None
+    db.add(revision)
+    db.commit()
+
+    result = {"edit_url": wp.edit_url(conn, target["id"], kind="page"), "link": target.get("link")}
+    if body_changed:
+        try:
+            result = await wp.update_page_content(conn, target["id"], updated["title"], updated["content"])
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Could not update the {wp.describe(conn)} page: {e}")
+
+    # Metadata that only an SEO plugin can hold. update_page_seo_meta reads each value back
+    # after writing, so anything the plugin silently dropped is reported as skipped instead
+    # of being counted as applied.
+    meta_applied = []
+    if plugin_meta and conn.seo_plugin:
+        try:
+            meta_result = await wp.update_page_seo_meta(conn, target["id"], conn.seo_plugin, plugin_meta)
+            meta_applied = meta_result["applied"]
+            skipped = sorted(set(skipped) | set(meta_result["skipped"]))
+        except Exception as e:
+            print(f"WordPress SEO plugin meta write failed (workspace {workspace_id}): {e}")
+            skipped = sorted(set(skipped) | set(plugin_meta))
+
+    message = f"Applied {len(fixes)} approved fix(es) to '{target['title']}' in {wp.describe(conn)}."
+    if meta_applied:
+        message += f" Wrote {', '.join(meta_applied)} via {plugin_label}."
     if skipped:
-        message += f" ({', '.join(skipped)} need an SEO plugin — not applied.)"
+        need = "need an SEO plugin" if not conn.seo_plugin else f"could not be written via {plugin_label}"
+        message += f" ({', '.join(skipped)} {need} — not applied.)"
+    if unused_fixes:
+        # Say this out loud. Silently dropping approved work is what makes the feature look
+        # like it only changed one thing.
+        cats = sorted({f.split(":", 1)[0] for f in unused_fixes})
+        message += (f" {len(unused_fixes)} approved fix(es) in {', '.join(cats)} were not applied — "
+                    f"WordPress cannot edit those (they are not page content).")
     if schema_note:
         message += f" {schema_note}"
     return {"status": "success", "edit_url": result["edit_url"], "link": result["link"],
             "page": {"id": target["id"], "title": target["title"]}, "fixes": fixes, "skipped": skipped,
+            "meta_applied": meta_applied, "seo_plugin": plugin_label,
+            "site_mismatch": site_mismatch, "unused_fixes": unused_fixes,
             "schema_note": schema_note, "message": message, "universal_fix": fix.dict() if fix else None}
 
 
@@ -1599,12 +1812,67 @@ def wp_status(workspace_id: int, db: Session = Depends(database.get_db), current
     _require_workspace(workspace_id, db, current_user)
     conn = _get_wp(workspace_id, db)
     return {
-        "configured": True,  # nothing to configure server-side; the client supplies credentials
-        "connected": bool(conn and conn.app_password),
+        # The Application Password path needs nothing configured server-side, but the
+        # WordPress.com path needs WPCOM_CLIENT_ID/SECRET — report them separately so the
+        # panel can hide a button that could not possibly work.
+        "configured": True,
+        "wpcom_configured": wpcom.is_configured(),
+        "connected": bool(conn and (conn.app_password or conn.access_token)),
+        "auth_type": conn.auth_type if conn else None,
         "site_url": conn.site_url if conn else None,
         "site_name": conn.site_name if conn else None,
         "username": conn.username if conn else None,
+        "auto_apply": bool(conn.auto_apply) if conn else False,
+        "seo_plugin": conn.seo_plugin if conn else None,
+        "seo_plugin_label": wp.SEO_PLUGIN_META.get(conn.seo_plugin, {}).get("label") if conn and conn.seo_plugin else None,
     }
+
+
+class WordPressDetect(BaseModel):
+    site_url: str
+
+
+@router.post("/wordpress/{workspace_id}/detect")
+async def wp_detect(workspace_id: int, body: WordPressDetect, db: Session = Depends(database.get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    """Work out HOW a given site can be connected, before the user types any credentials.
+
+    Returns method="app_password" for a self-hosted site that exposes /wp-json/, or
+    method="wpcom_oauth" for a WordPress.com-hosted one. This is what stops a user hitting
+    the dead end of typing an application password for a site that has no such feature.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    try:
+        site_url = wp.normalize_site_url(body.site_url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not site_url:
+        raise HTTPException(status_code=400, detail="Enter your WordPress site URL.")
+
+    host = site_url.split("://", 1)[-1].split("/")[0]
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        # A site that answers /wp-json/ can use the Application Password path.
+        try:
+            root = await client.get(f"{site_url}/wp-json")
+            if root.status_code == 200:
+                return {"method": "app_password", "site_url": site_url,
+                        "site_name": (root.json() or {}).get("name") or host}
+        except Exception:
+            pass
+
+    # No /wp-json/ — ask WordPress.com whether it hosts this site.
+    try:
+        info = await wpcom.site_info(host)
+        if info["is_simple"]:
+            return {"method": "wpcom_oauth", "site_url": site_url, "blog_id": info["blog_id"],
+                    "site_name": info["name"] or host, "wpcom_configured": wpcom.is_configured()}
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=422, detail=(
+        "Could not find a WordPress REST API at that address, and WordPress.com does not host it. "
+        "Check the URL is your site's home page, and that no security plugin is blocking /wp-json/."
+    ))
 
 
 @router.post("/wordpress/{workspace_id}/connect")
@@ -1623,9 +1891,177 @@ async def wp_connect(workspace_id: int, body: WordPressConnect, db: Session = De
     conn.username = body.username
     conn.app_password = body.app_password
     conn.display_name = info.get("name")
+    conn.auth_type = wp.AUTH_APP_PASSWORD
+    conn.access_token = None
     db.commit()
+    # Cache which SEO plugin the site runs, so metadata fixes know where they can be
+    # written. Never fatal: no plugin just means those fields get reported as skipped.
+    try:
+        conn.seo_plugin = await wp.detect_seo_plugin(conn)
+        db.commit()
+    except Exception:
+        pass
     return {"status": "success", "site_url": conn.site_url, "site_name": conn.site_name,
-            "connected_as": conn.display_name}
+            "connected_as": conn.display_name, "auth_type": conn.auth_type,
+            "seo_plugin": conn.seo_plugin}
+
+
+# ---------------------------------------------------------------- WordPress.com OAuth
+# For WordPress.com-hosted sites, which have no Application Passwords. Mirrors the
+# Search Console flow above: a short-lived signed `state` carries the workspace and user
+# across the unauthenticated callback.
+
+@router.get("/wordpress/{workspace_id}/oauth/authorize")
+def wpcom_authorize(workspace_id: int, blog: str = None, db: Session = Depends(database.get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    if not wpcom.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WordPress.com is not configured on the server (WPCOM_CLIENT_ID/SECRET missing).")
+    state = jwt.encode({
+        "purpose": "wpcom_oauth",
+        "workspace_id": workspace_id,
+        "user_id": current_user.id,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=_STATE_TTL_MIN),
+    }, auth.SECRET_KEY, algorithm=auth.ALGORITHM)
+    return {"url": wpcom.build_authorize_url(state, blog=blog)}
+
+
+@router.get("/wordpress/oauth/callback")
+async def wpcom_callback(state: str, code: str = None, error: str = None,
+                         db: Session = Depends(database.get_db)):
+    frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    if error or not code:
+        return RedirectResponse(f"{frontend}/dashboard?wordpress=error")
+    try:
+        payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        if payload.get("purpose") != "wpcom_oauth":
+            raise ValueError("bad purpose")
+        workspace_id = int(payload["workspace_id"])
+    except Exception:
+        return RedirectResponse(f"{frontend}/dashboard?wordpress=error")
+
+    try:
+        tokens = await wpcom.exchange_code(code)
+        info = await wpcom.site_info(tokens["blog_id"] or tokens["blog_url"], tokens["access_token"])
+        who = await wpcom.current_user(tokens["access_token"])
+    except Exception as e:
+        print(f"WordPress.com token exchange failed: {e}")
+        return RedirectResponse(f"{frontend}/dashboard?wordpress=error")
+
+    conn = _get_wp(workspace_id, db)
+    if not conn:
+        conn = models.WordPressConnection(workspace_id=workspace_id)
+        db.add(conn)
+    conn.auth_type = wp.AUTH_WPCOM_OAUTH
+    conn.access_token = tokens["access_token"]
+    conn.wpcom_site_id = tokens["blog_id"] or info["blog_id"]
+    conn.api_base = wpcom.api_base(conn.wpcom_site_id)
+    conn.site_url = info["url"] or tokens["blog_url"]
+    conn.site_name = info["name"]
+    conn.display_name = who["name"]
+    # WordPress.com Simple sites cannot install plugins, so there is no Yoast/Rank Math
+    # to write metadata through — left None deliberately.
+    conn.seo_plugin = None
+    conn.username = None
+    conn.app_password = None
+    db.commit()
+    return RedirectResponse(f"{frontend}/dashboard?wordpress=connected")
+
+
+@router.get("/wordpress/{workspace_id}/revisions")
+def wp_revisions(workspace_id: int, db: Session = Depends(database.get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    """Undoable writes, newest first. Each row is a snapshot taken just before Raftra
+    changed a page."""
+    _require_workspace(workspace_id, db, current_user)
+    rows = (db.query(models.WordPressRevision)
+            .filter(models.WordPressRevision.workspace_id == workspace_id)
+            .order_by(models.WordPressRevision.created_at.desc()).limit(20).all())
+    return {"revisions": [{
+        "id": r.id, "page_id": r.page_id, "page_title": r.page_title,
+        "fixes": r.applied_fixes or [], "auto": bool(r.auto),
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "reverted_at": r.reverted_at.isoformat() if r.reverted_at else None,
+    } for r in rows]}
+
+
+class WordPressUndo(BaseModel):
+    revision_id: Optional[int] = None    # defaults to the most recent un-reverted write
+
+
+@router.post("/wordpress/{workspace_id}/undo")
+async def wp_undo(workspace_id: int, body: WordPressUndo,
+                  db: Session = Depends(database.get_db),
+                  current_user: models.User = Depends(auth.get_current_user)):
+    """Restore a page to its exact pre-write state.
+
+    This writes the snapshot back verbatim rather than asking the model to reverse its own
+    edit — a regenerated "undo" would be a third version of the page, not the original.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_wp(workspace_id, db)
+    if not conn or not (conn.app_password or conn.access_token):
+        raise HTTPException(status_code=400, detail="Connect WordPress first.")
+
+    q = db.query(models.WordPressRevision).filter(
+        models.WordPressRevision.workspace_id == workspace_id,
+        models.WordPressRevision.reverted_at.is_(None))
+    rev = (q.filter(models.WordPressRevision.id == body.revision_id).first() if body.revision_id
+           else q.order_by(models.WordPressRevision.created_at.desc()).first())
+    if not rev:
+        raise HTTPException(status_code=404, detail="Nothing to undo.")
+
+    try:
+        await wp.update_page_content(conn, rev.page_id, rev.prev_title or "", rev.prev_content or "")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not restore the page: {e}")
+
+    # Restore the SEO-plugin meta we overwrote too, or the undo would only be half done.
+    if rev.prev_meta and conn.seo_plugin:
+        try:
+            await wp.update_page_seo_meta(conn, rev.page_id, conn.seo_plugin, rev.prev_meta)
+        except Exception as e:
+            print(f"[undo] meta restore failed for workspace {workspace_id}: {e}")
+
+    rev.reverted_at = datetime.datetime.utcnow()
+    db.commit()
+    return {"status": "success", "page_id": rev.page_id, "page_title": rev.page_title,
+            "edit_url": wp.edit_url(conn, rev.page_id, kind="page"),
+            "message": f"Restored '{rev.page_title}' to its previous version."}
+
+
+class WordPressAutoApply(BaseModel):
+    enabled: bool
+
+
+@router.post("/wordpress/{workspace_id}/auto-apply")
+async def wp_set_auto_apply(workspace_id: int, body: WordPressAutoApply,
+                            db: Session = Depends(database.get_db),
+                            current_user: models.User = Depends(auth.get_current_user)):
+    """Turn auto-apply on or off. When on, approving a recommendation in the audit report
+    writes it to the live site immediately instead of waiting for a manual Apply click.
+    The approval gate itself is unchanged — nothing is ever applied without a human
+    approving it first."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_wp(workspace_id, db)
+    if not conn:
+        raise HTTPException(status_code=400, detail="Connect WordPress first.")
+    conn.auto_apply = bool(body.enabled)
+    db.commit()
+    if not conn.auto_apply:
+        return {"status": "success", "auto_apply": False}
+
+    # Switching it ON acts on what is already approved, rather than sitting idle until the
+    # next approval. Without this the toggle looks broken: a user who approved their fixes
+    # first (the normal order) turns auto-apply on and nothing whatsoever happens.
+    try:
+        result = await apply_wp_seo_fixes(workspace_id, db, dry_run=False, require_same_site=True)
+        return {"status": "success", "auto_apply": True, "applied": True,
+                "message": result.get("message"), "edit_url": result.get("edit_url")}
+    except HTTPException as e:
+        # Turning the setting on still succeeded; there was just nothing valid to apply yet.
+        return {"status": "success", "auto_apply": True, "applied": False, "message": str(e.detail)}
 
 
 @router.post("/wordpress/{workspace_id}/publish-draft")
