@@ -39,3 +39,8 @@ requests
 websockets
 
 apscheduler>=3.10,<4
+
+# Ken Burns ad video (core/providers/kenburns_video.py). Ships a static ffmpeg binary, so
+# video rendering works from a plain pip install — no system package or admin rights needed.
+# A system ffmpeg on PATH (or FFMPEG_BINARY) still takes precedence if one exists.
+imageio-ffmpeg

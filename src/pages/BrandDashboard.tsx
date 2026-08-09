@@ -605,19 +605,44 @@ export function BrandDashboard() {
       'Content-Type': 'application/json'
     };
 
-    fetch(`/api/agents/${workspaceId}/creative`, {
+    // The spec-driven pipeline (/api/creative/generate) analyses the prompt, resolves the
+    // platform's real aspect ratio and uses any uploaded reference image. The older
+    // /api/agents/{id}/creative route stays as the fallback so nothing breaks if the new
+    // endpoint is unavailable.
+    fetch('/api/creative/generate', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
+        workspace_id: workspaceId,
         prompt,
-        reference_ad: referenceAd,
-        model: config?.model || 'gemini-2.5-flash',
-        ad_format: config?.format || 'Video',
-        ad_ratio: config?.ratio || '9:16',
-        ad_length: config?.length || '15s',
-        engine_mode: config?.mode || 'Video Ad'
+        type: String(config?.format || 'Video').toLowerCase().includes('video') ? 'video' : 'image',
+        platform: config?.platform || null,
+        reference_image: config?.reference_image || null,
+        optimized_prompt_override: config?.optimized_prompt_override || null,
+        options: { duration: parseInt(String(config?.length || '15s'), 10) || 15 },
       })
-    }).catch(err => console.error("Error running creative studio agent:", err));
+    })
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error(`creative/generate returned ${res.status}`);
+      })
+      .catch(err => {
+        console.warn('Spec-driven generation unavailable, falling back:', err);
+        return fetch(`/api/agents/${workspaceId}/creative`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            prompt,
+            reference_ad: referenceAd,
+            model: config?.model || 'gemini-2.5-flash',
+            ad_format: config?.format || 'Video',
+            ad_ratio: config?.ratio || '9:16',
+            ad_length: config?.length || '15s',
+            engine_mode: config?.mode || 'Video Ad'
+          })
+        });
+      })
+      .catch(err => console.error("Error running creative studio agent:", err));
   };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

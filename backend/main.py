@@ -126,7 +126,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
-import auth, models, database, payments, agent_routes, workspace_routes, connector_routes, publishing_routes
+import auth, models, database, payments, agent_routes, workspace_routes, connector_routes, publishing_routes, creative_routes
 
 # Create tables in db (in production, use alembic for migrations)
 models.Base.metadata.create_all(bind=database.engine)
@@ -150,6 +150,21 @@ def _run_light_migrations():
         # workspace that has already connected Google.
         "ALTER TABLE search_console_connections ADD COLUMN IF NOT EXISTS ga4_property_id VARCHAR",
         "ALTER TABLE search_console_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
+        # Creative Studio generation metadata (core/creative/). Additive only — `status`
+        # keeps its existing review-state meaning and is untouched.
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS generation_status VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS original_prompt TEXT",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS optimized_prompt TEXT",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS creative_spec JSON",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS platform VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS placement VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS aspect_ratio VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS media_type VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS provider VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS model VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS reference_image_url VARCHAR",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS error_message TEXT",
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP",
         # Meta Ads: the Facebook Page an ad's creative is published as (required to create
         # any ad) plus a default destination URL.
         "ALTER TABLE meta_ads_connections ADD COLUMN IF NOT EXISTS page_id VARCHAR",
@@ -185,3 +200,23 @@ app.include_router(agent_routes.router)
 app.include_router(workspace_routes.router)
 app.include_router(connector_routes.router)
 app.include_router(publishing_routes.router)
+app.include_router(creative_routes.router)
+
+# Locally-rendered media (Ken Burns ad videos from core/providers/kenburns_video.py).
+# Mounted under /api so the Vite dev proxy forwards it and the same relative URL keeps
+# working in production behind a single origin — no BACKEND_URL baked into stored records.
+# Supabase storage would be the place for this once SUPABASE_URL/KEY are configured; until
+# then serving from disk is what makes a generated video actually playable.
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from core.providers.kenburns_video import VIDEO_DIR  # noqa: E402
+
+from core.providers.kenburns_video import MEDIA_ROOT  # noqa: E402
+
+VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/generated/videos", StaticFiles(directory=str(VIDEO_DIR)), name="generated-videos")
+
+# Reference images uploaded for Creative Studio generation (workspace_routes.upload_asset).
+# Filenames are server-generated UUIDs, so nothing user-controlled reaches the filesystem.
+_UPLOAD_DIR = MEDIA_ROOT / "uploads"
+_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/generated/uploads", StaticFiles(directory=str(_UPLOAD_DIR)), name="generated-uploads")

@@ -5,6 +5,40 @@ import random
 from .base import ImageProvider, ImageProviderError
 
 
+# Pixel dimensions per ad ratio. Diffusion models expect each side to be a multiple of 16
+# (FLUX/SD downsample by 8 then patch by 2); an off-grid size is silently rounded, which is
+# how a "9:16" request came back looking square-ish even where the API accepted dimensions.
+#
+# Previously this logic was one line inside FluxSchnellProvider:
+#     height = 576 if aspect_ratio == "16:9" else 1024
+# so EVERY non-16:9 ratio produced a 1024x1024 square — including 9:16, which is the format
+# Reels/Stories ads actually run in. Centralised here so every provider agrees.
+_RATIO_DIMENSIONS = {
+    "16:9": (1024, 576),
+    "9:16": (576, 1024),
+    "1:1":  (1024, 1024),
+    "4:5":  (816, 1024),    # 0.797 — closest 16-multiple to 0.8
+    "5:4":  (1024, 816),
+    "4:3":  (1024, 768),
+    "3:4":  (768, 1024),
+    "21:9": (1024, 448),
+}
+_DEFAULT_DIMENSIONS = _RATIO_DIMENSIONS["16:9"]
+
+
+def dimensions_for(aspect_ratio: str) -> tuple[int, int]:
+    """(width, height) for an ad ratio, defaulting to 16:9 for anything unrecognised."""
+    return _RATIO_DIMENSIONS.get((aspect_ratio or "").strip(), _DEFAULT_DIMENSIONS)
+
+
+# Applied as a negative prompt where the provider supports one. These are the artefacts that
+# make a generated image unusable as an ad, not stylistic preferences.
+DEFAULT_NEGATIVE_PROMPT = (
+    "watermark, signature, stock photo watermark, blurry, low resolution, jpeg artifacts, "
+    "distorted proportions, extra limbs, deformed hands, malformed text, gibberish text"
+)
+
+
 class NanoBananaProvider(ImageProvider):
     """Gemini 2.5 Flash Image ("Nano Banana") - Google's image-generation model, reachable
     with the same GEMINI_API_KEY already used for text. Returns a data: URL directly (the
@@ -42,8 +76,7 @@ class FluxSchnellProvider(ImageProvider):
         # which provides free, high-quality image generation (often powered by Flux) without ANY API key!
         import urllib.parse
         encoded_prompt = urllib.parse.quote(prompt)
-        width = 1024
-        height = 576 if aspect_ratio == "16:9" else 1024
+        width, height = dimensions_for(aspect_ratio)
 
         # Pollinations is deterministic on the URL - the same prompt returns the exact
         # same image every time. A random seed makes each generation visually distinct,
@@ -53,6 +86,69 @@ class FluxSchnellProvider(ImageProvider):
 
         # Pollinations returns the image directly, so we just return the URL!
         return url
+
+
+class HFFluxSchnellProvider(ImageProvider):
+    """Real FLUX.1-schnell through Hugging Face Inference Providers.
+
+    This is the free option that actually follows prompts. Unlike Pollinations (a keyless
+    proxy with no quality guarantees) it runs the real 12B FLUX.1-schnell weights, and unlike
+    Cloudflare's hosted flux-1-schnell — whose API takes only prompt/seed/steps — it accepts
+    width/height, so 9:16 Reels creative comes out actually vertical.
+
+    Needs a free HF token with "Inference Providers" permission in HUGGINGFACE_API_KEY.
+    Returns a data: URL because the API responds with raw image bytes, matching the pattern
+    NanoBananaProvider already uses.
+    """
+
+    MODEL = os.getenv("HF_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+
+    async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
+        api_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
+        if not api_key:
+            raise ImageProviderError(
+                "HUGGINGFACE_API_KEY is not set. Create a free token with 'Inference "
+                "Providers' permission at huggingface.co/settings/tokens.")
+
+        width, height = dimensions_for(aspect_ratio)
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "width": width,
+                "height": height,
+                # schnell is a distilled 4-step model; more steps cost time without gain.
+                "num_inference_steps": int(kwargs.get("steps", 4)),
+                "negative_prompt": kwargs.get("negative_prompt", DEFAULT_NEGATIVE_PROMPT),
+            },
+        }
+        url = f"https://router.huggingface.co/hf-inference/models/{self.MODEL}"
+        async with httpx.AsyncClient(timeout=120) as client:
+            r = await client.post(url, headers={"Authorization": f"Bearer {api_key}"},
+                                  json=payload)
+
+        if r.status_code == 503:
+            # Serverless models cold-start; the caller decides whether to retry.
+            raise ImageProviderError(
+                "The Hugging Face model is still loading (cold start). Try again in a moment.")
+        if r.status_code != 200:
+            raise ImageProviderError(
+                f"Hugging Face inference returned {r.status_code}: {r.text[:300]}")
+
+        content_type = (r.headers.get("content-type") or "").lower()
+        if content_type.startswith("image/"):
+            encoded = base64.b64encode(r.content).decode()
+            return f"data:{content_type.split(';')[0]};base64,{encoded}"
+
+        # Some providers answer with JSON carrying base64 instead of raw bytes.
+        try:
+            data = r.json()
+        except Exception:
+            raise ImageProviderError(
+                f"Hugging Face returned an unexpected content-type: {content_type!r}")
+        for key in ("image", "b64_json", "image_base64"):
+            if isinstance(data, dict) and data.get(key):
+                return f"data:image/png;base64,{data[key]}"
+        raise ImageProviderError(f"Hugging Face response contained no image: {str(data)[:300]}")
 
 # These providers are not implemented yet. They raise rather than return a fake
 # "https://mock.url/..." string, which would otherwise be saved as a real ad image_url.

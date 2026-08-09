@@ -209,19 +209,44 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
         rec.append("Add a robots.txt that allows crawling and points to the sitemap.")
     s = signals.get("sitemap") or {}
     if s.get("found"):
-        pts += 4; ev.append(f"sitemap.xml found (HTTP {s.get('status')}) → 4/4")
+        # Name the URL that was actually found: a site can serve /sitemap_index.xml rather
+        # than /sitemap.xml, and reporting "sitemap.xml found" for that is misleading.
+        pts += 4; ev.append(f"Sitemap found at {s.get('url') or 'sitemap.xml'} "
+                            f"(HTTP {s.get('status')}, {s.get('source', 'conventional path')}) → 4/4")
     else:
-        ev.append("sitemap.xml NOT found → 0/4")
-        rec.append("Publish an XML sitemap and submit it in Search Console.")
+        checked = s.get("checked") or []
+        ev.append(f"No sitemap found (checked {len(checked)} location(s) incl. robots.txt) → 0/4")
+        rec.append("Publish an XML sitemap and declare it in robots.txt.")
+
+    # Indexability: the meta tag is only half the story — an X-Robots-Tag response header
+    # carries exactly the same weight for crawlers and was previously never read, so a
+    # header-level noindex scored full marks as "indexable".
     robots_meta = _meta(soup, name="robots").lower()
+    x_robots = (signals.get("x_robots_tag") or "").lower()
     if "noindex" in robots_meta:
         ev.append(f"meta robots = '{robots_meta}' (NOINDEX) → 0/4")
         rec.append("Page is set to noindex — remove it so the page can rank.")
+    elif "noindex" in x_robots:
+        ev.append(f"X-Robots-Tag header = '{x_robots}' (NOINDEX) → 0/4")
+        rec.append("The server sends X-Robots-Tag: noindex — remove it so the page can rank.")
     else:
-        pts += 4; ev.append("Page is indexable (no noindex directive) → 4/4")
+        pts += 4
+        note = f" (X-Robots-Tag: {x_robots})" if x_robots else ""
+        ev.append(f"Page is indexable (no noindex directive){note} → 4/4")
+
     status = signals.get("status_code")
-    if status == 200:
-        pts += 4; ev.append(f"Returns HTTP {status} with no redirect chain issues → 4/4")
+    redirects = signals.get("redirect_count")
+    if status == 200 and redirects:
+        # Previously this branch credited "no redirect chain issues" without ever observing
+        # the chain, so a / -> /password gate scored 4/4 for a clean response.
+        hops = " → ".join(str(h.get("status")) for h in (signals.get("redirect_chain") or []))
+        pts += 2
+        ev.append(f"Returns HTTP 200 after {redirects} redirect(s) [{hops}] to "
+                  f"{signals.get('final_url')} → 2/4")
+        rec.append(f"The audited URL redirects to {signals.get('final_url')}. Audit and link "
+                   "to the final URL directly to avoid losing link equity on every hop.")
+    elif status == 200:
+        pts += 4; ev.append("Returns HTTP 200 with no redirects → 4/4")
     elif status:
         pts += 2; ev.append(f"Returns HTTP {status} → 2/4")
         rec.append(f"Page returns HTTP {status}; it should return 200.")
@@ -572,7 +597,7 @@ def build_audit(url: str, html: str, markdown: str, metrics: dict, signals: dict
     order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
     issues.sort(key=lambda i: order.get(i["severity"], 4))
 
-    return {
+    result = {
         "target_url": url,
         "seo": seo,
         "geo": geo,
@@ -581,6 +606,35 @@ def build_audit(url: str, html: str, markdown: str, metrics: dict, signals: dict
         "priority_issues": issues,
         "top_5_issues": issues[:5],
     }
+
+    return _flag_if_gate(result, signals)
+
+
+def _flag_if_gate(result: dict, signals: dict) -> dict:
+    """Mark an audit invalid when the crawl landed on a placeholder page.
+
+    A password gate scores like a real page: thin content, no H1, no schema. Those findings
+    are all technically true and completely useless, because the owner cannot edit a gate.
+    Flag the whole audit rather than letting a dozen "Critical" issues and a score be read
+    as a verdict on the actual site — and, importantly, so the auto-apply approval gate
+    cannot feed them into a repo.
+
+    Applied by ALL THREE builders. It previously lived inline in build_audit() only, which
+    meant the SEO pipeline (build_seo_audit) and GEO pipeline (build_geo_audit) still
+    published gate-page audits as if they were real.
+    """
+    gate = (signals or {}).get("gate") or {}
+    if not gate.get("is_gate"):
+        return result
+    result["invalid"] = True
+    result["invalid_reason"] = gate.get("reason", "The crawled URL is a placeholder page.")
+    result["gate"] = gate
+    for issue in result.get("priority_issues") or []:
+        issue["severity"] = "Low"
+        issue["blocked"] = True
+        issue["impact"] = "Not actionable: measured on a placeholder page, not your live site."
+    result["top_5_issues"] = (result.get("priority_issues") or [])[:5]
+    return result
 
 
 def _build_issues(sections: list) -> list:
@@ -606,7 +660,9 @@ def build_seo_audit(url: str, html: str, markdown: str, metrics: dict, signals: 
     SEO and GEO pipelines never overwrite or blend each other's results."""
     seo = score_seo(url, html, markdown, metrics, signals)
     issues = _build_issues([seo])
-    return {"target_url": url, "seo": seo, "priority_issues": issues, "top_5_issues": issues[:5]}
+    return _flag_if_gate(
+        {"target_url": url, "seo": seo, "priority_issues": issues, "top_5_issues": issues[:5]},
+        signals)
 
 
 def build_geo_audit(url: str, html: str, markdown: str, metrics: dict, signals: dict,
@@ -615,4 +671,6 @@ def build_geo_audit(url: str, html: str, markdown: str, metrics: dict, signals: 
     independent of the SEO pipeline."""
     geo = score_geo(url, html, markdown, metrics, signals, llm_recall)
     issues = _build_issues([geo])
-    return {"target_url": url, "geo": geo, "priority_issues": issues, "top_5_issues": issues[:5]}
+    return _flag_if_gate(
+        {"target_url": url, "geo": geo, "priority_issues": issues, "top_5_issues": issues[:5]},
+        signals)

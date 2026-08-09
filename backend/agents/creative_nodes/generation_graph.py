@@ -7,7 +7,8 @@ from core.websocket import manager, current_workspace_id
 from .router import router_decision_engine
 from core.providers.llm_providers import OpenRouterProvider, GeminiProvider
 from core.providers.base import LLMProviderError
-from core.providers.image_providers import FluxSchnellProvider, GPTImageProvider
+from core.providers.image_providers import (FluxSchnellProvider, GPTImageProvider,
+                                            HFFluxSchnellProvider, NanoBananaProvider)
 from database import SessionLocal
 import models
 
@@ -268,20 +269,41 @@ async def copywriting_node(state: GenerationState) -> GenerationState:
     await manager.broadcast_agent_log("Copywriting Agent", "Persuasive ad copy successfully written.", "completed")
     return state
 
+def _seconds_from_length(ad_length: str) -> int:
+    """"15s" / "30" / "1m" -> seconds. The UI stores a label, ffmpeg needs a number."""
+    text = (ad_length or "").strip().lower()
+    m = re.search(r"(\d+)", text)
+    if not m:
+        return 5
+    value = int(m.group(1))
+    if "m" in text and "s" not in text:
+        value *= 60
+    return max(2, min(value, 30))
+
+
 async def media_generation_node(state: GenerationState) -> GenerationState:
     msg = f"Generating media via {state['selected_image_provider']}..."
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Media Generator", msg, "running")
     
-    # Instantiate the right provider
-    provider_name = state["selected_image_provider"]
-    if provider_name in ["gpt_image", "flux_pro"]:
+    # Instantiate the right provider.
+    #
+    # IMAGE_PROVIDER pins one explicitly; otherwise the best available free option is used.
+    # Order matters: real FLUX.1-schnell via Hugging Face follows prompts far more closely
+    # than Pollinations (a keyless proxy), so it wins whenever a token is configured.
+    # NanoBananaProvider (Gemini 2.5 Flash Image) is built and ready — it needs billing on
+    # the Gemini key, since the free tier has 0 image quota.
+    provider_name = (os.getenv("IMAGE_PROVIDER") or state["selected_image_provider"] or "").lower()
+    if provider_name in ("gpt_image", "flux_pro"):
         img_provider = GPTImageProvider()
+    elif provider_name in ("nano_banana", "gemini"):
+        img_provider = NanoBananaProvider()
+    elif provider_name in ("hf_flux", "flux_schnell_hf"):
+        img_provider = HFFluxSchnellProvider()
+    elif os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"):
+        img_provider = HFFluxSchnellProvider()
     else:
-        # Default to FluxSchnellProvider (Pollinations free API). NanoBananaProvider
-        # (Gemini 2.5 Flash Image) is built and ready in image_providers.py - switch back to
-        # it once billing is enabled on the Gemini API key (free tier has 0 image quota).
-        img_provider = FluxSchnellProvider()
+        img_provider = FluxSchnellProvider()   # Pollinations — keyless last resort
         
     # Build a FOCUSED visual prompt. Previously the full marketing strategy (prose) was
     # appended here - an image model can't use prose, it latches onto scattered words, so
@@ -292,15 +314,27 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
     brand_colors = state.get("cached_colors") or []
     color_hint = f" Incorporate brand colors {', '.join(brand_colors[:3])}." if brand_colors else ""
     try:
+        # 60 words / 150 tokens was too tight: a detailed request had to be summarised to fit,
+        # and summarising is exactly where the user's specific subjects, colours and style
+        # cues got dropped — which reads as "the image ignored my prompt". Diffusion models
+        # handle long prompts fine (FLUX takes up to ~512 tokens), so give it room and tell
+        # the model to ENRICH rather than condense.
         image_prompt = await art_llm.generate_text(
             CREATIVE_DIRECTOR_PROMPT.format(user_prompt=state['prompt']) + color_hint,
             system_prompt="You are an art director writing prompts for an image-generation model. "
-                          "Output ONLY the final image prompt itself (one paragraph, under 60 words) - "
-                          "no labels, no headers, no marketing copy, no text-overlay instructions.",
+                          "Output ONLY the final image prompt itself (one paragraph, 60-150 words) - "
+                          "no labels, no headers, no marketing copy, no text-overlay instructions. "
+                          "Keep every concrete noun, colour, material, setting and style word from "
+                          "the user's request verbatim, and add visual detail around them. Never "
+                          "summarise away a detail the user specified.",
             model_name=llm_model,
-            max_output_tokens=150,
+            max_output_tokens=400,
         )
         image_prompt = image_prompt.strip().strip('"')
+        # If the art-director step somehow drops the request entirely (empty/refusal), fall
+        # back to the user's own words rather than sending a generic scene to the model.
+        if len(image_prompt) < 20:
+            image_prompt = state.get("prompt", "advertisement")
     except LLMProviderError:
         # Fall back to the raw request (still the subject) rather than the strategy essay.
         image_prompt = state.get("prompt", "advertisement")
@@ -316,8 +350,18 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
     try:
         image_url = await img_provider.generate_image(image_prompt, aspect_ratio=state.get("ad_ratio", "16:9"))
     except Exception as e:
-        await manager.broadcast_agent_log("System", f"Warning: Image generation failed: {str(e)}", "running")
-        image_url = "https://images.unsplash.com/photo-1542744173-8e7e53415bb0"
+        # Previously this substituted a hardcoded Unsplash photo — the same picture for every
+        # failed generation, indistinguishable from a real result. Retry on the keyless
+        # provider instead, which at least renders the user's actual prompt, and only give up
+        # if that fails too.
+        await manager.broadcast_agent_log(
+            "System", f"{type(img_provider).__name__} failed ({e}); retrying on the keyless provider.", "running")
+        try:
+            image_url = await FluxSchnellProvider().generate_image(
+                image_prompt, aspect_ratio=state.get("ad_ratio", "16:9"))
+        except Exception as e2:
+            await manager.broadcast_agent_log("System", f"Image generation failed: {e2}", "failed")
+            image_url = ""
     
     state["image_url"] = image_url
     
@@ -327,32 +371,48 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
     is_audio = "audio" in ad_format or is_video
     
     if is_video:
-        # Real per-prompt video needs an external service. We use Pexels (free API) to
-        # fetch a relevant, DIFFERENT stock clip per ad. Never fall back to a single
-        # hardcoded clip: it's identical every run and, since the UI renders <video>
-        # over <img>, it hides the unique generated image - the "same video" bug.
+        # Ken Burns FIRST, ahead of stock. Animating the image we just generated is the only
+        # option here that is guaranteed to match the brief — stock b-roll is merely keyword-
+        # adjacent, and the keyless sample clip (Big Buck Bunny et al) matches nothing at all
+        # while also hiding the generated image, since the UI renders <video> over <img>.
+        from core.providers.kenburns_video import KenBurnsVideoProvider, is_available as ffmpeg_available
         from core.providers.video_providers import PixabayVideoProvider, PexelsVideoProvider, SampleVideoProvider
         from core.providers.base import VideoProviderError
-        # Try whichever stock-video key is configured for a RELEVANT clip: Pixabay first
-        # (instant free key), then Pexels. If neither key is set, fall back to a random
-        # working sample clip so a (different) video always shows - never a single fixed one.
         state["video_url"] = ""
-        await manager.broadcast_agent_log("Video Agent", "Sourcing a video clip for the ad...", "running")
-        for provider in (PixabayVideoProvider(), PexelsVideoProvider()):
+        ad_ratio = state.get("ad_ratio", "9:16")
+        duration = _seconds_from_length(state.get("ad_length", "15s"))
+
+        if ffmpeg_available() and state.get("image_url"):
+            await manager.broadcast_agent_log(
+                "Video Agent", "Animating the generated creative into a video...", "running")
             try:
-                state["video_url"] = await provider.generate_video(
-                    image_url=state["image_url"],
-                    prompt=state["prompt"],
-                    ad_ratio=state.get("ad_ratio", "9:16"),
-                )
-                await manager.broadcast_agent_log("Video Agent", "Relevant video clip sourced (stock b-roll).", "completed")
-                break
-            except VideoProviderError:
-                continue
+                state["video_url"] = await KenBurnsVideoProvider().generate_video(
+                    image_url=state["image_url"], prompt=state["prompt"],
+                    duration=duration, ad_ratio=ad_ratio)
+                await manager.broadcast_agent_log(
+                    "Video Agent", "Video rendered from your generated creative.", "completed")
+            except VideoProviderError as e:
+                await manager.broadcast_agent_log(
+                    "Video Agent", f"Could not animate the creative ({e}); falling back to stock.", "running")
+
+        # Stock b-roll: only reached when ffmpeg is unavailable or rendering failed.
         if not state["video_url"]:
-            # No stock-video key configured: use a rotating keyless sample clip.
+            await manager.broadcast_agent_log("Video Agent", "Sourcing a video clip for the ad...", "running")
+            for provider in (PixabayVideoProvider(), PexelsVideoProvider()):
+                try:
+                    state["video_url"] = await provider.generate_video(
+                        image_url=state["image_url"], prompt=state["prompt"], ad_ratio=ad_ratio)
+                    await manager.broadcast_agent_log("Video Agent", "Relevant video clip sourced (stock b-roll).", "completed")
+                    break
+                except VideoProviderError:
+                    continue
+        if not state["video_url"]:
+            # Nothing else worked: a rotating keyless sample clip, which matches nothing.
             state["video_url"] = await SampleVideoProvider().generate_video(image_url=state["image_url"], prompt=state["prompt"])
-            await manager.broadcast_agent_log("Video Agent", "Using a sample video clip (add PIXABAY_API_KEY for content-matched footage).", "completed")
+            await manager.broadcast_agent_log(
+                "Video Agent",
+                "Using an unrelated sample clip — install ffmpeg to animate your own creative, "
+                "or add PIXABAY_API_KEY for content-matched footage.", "completed")
 
     if is_audio:
         await manager.broadcast_agent_log("Voice Agent", "Compiling text-to-speech audio outline...", "running")

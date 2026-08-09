@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, Float, ForeignKey, DateTime, JSON
+from sqlalchemy import Boolean, Column, Integer, String, Float, ForeignKey, DateTime, JSON, Text
 from sqlalchemy.orm import relationship
 import datetime
 from pgvector.sqlalchemy import Vector
@@ -159,9 +159,27 @@ class AdAsset(Base):
     image_url = Column(String, nullable=True)
     video_url = Column(String, nullable=True)
     audio_url = Column(String, nullable=True)
-    status = Column(String)  # pending_review, approved, rejected
+    status = Column(String)  # pending_review, approved, rejected — REVIEW state, set by humans
     parent_id = Column(Integer, ForeignKey("ad_assets.id"), nullable=True)
     suggested_edits = Column(JSON, nullable=True)
+
+    # --- Creative Studio generation metadata (core/creative/) --------------------------
+    # generation_status is deliberately separate from `status` above: that column is the
+    # human review state (pending_review/approved/rejected) and existing queries filter on
+    # it, so overloading it with processing/completed/failed would break them.
+    generation_status = Column(String, nullable=True)   # processing | completed | failed
+    original_prompt = Column(Text, nullable=True)       # exactly what the user typed
+    optimized_prompt = Column(Text, nullable=True)      # what the provider actually received
+    creative_spec = Column(JSON, nullable=True)         # CreativeSpec — the source of truth
+    platform = Column(String, nullable=True)
+    placement = Column(String, nullable=True)
+    aspect_ratio = Column(String, nullable=True)
+    media_type = Column(String, nullable=True)          # image | video
+    provider = Column(String, nullable=True)            # which ImageProvider/VideoProvider ran
+    model = Column(String, nullable=True)
+    reference_image_url = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     workspace = relationship("Workspace", back_populates="ad_assets")

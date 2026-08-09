@@ -101,25 +101,102 @@ def analyze_markdown(md: str, target_url: str) -> dict:
         "thin_content": word_count < 300,
     }
 
+# Sitemap locations to try when robots.txt does not declare one. /sitemap.xml alone is not
+# enough: Shopify serves /sitemap.xml as 404 and publishes /sitemap_index.xml instead, which
+# made the audit report "no sitemap" for sites that plainly had one.
+_SITEMAP_CANDIDATES = ("/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml",
+                       "/sitemap1.xml", "/wp-sitemap.xml")
+
+
+async def _discover_sitemap(client, origin: str, robots_body: str) -> dict:
+    """Find the sitemap the way a crawler does: trust robots.txt's own `Sitemap:` line
+    first (it is authoritative), then fall back to the conventional filenames."""
+    declared = _re.findall(r"(?mi)^\s*Sitemap:\s*(\S+)", robots_body or "")
+    for url in declared:
+        try:
+            r = await client.get(url)
+            if r.status_code == 200 and r.text.strip():
+                return {"found": True, "status": r.status_code, "url": url,
+                        "source": "declared in robots.txt"}
+        except Exception:
+            continue
+    for path in _SITEMAP_CANDIDATES:
+        try:
+            r = await client.get(origin + path)
+            if r.status_code == 200 and r.text.strip():
+                return {"found": True, "status": r.status_code, "url": origin + path,
+                        "source": "conventional path"}
+        except Exception:
+            continue
+    return {"found": False, "status": 404,
+            "checked": list(declared) + [origin + p for p in _SITEMAP_CANDIDATES]}
+
+
+# Text that means "this is not the real site yet" — a Shopify password gate, a holding page,
+# or a parked domain. Auditing one of these produces a page full of genuine-looking but
+# useless findings ("thin content, add an H1, add Organization schema") about a page the
+# owner cannot edit, and a score that describes the placeholder rather than the business.
+_GATE_MARKERS = (
+    "store is password protected", "enter store using password", "opening soon",
+    "are you the store owner", "this site is under construction", "coming soon",
+    "domain is parked", "site temporarily unavailable",
+)
+
+
+def detect_gate_page(final_url: str, html: str, text: str) -> dict:
+    """Is the crawled page a placeholder rather than the real site?"""
+    blob = f"{text or ''} {html or ''}".lower()
+    hits = [m for m in _GATE_MARKERS if m in blob]
+    path = (_urlparse(final_url or "").path or "").lower()
+    if path.rstrip("/").endswith("/password") or path == "/password":
+        hits.append("redirected to a /password gate")
+    if not hits:
+        return {"is_gate": False}
+    return {
+        "is_gate": True, "markers": hits, "final_url": final_url,
+        "reason": ("The crawled URL is a placeholder/password-protected page, not the live "
+                   "site. Findings from it describe the placeholder, not your content."),
+    }
+
+
 async def _fetch_site_signals(target_url: str) -> dict:
-    """Measure site-level facts used by the audit (HTTPS, robots.txt, sitemap.xml).
-    Everything here is an observed HTTP result — never assumed."""
+    """Measure site-level facts used by the audit (HTTPS, robots.txt, sitemap, redirects,
+    indexability headers). Everything here is an observed HTTP result — never assumed."""
     import httpx
     p = _urlparse(target_url)
     origin = f"{p.scheme}://{p.netloc}"
     signals = {"https": p.scheme == "https", "origin": origin}
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-        for key, path in (("robots_txt", "/robots.txt"), ("sitemap", "/sitemap.xml")):
-            try:
-                r = await client.get(origin + path)
-                body = r.text if r.status_code == 200 else ""
-                entry = {"found": r.status_code == 200 and bool(body.strip()),
-                         "status": r.status_code}
-                if key == "robots_txt" and body:
-                    entry["disallow_all"] = bool(_re.search(r"(?mi)^\s*Disallow:\s*/\s*$", body))
-                signals[key] = entry
-            except Exception as e:
-                signals[key] = {"found": False, "status": None, "error": str(e)[:80]}
+        robots_body = ""
+        try:
+            r = await client.get(origin + "/robots.txt")
+            robots_body = r.text if r.status_code == 200 else ""
+            entry = {"found": r.status_code == 200 and bool(robots_body.strip()),
+                     "status": r.status_code}
+            if robots_body:
+                entry["disallow_all"] = bool(_re.search(r"(?mi)^\s*Disallow:\s*/\s*$", robots_body))
+            signals["robots_txt"] = entry
+        except Exception as e:
+            signals["robots_txt"] = {"found": False, "status": None, "error": str(e)[:80]}
+
+        try:
+            signals["sitemap"] = await _discover_sitemap(client, origin, robots_body)
+        except Exception as e:
+            signals["sitemap"] = {"found": False, "status": None, "error": str(e)[:80]}
+
+        # The audit previously credited "no redirect chain issues" without ever observing the
+        # chain, and read only <meta name="robots"> — so an X-Robots-Tag: noindex served in
+        # the HTTP headers was invisible.
+        try:
+            r = await client.get(target_url)
+            signals["final_url"] = str(r.url)
+            signals["redirect_count"] = len(r.history)
+            signals["redirect_chain"] = [
+                {"status": h.status_code, "from": str(h.url),
+                 "to": h.headers.get("location")} for h in r.history]
+            signals["x_robots_tag"] = r.headers.get("x-robots-tag")
+        except Exception as e:
+            signals["redirect_error"] = str(e)[:80]
     return signals
 
 
@@ -157,6 +234,17 @@ async def _crawl_via_firecrawl(target_url: str, agent_label: str) -> dict:
                     try:
                         out["site_signals"] = await _fetch_site_signals(target_url)
                         out["site_signals"]["status_code"] = meta.get("statusCode")
+                        # Detect a password gate / holding page before anything is scored.
+                        gate = detect_gate_page(
+                            out["site_signals"].get("final_url") or meta.get("sourceURL") or target_url,
+                            html, markdown)
+                        out["site_signals"]["gate"] = gate
+                        if gate.get("is_gate"):
+                            await manager.broadcast_agent_log(
+                                agent_label,
+                                f"WARNING: {target_url} is a placeholder/password-protected page "
+                                f"({', '.join(gate['markers'][:2])}). The audit will be marked "
+                                "not valid for the live site.", "running")
                     except Exception as e:
                         out["site_signals"] = {"error": str(e)[:100]}
                     await manager.broadcast_agent_log(
@@ -223,6 +311,20 @@ async def crawler_node(state: SEOState) -> SEOState:
                     try:
                         state["site_signals"] = await _fetch_site_signals(state["target_url"])
                         state["site_signals"]["status_code"] = meta.get("statusCode")
+                        # Same gate check as _crawl_via_firecrawl. The SEO pipeline has its own
+                        # crawler node, so detection has to run on BOTH paths — patching only
+                        # the shared helper left this one still scoring password gates as if
+                        # they were the real site.
+                        gate = detect_gate_page(
+                            state["site_signals"].get("final_url") or meta.get("sourceURL")
+                            or state["target_url"], html, markdown)
+                        state["site_signals"]["gate"] = gate
+                        if gate.get("is_gate"):
+                            await manager.broadcast_agent_log(
+                                "Crawler Agent",
+                                f"WARNING: {state['target_url']} is a placeholder/password-"
+                                f"protected page ({', '.join(gate['markers'][:2])}). The audit "
+                                "will be marked not valid for the live site.", "running")
                     except Exception as e:
                         state["site_signals"] = {"error": str(e)[:100]}
                     # Core Web Vitals (Performance). Failure is fine — the auditor then reports

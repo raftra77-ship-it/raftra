@@ -940,23 +940,65 @@ def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session =
     db.refresh(new_asset)
     return new_asset
 
+# Reference images for the Creative Studio. Stored per workspace under the same
+# generated_media tree the rendered videos use, and served by the mount in main.py.
+_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+# Extension -> the magic bytes that must actually be present. Trusting the extension (or the
+# client-supplied content-type) alone lets "logo.png" contain anything at all.
+_UPLOAD_SIGNATURES = {
+    ".png":  [b"\x89PNG\r\n\x1a\n"],
+    ".jpg":  [b"\xff\xd8\xff"],
+    ".jpeg": [b"\xff\xd8\xff"],
+    ".webp": [b"RIFF"],
+    ".gif":  [b"GIF87a", b"GIF89a"],
+}
+
+
 @router.post("/{workspace_id}/upload")
 async def upload_asset(workspace_id: int, file: UploadFile = File(...), db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Store a reference image and return a URL the generation pipeline can actually read.
+
+    The previous version wrote the client-supplied filename straight into an `uploads/`
+    directory that was never mounted, so the returned URL always 404'd, two users uploading
+    "logo.png" overwrote each other, and a crafted name could escape the directory. It also
+    accepted any file of any size with no validation.
+    """
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
-    
-    # In production, upload to S3/GCS. For now, we simulate an upload by saving it locally in a temp dir or just returning success.
-    upload_dir = "uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, file.filename)
-    
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
-        
-    # Return a simulated public URL (could be local static route in real app)
-    return {"status": "success", "url": f"/uploads/{file.filename}", "filename": file.filename}
+
+    import uuid as _uuid
+    from pathlib import Path as _Path
+
+    ext = _Path(file.filename or "").suffix.lower()
+    if ext not in _UPLOAD_SIGNATURES:
+        raise HTTPException(status_code=400, detail=(
+            f"Unsupported file type '{ext or 'unknown'}'. Allowed: "
+            f"{', '.join(sorted(_UPLOAD_SIGNATURES))}."))
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    if len(content) > _UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=(
+            f"File is {len(content) // 1024 // 1024}MB; the limit is "
+            f"{_UPLOAD_MAX_BYTES // 1024 // 1024}MB."))
+    if not any(content.startswith(sig) for sig in _UPLOAD_SIGNATURES[ext]):
+        raise HTTPException(status_code=400, detail=(
+            f"That file is not a valid {ext.lstrip('.').upper()} image — its contents do not "
+            "match its extension."))
+
+    # UUID name: no collisions between workspaces, and nothing user-controlled ends up in a
+    # filesystem path. Scoped per workspace so assets stay separable.
+    from core.providers.kenburns_video import MEDIA_ROOT
+    upload_dir = MEDIA_ROOT / "uploads" / str(workspace_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{_uuid.uuid4().hex}{ext}"
+    (upload_dir / stored_name).write_bytes(content)
+
+    return {"status": "success",
+            "url": f"/api/generated/uploads/{workspace_id}/{stored_name}",
+            "filename": file.filename, "size": len(content)}
 
 @router.delete("/{workspace_id}/creatives/{asset_id}")
 def delete_creative(workspace_id: int, asset_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):

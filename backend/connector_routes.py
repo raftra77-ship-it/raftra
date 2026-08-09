@@ -702,17 +702,20 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
             raise HTTPException(status_code=502, detail=f"Could not generate the fixed file: {e}")
 
     universal_fix = None
+    tag_patches: list = []      # core.seo_targeting.engine.FilePatch
+    blocked_plans: list = []    # AMBIGUOUS / CONFLICT_DETECTED — never written, always reported
     if tag_fixes:
         import re as _re
         from core.seo_fix_schema import generate_universal_seo_fix
-        from core import seo_adapters
         from core.brand_context import get_brand_context
+        from core.seo_targeting import engine as seo_engine, planner as seo_planner
         title_match = _re.search(r"<title>(.*?)</title>", new_content, _re.IGNORECASE | _re.DOTALL)
         ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id).first()
         brand = get_brand_context(workspace_id, query="SEO title and meta description")
+        page_url = target.get("url") or "/"
         universal_fix = await generate_universal_seo_fix(
             current_title=(title_match.group(1).strip() if title_match else ""),
-            target_url=_resolve_page_url(target.get("url"), ws.company_url if ws else None),
+            target_url=_resolve_page_url(page_url, ws.company_url if ws else None),
             brand_context=brand,
             workspace_name=ws.name if ws else None,
             workspace_url=ws.company_url if ws else None,
@@ -720,7 +723,45 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
             approved_fixes=tag_fixes,
             page_content=new_content,
         )
-        new_content = seo_adapters.apply_to_html(new_content, universal_fix)
+
+        # Target-aware apply. The generated VALUES are unchanged; what changes is that each
+        # one is now routed to the file and mechanism that actually controls it, instead of
+        # being regex-injected into whichever file the scan happened to list first. A React
+        # page component no longer receives raw <meta> tags appended past its last line.
+        _cache: dict = {file_path: new_content}
+
+        async def _read(path: str):
+            if path not in _cache:
+                _cache[path] = await gh.get_file_content(
+                    conn.access_token, conn.repo_full_name, path, conn.default_branch or "main")
+            return _cache[path]
+
+        plans = seo_planner.explode_universal_fix(
+            universal_fix, audit_id=audit_row.id, page_url=page_url,
+            issue="; ".join(tag_fixes)[:300])
+        plans = await seo_planner.resolve_github_plans(
+            plans, framework=mapping.framework or "Unknown", pages=mapping.pages or [],
+            read_file=_read, site_base_url=(ws.company_url if ws else None))
+        plans = seo_planner.detect_conflicts(plans)
+        blocked_plans = [p for p in plans if p.state.blocks_apply]
+
+        for res_path, group in seo_planner.group_by_resource(plans).items():
+            src = await _read(res_path)
+            if src is None:
+                for p in group:
+                    p.message = f"Could not read {res_path} from the repository."
+                    blocked_plans.append(p)
+                continue
+            patch = seo_engine.apply_plans_to_file(src, group, path=res_path)
+            if patch.changed and not patch.validation.ok:
+                # Step 12: a file that fails validation is never published, even though each
+                # individual edit succeeded on its own.
+                blocked_plans.extend(patch.skipped)
+                continue
+            if patch.publishable:
+                tag_patches.append(patch)
+                if res_path == file_path:
+                    new_content = patch.after
 
     # Real site-level files — built only from data the repo scan and workspace already have
     # (the site's own domain, and the pages the scanner actually discovered), never invented.
@@ -730,6 +771,13 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
     files_to_commit = []
     if new_content.strip() != content.strip():
         files_to_commit.append({"path": file_path, "content": new_content})
+    # Metadata may legitimately live in a DIFFERENT file from the page component (a Next.js
+    # layout, an index.html, a Helmet component), so patches are keyed by their own resolved
+    # path rather than assumed to be the scanned page file.
+    for patch in tag_patches:
+        if patch.path == file_path:
+            continue
+        files_to_commit.append({"path": patch.path, "content": patch.after})
     if robots_fix:
         files_to_commit.append({"path": "robots.txt", "content": site_files.build_robots_txt(base_url)})
     if sitemap_fix:
@@ -737,14 +785,29 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
         files_to_commit.append({"path": "sitemap.xml", "content": site_files.build_sitemap_xml(base_url, routes)})
 
     fixes = same_file_fixes + tag_fixes + robots_fix + sitemap_fix
+    # Step 11/15: a run where every metadata fix was blocked is NOT "no change" — the user
+    # needs the reason and the candidate targets, not a generic 422.
+    if not files_to_commit and blocked_plans:
+        from core.seo_targeting import engine as seo_engine
+        raise HTTPException(status_code=409, detail={
+            "message": ("Automatic apply stopped: the SEO target could not be determined "
+                        "safely. Nothing was changed."),
+            "blocked": [p.summary() for p in blocked_plans],
+        })
     if not files_to_commit:
         raise HTTPException(status_code=422, detail="The approved fixes produced no change to any file.")
 
     if body.dry_run:
+        from core.seo_targeting import engine as seo_engine
+        review = seo_engine.review_payload(tag_patches, blocked_plans)
         return {"status": "preview", "file_path": file_path, "fixes": fixes,
                 "files": [f["path"] for f in files_to_commit],
                 "universal_fix": universal_fix.dict() if universal_fix else None,
-                "size_change": len(new_content) - len(content)}
+                "size_change": len(new_content) - len(content),
+                # The Step 11 review surface: per-change target, current value, proposed
+                # value, action and the real diff — so the user sees WHERE it lands.
+                "review": review,
+                "blocked": review["blocked"]}
 
     schema_note = universal_fix.schema_note if universal_fix else None
     pr_body = ("Automated on-page SEO fixes from your Raftra audit. **Review the diff and merge to publish.**\n\n"

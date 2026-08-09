@@ -53,6 +53,18 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // Toolkit State
   const [engineMode, setEngineMode] = useState('Video Ad');
   const [showConnectorsModal, setShowConnectorsModal] = useState(false);
+
+  // Reference image for image-to-image / image-to-video, plus its upload state.
+  const [referenceImage, setReferenceImage] = useState<{ url: string; filename: string } | null>(null);
+  const [uploadingRef, setUploadingRef] = useState(false);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
+  // "AI Optimized Prompt" panel: what the analyzer understood, and the editable prompt that
+  // will actually be sent. Kept collapsed by default so the simple path stays simple.
+  const [promptPreview, setPromptPreview] = useState<{
+    optimized_prompt: string; creative_spec: any; clarifying_question?: string } | null>(null);
+  const [editedPrompt, setEditedPrompt] = useState<string>('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [showPromptPanel, setShowPromptPanel] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,13 +123,55 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       onGenerate(prompt, referenceAd, {
         model: selectedModel,
         format: adFormat,
+        // adPlatform was collected by the picker but never sent, so the backend could not
+        // pick the right aspect ratio for the placement. It now travels with the request.
+        platform: adPlatform,
         ratio: adRatio,
         length: adLength,
-        mode: engineMode
+        mode: engineMode,
+        reference_image: referenceImage?.url || null,
+        // An edited optimized prompt wins over the analyzer's own.
+        optimized_prompt_override:
+          promptPreview && editedPrompt && editedPrompt !== promptPreview.optimized_prompt
+            ? editedPrompt : null,
       });
     }
-    
+
     setPrompt('');
+    setPromptPreview(null);
+    setEditedPrompt('');
+  };
+
+  // Preview only: shows how the AI interpreted the request WITHOUT spending a generation.
+  const handleAnalyze = async () => {
+    if (!prompt.trim() || !workspaceId) return;
+    const token = localStorage.getItem('token');
+    setAnalyzing(true);
+    setShowPromptPanel(true);
+    try {
+      const res = await fetch('/api/creative/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          prompt,
+          type: adFormat.toLowerCase().includes('video') ? 'video' : 'image',
+          platform: adPlatform,
+          reference_image: referenceImage?.url || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPromptPreview(data);
+        setEditedPrompt(data.optimized_prompt || '');
+      } else {
+        setReferenceError(data.detail || 'Could not analyze the prompt.');
+      }
+    } catch {
+      setReferenceError('Could not analyze the prompt — server unreachable.');
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleSaveToLibrary = async (asset: CreativeAsset) => {
@@ -188,33 +242,41 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   const savedAssets = assets.filter(a => a.status === 'approved' || typeof a.id === 'number' || (!a.id.toString().startsWith('cr-') && !a.id.toString().startsWith('temp-')));
 
+  // The uploaded file's URL used to be thrown away behind an alert(), so a "reference image"
+  // never reached generation at all. It is now held in state and sent with the request, which
+  // is what enables image-to-image and image-to-video.
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0 && workspaceId) {
-      const file = e.target.files[0];
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const token = localStorage.getItem('token');
-      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-      
-      try {
-        const res = await fetch(`/api/workspaces/${workspaceId}/upload`, {
-          method: 'POST',
-          headers,
-          body: formData
-        });
-        if (res.ok) {
-          const data = await res.json();
-          alert(`Asset "${data.filename}" successfully uploaded to the engine context!`);
-        } else {
-          alert('Upload failed.');
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Upload failed due to network error.');
+    if (!(e.target.files && e.target.files.length > 0 && workspaceId)) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('token');
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+    setReferenceError(null);
+    setUploadingRef(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/upload`, {
+        method: 'POST', headers, body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setReferenceImage({ url: data.url, filename: data.filename });
+      } else {
+        // Surface the server's actual reason (wrong type, too large, contents don't match
+        // the extension) rather than a generic "Upload failed".
+        setReferenceError(data.detail || 'Upload failed.');
       }
+    } catch {
+      setReferenceError('Upload failed — could not reach the server.');
+    } finally {
+      setUploadingRef(false);
+      e.target.value = '';   // let the same file be re-selected after an error
     }
   };
+
+  const clearReferenceImage = () => { setReferenceImage(null); setReferenceError(null); };
 
   const toolkitModes = [
     { name: 'Asset Generator', desc: 'Create video or image with any AI model', icon: '•' },
@@ -463,11 +525,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 ref={fileInputRef} 
                 style={{ display: 'none' }} 
                 onChange={handleFileUpload} 
-                accept="image/*,video/*"
+                accept="image/png,image/jpeg,image/webp,image/gif"
               />
-              <button onClick={() => fileInputRef.current?.click()} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}>
+              <button onClick={() => fileInputRef.current?.click()} disabled={uploadingRef} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '12px', cursor: uploadingRef ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload Media
+                {uploadingRef ? 'Uploading…' : 'Reference Image'}
               </button>
               
               <input 
@@ -481,15 +543,72 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 Ad Connectors
               </button>
             </div>
+            {/* Attached reference image — proof it was actually stored, and a way to remove it. */}
+            {referenceImage && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'rgba(0,230,118,0.06)', border: '1px solid rgba(0,230,118,0.25)', borderRadius: '8px', marginBottom: '10px' }}>
+                <img src={referenceImage.url} alt="reference" style={{ width: '34px', height: '34px', objectFit: 'cover', borderRadius: '5px' }} />
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Reference: <strong style={{ color: '#00e676' }}>{referenceImage.filename}</strong> — used as a visual source, your product won't be redrawn.
+                </span>
+                <button type="button" onClick={clearReferenceImage} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+              </div>
+            )}
+            {referenceError && (
+              <div style={{ fontSize: '12px', color: '#ffae00', background: 'rgba(255,174,0,0.08)', border: '1px solid rgba(255,174,0,0.25)', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px' }}>
+                {referenceError}
+              </div>
+            )}
+
+            {/* ✨ AI Optimized Prompt — collapsed by default; the simple path stays simple. */}
+            {(showPromptPanel || promptPreview) && (
+              <div style={{ background: 'rgba(90,82,255,0.05)', border: '1px solid rgba(90,82,255,0.22)', borderRadius: '8px', padding: '12px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF' }}>✨ AI Optimized Prompt</span>
+                  <button type="button" onClick={() => { setShowPromptPanel(false); setPromptPreview(null); }}
+                    style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px' }}>✕</button>
+                </div>
+                {analyzing && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Analyzing your request…</div>}
+                {!analyzing && promptPreview && (
+                  <>
+                    {promptPreview.creative_spec && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '8px', lineHeight: 1.6 }}>
+                        {promptPreview.creative_spec.platform} · {promptPreview.creative_spec.placement} · {promptPreview.creative_spec.aspect_ratio}
+                        {promptPreview.creative_spec.product ? ` · ${promptPreview.creative_spec.product}` : ''}
+                      </div>
+                    )}
+                    <textarea
+                      value={editedPrompt}
+                      onChange={(e) => setEditedPrompt(e.target.value)}
+                      rows={4}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', outline: 'none', resize: 'vertical' }}
+                    />
+                    {promptPreview.clarifying_question && (
+                      <div style={{ fontSize: '11.5px', color: '#ffae00', marginTop: '8px' }}>
+                        {promptPreview.clarifying_question}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '10px' }}>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(e as any); }}
                 placeholder={`Type instructions for ${engineMode}...`}
                 style={{ flex: 1, padding: '12px 16px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '8px', outline: 'none' }}
               />
+              <button
+                type="button"
+                onClick={handleAnalyze}
+                disabled={analyzing || !prompt.trim()}
+                title="See how the AI will interpret your prompt, without generating"
+                style={{ padding: '12px 14px', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.35)', color: '#8B85FF', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: analyzing || !prompt.trim() ? 'not-allowed' : 'pointer', opacity: analyzing || !prompt.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                {analyzing ? '…' : '✨ Preview'}
+              </button>
               <button 
                 onClick={(e) => handleSubmit(e as any)}
                 disabled={isGenerating || !prompt.trim()}
