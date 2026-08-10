@@ -169,17 +169,22 @@ function parseFollowers(metricsText: string, handle = '', name = ''): string {
   if (h.includes('simplymalvika')) return "31,000";
   if (h.includes('sarthak')) return "2,200";
   if (h.includes('ankit.k.09')) return "95,000";
-  if (h.includes('whoistanaaa')) return "6,500";
+  if (h.includes('whoistanaaa')) return "6.5k";
   if (h.includes('ananyaanotpanday')) return "1,667";
   if (h.includes('yourfirst.100k')) return "10.2k";
   if (h.includes('aanchallp')) return "2,705";
   if (h.includes('sh.reyya')) return "12,200";
-  if (h.includes('fanish')) return "4,300";
-  if (h.includes('sachin')) return "2,500";
+  if (h.includes('fanish')) return "4.3k";
+  if (h.includes('sachin')) return "View Profile";
   if (h.includes('ishwarya') || n.includes('kaur')) return "24.8k";
   if (h.includes('anmol') || h.includes('_ak_vlogs') || n.includes('khanna')) return "2,25,000";
   if (h.includes('drishti') || n.includes('rawat')) return "2,380";
   if (h.includes('roshan') || n.includes('sharma')) return "1,560";
+  if (h.includes('damia')) return "28,000";
+  if (h.includes('ananay')) return "1,01,545";
+  if (h.includes('yogita')) return "6,900";
+  if (h.includes('shiv')) return "View Profile";
+  if (h.includes('bristi')) return "12,400";
 
   const patBefore = m.match(/([\d,\.]+\s*[kKmM\+]*)\s*(?:total\s*)?followers?/i);
   if (patBefore) {
@@ -203,13 +208,16 @@ function parseFollowers(metricsText: string, handle = '', name = ''): string {
     }
   }
 
-  return "2,500";
+  return "View Profile";
 }
 
 function parseReach(metricsText: string, handle = '', name = ''): string {
   const h = handle.toLowerCase();
   const n = name.toLowerCase();
   const m = (metricsText || '').trim();
+
+  if (m.toLowerCase().includes('don') && m.toLowerCase().includes('know')) return "View Profile";
+  if (m.toLowerCase().includes('idk')) return "View Profile";
 
   if (h.includes('rubani') || n.includes('rubani')) return "5k-6k avg (400k reach)";
   if (h.includes('samaira') || n.includes('samaira')) return "2.5M peak (170k reach)";
@@ -228,7 +236,7 @@ function parseReach(metricsText: string, handle = '', name = ''): string {
   if (h.includes('whoistanaaa')) return "500k reach";
   if (h.includes('ananyaanotpanday')) return "10k avg (300k reach)";
   if (h.includes('yourfirst.100k')) return "27k avg";
-  if (h.includes('aanchallp')) return "15k avg";
+  if (h.includes('aanchallp')) return "View Profile";
   if (h.includes('sh.reyya')) return "14.3k avg";
   if (h.includes('fanish')) return "20M reach";
   if (h.includes('sachin')) return "5k avg";
@@ -236,6 +244,11 @@ function parseReach(metricsText: string, handle = '', name = ''): string {
   if (h.includes('anmol') || h.includes('_ak_vlogs') || n.includes('khanna')) return "400k reach";
   if (h.includes('drishti') || n.includes('rawat')) return "100k+ avg (17.8M reach)";
   if (h.includes('roshan') || n.includes('sharma')) return "71k avg";
+  if (h.includes('damia')) return "View Profile";
+  if (h.includes('ananay')) return "3.1M reach";
+  if (h.includes('yogita')) return "50k-100k avg";
+  if (h.includes('shiv')) return "View Profile";
+  if (h.includes('bristi')) return "10k+ avg";
 
   const viewsMatch = m.match(/(?:avg|average)?\s*views?[:\s-]*([\d,\.kKmM\+\s\-]+(?:avg|min|peak)?)/i);
   if (viewsMatch) return viewsMatch[1].trim();
@@ -243,7 +256,7 @@ function parseReach(metricsText: string, handle = '', name = ''): string {
   const reachMatch = m.match(/reach[:\s-]*([\d,\.kKmM\+\s\-]+)/i);
   if (reachMatch) return `${reachMatch[1].trim()} reach`;
 
-  return "15k avg";
+  return "View Profile";
 }
 
 function getCategory(followersStr: string): 'Nano' | 'Micro' | 'Macro' {

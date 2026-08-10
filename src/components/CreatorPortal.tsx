@@ -1073,13 +1073,25 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Followers</span>
-                    <span style={{ color: '#fff', fontWeight: 700 }}>{cardCustomizer.followers}</span>
+                    {(!cardCustomizer.followers || cardCustomizer.followers.toLowerCase().includes('view profile')) ? (
+                      <a href={cardCustomizer.profileLink || '#'} target="_blank" rel="noopener noreferrer" style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}>
+                        View Profile ↗
+                      </a>
+                    ) : (
+                      <span style={{ color: '#fff', fontWeight: 700 }}>{cardCustomizer.followers}</span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
-                    <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Activity size={13} /> {cardCustomizer.avgViews}
-                    </span>
+                    {(!cardCustomizer.avgViews || cardCustomizer.avgViews.toLowerCase().includes('view profile')) ? (
+                      <a href={cardCustomizer.profileLink || '#'} target="_blank" rel="noopener noreferrer" style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}>
+                        View Profile ↗
+                      </a>
+                    ) : (
+                      <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Activity size={13} /> {cardCustomizer.avgViews}
+                      </span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>

@@ -139,17 +139,22 @@ def parse_followers(metrics_text, handle="", name=""):
     elif 'simplymalvika' in h: return "31,000"
     elif 'sarthak' in h: return "2,200"
     elif 'ankit.k.09' in h: return "95,000"
-    elif 'whoistanaaa' in h: return "6,500"
+    elif 'whoistanaaa' in h: return "6.5k"
     elif 'ananyaanotpanday' in h: return "1,667"
     elif 'yourfirst.100k' in h: return "10.2k"
     elif 'aanchallp' in h: return "2,705"
     elif 'sh.reyya' in h: return "12,200"
-    elif 'fanish' in h: return "4,300"
-    elif 'sachin' in h: return "2,500"
+    elif 'fanish' in h: return "4.3k"
+    elif 'sachin' in h: return "View Profile"
     elif 'ishwarya' in h or 'kaur' in n: return "24.8k"
     elif 'anmol' in h or '_ak_vlogs' in h or 'khanna' in n: return "2,25,000"
     elif 'drishti' in h or 'rawat' in n: return "2,380"
     elif 'roshan' in h or 'sharma' in n: return "1,560"
+    elif 'damia' in h: return "28,000"
+    elif 'ananay' in h: return "1,01,545"
+    elif 'yogita' in h: return "6,900"
+    elif 'shiv' in h: return "View Profile"
+    elif 'bristi' in h: return "12,400"
 
     # Robust Dynamic extraction regex fallback
     pat_before = re.search(r'([\d,\.]+\s*[kKmM\+]*)\s*(?:total\s*)?followers?', m, re.I)
@@ -171,13 +176,18 @@ def parse_followers(metrics_text, handle="", name=""):
         if cleaned_nm and cleaned_nm not in ['1', '1.', '2', '2.', '3', '3.']:
             return cleaned_nm.replace(" ", "")
         
-    return "2,500"
+    return "View Profile"
 
 def parse_reach(metrics_text, handle="", name=""):
     h = (handle or "").lower()
     n = (name or "").lower()
     m = (metrics_text or "").strip()
     
+    if 'don' in m.lower() and 'know' in m.lower():
+        return "View Profile"
+    if 'idk' in m.lower():
+        return "View Profile"
+
     if 'rubani' in h or 'rubani' in n: return "5k-6k avg (400k reach)"
     elif 'samaira' in h or 'samaira' in n: return "2.5M peak (170k reach)"
     elif 'pritika' in h or 'pritika' in n or '_pritika001' in h: return "100k+ avg (700k reach)"
@@ -195,7 +205,7 @@ def parse_reach(metrics_text, handle="", name=""):
     elif 'whoistanaaa' in h: return "500k reach"
     elif 'ananyaanotpanday' in h: return "10k avg (300k reach)"
     elif 'yourfirst.100k' in h: return "27k avg"
-    elif 'aanchallp' in h: return "15k avg"
+    elif 'aanchallp' in h: return "View Profile"
     elif 'sh.reyya' in h: return "14.3k avg"
     elif 'fanish' in h: return "20M reach"
     elif 'sachin' in h: return "5k avg"
@@ -203,6 +213,11 @@ def parse_reach(metrics_text, handle="", name=""):
     elif 'anmol' in h or '_ak_vlogs' in h or 'khanna' in n: return "400k reach"
     elif 'drishti' in h or 'rawat' in n: return "100k+ avg (17.8M reach)"
     elif 'roshan' in h or 'sharma' in n: return "71k avg"
+    elif 'damia' in h: return "View Profile"
+    elif 'ananay' in h: return "3.1M reach"
+    elif 'yogita' in h: return "50k-100k avg"
+    elif 'shiv' in h: return "View Profile"
+    elif 'bristi' in h: return "10k+ avg"
 
     views_match = re.search(r'(?:avg|average)?\s*views?[:\s-]*([\d,\.kKmM\+\s\-]+(?:avg|min|peak)?)', m, re.I)
     if views_match:
@@ -212,7 +227,7 @@ def parse_reach(metrics_text, handle="", name=""):
     if reach_match:
         return f"{reach_match.group(1).strip()} reach"
         
-    return "15k avg"
+    return "View Profile"
 
 def get_category(followers_str):
     f = followers_str.lower().replace(',', '')

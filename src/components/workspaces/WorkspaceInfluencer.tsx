@@ -855,16 +855,38 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Followers</span>
-                <span style={{ color: '#fff', fontWeight: 700 }}>{creator.followers}</span>
+                {(!creator.followers || creator.followers.toLowerCase().includes('view profile')) ? (
+                  <a 
+                    href={creator.profileLink || '#'} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    View Profile ↗
+                  </a>
+                ) : (
+                  <span style={{ color: '#fff', fontWeight: 700 }}>{creator.followers}</span>
+                )}
               </div>
-              {creator.avgViews && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
+                {(!creator.avgViews || creator.avgViews.toLowerCase().includes('view profile')) ? (
+                  <a 
+                    href={creator.profileLink || '#'} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    View Profile ↗
+                  </a>
+                ) : (
                   <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Activity size={14} /> {creator.avgViews}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
                 <span style={{ color: creator.fakeFollowerScore < 5 ? '#00E676' : 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1214,7 +1236,13 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '30px' }}>
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', textAlign: 'center' }}>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Followers</div>
-                <div style={{ fontSize: '20px', color: '#fff', fontWeight: 600 }}>{viewProfile.followers}</div>
+                {(!viewProfile.followers || viewProfile.followers.toLowerCase().includes('view profile')) ? (
+                  <a href={viewProfile.profileLink || '#'} target="_blank" rel="noopener noreferrer" style={{ fontSize: '15px', color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}>
+                    View Profile ↗
+                  </a>
+                ) : (
+                  <div style={{ fontSize: '20px', color: '#fff', fontWeight: 600 }}>{viewProfile.followers}</div>
+                )}
               </div>
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', textAlign: 'center' }}>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Engagement</div>

@@ -806,7 +806,9 @@ export const BrandPostedDealsView: React.FC<{
                         <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {app.creator_name} <span style={{ fontSize: '11px', color: '#00e676', background: 'rgba(0,230,118,0.1)', padding: '1px 6px', borderRadius: '4px' }}>{app.match_score}% Brand Fit</span>
                         </div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>@{app.creator_handle} · {app.creator_followers} followers · {app.creator_location}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          @{app.creator_handle} · {(!app.creator_followers || app.creator_followers.toLowerCase().includes('view profile')) ? 'View Profile' : `${app.creator_followers} followers`} · {app.creator_location}
+                        </div>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
