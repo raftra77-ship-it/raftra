@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  ExternalLink,
   AlertTriangle,
   Cpu,
   BarChart3,
@@ -35,7 +36,7 @@ interface LandingPageProps {
 export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDemo }) => {
   const [currentSubView, setCurrentSubView] = useState<'main' | 'pricing'>('main');
   const navigate = useNavigate();
-  
+
   // Creator Portal State
   const [showCreatorPortal, setShowCreatorPortal] = useState(false);
   const [creatorPortalState, setCreatorPortalState] = useState<'form' | 'scanning' | 'success' | 'removing' | 'removed' | 'error'>('form');
@@ -44,7 +45,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
   const handleCreatorSubmit = async (e: React.FormEvent, action: 'add' | 'remove') => {
     e.preventDefault();
     if (!creatorForm.handle || (action === 'add' && (!creatorForm.email || !creatorForm.password))) return;
-    
+
     if (action === 'add') {
       setCreatorPortalState('scanning');
       try {
@@ -61,26 +62,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             role: 'creator'
           })
         });
-        
+
         if (!regRes.ok) {
-           // Fallback to login if already registered
-           const loginRes = await fetch('/api/auth/login', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ identifier: creatorForm.email, password: creatorForm.password })
-           });
-           if (!loginRes.ok) {
-             setCreatorPortalState('error');
-             return;
-           }
-           authData = await loginRes.json();
+          // Fallback to login if already registered
+          const loginRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: creatorForm.email, password: creatorForm.password })
+          });
+          if (!loginRes.ok) {
+            setCreatorPortalState('error');
+            return;
+          }
+          authData = await loginRes.json();
         } else {
-           authData = await regRes.json();
+          authData = await regRes.json();
         }
-        
+
         const verifyRes = await fetch('/api/workspaces/influencer/me/verify', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${authData.access_token}`
           },
@@ -93,15 +94,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
 
         const data = await verifyRes.json();
         if (data.status === 'success' && data.data.verification_status === 'verified') {
-           localStorage.setItem('token', authData.access_token);
-           setCreatorPortalState('success');
-           setTimeout(() => {
-             setShowCreatorPortal(false);
-             setCreatorPortalState('form');
-             navigate('/creator-dashboard');
-           }, 2000);
+          localStorage.setItem('token', authData.access_token);
+          setCreatorPortalState('success');
+          setTimeout(() => {
+            setShowCreatorPortal(false);
+            setCreatorPortalState('form');
+            navigate('/creator-dashboard');
+          }, 2000);
         } else {
-           setCreatorPortalState('error');
+          setCreatorPortalState('error');
         }
       } catch (err) {
         setCreatorPortalState('error');
@@ -126,7 +127,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     if (simulationState === 'deployed') return;
     setSimulationState('loading');
     setLogText('[System] Injecting credentials & compiling ad parameters to sandbox adsets...');
-    
+
     setTimeout(() => {
       setSimulationState('deployed');
       setRoasVal('4.9x');
@@ -138,7 +139,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
   const resetSimulationState = (tab: 'creative' | 'campaigns' | 'seo') => {
     setActiveSimTab(tab);
     setSimulationState('pending');
-    
+
     if (tab === 'creative') {
       setRoasVal('3.8x');
       setCitationsVal('54%');
@@ -184,6 +185,78 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     <div className="app-wrapper">
       <Navbar onOpenCreatorPortal={() => setShowCreatorPortal(true)} />
 
+      {/* Fixed Top-Right Marketplace Button — aligned with navbar */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '16px',
+          right: '24px',
+          zIndex: 1100,
+          display: 'flex',
+          alignItems: 'center',
+          height: '52px',
+        }}
+      >
+        <motion.button
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
+          onClick={() => window.open('/influencer-marketplace', '_blank')}
+          style={{
+            background: 'linear-gradient(135deg, #8e0b00ff 0%, #290605ff 45%, #410c06ff 100%)',
+            border: '1px solid rgba(124, 0, 0, 0.6)',
+            color: '#ffffffff',
+            borderRadius: '100px',
+            padding: '9px 20px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            letterSpacing: '0.02em',
+            position: 'relative',
+            overflow: 'hidden',
+            transition: 'all 0.25s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = '0 6px 30px rgba(220, 53, 69, 0.75), 0 0 0 1px rgba(255,107,107,0.5), inset 0 1px 0 rgba(255,255,255,0.4)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #410c06ff 45%, #290605ff 100%)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)';
+            e.currentTarget.style.transform = 'translateY(0px)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #5f100dff 45%, #290605ff 100%)';
+          }}
+        >
+          {/* Shimmer overlay */}
+          <span style={{
+            position: 'absolute',
+            top: 0, left: '-60%',
+            width: '40%',
+            height: '100%',
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
+            transform: 'skewX(-20deg)',
+            animation: 'shimmer-slide 2.4s ease-in-out infinite',
+            pointerEvents: 'none',
+          }} />
+          <span style={{ fontSize: '14px' }}>✦</span>
+          Creator Marketplace
+          <span style={{ opacity: 0.8, fontSize: '12px' }}>↗</span>
+        </motion.button>
+        <style>{`
+          @keyframes shimmer-slide {
+            0% { left: -60%; }
+            60%, 100% { left: 130%; }
+          }
+        `}</style>
+      </div>
+
       {/* Hero Section */}
       <section className="hero-section">
         <motion.div
@@ -223,8 +296,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           <GlowButton variant="glow" onClick={onStartFree} icon={<ArrowRight size={16} />}>
             Start Free
           </GlowButton>
-          <GlowButton variant="secondary" onClick={() => scrollToSection('problem')}>
-            Explore Platform
+          <GlowButton variant="secondary" onClick={() => window.open('/influencer-marketplace', '_blank')} icon={<ExternalLink size={16} />}>
+            Influencer Marketplace ↗
           </GlowButton>
         </motion.div>
 
@@ -867,7 +940,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
           <div className="glow-card" style={{ width: '460px', background: '#0a0a0c', padding: '32px', position: 'relative', border: '1px solid rgba(0, 230, 118, 0.4)', borderRadius: '20px' }}>
             <button onClick={() => setShowCreatorPortal(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
-            
+
             <h3 style={{ fontSize: '22px', color: '#fff', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700 }}>
               <UserPlus size={22} color="#00E676" /> Creator Onboarding
             </h3>
@@ -890,7 +963,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
       )}
 
       {/* Global Styles for Animations */}
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}} />
       <Footer />

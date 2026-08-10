@@ -225,6 +225,69 @@ class DealResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# ── Posted Deals Schemas ──────────────────────────────────────────────────────
+
+class PostedDealCreate(BaseModel):
+    workspace_id: Optional[int] = 1
+    brand_name: Optional[str] = "Aura Premium"
+    brand_logo: Optional[str] = None
+    brand_url: Optional[str] = "aura.com"
+    campaign_name: str
+    product_name: Optional[str] = None
+    description: Optional[str] = None
+    objective: Optional[str] = "Brand Awareness & UGC"
+    platform: Optional[str] = "Instagram"
+    creator_category: Optional[str] = "All"
+    niche: Optional[str] = "Lifestyle"
+    location: Optional[str] = "India"
+    creators_required: Optional[int] = 1
+    follower_range: Optional[str] = "10k - 100k"
+    engagement_range: Optional[str] = "2% - 10%"
+    content_style: Optional[str] = "Authentic UGC"
+    language: Optional[str] = "English / Hindi"
+    audience_requirements: Optional[str] = None
+    deliverables_json: Optional[str] = None
+    total_budget: Optional[float] = 50000.0
+    budget_per_creator: Optional[float] = 15000.0
+    allow_negotiation: Optional[bool] = True
+    application_deadline: Optional[str] = "2026-08-30"
+    campaign_start: Optional[str] = "2026-09-01"
+    deliverable_deadline: Optional[str] = "2026-09-15"
+    campaign_end: Optional[str] = "2026-09-30"
+
+class DealApplicationCreate(BaseModel):
+    creator_handle: str
+    creator_name: str
+    creator_avatar: Optional[str] = None
+    creator_followers: Optional[str] = None
+    creator_engagement: Optional[str] = None
+    creator_location: Optional[str] = None
+    proposal_text: str
+    proposed_price: float
+    availability_date: Optional[str] = "Immediate"
+    estimated_delivery_days: Optional[int] = 7
+
+class ApplicationStatusUpdate(BaseModel):
+    status: str  # SHORTLISTED | ACCEPTED | CONFIRMED | DECLINED
+
+class DealFinalizeRequest(BaseModel):
+    final_price: float
+    final_deliverables: str
+    final_delivery_days: int
+    usage_rights: Optional[str] = "30 Days Digital Rights"
+    revisions_allowed: Optional[int] = 1
+
+class DeliverableSubmissionCreate(BaseModel):
+    title: str
+    submission_type: Optional[str] = "video"
+    content_url: Optional[str] = None
+    caption: Optional[str] = None
+    notes: Optional[str] = None
+
+class SubmissionReviewRequest(BaseModel):
+    status: str  # APPROVED | REVISION_REQUESTED
+    revision_reason: Optional[str] = None
+
 # ── Payout Schemas ────────────────────────────────────────────────────────────
 
 class PayoutSubmit(BaseModel):

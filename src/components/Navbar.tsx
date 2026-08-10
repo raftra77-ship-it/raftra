@@ -217,12 +217,12 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           </AnimatePresence>
         </div>
 
-        <button onClick={() => navigate('/about')} className="nav-link-btn">
-          About Us
-        </button>
-
         <button onClick={() => navigate('/pricing')} className="nav-link-btn">
           Pricing
+        </button>
+
+        <button onClick={() => navigate('/about')} className="nav-link-btn">
+          About Us
         </button>
       </motion.div>
 

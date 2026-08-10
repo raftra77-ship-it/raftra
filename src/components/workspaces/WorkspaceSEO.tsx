@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Globe, Check, ExternalLink, TrendingUp, ChevronDown, GitBranch, ShoppingBag, PenSquare } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { GitHubPanel } from './GitHubPanel';
@@ -239,12 +239,12 @@ const ConnectSection: React.FC<{ workspaceId?: number | null }> = ({ workspaceId
   );
 };
 
-interface BlogDraft {
+export interface BlogDraft {
   id: string;
   title: string;
-  excerpt: string;
-  keywords: string;
-  status: 'pending_review' | 'published';
+  excerpt?: string;
+  keywords?: string;
+  status: string;
 }
 
 interface WorkspaceSEOProps {

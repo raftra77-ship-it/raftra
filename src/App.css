@@ -1136,3 +1136,94 @@
   font-size: 14px;
   color: #fff;
 }
+
+/* ─────────────────────────────────────────────────
+   GLOBAL READABLE TYPOGRAPHY — Creator Dashboard
+   & Influencer Marketplace
+───────────────────────────────────────────────── */
+
+/* Base font bump for all dashboard/portal views */
+.glow-card,
+.glow-card * {
+  letter-spacing: -0.01em;
+}
+
+/* Secondary / muted text — was 11-12px, now 13px */
+[style*="font-size: '11px'"],
+[style*="font-size: '11.5px'"],
+[style*="font-size: '12px'"],
+[style*="fontSize: '11px'"],
+[style*="fontSize: '11.5px'"],
+[style*="fontSize: '12px'"] {
+  font-size: 13px !important;
+}
+
+/* Body / description text — was 12.5-13px, now 14px */
+[style*="font-size: '12.5px'"],
+[style*="font-size: '13px'"],
+[style*="fontSize: '12.5px'"],
+[style*="fontSize: '13px'"] {
+  font-size: 14px !important;
+}
+
+/* Card subtext / nav items — was 13.5-14px, now 15px */
+[style*="font-size: '13.5px'"],
+[style*="font-size: '14px'"],
+[style*="fontSize: '13.5px'"],
+[style*="fontSize: '14px'"] {
+  font-size: 15px !important;
+}
+
+/* Sidebar nav items */
+nav button {
+  font-size: 15px !important;
+}
+
+/* Creator card labels / tags */
+.glow-card [style*="fontSize: '10"],
+.glow-card [style*="font-size: '10"] {
+  font-size: 12px !important;
+}
+
+/* Deal cards — description paragraphs */
+.glow-card p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Stat card values */
+.glow-card [style*="fontSize: '28px'"],
+.glow-card [style*="font-size: '28px'"] {
+  font-size: 30px !important;
+}
+
+/* Filter pill buttons in marketplace */
+.glow-card button[style*="fontSize: '12px'"],
+.glow-card button[style*="font-size: '12px'"] {
+  font-size: 13.5px !important;
+  padding: 7px 16px !important;
+}
+
+/* Match score badges */
+span[style*="fontSize: '11px'"],
+span[style*="font-size: '11px'"],
+span[style*="fontSize: '12px'"],
+span[style*="font-size: '12px'"] {
+  font-size: 13px !important;
+}
+
+/* Table / tracker row text */
+td, th {
+  font-size: 14px;
+}
+
+/* Creator portal sidebar label */
+nav [style*="fontSize: '14px'"],
+nav [style*="font-size: '14px'"] {
+  font-size: 15px !important;
+}
+
+/* Header titles in tab views */
+h2[style], h3[style] {
+  letter-spacing: -0.025em;
+}

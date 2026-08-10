@@ -78,7 +78,7 @@ async def chat_room_endpoint(room_key: str, websocket: WebSocket):
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
 from fastapi.staticfiles import StaticFiles
-import auth, models, database, payments, agent_routes, workspace_routes, influencer_deal_routes, payout_routes, media_routes
+import auth, models, database, payments, agent_routes, workspace_routes, influencer_deal_routes, payout_routes, media_routes, posted_deal_routes, chat_routes, notification_routes
 
 # Create tables in db (in production, use alembic for migrations)
 models.Base.metadata.create_all(bind=database.engine)
@@ -94,4 +94,8 @@ app.include_router(workspace_routes.router)
 app.include_router(influencer_deal_routes.router)
 app.include_router(payout_routes.router)
 app.include_router(media_routes.router)
+app.include_router(posted_deal_routes.router)
+app.include_router(chat_routes.router)
+app.include_router(notification_routes.router)
+
 

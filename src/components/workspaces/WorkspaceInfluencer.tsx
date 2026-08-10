@@ -17,11 +17,51 @@ const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[])
   topComments: item.topComments
 }));
 
+import { BrandPostedDealsView } from './PostedDealsWorkflow';
+
 export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceId}) => {
+  const [mainSubTab, setMainSubTab] = useState<'discover' | 'posted_deals' | 'my_collaborations'>('discover');
   const [creators, setCreators] = useState<InfluencerItemExtended[]>([]);
   const [filterNiche, setFilterNiche] = useState('All');
   const [filterFollowers, setFilterFollowers] = useState('All');
   const [sortBy, setSortBy] = useState('featured');
+
+  // Visitor Guest Identification Modal state
+  const [guestModalCreator, setGuestModalCreator] = useState<InfluencerItemExtended | null>(null);
+  const [guestBrandName, setGuestBrandName] = useState('');
+  const [guestContactName, setGuestContactName] = useState('');
+  const [guestContactInfo, setGuestContactInfo] = useState('');
+
+  const isLoggedIn = Boolean(localStorage.getItem('token'));
+
+  const handleNegotiateClick = (creator: InfluencerItemExtended) => {
+    const token = localStorage.getItem('token');
+    const guestBrand = localStorage.getItem('raftra_guest_brand');
+
+    if (!token && !guestBrand) {
+      setGuestModalCreator(creator);
+    } else {
+      handleOpenChat(creator);
+    }
+  };
+
+  const handleSaveGuestIdentity = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guestBrandName.trim() || !guestContactName.trim()) return;
+
+    const identity = {
+      brandName: guestBrandName,
+      contactName: guestContactName,
+      contactInfo: guestContactInfo
+    };
+    localStorage.setItem('raftra_guest_brand', JSON.stringify(identity));
+    
+    if (guestModalCreator) {
+      const creator = guestModalCreator;
+      setGuestModalCreator(null);
+      handleOpenChat(creator);
+    }
+  };
 
   const mergeCustomProfile = (list: InfluencerItemExtended[]): InfluencerItemExtended[] => {
     const customCardStr = localStorage.getItem('raftra_creator_card_custom');
@@ -94,7 +134,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             handle: inf.handle,
             platform: inf.platform,
             niche: inf.niche,
-            category: 'Micro',
+            category: 'Micro' as const,
             expectedPrice: inf.base_rate ? `₹${inf.base_rate.toLocaleString()}` : 'Negotiable',
             deliverables: ['UGC Video'],
             followers: '10k+',
@@ -483,6 +523,144 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         </div>
       </div>
 
+      {/* LARGE PROMINENT HERO TAB BUTTONS — DARK THEME NO EMOJI */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', margin: '10px 0 10px 0' }}>
+        <button
+          onClick={() => setMainSubTab('discover')}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: '8px',
+            padding: '20px 24px',
+            borderRadius: '16px',
+            border: mainSubTab === 'discover' ? '2px solid var(--primary, #5A52FF)' : '1px solid rgba(255,255,255,0.12)',
+            background: mainSubTab === 'discover' ? '#12121E' : '#0D0D14',
+            boxShadow: mainSubTab === 'discover' ? '0 8px 24px rgba(90,82,255,0.25)' : 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span style={{ fontSize: '18px', fontWeight: 800, color: mainSubTab === 'discover' ? '#fff' : 'rgba(255,255,255,0.85)', letterSpacing: '-0.02em' }}>
+              Discover Creators
+            </span>
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>29 Live</span>
+          </div>
+          <span style={{ fontSize: '13px', color: mainSubTab === 'discover' ? 'rgba(255,255,255,0.8)' : 'var(--text-secondary)', lineHeight: 1.4 }}>
+            Browse verified profiles, pricing & engagement metrics.
+          </span>
+        </button>
+
+        <button
+          onClick={() => setMainSubTab('posted_deals')}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: '8px',
+            padding: '20px 24px',
+            borderRadius: '16px',
+            border: mainSubTab === 'posted_deals' ? '2px solid var(--primary, #5A52FF)' : '1px solid rgba(255,255,255,0.12)',
+            background: mainSubTab === 'posted_deals' ? '#12121E' : '#0D0D14',
+            boxShadow: mainSubTab === 'posted_deals' ? '0 8px 24px rgba(90,82,255,0.25)' : 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span style={{ fontSize: '18px', fontWeight: 800, color: mainSubTab === 'posted_deals' ? '#fff' : 'rgba(255,255,255,0.85)', letterSpacing: '-0.02em' }}>
+              Posted Deals
+            </span>
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(90,82,255,0.2)', color: '#8B85FF' }}>Broadcast</span>
+          </div>
+          <span style={{ fontSize: '13px', color: mainSubTab === 'posted_deals' ? 'rgba(255,255,255,0.8)' : 'var(--text-secondary)', lineHeight: 1.4 }}>
+            Post requirements & review creator applications.
+          </span>
+        </button>
+
+        <button
+          onClick={() => setMainSubTab('my_collaborations')}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: '8px',
+            padding: '20px 24px',
+            borderRadius: '16px',
+            border: mainSubTab === 'my_collaborations' ? '2px solid var(--primary, #5A52FF)' : '1px solid rgba(255,255,255,0.12)',
+            background: mainSubTab === 'my_collaborations' ? '#12121E' : '#0D0D14',
+            boxShadow: mainSubTab === 'my_collaborations' ? '0 8px 24px rgba(90,82,255,0.25)' : 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span style={{ fontSize: '18px', fontWeight: 800, color: mainSubTab === 'my_collaborations' ? '#fff' : 'rgba(255,255,255,0.85)', letterSpacing: '-0.02em' }}>
+              My Collaborations
+            </span>
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>3 Active</span>
+          </div>
+          <span style={{ fontSize: '13px', color: mainSubTab === 'my_collaborations' ? 'rgba(255,255,255,0.8)' : 'var(--text-secondary)', lineHeight: 1.4 }}>
+            Track active deals, content deliverables & payouts.
+          </span>
+        </button>
+      </div>
+
+      {mainSubTab === 'posted_deals' && (
+        isLoggedIn ? (
+          <BrandPostedDealsView
+            workspaceId={workspaceId}
+            onOpenChatWithCreator={(handle) => {
+              const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
+              if (found) setActiveChat(found);
+            }}
+            onViewCreatorProfile={(handle) => {
+              const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
+              if (found) setViewProfile(found);
+            }}
+          />
+        ) : (
+          <div className="glow-card" style={{ padding: '36px', textAlign: 'center', background: '#0D0D14', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+            <div style={{ fontSize: '36px' }}>🔒</div>
+            <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#fff', margin: 0 }}>Post Brand Deals — Subscriber Dashboard Feature</h3>
+            <p style={{ fontSize: '15px', color: 'var(--text-secondary)', maxWidth: '580px', margin: 0, lineHeight: 1.6 }}>
+              Posting campaign briefs and receiving applications from creators is exclusive to <strong>Brand Dashboard Subscribers</strong>. 
+              Sign in to your brand account to broadcast requirements or manage your campaigns.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <GlowButton variant="glow" onClick={() => window.location.href = '/login'} style={{ fontSize: '14px', padding: '10px 24px' }}>
+                Sign In to Post Deals ➔
+              </GlowButton>
+              <GlowButton variant="secondary" onClick={() => setMainSubTab('discover')} style={{ fontSize: '14px', padding: '10px 20px' }}>
+                Discover Creators
+              </GlowButton>
+            </div>
+          </div>
+        )
+      )}
+
+      {mainSubTab === 'my_collaborations' && (
+        <BrandPostedDealsView
+          workspaceId={workspaceId}
+          mode="my_collaborations"
+          onOpenChatWithCreator={(handle) => {
+            const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
+            if (found) setActiveChat(found);
+          }}
+          onViewCreatorProfile={(handle) => {
+            const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
+            if (found) setViewProfile(found);
+          }}
+        />
+      )}
+
+      {mainSubTab === 'discover' && (
+        <>
+
       {/* PLATFORM PROTECTION & DISINTERMEDIATION SAFETY BANNER */}
       <div 
         style={{
@@ -648,60 +826,60 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       </div>
 
       {/* Influencers grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
         {sortedCreators.map((creator) => (
-          <div key={creator.id} className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
+          <div key={creator.id} className="glow-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <img
-                  src={creator.avatar || ("https://ui-avatars.com/api/?name=" + creator.name.replace(' ', '+') + "&background=random&color=fff&size=48")}
+                  src={creator.avatar || ("https://ui-avatars.com/api/?name=" + creator.name.replace(' ', '+') + "&background=random&color=fff&size=56")}
                   alt={creator.name}
-                  style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)' }}
+                  style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }}
                 />
                 <div>
-                  <h4 style={{ fontSize: '16px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px', color: '#fff' }}>
-                    {creator.name} <BadgeCheck size={14} color="#00E676" />
+                  <h4 style={{ fontSize: '17px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px', color: '#fff', fontWeight: 700 }}>
+                    {creator.name} <BadgeCheck size={15} color="#00E676" />
                   </h4>
-                  <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 600 }}>{creator.handle}</div>
+                  <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 600 }}>{creator.handle}</div>
                   {creator.location && (
-                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>📍 {creator.location}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>📍 {creator.location}</div>
                   )}
                 </div>
               </div>
-              <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '5px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {creator.category.toUpperCase()}
               </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Followers</span>
                 <span style={{ color: '#fff', fontWeight: 700 }}>{creator.followers}</span>
               </div>
               {creator.avgViews && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
                   <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Activity size={13} /> {creator.avgViews}
+                    <Activity size={14} /> {creator.avgViews}
                   </span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
                 <span style={{ color: creator.fakeFollowerScore < 5 ? '#00E676' : 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <ShieldAlert size={14} /> {creator.fakeFollowerScore}%
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Collaboration Price Range</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Collab Price Range</span>
                 <span style={{ color: '#00E676', fontWeight: 700 }}>
                   {creator.expectedPrice}
                 </span>
               </div>
               
               <div style={{ marginTop: '8px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>AVAILABLE FOR:</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 600, letterSpacing: '0.05em' }}>AVAILABLE FOR:</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {creator.deliverables.map(d => {
                     const isUGC = d.toLowerCase().includes('ugc');
@@ -709,11 +887,11 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                       <span
                         key={d}
                         style={{
-                          fontSize: '10px',
+                          fontSize: '12px',
                           background: isUGC ? 'rgba(255, 77, 77, 0.15)' : 'rgba(0, 230, 118, 0.1)',
                           color: isUGC ? '#FF4D4D' : '#00E676',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
                           border: isUGC ? '1px solid rgba(255, 77, 77, 0.4)' : '1px solid rgba(0, 230, 118, 0.2)',
                           display: 'flex',
                           alignItems: 'center',
@@ -721,7 +899,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                           fontWeight: isUGC ? 700 : 500
                         }}
                       >
-                        {isUGC ? <Video size={10} color="#FF4D4D" /> : d.includes('Video') ? <Video size={10} /> : <ImageIcon size={10} />} {d}
+                        {isUGC ? <Video size={12} color="#FF4D4D" /> : d.includes('Video') ? <Video size={12} /> : <ImageIcon size={12} />} {d}
                       </span>
                     );
                   })}
@@ -730,7 +908,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <GlowButton variant="glow" onClick={() => handleOpenChat(creator)} style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
+              <GlowButton variant="glow" onClick={() => handleNegotiateClick(creator)} style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
                 <MessageCircle size={14} /> Negotiate
               </GlowButton>
               {creator.profileLink && (
@@ -745,6 +923,63 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           </div>
         ))}
       </div>
+
+      {/* Visitor Guest Identification Modal */}
+      {guestModalCreator && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div className="glow-card" style={{ width: '100%', maxWidth: '440px', background: '#0D0D14', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '20px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#fff', margin: 0 }}>⚡ Start Chat with {guestModalCreator.name}</h3>
+                <div style={{ fontSize: '12.5px', color: '#00E676', marginTop: '4px' }}>Quick visitor identification to open web chat</div>
+              </div>
+              <button onClick={() => setGuestModalCreator(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+            </div>
+
+            <form onSubmit={handleSaveGuestIdentity} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Brand / Business Name</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={guestBrandName}
+                  onChange={e => setGuestBrandName(e.target.value)}
+                  placeholder="e.g. Acme Lifestyle D2C"
+                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Your Name</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={guestContactName}
+                  onChange={e => setGuestContactName(e.target.value)}
+                  placeholder="e.g. Rahul Sharma"
+                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>WhatsApp / Email (for receipt &amp; confirm)</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={guestContactInfo}
+                  onChange={e => setGuestContactInfo(e.target.value)}
+                  placeholder="e.g. 9876543210 or rahul@brand.com"
+                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+
+              <GlowButton variant="glow" type="submit" style={{ marginTop: '8px', padding: '14px', fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                Open Web Chat Now 💬
+              </GlowButton>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Negotiation Chat Modal */}
       {activeChat && (
@@ -1150,6 +1385,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}} />
+      </>
+      )}
     </div>
   );
 };

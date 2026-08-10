@@ -10,6 +10,7 @@ import { CreatorPortal } from './components/CreatorPortal';
 import { Security } from './pages/Security';
 import { AboutUs } from './pages/AboutUs';
 import { FeaturePage } from './pages/FeaturePage';
+import { InfluencerMarketplacePage } from './pages/InfluencerMarketplacePage';
 import './App.css';
 
 import { FlowyBackground } from './components/FlowyBackground';
@@ -105,6 +106,14 @@ export default function App() {
         
         <Route path="/dashboard/*" element={
           <BrandDashboard />
+        } />
+
+        <Route path="/influencer-marketplace/*" element={
+          <InfluencerMarketplacePage />
+        } />
+
+        <Route path="/marketplace/*" element={
+          <InfluencerMarketplacePage />
         } />
         
         <Route path="/creator-dashboard/*" element={

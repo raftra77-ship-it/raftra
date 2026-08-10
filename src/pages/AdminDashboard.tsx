@@ -123,7 +123,107 @@ export function AdminDashboard() {
             </form>
           </div>
         </div>
+
+        {/* Creator Payout Requests Review Section */}
+        <div style={{ marginTop: '32px', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border)', padding: '20px' }}>
+          <h2 style={{ fontSize: '18px', marginBottom: '16px', fontFamily: 'var(--font-heading)', color: '#00E676', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            💳 Creator Payout Requests (Team Raftra Audit Desk)
+          </h2>
+          <AdminPayoutsList />
+        </div>
       </main>
+    </div>
+  );
+}
+
+function AdminPayoutsList() {
+  const [payouts, setPayouts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadPayouts = () => {
+    fetch('/api/payouts/admin/all')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setPayouts(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadPayouts();
+  }, []);
+
+  const handleApprove = async (id: number) => {
+    try {
+      await fetch(`/api/payouts/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_note: 'Approved by Team Raftra Admin' })
+      });
+      alert('Payout approved and Razorpay disbursal triggered!');
+      loadPayouts();
+    } catch (e) {
+      alert('Failed to approve payout');
+    }
+  };
+
+  const handleReject = async (id: number) => {
+    try {
+      await fetch(`/api/payouts/${id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_note: 'Verification proof mismatched or invalid' })
+      });
+      alert('Payout request rejected');
+      loadPayouts();
+    } catch (e) {
+      alert('Failed to reject payout');
+    }
+  };
+
+  if (loading) return <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Loading pending payout requests...</div>;
+  if (payouts.length === 0) return <div style={{ fontSize: '13px', color: 'var(--text-secondary)', padding: '12px' }}>No pending creator payout requests.</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {payouts.map((p: any) => (
+        <div key={p.id} style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '14px', color: '#fff' }}>
+              Creator: @{p.creator_handle} ({p.creator_name || 'Creator'})
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Token: <b>{p.token_submitted || 'N/A'}</b> &bull; Bank: {p.bank_name} ({p.account_number}) &bull; IFSC: {p.ifsc_code} &bull; UPI: {p.upi_id}
+            </div>
+            {p.screenshot_url && (
+              <a href={p.screenshot_url} target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#00C4CC', textDecoration: 'underline', marginTop: '4px', display: 'inline-block' }}>
+                📸 View Screenshot Proof
+              </a>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 700,
+              background: p.status === 'paid' ? 'rgba(0,230,118,0.15)' : p.status === 'rejected' ? 'rgba(239,68,68,0.15)' : 'rgba(255,179,0,0.15)',
+              color: p.status === 'paid' ? '#00E676' : p.status === 'rejected' ? '#EF4444' : '#FFB300',
+              border: '1px solid currentColor'
+            }}>
+              {p.status.toUpperCase()}
+            </span>
+            {p.status !== 'paid' && p.status !== 'rejected' && (
+              <>
+                <button onClick={() => handleApprove(p.id)} style={{ padding: '6px 12px', background: '#00E676', color: '#000', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  Approve Payout
+                </button>
+                <button onClick={() => handleReject(p.id)} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.2)', color: '#EF4444', border: '1px solid #EF4444', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  Reject
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

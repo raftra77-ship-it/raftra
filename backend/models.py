@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, Float, ForeignKey, DateTime, JSON
+from sqlalchemy import Boolean, Column, Integer, String, Float, ForeignKey, DateTime, JSON, Text
 from sqlalchemy.orm import relationship
 import datetime
 try:
@@ -293,3 +293,99 @@ class CreatorPayoutRequest(Base):
     reviewed_at = Column(DateTime, nullable=True)
 
     deal = relationship("InfluencerDeal")
+
+class PostedDeal(Base):
+    """Tracks a broadcast deal posted by a brand for creators to discover and apply."""
+    __tablename__ = "posted_deals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    brand_name = Column(String, default="Aura Premium")
+    brand_logo = Column(String, nullable=True)
+    brand_url = Column(String, nullable=True)
+    campaign_name = Column(String)
+    product_name = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    objective = Column(String, nullable=True)
+    platform = Column(String, default="Instagram")
+    creator_category = Column(String, default="All")
+    niche = Column(String, default="Lifestyle")
+    location = Column(String, default="India")
+    creators_required = Column(Integer, default=1)
+    follower_range = Column(String, nullable=True)
+    engagement_range = Column(String, nullable=True)
+    content_style = Column(String, nullable=True)
+    language = Column(String, default="English / Hindi")
+    audience_requirements = Column(String, nullable=True)
+    deliverables_json = Column(Text, nullable=True)  # JSON string of deliverables
+    total_budget = Column(Float, default=50000.0)
+    budget_per_creator = Column(Float, default=15000.0)
+    allow_negotiation = Column(Boolean, default=True)
+    application_deadline = Column(String, nullable=True)
+    campaign_start = Column(String, nullable=True)
+    deliverable_deadline = Column(String, nullable=True)
+    campaign_end = Column(String, nullable=True)
+    status = Column(String, default="ACTIVE")  # DRAFT | ACTIVE | REVIEWING | IN_PROGRESS | COMPLETED | CLOSED
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class DealApplication(Base):
+    """Tracks a creator's application to a posted brand deal."""
+    __tablename__ = "deal_applications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    deal_id = Column(Integer, ForeignKey("posted_deals.id"))
+    workspace_id = Column(Integer, nullable=True)
+    creator_handle = Column(String, index=True)  # e.g. "samairaa.r"
+    creator_name = Column(String)
+    creator_avatar = Column(String, nullable=True)
+    creator_followers = Column(String, nullable=True)
+    creator_engagement = Column(String, nullable=True)
+    creator_location = Column(String, nullable=True)
+    match_score = Column(Integer, default=94)
+    proposal_text = Column(Text, nullable=True)
+    proposed_price = Column(Float, default=15000.0)
+    availability_date = Column(String, nullable=True)
+    estimated_delivery_days = Column(Integer, default=7)
+    status = Column(String, default="SUBMITTED")  # SUBMITTED | SHORTLISTED | NEGOTIATION | ACCEPTED | CONFIRMED | DECLINED
+    final_price = Column(Float, nullable=True)
+    final_deliverables = Column(Text, nullable=True)
+    final_delivery_days = Column(Integer, nullable=True)
+    usage_rights = Column(String, default="30 Days Digital Rights")
+    revisions_allowed = Column(Integer, default=1)
+    cashout_requested = Column(Boolean, default=False)
+    cashout_status = Column(String, nullable=True)  # REQUESTED | VERIFYING | APPROVED | PROCESSING | PAID
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    deal = relationship("PostedDeal")
+
+class DealDeliverableSubmission(Base):
+    """Tracks individual deliverable submissions and approvals for a deal application."""
+    __tablename__ = "deal_deliverable_submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("deal_applications.id"))
+    deal_id = Column(Integer, ForeignKey("posted_deals.id"))
+    title = Column(String)  # e.g. "Instagram Reel"
+    submission_type = Column(String, default="video")  # video | image | file | url
+    content_url = Column(String, nullable=True)
+    caption = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    due_date = Column(String, nullable=True)
+    status = Column(String, default="PENDING")  # PENDING | SUBMITTED | UNDER_REVIEW | REVISION_REQUESTED | RESUBMITTED | APPROVED
+    revision_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class PostedDealNotification(Base):
+    """Tracks in-app notifications for posted deals, applications, and payouts."""
+    __tablename__ = "posted_deal_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_type = Column(String)  # "creator" or "brand"
+    recipient_handle = Column(String, nullable=True)
+    workspace_id = Column(Integer, nullable=True)
+    title = Column(String)
+    message = Column(String)
+    deal_id = Column(Integer, nullable=True)
+    application_id = Column(Integer, nullable=True)
+    read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

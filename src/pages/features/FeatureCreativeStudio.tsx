@@ -413,7 +413,7 @@ export const FeatureCreativeStudio = () => {
                     borderRadius: '10px', 
                     display: 'flex', 
                     flexDirection: 'column', 
-                    justify: 'space-between', 
+                    justifyContent: 'space-between', 
                     padding: '12px', 
                     color: '#fff' 
                   }}>
@@ -439,7 +439,7 @@ export const FeatureCreativeStudio = () => {
                     borderRadius: '10px', 
                     display: 'flex', 
                     flexDirection: 'column', 
-                    justify: 'space-between', 
+                    justifyContent: 'space-between', 
                     padding: '12px', 
                     color: '#fff' 
                   }}>

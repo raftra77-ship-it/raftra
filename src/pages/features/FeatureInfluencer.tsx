@@ -348,7 +348,7 @@ export const FeatureInfluencer = () => {
             <div style={{ background: 'linear-gradient(135deg, rgba(20,20,32,0.9), rgba(10,10,16,0.98))', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               
               {/* WebChat Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', pb: '12px', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <MessageSquare size={18} color="#00D2FF" />
                   <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>Live Deal Chat with Sarah</span>

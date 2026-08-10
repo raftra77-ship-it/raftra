@@ -7,7 +7,7 @@ import type { ReviewItem } from '../components/ReviewDrawer';
 import { WorkspaceCreative } from '../components/workspaces/WorkspaceCreative';
 import { WorkspaceCampaign } from '../components/workspaces/WorkspaceCampaign';
 import type { CampaignItem } from '../components/workspaces/WorkspaceCampaign';
-import { WorkspaceSEO } from '../components/workspaces/WorkspaceSEO';
+import { WorkspaceSEO, type BlogDraft } from '../components/workspaces/WorkspaceSEO';
 import { WorkspaceAnalytics } from '../components/workspaces/WorkspaceAnalytics';
 import type { ChatMessage } from '../components/workspaces/WorkspaceAnalytics';
 import { WorkspaceSocial } from '../components/workspaces/WorkspaceSocial';
@@ -57,6 +57,7 @@ import {
   BarChart3,
   Share2,
   Users2,
+  ExternalLink,
   UserCheck,
   CheckCircle2,
   Zap,
@@ -95,16 +96,9 @@ interface CreativeAsset {
   imageUrl?: string;
 }
 
-interface BlogDraft {
-  id: string;
-  title: string;
-  keyword: string;
-  status: string;
-}
-
-export function BrandDashboard() {
+export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<NavigationTab>('control');
+  const [activeTab, setActiveTab] = useState<NavigationTab>(defaultTab || 'control');
 
   // User details extracted from JWT
   const [userName, setUserName] = useState<string>('User');
@@ -241,7 +235,9 @@ export function BrandDashboard() {
     let shouldReconnect = true;
 
     const connectWs = () => {
-      const ws = new WebSocket('ws://localhost:8005/ws');
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+      const ws = new WebSocket(`${protocol}://${wsHost}/ws`);
       
       ws.onopen = () => {
         setIsWsConnected(true);
@@ -724,6 +720,15 @@ export function BrandDashboard() {
     }
   };
 
+  const handleFixPriority = (title: string) => {
+    setPriorities(prev => prev.filter(p => p.title !== title));
+    alert(`AI resolution applied for: ${title}`);
+  };
+
+  const handleIgnorePriority = (title: string) => {
+    setPriorities(prev => prev.filter(p => p.title !== title));
+  };
+
   const handleTopUpShortcut = (amountUSD: number) => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -834,7 +839,7 @@ export function BrandDashboard() {
             {priceDisplay}<span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/mo</span>
           </div>
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <GlowButton variant="glow" onClick={() => handleUnlockNode(tabKey, priceUSD)} style={{ width: '100%' }}>
+            <GlowButton variant="glow" onClick={handleUnlock} style={{ width: '100%' }}>
               Unlock with Balance (Active: {balanceDisplay})
             </GlowButton>
             {billingBalance < priceUSD && (
@@ -1202,13 +1207,16 @@ export function BrandDashboard() {
           </button>
 
           <button
-            onClick={() => setActiveTab('influencer')}
+            onClick={() => window.open('/influencer-marketplace', '_blank')}
             className={`sidebar-item ${activeTab === 'influencer' ? 'active' : ''}`}
             style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
           >
-            <div className="sidebar-item-left">
-              <Users2 size={15} />
-              <span>Influencer Marketplace</span>
+            <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users2 size={15} />
+                <span>Influencer Marketplace</span>
+              </div>
+              <ExternalLink size={13} style={{ color: 'var(--primary, #5A52FF)' }} />
             </div>
           </button>
 
@@ -1568,7 +1576,7 @@ export function BrandDashboard() {
                 onOpenReview={handleOpenReview}
                 onGenerate={handleGenerateCreative}
                 onAssetSaved={handleAssetSaved}
-                onNavigateTab={setActiveTab}
+                onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
               />
             </div>
           )}
@@ -1800,7 +1808,7 @@ export function BrandDashboard() {
                       ${billingBalance.toFixed(2)}
                     </div>
                   </div>
-                  <GlowButton variant="secondary" onClick={handleTopUpShortcut} style={{ width: '100%' }}>
+                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(100)} style={{ width: '100%' }}>
                     Add $100 Credits (Mock Top Up)
                   </GlowButton>
                 </div>
@@ -1878,22 +1886,13 @@ export function BrandDashboard() {
       )}
 
       {/* Review Drawer slide panel overlay */}
-      {activeReviewItem?.type === 'seo' || activeReviewItem?.type === 'geo' ? (
-        <SEOAgencyReportModal
-          isOpen={isReviewOpen}
-          onClose={() => setIsReviewOpen(false)}
-          item={activeReviewItem}
-          onApprove={handleApprove}
-        />
-      ) : (
-        <ReviewDrawer
-          isOpen={isReviewOpen}
-          onClose={() => setIsReviewOpen(false)}
-          item={activeReviewItem}
-          onApprove={handleApprove}
-          onReject={handleReject}
-        />
-      )}
+      <ReviewDrawer
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        item={activeReviewItem}
+        onApprove={handleApprove}
+        onReject={handleReject}
+      />
     </div>
   );
 }
