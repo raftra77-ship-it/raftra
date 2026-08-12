@@ -35,7 +35,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const isLoggedIn = Boolean(localStorage.getItem('token'));
 
   // State for Expert Advice Inquiry Form (raftra.77mail.com)
-  const [showExpertForm, setShowExpertForm] = useState<boolean>(true);
+  const [showExpertForm, setShowExpertForm] = useState<boolean>(false);
   const [expertInquiryForm, setExpertInquiryForm] = useState({
     userRole: 'Brand / Business Owner',
     name: '',
@@ -769,14 +769,16 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                       : 'linear-gradient(to right, #12121c 0%, #3c3c4f 51%, #12121c 100%)',
                     backgroundSize: '200% auto',
                     color: '#ffffff',
-                    border: '1.5px solid rgba(255, 255, 255, 0.35)',
+                    border: '1.5px solid rgba(255, 255, 255, 0.4)',
                     padding: '16px 36px',
                     borderRadius: '100px',
+                    fontFamily: 'var(--font-heading, "Plus Jakarta Sans", "Inter", sans-serif)',
                     fontWeight: 800,
-                    fontSize: '15.5px',
+                    fontSize: '15px',
+                    letterSpacing: '0.02em',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
-                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
                     transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
                     display: 'flex',
                     alignItems: 'center',
@@ -784,14 +786,14 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundPosition = 'right center';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.65)';
-                    e.currentTarget.style.boxShadow = '0 12px 36px rgba(0, 0, 0, 0.95), 0 0 25px rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.75)';
+                    e.currentTarget.style.boxShadow = '0 12px 36px rgba(0, 0, 0, 0.95), 0 0 25px rgba(255, 255, 255, 0.25)';
                     e.currentTarget.style.transform = 'translateY(-2px)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundPosition = 'left center';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
-                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.25)';
                     e.currentTarget.style.transform = 'translateY(0)';
                   }}
                 >
@@ -805,16 +807,18 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                     if (el) el.scrollIntoView({ behavior: 'smooth' });
                   }}
                   style={{
-                    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.22) 0%, rgba(185, 28, 28, 0.35) 100%)',
+                    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(185, 28, 28, 0.4) 100%)',
                     color: '#ffffff',
-                    border: '1.5px solid rgba(239, 68, 68, 0.55)',
+                    border: '1.5px solid rgba(239, 68, 68, 0.65)',
                     padding: '16px 32px',
                     borderRadius: '100px',
+                    fontFamily: 'var(--font-heading, "Plus Jakarta Sans", "Inter", sans-serif)',
                     fontWeight: 800,
-                    fontSize: '15.5px',
+                    fontSize: '15px',
+                    letterSpacing: '0.02em',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
-                    boxShadow: '0 6px 24px rgba(220, 38, 38, 0.3)',
+                    boxShadow: '0 6px 24px rgba(220, 38, 38, 0.35)',
                     transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
                     display: 'flex',
                     alignItems: 'center',
@@ -822,15 +826,15 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(220, 38, 38, 0.35) 0%, rgba(225, 29, 72, 0.5) 100%)';
-                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.85)';
-                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(220, 38, 38, 0.5)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(220, 38, 38, 0.4) 0%, rgba(225, 29, 72, 0.55) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.9)';
+                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(220, 38, 38, 0.55)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(220, 38, 38, 0.22) 0%, rgba(185, 28, 28, 0.35) 100%)';
-                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.55)';
-                    e.currentTarget.style.boxShadow = '0 6px 24px rgba(220, 38, 38, 0.3)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(220, 38, 38, 0.25) 0%, rgba(185, 28, 28, 0.4) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.65)';
+                    e.currentTarget.style.boxShadow = '0 6px 24px rgba(220, 38, 38, 0.35)';
                   }}
                 >
                   Explore & Hire Directly ⬇️
@@ -1054,7 +1058,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       </div>
 
       {/* Filters row */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div id="creators-discovery-grid" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div className="glow-card" style={{ padding: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '130px', fontWeight: 700 }}>
             <Search size={14} color="#00E676" /> FILTER BY NICHE:
@@ -1143,7 +1147,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       </div>
 
       {/* Influencers grid */}
-      <div id="creators-discovery-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
         {sortedCreators.map((creator) => (
           <div key={creator.id} className="glow-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column' }}>
             
