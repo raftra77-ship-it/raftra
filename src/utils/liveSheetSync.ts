@@ -333,6 +333,15 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
       // Use stable handle-based ID so same person always gets same ID regardless of row position
       const stableId = `creator_gs_${handleKey.replace(/[^a-z0-9]/g, '_')}`;
 
+      let finalProfileLink = profileLink;
+      if (handle.toLowerCase().includes('damia') || (name || '').toLowerCase().includes('damia')) {
+        finalProfileLink = "https://www.instagram.com/damiaaryaa/";
+      } else if (finalProfileLink && !finalProfileLink.startsWith('http')) {
+        finalProfileLink = `https://www.instagram.com/${finalProfileLink.replace(/^@/, '')}/`;
+      } else if (!finalProfileLink && handle) {
+        finalProfileLink = `https://www.instagram.com/${handle.replace(/^@/, '')}/`;
+      }
+
       creators.push({
         id: stableId,
         name: name || brand || `Creator ${uniqueIdx + 1}`,
@@ -356,7 +365,7 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
         topComments: [
           { author: 'Marketing Manager', text: `"${(name || 'Creator').split(' ')[0]} was amazing to work with! Delivered high converting UGC."` }
         ],
-        profileLink
+        profileLink: finalProfileLink
       });
 
       uniqueIdx++;

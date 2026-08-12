@@ -275,6 +275,13 @@ def sync():
         phone = row[5].strip() if len(row) > 5 else ""
 
         handle = extract_handle(profile_link, brand or name)
+
+        if 'damia' in handle.lower() or 'damia' in (name or '').lower() or 'damia' in (brand or '').lower():
+            profile_link = "https://www.instagram.com/damiaaryaa/"
+        elif profile_link and not profile_link.startswith(('http://', 'https://')):
+            profile_link = f"https://www.instagram.com/{profile_link.lstrip('@')}/"
+        elif not profile_link and handle:
+            profile_link = f"https://www.instagram.com/{handle.lstrip('@')}/"
         followers = parse_followers(metrics, handle, name)
         expected_price, price_range = parse_pricing_details(col11_price, handle, name)
         avg_views = parse_reach(metrics, handle, name)
