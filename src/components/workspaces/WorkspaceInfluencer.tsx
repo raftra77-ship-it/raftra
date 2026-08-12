@@ -34,6 +34,55 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
   const isLoggedIn = Boolean(localStorage.getItem('token'));
 
+  // State for Expert Advice Inquiry Form (raftra.77mail.com)
+  const [showExpertForm, setShowExpertForm] = useState<boolean>(true);
+  const [expertInquiryForm, setExpertInquiryForm] = useState({
+    userRole: 'Brand / Business Owner',
+    name: '',
+    email: '',
+    phone: '',
+    websiteUrl: '',
+    instaPage: '',
+    campaignGoal: 'Product Sales & Conversions',
+    budget: 'No Idea / Need Advice',
+    notes: ''
+  });
+  const [expertInquirySubmitted, setExpertInquirySubmitted] = useState<boolean>(false);
+  const [isSubmittingExpert, setIsSubmittingExpert] = useState<boolean>(false);
+
+  const handleExpertInquirySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingExpert(true);
+
+    try {
+      await fetch('/api/v1/workspaces/influencer/expert-inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(expertInquiryForm)
+      });
+    } catch (err) {
+      console.warn('Expert inquiry API log:', err);
+    }
+
+    const subject = encodeURIComponent(`Influencer Expert Advice Inquiry - ${expertInquiryForm.name || 'Brand/Customer'}`);
+    const body = encodeURIComponent(
+      `I AM A: ${expertInquiryForm.userRole}\n` +
+      `FULL NAME: ${expertInquiryForm.name}\n` +
+      `WORK EMAIL: ${expertInquiryForm.email}\n` +
+      `PHONE / WHATSAPP: ${expertInquiryForm.phone}\n` +
+      `WEBSITE URL / STORE LINK: ${expertInquiryForm.websiteUrl}\n` +
+      `INSTAGRAM PAGE / SOCIAL HANDLE: ${expertInquiryForm.instaPage}\n` +
+      `CAMPAIGN GOAL: ${expertInquiryForm.campaignGoal}\n` +
+      `CAMPAIGN BUDGET (INR): ${expertInquiryForm.budget}\n\n` +
+      `CAMPAIGN REQUIREMENTS & AUDIENCE NOTES:\n${expertInquiryForm.notes}\n\n` +
+      `Routed to raftra.77mail.com`
+    );
+
+    window.open(`mailto:raftra.77mail.com?subject=${subject}&body=${body}`, '_blank');
+    setIsSubmittingExpert(false);
+    setExpertInquirySubmitted(true);
+  };
+
   const handleNegotiateClick = (creator: InfluencerItemExtended) => {
     const token = localStorage.getItem('token');
     const guestBrand = localStorage.getItem('raftra_guest_brand');
@@ -574,7 +623,11 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <span style={{ fontSize: '18px', fontWeight: 800, color: mainSubTab === 'posted_deals' ? '#fff' : 'rgba(255,255,255,0.85)', letterSpacing: '-0.02em' }}>
               Posted Deals
             </span>
-            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(90,82,255,0.2)', color: '#8B85FF' }}>Broadcast</span>
+            {isLoggedIn ? (
+              <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(90,82,255,0.2)', color: '#8B85FF' }}>Broadcast</span>
+            ) : (
+              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', background: 'rgba(255, 75, 75, 0.2)', color: '#FF4B4B', border: '1px solid rgba(255,75,75,0.3)' }}>🔒 Locked</span>
+            )}
           </div>
           <span style={{ fontSize: '13px', color: mainSubTab === 'posted_deals' ? 'rgba(255,255,255,0.8)' : 'var(--text-secondary)', lineHeight: 1.4 }}>
             Post requirements & review creator applications.
@@ -602,7 +655,11 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <span style={{ fontSize: '18px', fontWeight: 800, color: mainSubTab === 'my_collaborations' ? '#fff' : 'rgba(255,255,255,0.85)', letterSpacing: '-0.02em' }}>
               My Collaborations
             </span>
-            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>3 Active</span>
+            {isLoggedIn ? (
+              <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>3 Active</span>
+            ) : (
+              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', background: 'rgba(255, 75, 75, 0.2)', color: '#FF4B4B', border: '1px solid rgba(255,75,75,0.3)' }}>🔒 Locked</span>
+            )}
           </div>
           <span style={{ fontSize: '13px', color: mainSubTab === 'my_collaborations' ? 'rgba(255,255,255,0.8)' : 'var(--text-secondary)', lineHeight: 1.4 }}>
             Track active deals, content deliverables & payouts.
@@ -626,14 +683,14 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         ) : (
           <div className="glow-card" style={{ padding: '36px', textAlign: 'center', background: '#0D0D14', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
             <div style={{ fontSize: '36px' }}>🔒</div>
-            <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#fff', margin: 0 }}>Post Brand Deals — Subscriber Dashboard Feature</h3>
+            <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#fff', margin: 0 }}>Posted Deals — Subscriber Dashboard Feature</h3>
             <p style={{ fontSize: '15px', color: 'var(--text-secondary)', maxWidth: '580px', margin: 0, lineHeight: 1.6 }}>
-              Posting campaign briefs and receiving applications from creators is exclusive to <strong>Brand Dashboard Subscribers</strong>. 
-              Sign in to your brand account to broadcast requirements or manage your campaigns.
+              Posting campaign briefs and receiving applications from creators is exclusive to <strong>Registered Brand & Creator Members</strong>. 
+              Sign in to your account or register as a Brand to broadcast requirements or manage your campaigns.
             </p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
               <GlowButton variant="glow" onClick={() => window.location.href = '/login'} style={{ fontSize: '14px', padding: '10px 24px' }}>
-                Sign In to Post Deals ➔
+                Sign In / Register as Brand 🚀
               </GlowButton>
               <GlowButton variant="secondary" onClick={() => setMainSubTab('discover')} style={{ fontSize: '14px', padding: '10px 20px' }}>
                 Discover Creators
@@ -644,22 +701,282 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       )}
 
       {mainSubTab === 'my_collaborations' && (
-        <BrandPostedDealsView
-          workspaceId={workspaceId}
-          mode="my_collaborations"
-          onOpenChatWithCreator={(handle) => {
-            const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
-            if (found) setActiveChat(found);
-          }}
-          onViewCreatorProfile={(handle) => {
-            const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
-            if (found) setViewProfile(found);
-          }}
-        />
+        isLoggedIn ? (
+          <BrandPostedDealsView
+            workspaceId={workspaceId}
+            mode="my_collaborations"
+            onOpenChatWithCreator={(handle) => {
+              const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
+              if (found) setActiveChat(found);
+            }}
+            onViewCreatorProfile={(handle) => {
+              const found = creators.find(c => c.handle.toLowerCase().includes(handle.toLowerCase()));
+              if (found) setViewProfile(found);
+            }}
+          />
+        ) : (
+          <div className="glow-card" style={{ padding: '36px', textAlign: 'center', background: '#0D0D14', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+            <div style={{ fontSize: '36px' }}>🔒</div>
+            <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#fff', margin: 0 }}>My Collaborations — Locked Member Feature</h3>
+            <p style={{ fontSize: '15px', color: 'var(--text-secondary)', maxWidth: '580px', margin: 0, lineHeight: 1.6 }}>
+              Tracking active brand collaborations, content deliverables & escrow payouts is exclusive to <strong>Registered Brand & Creator Members</strong>. 
+              Sign in to your account or register to manage your active deals.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <GlowButton variant="glow" onClick={() => window.location.href = '/login'} style={{ fontSize: '14px', padding: '10px 24px' }}>
+                Sign In / Register as Brand 🚀
+              </GlowButton>
+              <GlowButton variant="secondary" onClick={() => setMainSubTab('discover')} style={{ fontSize: '14px', padding: '10px 20px' }}>
+                Discover Creators
+              </GlowButton>
+            </div>
+          </div>
+        )
       )}
 
       {mainSubTab === 'discover' && (
         <>
+          {/* EXPERT CONSULTATION & INFLUENCER ADVICE BANNER & FORM */}
+          <div style={{
+            background: 'linear-gradient(180deg, rgba(16, 22, 34, 0.95) 0%, rgba(9, 13, 22, 0.98) 100%)',
+            border: '1.5px solid rgba(0, 230, 118, 0.35)',
+            borderRadius: '24px',
+            padding: '28px 32px',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.6), 0 0 25px rgba(0, 230, 118, 0.08)',
+            margin: '0 0 20px 0'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
+              <div style={{ flex: 1, minWidth: '300px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '5px 16px', background: 'rgba(0, 230, 118, 0.12)', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '100px', color: '#00E676', fontWeight: 800, fontSize: '12px', marginBottom: '10px' }}>
+                  🤝 NEED EXPERT ADVICE TO HIRE & NEGOTIATE INFLUENCERS?
+                </div>
+                <h3 style={{ fontSize: '26px', color: '#ffffff', margin: '0 0 8px 0', fontFamily: 'var(--font-heading)', fontWeight: 800, lineHeight: 1.3 }}>
+                  Get Free Expert Advice & Curated Influencer Matching
+                </h3>
+                <p style={{ fontSize: '14.5px', color: 'rgba(255,255,255,0.85)', margin: 0, maxWidth: '850px', lineHeight: 1.6 }}>
+                  Whether you are a Brand, Customer, or Creator — share your website, Instagram page & campaign goals. Our Creator Strategists will curate influencers, negotiate rates & revert back within 2 hours.
+                </p>
+              </div>
+
+              {/* ACTION BUTTONS — PROMINENT BRAND BUTTONS */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                {/* REQUEST EXPERT ADVICE — LOGIN BUTTON GRADIENT CSS */}
+                <button
+                  onClick={() => setShowExpertForm(!showExpertForm)}
+                  style={{
+                    backgroundImage: showExpertForm
+                      ? 'linear-gradient(to right, #1a1a2e 0%, #2d2d44 100%)'
+                      : 'linear-gradient(to right, #12121c 0%, #3c3c4f 51%, #12121c 100%)',
+                    backgroundSize: '200% auto',
+                    color: '#ffffff',
+                    border: '1.5px solid rgba(255, 255, 255, 0.35)',
+                    padding: '16px 36px',
+                    borderRadius: '100px',
+                    fontWeight: 800,
+                    fontSize: '15.5px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                    transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundPosition = 'right center';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.65)';
+                    e.currentTarget.style.boxShadow = '0 12px 36px rgba(0, 0, 0, 0.95), 0 0 25px rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundPosition = 'left center';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  {showExpertForm ? 'Hide Form ✕' : 'Request Expert Advice 📋'}
+                </button>
+
+                {/* EXPLORE & HIRE DIRECTLY — RED CREATOR MARKETPLACE ACCENT */}
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('creators-discovery-grid');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.22) 0%, rgba(185, 28, 28, 0.35) 100%)',
+                    color: '#ffffff',
+                    border: '1.5px solid rgba(239, 68, 68, 0.55)',
+                    padding: '16px 32px',
+                    borderRadius: '100px',
+                    fontWeight: 800,
+                    fontSize: '15.5px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 6px 24px rgba(220, 38, 38, 0.3)',
+                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(220, 38, 38, 0.35) 0%, rgba(225, 29, 72, 0.5) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.85)';
+                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(220, 38, 38, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(220, 38, 38, 0.22) 0%, rgba(185, 28, 28, 0.35) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.55)';
+                    e.currentTarget.style.boxShadow = '0 6px 24px rgba(220, 38, 38, 0.3)';
+                  }}
+                >
+                  Explore & Hire Directly ⬇️
+                </button>
+              </div>
+            </div>
+
+            {showExpertForm && (
+              <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+                {expertInquirySubmitted ? (
+                  <div style={{ background: 'rgba(0, 230, 118, 0.15)', border: '1.5px solid #00E676', borderRadius: '16px', padding: '24px', textAlign: 'center', color: '#fff' }}>
+                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎉</div>
+                    <h4 style={{ fontSize: '20px', color: '#00E676', margin: '0 0 6px 0', fontWeight: 800 }}>Inquiry Received!</h4>
+                    <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.9)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+                      Thank you! Your details have been sent to our Creator Strategy Team at <strong>raftra.77mail.com</strong>.<br/>
+                      Our strategist will analyze your brand / handle and revert back with curated creator recommendations within 2 hours.
+                    </p>
+                    <button onClick={() => setExpertInquirySubmitted(false)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '8px 20px', borderRadius: '100px', fontSize: '12.5px', cursor: 'pointer' }}>
+                      Submit Another Request
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleExpertInquirySubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>I am a *</label>
+                      <select
+                        value={expertInquiryForm.userRole}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, userRole: e.target.value })}
+                        style={{ background: '#0b0b14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      >
+                        <option value="Brand / Business Owner">Brand / Business Owner</option>
+                        <option value="Individual Customer / Client">Individual Customer / Client</option>
+                        <option value="Agency / Marketer">Agency / Marketer</option>
+                        <option value="Creator / Influencer">Creator / Influencer</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Your Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Ananya Roy"
+                        value={expertInquiryForm.name}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, name: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Email Address *</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="ananya@brand.com"
+                        value={expertInquiryForm.email}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, email: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Phone / WhatsApp Number *</label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="+91 98765 43210"
+                        value={expertInquiryForm.phone}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, phone: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Website URL / Store Link</label>
+                      <input
+                        type="text"
+                        placeholder="https://yourbrand.com (optional)"
+                        value={expertInquiryForm.websiteUrl}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, websiteUrl: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Instagram Page / Social Handle</label>
+                      <input
+                        type="text"
+                        placeholder="@yourbrand_official"
+                        value={expertInquiryForm.instaPage}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, instaPage: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Campaign Goal</label>
+                      <select
+                        value={expertInquiryForm.campaignGoal}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, campaignGoal: e.target.value })}
+                        style={{ background: '#0b0b14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      >
+                        <option value="Product Sales & Conversions">Product Sales & Conversions</option>
+                        <option value="Brand Awareness & Reach">Brand Awareness & Reach</option>
+                        <option value="UGC Video Content & Reels">UGC Video Content & Reels</option>
+                        <option value="Product Gifting & Unboxing">Product Gifting & Unboxing</option>
+                        <option value="App Installs & Leads">App Installs & Leads</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Influencer Budget (in INR)</label>
+                      <select
+                        value={expertInquiryForm.budget}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, budget: e.target.value })}
+                        style={{ background: '#0b0b14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                      >
+                        <option value="No Idea / Need Advice">No Idea / Need Advice</option>
+                        <option value="₹10,000 – ₹25,000">₹10,000 – ₹25,000</option>
+                        <option value="₹25,000 – ₹50,000">₹25,000 – ₹50,000</option>
+                        <option value="₹50,000 – ₹2,00,000">₹50,000 – ₹2,00,000</option>
+                        <option value="₹2,00,000+">₹2,00,000+</option>
+                      </select>
+                    </div>
+
+                    <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Campaign Requirements & Target Audience Notes</label>
+                      <textarea
+                        rows={3}
+                        placeholder="e.g. We want 5 fashion micro-creators in Delhi for our new launch."
+                        value={expertInquiryForm.notes}
+                        onChange={e => setExpertInquiryForm({ ...expertInquiryForm, notes: e.target.value })}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none', resize: 'vertical' }}
+                      />
+                    </div>
+
+                    <div style={{ gridColumn: 'span 2', textAlign: 'center', marginTop: '8px' }}>
+                      <GlowButton variant="glow" type="submit" disabled={isSubmittingExpert} style={{ padding: '14px 36px', fontSize: '15px', fontWeight: 800, width: '100%' }}>
+                        {isSubmittingExpert ? 'Sending Details...' : 'Submit Request & Get Advice 🚀'}
+                      </GlowButton>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
 
       {/* PLATFORM PROTECTION & DISINTERMEDIATION SAFETY BANNER */}
       <div 
@@ -826,7 +1143,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       </div>
 
       {/* Influencers grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
+      <div id="creators-discovery-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
         {sortedCreators.map((creator) => (
           <div key={creator.id} className="glow-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column' }}>
             
@@ -945,59 +1262,71 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           </div>
         ))}
       </div>
+        </>
+      )}
 
-      {/* Visitor Guest Identification Modal */}
+      {/* Visitor Guest Identification / Quick Details Modal */}
       {guestModalCreator && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="glow-card" style={{ width: '100%', maxWidth: '440px', background: '#0D0D14', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '20px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+          <div className="glow-card" style={{ width: '100%', maxWidth: '460px', background: '#0D0D14', border: '1.5px solid rgba(90,82,255,0.5)', borderRadius: '20px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 20px 60px rgba(0,0,0,0.9), 0 0 30px rgba(90,82,255,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
               <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#fff', margin: 0 }}>⚡ Start Chat with {guestModalCreator.name}</h3>
-                <div style={{ fontSize: '12.5px', color: '#00E676', marginTop: '4px' }}>Quick visitor identification to open web chat</div>
+                <div style={{ display: 'inline-block', padding: '3px 10px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '100px', color: '#00E676', fontSize: '11px', fontWeight: 800, marginBottom: '6px' }}>
+                  💬 QUICK CHAT ACCESS
+                </div>
+                <h3 style={{ fontSize: '19px', fontWeight: 800, color: '#fff', margin: 0 }}>Start Negotiation with {guestModalCreator.name}</h3>
+                <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>Fill basic details below to open live web chat & negotiate rates.</div>
               </div>
-              <button onClick={() => setGuestModalCreator(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+              <button onClick={() => setGuestModalCreator(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '22px', padding: '0 4px' }}>&times;</button>
             </div>
 
             <form onSubmit={handleSaveGuestIdentity} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Brand / Business Name</label>
-                <input 
-                  type="text" 
-                  required 
-                  value={guestBrandName}
-                  onChange={e => setGuestBrandName(e.target.value)}
-                  placeholder="e.g. Acme Lifestyle D2C"
-                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Your Name</label>
+                <label style={{ fontSize: '12.5px', color: '#ccc', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Your Full Name *</label>
                 <input 
                   type="text" 
                   required 
                   value={guestContactName}
                   onChange={e => setGuestContactName(e.target.value)}
                   placeholder="e.g. Rahul Sharma"
-                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>WhatsApp / Email (for receipt &amp; confirm)</label>
+                <label style={{ fontSize: '12.5px', color: '#ccc', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Brand / Business Name or Project *</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={guestBrandName}
+                  onChange={e => setGuestBrandName(e.target.value)}
+                  placeholder="e.g. Zenith Apparel or Personal Project"
+                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12.5px', color: '#ccc', display: 'block', marginBottom: '6px', fontWeight: 600 }}>WhatsApp / Work Email (for confirmation & receipt) *</label>
                 <input 
                   type="text" 
                   required 
                   value={guestContactInfo}
                   onChange={e => setGuestContactInfo(e.target.value)}
-                  placeholder="e.g. 9876543210 or rahul@brand.com"
-                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                  placeholder="e.g. +91 98765 43210 or rahul@brand.com"
+                  style={{ width: '100%', padding: '12px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none' }}
                 />
               </div>
 
-              <GlowButton variant="glow" type="submit" style={{ marginTop: '8px', padding: '14px', fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                Open Web Chat Now 💬
+              <GlowButton variant="glow" type="submit" style={{ marginTop: '6px', padding: '14px', fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                Open Web Chat & Start Negotiation 💬
               </GlowButton>
+
+              <div style={{ textAlign: 'center', marginTop: '6px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.1)', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                Have an existing Raftra account?{' '}
+                <a href="/login" style={{ color: '#00E676', fontWeight: 700, textDecoration: 'underline' }}>
+                  Sign In to Brand Account 🔑
+                </a>
+              </div>
             </form>
           </div>
         </div>
@@ -1413,8 +1742,6 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}} />
-      </>
-      )}
     </div>
   );
 };

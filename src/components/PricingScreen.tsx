@@ -88,6 +88,53 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'INR');
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [adSpendIndex, setAdSpendIndex] = useState<number>(3); // Default ₹50,001 – ₹2,00,000 tier
+  
+  // Inquiry Form State for Enterprise Sales Inquiry
+  const [showInquiryModal, setShowInquiryModal] = useState<boolean>(false);
+  const [inquiryForm, setInquiryForm] = useState({
+    name: '',
+    brandName: '',
+    email: '',
+    phone: '',
+    budget: '₹54,999+/mo (Enterprise Growth Partner)',
+    paidAdsBudget: 'No Idea / Need Advice',
+    seoPrBudget: 'No Idea / Need Advice',
+    notes: ''
+  });
+  const [inquirySubmitted, setInquirySubmitted] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const handleInquirySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      await fetch('/api/v1/workspaces/enterprise/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inquiryForm)
+      });
+    } catch (err) {
+      console.warn('Enterprise inquiry logged locally:', err);
+    }
+
+    const subject = encodeURIComponent(`Enterprise Growth Partner Inquiry - ${inquiryForm.brandName || inquiryForm.name || 'Brand Inquiry'}`);
+    const body = encodeURIComponent(
+      `FULL NAME: ${inquiryForm.name}\n` +
+      `BRAND / COMPANY NAME: ${inquiryForm.brandName}\n` +
+      `WORK EMAIL: ${inquiryForm.email}\n` +
+      `PHONE NUMBER: ${inquiryForm.phone}\n` +
+      `ENTERPRISE GROWTH BUDGET: ${inquiryForm.budget}\n` +
+      `PAID ADS BUDGET (INR): ${inquiryForm.paidAdsBudget}\n` +
+      `SEO & DIGITAL PR BUDGET (INR): ${inquiryForm.seoPrBudget}\n\n` +
+      `MARKETING REQUIREMENTS & GOALS:\n${inquiryForm.notes}\n\n` +
+      `Routed to raftra.77mail.com`
+    );
+
+    window.open(`mailto:raftra.77mail.com?subject=${subject}&body=${body}`, '_blank');
+    setIsSubmitting(false);
+    setInquirySubmitted(true);
+  };
 
   const handleCurrencyChange = (curr: 'INR' | 'USD') => {
     setCurrency(curr);
@@ -485,17 +532,17 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ textAlign: 'center', marginBottom: '40px' }}>
               <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
-                COMPLETE ALL-IN-ONE EMPIRE SUITES
+                COMPLETE ALL-IN-ONE EMPIRE SUITES & FULL-SERVICE GROWTH PARTNERSHIPS
               </div>
               <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
-                Raftra Complete Operating System Packages
+                Raftra Complete Operating System & Growth Partner Packages
               </h2>
-              <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                End-to-end AI Marketing suites combining Creative Studio, Campaign Manager, SEO & GEO, Social Hub, and Claude Analytics Recommendations.
+              <p style={{ fontSize: '16px', color: 'var(--text-secondary)', marginTop: '8px', maxWidth: '900px', margin: '8px auto 0 auto' }}>
+                Choose from self-serve AI suites or our flagship <strong>Full-Service Growth Partner Package</strong> — where we handle your complete end-to-end marketing, social media, paid ads, and influencer hiring using Raftra's AI tools.
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
               
               {/* 1. D2C Growth Pack ⭐ */}
               <div
@@ -594,50 +641,232 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 </button>
               </div>
 
-              {/* 3. Enterprise Growth Suite */}
+              {/* 3. Enterprise Growth Partner (Full-Service End-to-End Marketing) 🚀 */}
               <div
-                onMouseEnter={() => setHoveredCard('pack_enterprise')}
+                onMouseEnter={() => setHoveredCard('pack_growth_partner')}
                 onMouseLeave={() => setHoveredCard(null)}
-                style={getCardStyle('pack_enterprise')}
+                style={getCardStyle('pack_growth_partner', true)}
               >
                 <div>
-                  <div style={{ display: 'inline-block', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', color: '#FFBD2E', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 700, marginBottom: '16px' }}>
-                    👑 ENTERPRISE GROWTH SUITE
+                  <div style={{ background: 'linear-gradient(135deg, #00E676 0%, #00B0FF 100%)', color: '#000', padding: '4px 12px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 900, display: 'inline-block', marginBottom: '16px', letterSpacing: '0.05em' }}>
+                    🚀 FULL-SERVICE BRAND GROWTH PARTNER ⭐
                   </div>
 
-                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Enterprise Growth Suite</h3>
+                  <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+                    Enterprise Growth Partner
+                  </h3>
 
-                  <div style={{ fontSize: '36px', color: '#FFBD2E', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                    {formatPrice(44999, 540, 449999)}
+                  <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700, marginBottom: '12px' }}>
+                    End-to-End Marketing Partner for Your Brand
+                  </div>
+
+                  <div style={{ fontSize: '36px', color: '#00E676', fontWeight: 900, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                    {formatPrice(54999, 699, 549999)}
+                    <span style={{ fontSize: '18px', color: '#00E676', fontWeight: 700, marginLeft: '2px' }}>+</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)' }}>
-                      Individual Price: <span style={{ textDecoration: 'line-through' }}>₹23,497 + ₹29,999 = ₹53,496/mo</span>
+                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.7)' }}>
+                      Complete Marketing Agency & Team Replacement
                     </div>
-                    <div style={{ fontSize: '12.5px', color: '#FFBD2E', fontWeight: 700 }}>
-                      🔥 Save ₹8,497/month (~16% OFF)
+                    <div style={{ fontSize: '12.5px', color: '#00E676', fontWeight: 700 }}>
+                      🔥 Dedicated Human Team + Full AI Execution
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '12px', color: '#FFBD2E', fontWeight: 700, marginBottom: '20px', background: 'rgba(255,189,46,0.12)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
-                    100,000 AI Credits / month Included
+                  <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 800, marginBottom: '20px', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', padding: '6px 14px', borderRadius: '8px', display: 'inline-block' }}>
+                    ⚡ Unlimited AI Credits + Full Specialist Execution
                   </div>
 
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13.5px', color: '#ddd' }}>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Everything in Business Suite</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Dedicated SEO/GEO Specialist</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Priority Support & Custom Integrations</li>
-                    <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> Team Members & Dedicated SLA Manager</li>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '11px', fontSize: '13px', color: '#eee' }}>
+                    <li style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <Check size={16} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><strong>📱 Complete Social Media Handling:</strong> Daily content creation, scheduling, reels, posts & community management.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <Check size={16} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><strong>⚡ Powered by Raftra AI Suite:</strong> Creative Studio, Campaign Manager, SEO & GEO Engine, and Social Hub.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <Check size={16} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><strong>🎯 Dedicated Brand Strategist:</strong> Assigned strategist curating brand positioning, monthly roadmaps & strategy.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <Check size={16} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><strong>📈 Dedicated Paid Ads Specialist:</strong> Performance expert managing Meta & Google Ads optimization for max ROAS.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <Check size={16} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><strong>🤝 Influencer Hiring & Negotiation:</strong> We discover, vet, negotiate rates & hire creators end-to-end for your brand.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <Check size={16} color="#00E676" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><strong>📊 End-to-End Growth Partner:</strong> Weekly strategy calls, real-time ROI analytics & continuous growth iteration.</span>
+                    </li>
                   </ul>
                 </div>
 
-                <button onClick={onComplete} style={{ marginTop: '32px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '14px', borderRadius: '100px', fontWeight: 700, cursor: 'pointer', width: '100%', fontSize: '14px' }}>
-                  Contact Enterprise
-                </button>
+                <GlowButton 
+                  variant="glow" 
+                  onClick={() => {
+                    const el = document.getElementById('enterprise-inquiry-form');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }} 
+                  style={{ marginTop: '32px', padding: '14px', fontSize: '14px', fontWeight: 800 }}
+                >
+                  Contact Sales & Get Enterprise Growth 🚀
+                </GlowButton>
               </div>
 
             </div>
+
+            {/* EMBEDDED ENTERPRISE SALES QUERY FORM SECTION */}
+            <div 
+              id="enterprise-inquiry-form"
+              style={{
+                marginTop: '48px',
+                background: 'linear-gradient(180deg, rgba(15, 23, 38, 0.95) 0%, rgba(6, 10, 18, 0.98) 100%)',
+                border: '1.5px solid rgba(0, 230, 118, 0.4)',
+                borderRadius: '24px',
+                padding: '36px 40px',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 30px rgba(0, 230, 118, 0.1)',
+                maxWidth: '920px',
+                margin: '48px auto 0 auto'
+              }}
+            >
+              <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '5px 16px', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '100px', color: '#00E676', fontWeight: 800, fontSize: '12.5px', marginBottom: '12px' }}>
+                  <MessageSquare size={15} /> DIRECT ENTERPRISE SALES INQUIRY FORM
+                </div>
+                <h3 style={{ fontSize: '30px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+                  Contact Sales — Enterprise Growth Partner (₹54,999+/mo)
+                </h3>
+                <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                  Fill in your brand details below to submit your inquiry directly to <strong style={{ color: '#00E676' }}>raftra.77mail.com</strong>. A Dedicated Brand Strategist will reach out within 2 hours.
+                </p>
+              </div>
+
+              {inquirySubmitted ? (
+                <div style={{ background: 'rgba(0, 230, 118, 0.15)', border: '1.5px solid #00E676', borderRadius: '16px', padding: '28px', textAlign: 'center', color: '#fff' }}>
+                  <div style={{ fontSize: '36px', marginBottom: '10px' }}>🚀</div>
+                  <h4 style={{ fontSize: '22px', color: '#00E676', margin: '0 0 8px 0', fontWeight: 800 }}>Inquiry Submitted to raftra.77mail.com!</h4>
+                  <p style={{ fontSize: '14.5px', color: 'rgba(255,255,255,0.9)', margin: '0 0 18px 0', lineHeight: 1.6 }}>
+                    Thank you! Your Enterprise Growth inquiry has been sent to <strong>raftra.77mail.com</strong>.<br/>
+                    Our Dedicated Brand Strategist & Ads team will review your requirements and contact you within 2 hours.
+                  </p>
+                  <button onClick={() => setInquirySubmitted(false)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '10px 24px', borderRadius: '100px', fontSize: '13.5px', cursor: 'pointer', fontWeight: 700 }}>
+                    Submit Another Inquiry
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleInquirySubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Your Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Rahul Sharma"
+                      value={inquiryForm.name}
+                      onChange={e => setInquiryForm({ ...inquiryForm, name: e.target.value })}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Brand / Company Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Zenith Apparel D2C"
+                      value={inquiryForm.brandName}
+                      onChange={e => setInquiryForm({ ...inquiryForm, brandName: e.target.value })}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Work Email *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="rahul@brand.com"
+                      value={inquiryForm.email}
+                      onChange={e => setInquiryForm({ ...inquiryForm, email: e.target.value })}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Phone / WhatsApp Number *</label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="+91 98765 43210"
+                      value={inquiryForm.phone}
+                      onChange={e => setInquiryForm({ ...inquiryForm, phone: e.target.value })}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+
+
+
+                  {/* Paid Ads Budget (Meta & Google Ads) in INR */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Paid Ads Budget (Meta & Google Ads in INR) *</label>
+                    <select
+                      value={inquiryForm.paidAdsBudget}
+                      onChange={e => setInquiryForm({ ...inquiryForm, paidAdsBudget: e.target.value })}
+                      style={{ background: '#0b0b14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                    >
+                      <option value="No Idea / Need Advice">No Idea / Need Advice</option>
+                      <option value="₹10,000 – ₹25,000 / month">₹10,000 – ₹25,000 / month</option>
+                      <option value="₹25,000 – ₹50,000 / month">₹25,000 – ₹50,000 / month</option>
+                      <option value="₹50,000 – ₹2,00,000 / month">₹50,000 – ₹2,00,000 / month</option>
+                      <option value="₹2,00,000 – ₹5,00,000 / month">₹2,00,000 – ₹5,00,000 / month</option>
+                      <option value="₹5,00,000+ / month">₹5,00,000+ / month</option>
+                    </select>
+                  </div>
+
+                  {/* SEO & Digital PR Budget in INR */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>SEO & Digital PR Budget (in INR) *</label>
+                    <select
+                      value={inquiryForm.seoPrBudget}
+                      onChange={e => setInquiryForm({ ...inquiryForm, seoPrBudget: e.target.value })}
+                      style={{ background: '#0b0b14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                    >
+                      <option value="No Idea / Need Advice">No Idea / Need Advice</option>
+                      <option value="₹10,000 – ₹25,000 / month">₹10,000 – ₹25,000 / month</option>
+                      <option value="₹25,000 – ₹50,000 / month">₹25,000 – ₹50,000 / month</option>
+                      <option value="₹50,000 – ₹1,00,000 / month">₹50,000 – ₹1,00,000 / month</option>
+                      <option value="₹1,00,000+ / month">₹1,00,000+ / month</option>
+                    </select>
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Marketing Requirements & Goals *</label>
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder="Describe your goals e.g. We need complete social media management, paid ads handling, influencer hiring, and brand strategy."
+                      value={inquiryForm.notes}
+                      onChange={e => setInquiryForm({ ...inquiryForm, notes: e.target.value })}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '14px', outline: 'none', resize: 'vertical' }}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2', textAlign: 'center', marginTop: '8px' }}>
+                    <GlowButton variant="glow" type="submit" disabled={isSubmitting} style={{ padding: '14px 36px', fontSize: '15.5px', fontWeight: 800, width: '100%' }}>
+                      {isSubmitting ? 'Sending Inquiry...' : 'Send Inquiry'}
+                    </GlowButton>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                      🔒 Your inquiry will be securely routed directly to our Enterprise Strategy team.
+                    </div>
+                  </div>
+                </form>
+              )}
+            </div>
+
           </div>
         )}
 

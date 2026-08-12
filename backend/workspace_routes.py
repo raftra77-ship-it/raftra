@@ -476,6 +476,16 @@ class SocialSpecialistEnquiry(BaseModel):
     client_phone: str
     client_notes: str = ""
 
+class EnterpriseInquirySchema(BaseModel):
+    name: str
+    brandName: str
+    email: str
+    phone: str
+    budget: str = "₹54,999+/mo (Enterprise Growth Partner)"
+    paidAdsBudget: str = "No Idea / Need Advice"
+    seoPrBudget: str = "No Idea / Need Advice"
+    notes: str = ""
+
 @router.post("/social/enquiry")
 def submit_social_specialist_enquiry(enquiry: SocialSpecialistEnquiry):
     print(f"==================================================")
@@ -492,4 +502,58 @@ def submit_social_specialist_enquiry(enquiry: SocialSpecialistEnquiry):
         "target_email": "raftra.77@gmail.com",
         "target_whatsapp": "+91 9650271859"
     }
+
+@router.post("/enterprise/inquiry")
+def submit_enterprise_inquiry(inquiry: EnterpriseInquirySchema):
+    print(f"==================================================")
+    print(f"🚀 NEW ENTERPRISE GROWTH INQUIRY RECEIVED FOR RAFTRA.77MAIL.COM!")
+    print(f"  Brand/Company: {inquiry.brandName}")
+    print(f"  Name: {inquiry.name}")
+    print(f"  Email: {inquiry.email}")
+    print(f"  Phone: {inquiry.phone}")
+    print(f"  Growth Package Budget: {inquiry.budget}")
+    print(f"  Paid Ads Budget (INR): {inquiry.paidAdsBudget}")
+    print(f"  SEO & Digital PR Budget (INR): {inquiry.seoPrBudget}")
+    print(f"  Requirements & Goals: {inquiry.notes}")
+    print(f"  Target Notification Email: raftra.77mail.com (raftra.77@gmail.com)")
+    print(f"==================================================")
+    return {
+        "status": "success",
+        "message": "Enterprise Growth Inquiry logged & routed to raftra.77mail.com",
+        "target_email": "raftra.77mail.com"
+    }
+
+class InfluencerExpertInquirySchema(BaseModel):
+    userRole: str = "Brand / Business"
+    name: str
+    email: str
+    phone: str
+    websiteUrl: str = ""
+    instaPage: str = ""
+    campaignGoal: str = "Brand Awareness & Reach"
+    budget: str = "No Idea / Need Advice"
+    notes: str = ""
+
+@router.post("/influencer/expert-inquiry")
+def submit_influencer_expert_inquiry(inquiry: InfluencerExpertInquirySchema):
+    print(f"==================================================")
+    print(f"🤝 NEW INFLUENCER EXPERT ADVICE INQUIRY RECEIVED FOR RAFTRA.77MAIL.COM!")
+    print(f"  Role: {inquiry.userRole}")
+    print(f"  Name: {inquiry.name}")
+    print(f"  Email: {inquiry.email}")
+    print(f"  Phone/WhatsApp: {inquiry.phone}")
+    print(f"  Website URL: {inquiry.websiteUrl}")
+    print(f"  Insta Page / Social Handle: {inquiry.instaPage}")
+    print(f"  Campaign Goal: {inquiry.campaignGoal}")
+    print(f"  Budget (INR): {inquiry.budget}")
+    print(f"  Requirements & Details: {inquiry.notes}")
+    print(f"  Target Notification: raftra.77mail.com (raftra.77@gmail.com)")
+    print(f"==================================================")
+    return {
+        "status": "success",
+        "message": "Influencer Expert Inquiry received & logged for raftra.77mail.com",
+        "target_email": "raftra.77mail.com"
+    }
+
+
 
