@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  ExternalLink,
   AlertTriangle,
+  Cpu,
   BarChart3,
   Globe,
   Sparkles,
+  ArrowLeft,
   Users2,
   Share2,
   Megaphone,
@@ -27,14 +30,13 @@ import { Footer } from './Footer';
 
 interface LandingPageProps {
   onStartFree: () => void;
-  // Callers still pass this, but no button on the page is wired to it yet.
   onBookDemo: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDemo }) => {
   const [currentSubView, setCurrentSubView] = useState<'main' | 'pricing'>('main');
   const navigate = useNavigate();
-  
+
   // Creator Portal State
   const [showCreatorPortal, setShowCreatorPortal] = useState(false);
   const [creatorPortalState, setCreatorPortalState] = useState<'form' | 'scanning' | 'success' | 'removing' | 'removed' | 'error'>('form');
@@ -43,7 +45,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
   const handleCreatorSubmit = async (e: React.FormEvent, action: 'add' | 'remove') => {
     e.preventDefault();
     if (!creatorForm.handle || (action === 'add' && (!creatorForm.email || !creatorForm.password))) return;
-    
+
     if (action === 'add') {
       setCreatorPortalState('scanning');
       try {
@@ -60,26 +62,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
             role: 'creator'
           })
         });
-        
+
         if (!regRes.ok) {
-           // Fallback to login if already registered
-           const loginRes = await fetch('/api/auth/login', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ identifier: creatorForm.email, password: creatorForm.password })
-           });
-           if (!loginRes.ok) {
-             setCreatorPortalState('error');
-             return;
-           }
-           authData = await loginRes.json();
+          // Fallback to login if already registered
+          const loginRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: creatorForm.email, password: creatorForm.password })
+          });
+          if (!loginRes.ok) {
+            setCreatorPortalState('error');
+            return;
+          }
+          authData = await loginRes.json();
         } else {
-           authData = await regRes.json();
+          authData = await regRes.json();
         }
-        
+
         const verifyRes = await fetch('/api/workspaces/influencer/me/verify', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${authData.access_token}`
           },
@@ -92,15 +94,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
 
         const data = await verifyRes.json();
         if (data.status === 'success' && data.data.verification_status === 'verified') {
-           localStorage.setItem('token', authData.access_token);
-           setCreatorPortalState('success');
-           setTimeout(() => {
-             setShowCreatorPortal(false);
-             setCreatorPortalState('form');
-             navigate('/creator-dashboard');
-           }, 2000);
+          localStorage.setItem('token', authData.access_token);
+          setCreatorPortalState('success');
+          setTimeout(() => {
+            setShowCreatorPortal(false);
+            setCreatorPortalState('form');
+            navigate('/creator-dashboard');
+          }, 2000);
         } else {
-           setCreatorPortalState('error');
+          setCreatorPortalState('error');
         }
       } catch (err) {
         setCreatorPortalState('error');
@@ -125,7 +127,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
     if (simulationState === 'deployed') return;
     setSimulationState('loading');
     setLogText('[System] Injecting credentials & compiling ad parameters to sandbox adsets...');
-    
+
     setTimeout(() => {
       setSimulationState('deployed');
       setRoasVal('4.9x');
@@ -137,7 +139,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
   const resetSimulationState = (tab: 'creative' | 'campaigns' | 'seo') => {
     setActiveSimTab(tab);
     setSimulationState('pending');
-    
+
     if (tab === 'creative') {
       setRoasVal('3.8x');
       setCitationsVal('54%');
@@ -183,6 +185,84 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
     <div className="app-wrapper">
       <Navbar onOpenCreatorPortal={() => setShowCreatorPortal(true)} />
 
+      {/* Creator Marketplace — the last item in the top row, sitting immediately after
+          the navbar rather than inside it.
+          Anchored to the bar's right edge, not the viewport: the bar is 1024 wide with
+          its centre at 50% - 105px (Navbar.tsx), so it ends at 50% + 407px. Adding the
+          12px gap puts this at 50% + 419px, which keeps bar + pill reading as one
+          centred row. Pinning to `right: 24px` is what previously dropped it on top of
+          the Login button. */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '16px',
+          left: 'calc(50% + 419px)',
+          zIndex: 1100,
+          display: 'flex',
+          alignItems: 'center',
+          height: '52px',
+        }}
+      >
+        <motion.button
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
+          onClick={() => window.open('/influencer-marketplace', '_blank')}
+          style={{
+            background: 'linear-gradient(135deg, #8e0b00ff 0%, #290605ff 45%, #410c06ff 100%)',
+            border: '1px solid rgba(124, 0, 0, 0.6)',
+            color: '#ffffffff',
+            borderRadius: '100px',
+            padding: '9px 20px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            letterSpacing: '0.02em',
+            position: 'relative',
+            overflow: 'hidden',
+            transition: 'all 0.25s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = '0 6px 30px rgba(220, 53, 69, 0.75), 0 0 0 1px rgba(255,107,107,0.5), inset 0 1px 0 rgba(255,255,255,0.4)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #410c06ff 45%, #290605ff 100%)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)';
+            e.currentTarget.style.transform = 'translateY(0px)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #5f100dff 45%, #290605ff 100%)';
+          }}
+        >
+          {/* Shimmer overlay */}
+          <span style={{
+            position: 'absolute',
+            top: 0, left: '-60%',
+            width: '40%',
+            height: '100%',
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
+            transform: 'skewX(-20deg)',
+            animation: 'shimmer-slide 2.4s ease-in-out infinite',
+            pointerEvents: 'none',
+          }} />
+          <span style={{ fontSize: '14px' }}>✦</span>
+          Creator Marketplace
+          <span style={{ opacity: 0.8, fontSize: '12px' }}>↗</span>
+        </motion.button>
+        <style>{`
+          @keyframes shimmer-slide {
+            0% { left: -60%; }
+            60%, 100% { left: 130%; }
+          }
+        `}</style>
+      </div>
+
       {/* Hero Section */}
       <section className="hero-section">
         <motion.div
@@ -222,8 +302,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
           <GlowButton variant="glow" onClick={onStartFree} icon={<ArrowRight size={16} />}>
             Start Free
           </GlowButton>
-          <GlowButton variant="secondary" onClick={() => scrollToSection('problem')}>
-            Explore Platform
+          <GlowButton variant="secondary" onClick={() => window.open('/influencer-marketplace', '_blank')} icon={<ExternalLink size={16} />}>
+            Influencer Marketplace ↗
           </GlowButton>
         </motion.div>
 
@@ -431,9 +511,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
 
       {/* Problem Section (Bento Grid Redesign) */}
       <section id="problem" className="section-container" style={{ scrollMarginTop: '100px' }}>
-        <span className="section-tag">THE PROBLEM</span>
-        <h2 className="section-title">Fragmented Tools Are Killing Your Growth</h2>
-        <p className="section-desc">Managing separate tools for ads, SEO, social media, and analytics wastes thousands of dollars and breaks your brand consistency.</p>
+        <span className="section-tag" style={{ color: '#FF4757', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+          THE FRICTION
+        </span>
+        <h2 className="section-title" style={{ fontSize: '52px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
+          Fragmented Tools Are Killing Your Growth
+        </h2>
+        <p className="section-desc" style={{ fontSize: '19px', color: 'rgba(255,255,255,0.7)', maxWidth: '680px' }}>Managing separate tools for ads, SEO, social media, and analytics wastes thousands of dollars and breaks your brand consistency.</p>
 
         <div className="bento-grid" style={{ marginTop: '40px' }}>
           {/* Bento Hero Problem Card (Span 7) */}
@@ -462,128 +546,256 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
             </div>
           </div>
 
-          {/* Side Bento Column (Span 5 - 3 Compact Bento Pills) */}
-          <div className="bento-col-5" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div className="bento-pill" style={{ textAlign: 'left' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,71,87,0.12)', border: '1px solid rgba(255,71,87,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <TrendingDown size={20} color="var(--danger)" />
+          {/* Side Bento Column (Span 5 - 3 Prominent Bento Pills) */}
+          <div className="bento-col-5" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="bento-pill" style={{ textAlign: 'left', padding: '24px 28px', borderRadius: '18px', gap: '18px', display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,71,87,0.12)', border: '1px solid rgba(255,71,87,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <TrendingDown size={26} color="var(--danger)" />
               </div>
               <div>
-                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Rising Ad CPA & Wasted Spend</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Ad fatigue kills ROAS when static creatives aren't dynamically generated or auto-paused.</p>
+                <h4 style={{ fontSize: '17.5px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Rising Ad CPA & Wasted Spend</h4>
+                <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>Ad fatigue kills ROAS when static creatives aren't dynamically generated or auto-paused.</p>
               </div>
             </div>
 
-            <div className="bento-pill" style={{ textAlign: 'left' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Globe size={20} color="var(--success)" />
+            <div className="bento-pill" style={{ textAlign: 'left', padding: '24px 28px', borderRadius: '18px', gap: '18px', display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Globe size={26} color="var(--success)" />
               </div>
               <div>
-                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Ignored AI Search Visibility</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>If ChatGPT, Claude & Perplexity lack JSON-LD entity schema, your brand is invisible to AI search.</p>
+                <h4 style={{ fontSize: '17.5px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Ignored AI Search Visibility</h4>
+                <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>If ChatGPT, Claude & Perplexity lack JSON-LD entity schema, your brand is invisible to AI search.</p>
               </div>
             </div>
 
-            <div className="bento-pill" style={{ textAlign: 'left' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <BarChart3 size={20} color="var(--warning)" />
+            <div className="bento-pill" style={{ textAlign: 'left', padding: '24px 28px', borderRadius: '18px', gap: '18px', display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <BarChart3 size={26} color="var(--warning)" />
               </div>
               <div>
-                <h4 style={{ fontSize: '14px', color: '#fff', marginBottom: '3px' }}>Overwhelming Static Dashboards</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Raw graphs without actionable AI insights leave marketing managers guessing next steps.</p>
+                <h4 style={{ fontSize: '17.5px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>Overwhelming Static Dashboards</h4>
+                <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>Raw graphs without actionable AI insights leave marketing managers guessing next steps.</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Solution Section (Asymmetric Bento Grid Redesign) */}
+      {/* Solution Section (Unified Growth OS Redesign) */}
       <section id="solution" className="section-container" style={{ scrollMarginTop: '100px' }}>
-        <span className="section-tag">THE SOLUTIONS</span>
-        <h2 className="section-title">Meet Raftra AI. The Unified Growth Suite.</h2>
-        <p className="section-desc">Six specialized AI workspaces operating as a coordinated growth network to replace your entire marketing stack.</p>
+        <span className="section-tag" style={{ color: '#00E676', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+          THE SOLUTION
+        </span>
+        <h2 className="section-title" style={{ fontSize: '52px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
+          Everything Your Brand Needs to Grow — In One Platform
+        </h2>
+        <p className="section-desc" style={{ fontSize: '19.5px', color: 'rgba(255,255,255,0.7)', maxWidth: '950px' }}>
+          Six specialized AI workspaces operating as a coordinated growth network to replace your entire marketing stack.
+        </p>
 
-        <div className="bento-grid" style={{ marginTop: '40px' }}>
-          {/* Bento Hero Showcase Card (Span 8) */}
-          <div className="bento-card-hero bento-col-8" onClick={() => navigate('/features/creative')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div className="solution-icon-wrapper" style={{ margin: 0 }}>
-                  <Sparkles size={20} />
-                </div>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em' }}>FLAGSHIP WORKSPACE</span>
-              </div>
-              <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
-                Explore Studio & Campaigns →
-              </span>
-            </div>
-            <h3 style={{ fontSize: '26px', color: '#fff', marginBottom: '10px' }}>
-              AI Creative Studio & Campaign Manager
-            </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', marginBottom: '24px', maxWidth: '650px' }}>
-              Instantly generate high-converting Carousel Ads, AI UGC video clips, and ad copy. Automatically launch campaigns across Meta & Google Ads with budget redistribution safety.
-            </p>
-
-            {/* Interactive Showcase Pill Bar inside Bento Hero */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', background: 'rgba(0,0,0,0.4)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-                <Zap size={14} color="#00E676" /> Carousel Ads Generator
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-                <Sparkles size={14} color="var(--primary)" /> AI UGC Creator Clips
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-                <Megaphone size={14} color="#FFBD2E" /> Meta/Google Auto-Deployer
-              </div>
-            </div>
-          </div>
-
-          {/* Bento Secondary Card (Span 4) — Influencer Marketplace */}
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/influencer')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <div className="bento-grid" style={{ marginTop: '44px', gap: '24px' }}>
+          {/* Card 1: AI Creative Studio (Span 6) */}
+          <div className="bento-card-hero bento-col-6" onClick={() => navigate('/features/creative')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
-              <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 71, 87, 0.08)', color: 'var(--danger)', marginBottom: '16px' }}>
-                <Users2 size={22} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(90, 82, 255, 0.15)', color: 'var(--accent)' }}>
+                    <Sparkles size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em' }}>CREATIVE STUDIO</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Studio →
+                </span>
               </div>
-              <h3 style={{ fontSize: '20px', color: '#fff', marginBottom: '8px' }}>Influencer Marketplace</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Filter out fake followers, evaluate creator authenticity, and lock campaign deals with escrow safety.
+              <h3 style={{ fontSize: '26px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                AI Creative Studio
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.65, marginBottom: '24px' }}>
+                Create high-converting ad creatives in minutes. Generate image ads, product photography, carousels, and videos from your brand guidelines or product images. Edit creatives with built-in AI tools, analyze competitor ads, and publish winning assets faster—all powered by Raftra Credits.
               </p>
             </div>
-            <div style={{ marginTop: '20px', padding: '10px 14px', background: 'rgba(0,230,118,0.1)', borderRadius: '10px', border: '1px solid rgba(0,230,118,0.25)', fontSize: '11px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>✓ 98% Authenticity Passed</span>
-              <span>Escrow Protected</span>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["AI Image Generation", "Product Photography", "Carousel Ads", "AI Video Generation", "AI Editing Suite", "Competitor Ad Library", "Creative Performance Insights", "AI UGC (Coming Soon)"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Bottom Bento Row: 3 Equal Bento Cards (Span 4 each) */}
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/seo')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(0, 255, 157, 0.08)', color: 'var(--success)', marginBottom: '16px' }}>
-              <Globe size={22} />
+          {/* Card 2: Campaign Manager (Span 6) */}
+          <div className="bento-card-hero bento-col-6" onClick={() => navigate('/features/campaign')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 189, 46, 0.15)', color: '#FFBD2E' }}>
+                    <Megaphone size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em' }}>CAMPAIGN MANAGER</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Campaigns →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '26px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Campaign Manager
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.65, marginBottom: '24px' }}>
+                Launch and optimize campaigns across Meta and Google from a single dashboard. Build campaigns, manage budgets, monitor performance, receive AI-powered recommendations, and improve results with intelligent optimization—without switching platforms.
+              </p>
             </div>
-            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>SEO + GEO/AEO Dominance</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Maximize citations on ChatGPT & Perplexity while ranking on Google Search with auto-repaired JSON-LD schemas.
-            </p>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Meta & Google Publishing", "Campaign Builder", "Budget Management", "Performance Dashboard", "AI Campaign Optimization", "A/B Test Recommendations", "Audience Insights", "Multi-Platform Management"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/review')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(255, 174, 0, 0.08)', color: 'var(--warning)', marginBottom: '16px' }}>
-              <BarChart3 size={22} />
+          {/* Card 3: SEO & GEO (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/seo')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(0, 255, 157, 0.12)', color: 'var(--success)' }}>
+                    <Globe size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--success)', letterSpacing: '0.08em' }}>SEO & GEO WORKSPACE</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore SEO & GEO →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                SEO & GEO
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Improve visibility across Google Search and AI search engines with continuous audits, content optimization, technical improvements, and publishing. Connect your CMS, Google Search Console, and GA4 to monitor performance and apply AI-generated improvements from one workspace.
+              </p>
             </div>
-            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>Analytics & Brand Review</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Transform raw metrics into actionable natural-language decisions. Auto-detect ad fatigue before CPC spikes.
-            </p>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Website Audits", "AI Search (GEO) Audits", "Technical SEO", "AI Content Generation", "CMS Publishing", "GSC & GA4 Integration", "AI Visibility Tracking", "Keyword Intelligence"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="glow-card bento-col-4" onClick={() => navigate('/features/social-manager')} style={{ cursor: 'pointer', textAlign: 'left' }}>
-            <div className="solution-icon-wrapper" style={{ background: 'rgba(238, 130, 238, 0.08)', color: 'violet', marginBottom: '16px' }}>
-              <Share2 size={22} />
+          {/* Card 4: Growth Analytics (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/review')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 174, 0, 0.12)', color: 'var(--warning)' }}>
+                    <BarChart3 size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--warning)', letterSpacing: '0.08em' }}>GROWTH ANALYTICS</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Analytics →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Growth Analytics
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Track every important business metric in one place. Combine campaign performance, website traffic, SEO progress, and AI-powered insights to understand what's working and what to improve next.
+              </p>
             </div>
-            <h3 style={{ fontSize: '18px', color: '#fff', marginBottom: '8px' }}>Social Hub AI</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              30-day visual social media calendar planner with &lt;2s automated customer DM checkout responses.
-            </p>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Marketing Dashboard", "Campaign Analytics", "SEO Analytics", "ROI Tracking", "AI Growth Insights", "Executive Reports", "Performance Trends", "Custom Reports"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: Influencer Marketplace (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/influencer')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(255, 71, 87, 0.12)', color: 'var(--danger)' }}>
+                    <Users2 size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--danger)', letterSpacing: '0.08em' }}>INFLUENCER MARKETPLACE</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Influencers →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Influencer Marketplace
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Discover verified creators, review profiles, negotiate collaborations, and manage campaigns from one workspace. Brands can hire influencers or UGC creators, while creators receive verified opportunities and performance tracking.
+              </p>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["Verified Creators", "Smart Search & Filters", "Brand Collaboration", "Secure Chat", "Campaign Tracking", "Deliverable Management", "Contract Workflow", "Secure Payout Requests"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Card 6: Social Hub (Span 6) */}
+          <div className="glow-card bento-col-6" onClick={() => navigate('/features/social-manager')} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="solution-icon-wrapper" style={{ margin: 0, background: 'rgba(238, 130, 238, 0.12)', color: 'violet' }}>
+                    <Share2 size={22} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'violet', letterSpacing: '0.08em' }}>SOCIAL HUB & SPECIALISTS</span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#00E676', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                  Explore Social Hub →
+                </span>
+              </div>
+              <h3 style={{ fontSize: '24px', color: '#fff', marginBottom: '12px', fontWeight: 800 }}>
+                Social Hub
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', lineHeight: 1.6, marginBottom: '24px' }}>
+                Need additional expertise? Hire certified marketing professionals who work directly inside Raftra. Whether it's SEO, paid ads, social media, CRO, or digital PR, specialists use your Raftra workspace to execute, optimize, and report—without disrupting your workflow.
+              </p>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Includes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {["SEO & GEO Specialists", "Paid Ads Specialists", "Social Media Managers", "Digital PR & CRO Experts"].map((tag, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: '#e0e0ff', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', padding: '4px 10px', borderRadius: '8px', fontWeight: 500 }}>
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -619,7 +831,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
               padding: '28px',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between'
+              justify: 'space-between'
             }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', marginBottom: '12px' }}>
@@ -642,7 +854,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
               padding: '28px',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between'
+              justify: 'space-between'
             }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#00E676', letterSpacing: '0.08em', marginBottom: '12px' }}>
@@ -665,7 +877,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
               padding: '28px',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between'
+              justify: 'space-between'
             }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em', marginBottom: '12px' }}>
@@ -731,103 +943,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree }) => {
       </footer>
       {/* Creator Portal Modal */}
       {showCreatorPortal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div className="glow-card" style={{ width: '450px', background: '#0a0a0c', padding: '30px', position: 'relative' }}>
-            <button onClick={() => {setShowCreatorPortal(false); setCreatorPortalState('form');}} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
-            
-            <h3 style={{ fontSize: '20px', color: '#fff', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <UserPlus size={20} color="var(--primary)" /> Creator Portal
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
+          <div className="glow-card" style={{ width: '460px', background: '#0a0a0c', padding: '32px', position: 'relative', border: '1px solid rgba(0, 230, 118, 0.4)', borderRadius: '20px' }}>
+            <button onClick={() => setShowCreatorPortal(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+
+            <h3 style={{ fontSize: '22px', color: '#fff', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700 }}>
+              <UserPlus size={22} color="#00E676" /> Creator Onboarding
             </h3>
 
-            {creatorPortalState === 'form' && (
-              <form style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '8px' }}>
-                  Register to connect with brands, or remove your profile from the Raftra Influencer Marketplace.
-                </p>
-                <div className="form-group">
-                  <label>Social Handle</label>
-                  <input type="text" placeholder="@username" value={creatorForm.handle} onChange={e => setCreatorForm({...creatorForm, handle: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label>Email</label>
-                    <input type="email" placeholder="Email" value={creatorForm.email} onChange={e => setCreatorForm({...creatorForm, email: e.target.value})} required style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }} />
-                  </div>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label>Password</label>
-                    <input type="password" placeholder="Password" value={creatorForm.password} onChange={e => setCreatorForm({...creatorForm, password: e.target.value})} required style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Niche / Category</label>
-                  <input type="text" placeholder="e.g. Finance, Tech, Fashion" value={creatorForm.niche} onChange={e => setCreatorForm({...creatorForm, niche: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                </div>
-                <div className="form-group">
-                  <label>Expected Price (per post)</label>
-                  <input type="text" placeholder="e.g. 5000" value={creatorForm.price} onChange={e => setCreatorForm({...creatorForm, price: e.target.value})} required style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', color: '#fff' }} />
-                </div>
-                <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                  <GlowButton onClick={(e) => handleCreatorSubmit(e, 'add')} variant="glow" style={{ flex: 1, padding: '14px' }}>
-                    Register & Scan
-                  </GlowButton>
-                  <button onClick={(e) => handleCreatorSubmit(e, 'remove')} style={{ padding: '14px', background: 'rgba(255, 50, 50, 0.1)', border: '1px solid rgba(255, 50, 50, 0.3)', color: '#ff6b6b', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
-                    Remove Profile
-                  </button>
-                </div>
-              </form>
-            )}
+            <p style={{ color: '#aaa', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
+              Fill out the official <strong>Raftra Creator Onboarding Form</strong> to list your profile, verify your metrics, and start receiving brand sponsorship deals.
+            </p>
 
-            {creatorPortalState === 'scanning' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <ShieldAlert size={48} color="var(--primary)" className="spin-animation" style={{ animation: 'spin 2s linear infinite' }} />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Audience Verification in progress...</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Scanning for bot networks and fake follower ratios.</p>
-              </div>
-            )}
-
-            {creatorPortalState === 'success' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <CheckCircle2 size={48} color="var(--success)" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Verification Passed!</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Your profile has been listed on the Influencer Marketplace. Brands can now send you direct match requests.</p>
-                <GlowButton variant="glow" onClick={() => {
-                  setShowCreatorPortal(false); 
-                  setCreatorPortalState('form');
-                  navigate('/login');
-                }} style={{ marginTop: '16px' }}>Go to Login</GlowButton>
-              </div>
-            )}
-
-            {creatorPortalState === 'error' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <ShieldAlert size={48} color="var(--warning)" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Verification Failed</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Profile not found on Instagram. Please check your handle and try again.</p>
-                <GlowButton variant="glow" onClick={() => setCreatorPortalState('form')} style={{ marginTop: '16px' }}>Try Again</GlowButton>
-              </div>
-            )}
-
-            {creatorPortalState === 'removing' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <UserMinus size={48} color="#ff6b6b" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Processing Removal...</h4>
-              </div>
-            )}
-
-            {creatorPortalState === 'removed' && (
-              <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                <CheckCircle2 size={48} color="var(--success)" />
-                <h4 style={{ color: '#fff', fontSize: '16px' }}>Profile Removed</h4>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Your profile and all data has been permanently removed from the Raftra Influencer Marketplace.</p>
-                <GlowButton variant="glow" onClick={() => {setShowCreatorPortal(false); setCreatorPortalState('form');}} style={{ marginTop: '16px' }}>Close Portal</GlowButton>
-              </div>
-            )}
+            <button
+              onClick={() => {
+                window.open('https://docs.google.com/forms/d/e/1FAIpQLSe8SaOeW1zHgpDQprgkMoKQGOqqEHv3pSrqskUPTDYpBsB_Nw/viewform?usp=sharing&ouid=100579727126475993109', '_blank');
+                setShowCreatorPortal(false);
+              }}
+              style={{ width: '100%', padding: '16px', background: 'linear-gradient(135deg, #00E676 0%, #00B0FF 100%)', color: '#000', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0, 230, 118, 0.3)' }}
+            >
+              📋 Open Creator Onboarding Form
+            </button>
           </div>
         </div>
       )}
 
       {/* Global Styles for Animations */}
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}} />
       <Footer />
@@ -946,7 +1089,7 @@ const FreeAuditSandboxEngine: React.FC<{ onStartFree: () => void }> = ({ onStart
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justify: 'space-between',
             padding: '16px 20px',
             background: 'rgba(255, 95, 86, 0.08)',
             border: '1px solid rgba(255, 95, 86, 0.25)',

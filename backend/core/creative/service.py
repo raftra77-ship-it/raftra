@@ -37,8 +37,28 @@ def _image_provider(name: str):
 
 
 def _video_provider(name: str):
-    """Ken Burns is the only implemented, key-free option. Kling/Wan/Veo drop in here once
-    their providers are written and configured — nothing else in the pipeline changes."""
+    """Pick the video source. Set VIDEO_PROVIDER in .env to switch; no code change needed.
+
+        kenburns  (default) animates the image WE generated. Always on-prompt, but the
+                  motion is camera-only — a slow zoom or pan over a still.
+        sample    the original keyless behaviour: a random public test clip
+                  (Big Buck Bunny / Jellyfish / Sintel). Real, obvious motion and needs
+                  no key, but it is fixed stock footage with NO relationship to the
+                  prompt — the same clip shows up for a coffee ad and a car ad.
+        stock     keyword-matched stock footage via Pixabay/Pexels. Real motion AND
+                  topically relevant, but needs a free PIXABAY_API_KEY / PEXELS_API_KEY
+                  and it is generic footage, not your product.
+
+    All three are free. Paid image-to-video providers slot in here the same way.
+    """
+    choice = (os.getenv("VIDEO_PROVIDER") or name or "kenburns").strip().lower()
+
+    if choice == "sample":
+        from core.providers.video_providers import SampleVideoProvider
+        return SampleVideoProvider()
+    if choice in ("stock", "pixabay", "pexels"):
+        from core.providers.video_providers import PixabayVideoProvider, PexelsVideoProvider
+        return PexelsVideoProvider() if choice == "pexels" else PixabayVideoProvider()
     from core.providers.kenburns_video import KenBurnsVideoProvider
     return KenBurnsVideoProvider()
 
@@ -136,9 +156,34 @@ class CreativeService:
             await log("Video Agent", "Animating the generated creative into a video...")
             try:
                 vid = _video_provider("kenburns")
+                caps = type(vid).capabilities()
+
+                # Send each provider only what it can actually use. Ken Burns and the stock
+                # providers do not interpret a motion prompt, so handing them the sectioned
+                # one would just be a long string they hash or keyword-search.
+                if caps["supports_prompt_motion"]:
+                    video_prompt = prompts.get("video_prompt") or prompts["image_prompt"]
+                else:
+                    video_prompt = prompts.get("stock_query") or prompts["image_prompt"]
+
+                extra = {}
+                if caps["supports_negative_prompt"] and prompts.get("video_negative_prompt"):
+                    extra["negative_prompt"] = prompts["video_negative_prompt"]
+
+                if os.getenv("CREATIVE_DEBUG_PROMPTS", "").lower() in ("1", "true", "yes"):
+                    print(f"\n[creative.debug] provider={caps['provider']} caps={caps}")
+                    print(f"[creative.debug] motion_intensity="
+                          f"{prompts.get('motion_intensity')}")
+                    print(f"[creative.debug] --- VIDEO PROMPT (compiled) ---\n"
+                          f"{prompts.get('video_prompt')}")
+                    print(f"[creative.debug] --- NEGATIVE PROMPT ---\n"
+                          f"{prompts.get('video_negative_prompt')}")
+                    print(f"[creative.debug] --- ACTUALLY SENT ---\n{video_prompt}\n")
+
                 video_url = await vid.generate_video(
-                    image_url=image_url, prompt=prompts["video_prompt"] or prompts["image_prompt"],
-                    duration=prompts["duration"] or 5, ad_ratio=prompts["aspect_ratio"])
+                    image_url=image_url, prompt=video_prompt,
+                    duration=prompts["duration"] or 5, ad_ratio=prompts["aspect_ratio"],
+                    **extra)
                 await log("Video Agent", "Video rendered from your generated creative.", "completed")
             except Exception as e:
                 # An image without motion is still a usable creative — report the video

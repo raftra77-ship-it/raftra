@@ -206,6 +206,75 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     setMetaPickerBusy(false);
   };
 
+  // Persist the chosen Page to this workspace's Meta connection. The dropdown previously
+  // only set local state, so page_id stayed NULL in the database and every "real" publish
+  // failed inside _launch_meta_ad and silently degraded to a MOCK-META demo result.
+  // default_link_url is where ad clicks land; the workspace site is the sane default.
+  const selectPage = async (pageId: string) => {
+    if (!pageId || !workspaceId) return;
+    setMetaPickerBusy(true);
+    try {
+      const r = await fetch(`/api/connectors/meta/${workspaceId}/page`, {
+        method: 'POST', headers: authHeaders(),
+        // default_link_url omitted deliberately: _launch_meta_ad already falls back to
+        // the workspace's company_url, so there is no need to duplicate that here.
+        body: JSON.stringify({ page_id: pageId }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setSelectedPage(d.page_id || pageId);
+        // Re-read status so ready_to_publish reflects the server, not an assumption.
+        const s = await fetch(`/api/connectors/meta/${workspaceId}/status`, { headers: authHeaders() });
+        if (s.ok) setMetaAccount(await s.json());
+        flash(`Publishing as "${d.page_name || 'your Page'}".`);
+      } else if (r.status === 401) {
+        flash('Your Meta connection expired — reconnect Meta and try again.', false);
+      } else {
+        flash(d.detail || 'Could not save the Facebook Page.', false);
+      }
+    } catch {
+      flash('Could not save the Facebook Page — server unreachable.', false);
+    }
+    setMetaPickerBusy(false);
+  };
+
+  // Disconnecting deletes the whole connection row server-side, which also clears the
+  // ad account and Page selections — so reconnecting starts clean rather than inheriting
+  // stale ids. Confirmed first because it is not undoable without re-running OAuth.
+  const disconnectPlatform = async (platform: 'meta' | 'google') => {
+    if (!workspaceId) return;
+    const name = platform === 'meta' ? 'Meta Ads' : 'Google Ads';
+    if (!window.confirm(
+      `Disconnect ${name}?\n\nThis removes the connection and clears the selected ` +
+      `account${platform === 'meta' ? ' and Facebook Page' : ''}. Campaigns already ` +
+      `created in ${name} are not affected. You can reconnect at any time.`)) return;
+
+    setMetaPickerBusy(true);
+    try {
+      const r = await fetch(
+        platform === 'meta'
+          ? `/api/connectors/meta/${workspaceId}/disconnect`
+          : `/api/connectors/google-ads/${workspaceId}`,
+        { method: platform === 'meta' ? 'POST' : 'DELETE', headers: authHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        if (platform === 'meta') {
+          setMetaAccount({ configured: true, connected: false });
+          setMetaAdAccounts(null); setMetaPages(null); setSelectedPage(''); setMetaPickerOpen(false);
+        } else {
+          setGoogleAccount({ configured: true, connected: false });
+          setGoogleAdAccounts(null); setGooglePickerOpen(false);
+        }
+        flash(`${name} disconnected.`);
+      } else {
+        flash(d.detail || `Could not disconnect ${name}.`, false);
+      }
+    } catch {
+      flash(`Could not disconnect ${name} — server unreachable.`, false);
+    }
+    setMetaPickerBusy(false);
+  };
+
   const openMetaPicker = () => {
     setMetaPickerOpen(o => !o);
     if (!metaAdAccounts && !metaPickerOpen) loadMetaAdAccounts();
@@ -269,8 +338,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
   const spec = campaign?.metrics || {};
   const status = String(campaign?.status || '').toUpperCase();
-  const approved = status === 'APPROVED' || status === 'PUBLISHED_DEMO';
-  const published = status === 'PUBLISHED_DEMO';
+  // PUBLISHED = at least one platform went out for real; PUBLISHED_DEMO = simulated.
+  // Both mean "published", so match on the prefix rather than the exact demo value —
+  // otherwise a real publish is treated as unpublished and the flow resets.
+  const isPublishedStatus = (s?: string) => String(s || '').toUpperCase().startsWith('PUBLISHED');
+  const approved = status === 'APPROVED' || isPublishedStatus(status);
+  const published = isPublishedStatus(status);
+  const publishedForReal = String(status || '').toUpperCase() === 'PUBLISHED';
   const metaSetup = spec.meta_setup || {};
   const googleSetup = spec.google_setup || {};
   const split = spec.budget_split || {};
@@ -333,7 +407,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       const list = await fetch(`/api/workspaces/${workspaceId}/campaigns`, { headers: authHeaders() }).then(r => r.json());
       if (Array.isArray(list)) {
         const sorted = list.slice().sort((a: any, b: any) => b.id - a.id);
-        const isPub = (c: any) => String(c.status || '').toUpperCase() === 'PUBLISHED_DEMO';
+        const isPub = (c: any) => String(c.status || '').toUpperCase().startsWith('PUBLISHED');
         setRecentPublished(sorted.filter(isPub).slice(0, 10));
         // Active flow = the latest NOT-yet-published campaign. Once a campaign is published it
         // drops into "Recently Published" and the flow starts fresh from the top checklist.
@@ -352,7 +426,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     if (!workspaceId) return;
     try {
       const list = await CampaignService.list(workspaceId);
-      setRecentPublished(list.filter(c => String(c.status).toUpperCase() === 'PUBLISHED_DEMO')
+      setRecentPublished(list.filter(c => String(c.status).toUpperCase().startsWith('PUBLISHED'))
         .sort((a, b) => b.id - a.id).slice(0, 10));
     } catch { /* ignore */ }
   }, [workspaceId]);
@@ -569,6 +643,38 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       p: { campaignFocus: 'Lookalike Customer Acquisition', objective: 'Lead Generation', budget: 50000, audience: 'Top 1% LAL of Past Buyers + Interest in Premium Tech', funnel: 'Top of Funnel', geoTargetingLevel: 'Country-Level', placement: 'India (Tier 1 & Tier 2)', schedule: '30 Days', tracking: 'utm_source=ai_agent_lal' } },
   ];
 
+  // Download the approved creative itself, not just the campaign JSON.
+  //
+  // Fetched into a blob rather than pointing <a download> straight at the URL: the image
+  // often lives on another origin (Pollinations) or is a data: URL, and in both cases the
+  // browser ignores the `download` attribute and simply navigates away — losing the user's
+  // place in the flow instead of saving the file.
+  const downloadCreative = async (url: string) => {
+    if (!url) return;
+    setBusy('download');
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      // Trust the served content-type for the extension; the URL often has none.
+      const ext = (blob.type.split('/')[1] || 'png').split(';')[0].replace('jpeg', 'jpg');
+      const name = `creative-${(form.campaignFocus || 'ad').replace(/\s+/g, '_').toLowerCase()}-${Date.now()}.${ext}`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+      flash(`Saved "${name}" to your Downloads folder.`);
+    } catch {
+      flash('Could not download the image — try right-click and Save image as.', false);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // ── import / export (restored) ──
   const exportCampaign = () => {
     if (!campaign) { flash('Nothing to export yet — generate a strategy first.', false); return; }
@@ -672,14 +778,40 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                       </select>
                       <span style={label}>Facebook Page</span>
                       <select style={{ ...input, padding: '8px 10px', fontSize: '12.5px' }}
-                        value={selectedPage} onChange={e => setSelectedPage(e.target.value)}>
+                        disabled={metaPickerBusy}
+                        value={metaAccount.page_id || selectedPage || ''}
+                        onChange={e => selectPage(e.target.value)}>
                         <option value="" disabled>{metaPages && metaPages.length ? 'Choose a Page' : 'No Pages found'}</option>
                         {(metaPages || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
+
+                      {/* Readiness checklist — each line reflects a real server value, so the
+                          user can see exactly what is still missing before a real publish. */}
+                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {[
+                          { ok: !!metaAccount.connected, label: 'Meta connected' },
+                          { ok: !!metaAccount.ad_account_id, label: 'Ad account selected' },
+                          { ok: !!metaAccount.page_id, label: 'Facebook Page selected' },
+                          { ok: !!metaAccount.ready_to_publish, label: 'Ready to publish' },
+                        ].map(row => (
+                          <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: row.ok ? '#00e676' : 'var(--text-secondary)' }}>
+                            {row.ok ? <CheckCircle2 size={12} /> : <span style={{ width: '12px', textAlign: 'center' }}>○</span>}
+                            {row.label}
+                          </div>
+                        ))}
+                      </div>
                       <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
-                        Required before a real (non-demo) campaign can be launched on Meta. Publishing below still runs in demo mode until that's wired up.
+                        {metaAccount.ready_to_publish
+                          ? 'Real campaigns will be created in Meta, paused, for you to review and activate.'
+                          : 'An ad account and a Facebook Page are both required before a real campaign can be created.'}
                       </p>
-                      <button onClick={loadMetaAdAccounts} style={{ ...btnGhost, marginTop: '10px', width: '100%', padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                        <button onClick={loadMetaAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                        <button onClick={() => disconnectPlatform('meta')} disabled={metaPickerBusy}
+                          style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
+                          Disconnect
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
@@ -717,7 +849,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                       <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
                         Required before a real (non-demo) campaign can be launched on Google Ads. Publishing below still runs in demo mode until that's wired up.
                       </p>
-                      <button onClick={loadGoogleAdAccounts} style={{ ...btnGhost, marginTop: '10px', width: '100%', padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                        <button onClick={loadGoogleAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                        <button onClick={() => disconnectPlatform('google')} disabled={metaPickerBusy}
+                          style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
+                          Disconnect
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
@@ -852,9 +990,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '18px' }}>
             {presets.map(p => {
               const Icon = p.icon;
+              // color/fontFamily below are set explicitly: a <button> does not inherit them
+              // from the page, so without them the title rendered in the UA's default
+              // near-black on this dark card and was invisible.
               return (
                 <button key={p.id} onClick={() => { setForm(f => ({ ...f, ...p.p })); flash(`"${p.title}" loaded — tweak anything, then generate.`); }}
-                  style={{ textAlign: 'left', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '12px', cursor: 'pointer' }}>
+                  style={{ textAlign: 'left', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '12px', cursor: 'pointer', color: 'var(--text-primary)', fontFamily: 'inherit' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
                     <span style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '7px' }}><Icon size={14} color="var(--primary)" /> {p.title}</span>
                     <span style={{ fontSize: '9.5px', color: 'var(--primary)', background: 'rgba(99,102,241,0.12)', padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap' }}>{p.badge}</span>
@@ -938,6 +1079,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                       {selectedImage ? 'This is the approved creative. Only this image is sent to the platform reviews below.' : 'Pick or upload the image you want to advertise.'}
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {selectedImage && (
+                        <button onClick={() => downloadCreative(selectedImage)}
+                          disabled={busy === 'download'}
+                          style={{ ...btnGhost, padding: '8px 12px', fontSize: '12px' }}>
+                          <Download size={13} /> {busy === 'download' ? 'Downloading…' : 'Download'}
+                        </button>
+                      )}
                       <button onClick={regenerateImage} disabled={busy === 'image'} style={{ ...btnGhost, padding: '8px 12px', fontSize: '12px' }}>
                         <RefreshCw size={13} /> {busy === 'image' ? 'Generating…' : 'New image'}
                       </button>
@@ -1288,14 +1436,16 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             )}
             <button onClick={() => attemptPublish(chosen)} disabled={!canPublish || busy?.startsWith('publish')}
               style={{ ...btnPrimary, padding: '12px 22px', opacity: canPublish ? 1 : 0.45, cursor: canPublish ? 'pointer' : 'not-allowed' }}>
-              <Rocket size={15} /> {published ? 'Published (demo)' : busy?.startsWith('publish') ? 'Publishing…' : `Publish to ${chosen.length === 2 ? 'all selected' : chosen.length === 1 ? (chosen[0] === 'meta' ? 'Meta' : 'Google') : 'selected'}`}
+              <Rocket size={15} /> {published ? (publishedForReal ? 'Published' : 'Published (demo)') : busy?.startsWith('publish') ? 'Publishing…' : `Publish to ${chosen.length === 2 ? 'all selected' : chosen.length === 1 ? (chosen[0] === 'meta' ? 'Meta' : 'Google') : 'selected'}`}
             </button>
           </div>
 
           <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '14px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.2)', borderRadius: '9px', padding: '10px' }}>
             {published
-              ? `Published to ${publishedList.map(p => (p === 'meta' ? 'Meta' : 'Google')).join(' & ')} in demo mode — nothing was sent to a real ad account.`
-              : 'Demo mode. Real publishing turns on once your Meta and Google Ads accounts are connected.'}
+              ? (publishedForReal
+                  ? `Live on ${publishedList.map(p => (p === 'meta' ? 'Meta' : 'Google')).join(' & ')} — created paused. Activate it there to start spending.`
+                  : `Published to ${publishedList.map(p => (p === 'meta' ? 'Meta' : 'Google')).join(' & ')} in demo mode — nothing was sent to a real ad account.`)
+              : 'Real publishing turns on for each platform once its ad account is connected.'}
           </p>
         </div>
       </Gated>

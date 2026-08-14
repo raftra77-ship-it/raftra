@@ -35,6 +35,24 @@ GEO_STAGES = ["Entity Agent", "Citation Agent", "Prompt Visibility Agent", "LLM 
               "Authority Agent", "Knowledge Graph Agent", "Optimization Agent", "Reporting"]
 
 
+def normalize_target_url(raw: str) -> str:
+    """Make a stored/typed site address safe to hand to Firecrawl and httpx.
+
+    A URL can never legally contain raw whitespace, but the value reaching here comes
+    from the workspace's company_url (typed at onboarding), so it can carry a stray
+    space - e.g. " ambraneindia.com", which the frontend turns into
+    "https:// ambraneindia.com". Firecrawl rejects that with HTTP 400 BAD_REQUEST, so
+    the whole audit fails on what looks to the user like a live site. Strip every
+    whitespace character rather than just the ends, then add the scheme if it's absent.
+    """
+    cleaned = "".join((raw or "").split())
+    if not cleaned:
+        return ""
+    if not cleaned.lower().startswith(("http://", "https://")):
+        cleaned = "https://" + cleaned
+    return cleaned
+
+
 def _seo_stage_done(state: "SEOState", node_label: str) -> None:
     from core.agent_status import record_agent_task
     record_agent_task(state["workspace_id"], "SEO", "RUNNING", stage=node_label)
@@ -137,9 +155,20 @@ async def _discover_sitemap(client, origin: str, robots_body: str) -> dict:
 # useless findings ("thin content, add an H1, add Organization schema") about a page the
 # owner cannot edit, and a score that describes the placeholder rather than the business.
 _GATE_MARKERS = (
+    # Storefront / holding pages
     "store is password protected", "enter store using password", "opening soon",
     "are you the store owner", "this site is under construction", "coming soon",
     "domain is parked", "site temporarily unavailable",
+    # Auth walls. The crawler is always logged OUT, so a private or unlaunched site serves
+    # its LOGIN page — and that scores like any other page: thin content, no H1, no schema.
+    # A WordPress.com site set to Private returned a full 30-something/100 describing the
+    # sign-in screen, which is indistinguishable from a real audit unless we name it.
+    "log in to wordpress.com", "login to wordpress.com", "this site is private",
+    "private site", "you need to be logged in", "please log in to continue",
+    "sign in to continue", "login required", "members only",
+    # Host "nothing deployed here" pages, which answer 200 far more often than 404.
+    "no deployment found", "site not found", "there isn't a github pages site here",
+    "this page could not be found", "404 not found",
 )
 
 
@@ -668,6 +697,7 @@ def _persist_audit(workspace_id: int, pipeline: str, target_url: str, result: di
 
 async def run_seo_pipeline(workspace_id: int, target_url: str):
     current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
+    target_url = normalize_target_url(target_url)
     initial_state = {
         "workspace_id": workspace_id,
         "target_url": target_url,
@@ -970,6 +1000,7 @@ geo_publish_graph = geo_publish_workflow.compile()
 
 async def run_geo_pipeline(workspace_id: int, target_url: str):
     current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
+    target_url = normalize_target_url(target_url)
     initial_state = {
         "workspace_id": workspace_id,
         "target_url": target_url,

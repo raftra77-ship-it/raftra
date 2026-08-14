@@ -13,7 +13,8 @@
 export type CampaignStatus =
   | 'PENDING_REVIEW'   // strategy generated, awaiting approval
   | 'APPROVED'         // approved — downstream sections unlocked
-  | 'PUBLISHED_DEMO'   // published (demo); read-only
+  | 'PUBLISHED'        // published for real on every selected platform; read-only
+  | 'PUBLISHED_DEMO'   // published (demo, or mixed real+demo); read-only
   | 'PAUSED';
 
 export type PlatformKey = 'meta' | 'google';

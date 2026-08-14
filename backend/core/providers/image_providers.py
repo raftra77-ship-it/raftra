@@ -75,6 +75,22 @@ class FluxSchnellProvider(ImageProvider):
         # Since the user couldn't log into Flux platforms, we are using Pollinations AI
         # which provides free, high-quality image generation (often powered by Flux) without ANY API key!
         import urllib.parse
+        # Pollinations has NO negative_prompt parameter. When the pipeline moved text
+        # suppression out of the prompt string and into a separate negative_prompt field,
+        # this provider silently dropped it — and the model started baking garbled
+        # lettering into ad creative. Inline the critical negatives as plain text, which
+        # is the only channel Pollinations actually reads.
+        negative = (kwargs.get("negative_prompt") or "").strip()
+        if negative:
+            # Only the terms that matter visually; the full artefact list would swamp a
+            # URL-encoded GET and dilute the subject.
+            key_terms = [t.strip() for t in negative.split(",")
+                         if t.strip() in ("text", "words", "letters", "captions", "logos",
+                                          "watermark", "signature", "blurry",
+                                          "gibberish text", "malformed text")]
+            if key_terms:
+                prompt = f"{prompt}. Without any {', '.join(dict.fromkeys(key_terms))}"
+
         encoded_prompt = urllib.parse.quote(prompt)
         width, height = dimensions_for(aspect_ratio)
 
@@ -111,17 +127,23 @@ class HFFluxSchnellProvider(ImageProvider):
                 "Providers' permission at huggingface.co/settings/tokens.")
 
         width, height = dimensions_for(aspect_ratio)
+        # OpenAI-compatible image endpoint. The older /models/{id} "inputs"+"parameters"
+        # shape is dead for FLUX: /hf-inference/ answers 410 (deprecated for this model),
+        # and /{provider}/models/{id} 404s. Verified working against nscale and together;
+        # fal-ai rejects this shape, which is why a backend is pinned rather than
+        # auto-routed. HF_INFERENCE_BACKEND overrides.
+        backend = os.getenv("HF_INFERENCE_BACKEND", "nscale").strip()
+        url = f"https://router.huggingface.co/{backend}/v1/images/generations"
         payload = {
-            "inputs": prompt,
-            "parameters": {
-                "width": width,
-                "height": height,
-                # schnell is a distilled 4-step model; more steps cost time without gain.
-                "num_inference_steps": int(kwargs.get("steps", 4)),
-                "negative_prompt": kwargs.get("negative_prompt", DEFAULT_NEGATIVE_PROMPT),
-            },
+            "model": self.MODEL,
+            "prompt": prompt,
+            "response_format": "b64_json",
+            "width": width,
+            "height": height,
+            # schnell is a distilled 4-step model; more steps cost time without gain.
+            "num_inference_steps": int(kwargs.get("steps", 4)),
+            "negative_prompt": kwargs.get("negative_prompt", DEFAULT_NEGATIVE_PROMPT),
         }
-        url = f"https://router.huggingface.co/hf-inference/models/{self.MODEL}"
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(url, headers={"Authorization": f"Bearer {api_key}"},
                                   json=payload)
@@ -145,6 +167,15 @@ class HFFluxSchnellProvider(ImageProvider):
         except Exception:
             raise ImageProviderError(
                 f"Hugging Face returned an unexpected content-type: {content_type!r}")
+        # OpenAI-compatible shape: {"data": [{"b64_json": ...}]} or {"data":[{"url": ...}]}
+        entries = data.get("data") if isinstance(data, dict) else None
+        if isinstance(entries, list) and entries:
+            first = entries[0] or {}
+            if first.get("b64_json"):
+                return f"data:image/png;base64,{first['b64_json']}"
+            if first.get("url"):
+                return first["url"]
+        # Older/simple shapes some providers still return.
         for key in ("image", "b64_json", "image_base64"):
             if isinstance(data, dict) and data.get(key):
                 return f"data:image/png;base64,{data[key]}"

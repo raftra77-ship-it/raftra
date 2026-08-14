@@ -13,8 +13,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.window_seconds = window_seconds
         
         if REDIS_URL:
+            # Short timeouts because this runs in front of EVERY /api/ request. The failure
+            # below is already handled (we log and let the request through), but with the
+            # default timeouts an unhealthy Redis - one that accepts TCP but never answers -
+            # stalls every call for seconds before that handling kicks in. Failing in 0.3s
+            # keeps a broken Redis from looking like a broken backend.
             # decode_responses=True is useful for string operations
-            self.redis = redis.from_url(REDIS_URL, decode_responses=True)
+            self.redis = redis.from_url(
+                REDIS_URL, decode_responses=True,
+                socket_connect_timeout=0.3, socket_timeout=0.3,
+            )
+            self._redis_failures = 0
         else:
             self.redis = None
 
@@ -46,8 +55,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             except HTTPException:
                 raise
             except Exception as e:
-                # If Redis fails, log it and let request pass to not break production
-                print(f"Redis Rate Limit Error: {e}")
+                # If Redis fails, log it and let request pass to not break production.
+                # After a run of consecutive failures, stop calling Redis entirely: a dead
+                # Redis is not coming back mid-process, and paying the timeout (plus a log
+                # line) on every request just makes the whole API look slow. Restart the
+                # process once Redis is healthy to re-enable rate limiting.
+                self._redis_failures += 1
+                if self._redis_failures >= 5:
+                    print("Redis unreachable 5x — disabling rate limiting for this process.")
+                    self.redis = None
+                else:
+                    print(f"Redis Rate Limit Error: {e}")
                 
         response = await call_next(request)
         return response

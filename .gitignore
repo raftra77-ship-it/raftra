@@ -38,3 +38,6 @@ __pycache__/
 # Generated activity export (contains user data)
 activity_log.csv
 .vercel
+
+# Runtime output from the creative pipeline - regenerated per video, not source
+backend/generated_media/

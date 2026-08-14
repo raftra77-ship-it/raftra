@@ -502,10 +502,43 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
 
             {report?.has_audit && (
               <>
+                {/* The report shows the newest STORED audit, which is not necessarily the URL
+                    the user just typed - if their run hasn't finished (or never started) they
+                    would otherwise read a previous site's scores as if they were this site's.
+                    These two banners make that visible instead of silent. */}
+                {report.url_mismatch && (
+                  <div style={{
+                    marginBottom: '16px', padding: '12px 14px', borderRadius: '10px',
+                    background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.45)',
+                    color: 'var(--text-primary)', fontSize: '12.5px', lineHeight: 1.55,
+                  }}>
+                    <strong style={{ color: '#f87171' }}>This report is for a different website.</strong>
+                    <div style={{ marginTop: '5px' }}>
+                      {report.seo_target_url && <>SEO audit ran on <code>{report.seo_target_url}</code>. </>}
+                      {report.geo_target_url && report.geo_target_url !== report.seo_target_url
+                        && <>GEO audit ran on <code>{report.geo_target_url}</code>. </>}
+                      Run the pipeline again on the address you want audited — the scores below
+                      describe the site named above, not the one you entered.
+                    </div>
+                  </div>
+                )}
+                {!report.url_mismatch && report.stale_half && (
+                  <div style={{
+                    marginBottom: '16px', padding: '10px 14px', borderRadius: '10px',
+                    background: 'rgba(234,179,8,0.10)', border: '1px solid rgba(234,179,8,0.40)',
+                    color: 'var(--text-primary)', fontSize: '12.5px', lineHeight: 1.55,
+                  }}>
+                    <strong style={{ color: '#facc15' }}>Half of this report is older.</strong>{' '}
+                    The {report.stale_half} audit is {report.age_gap_days} day
+                    {report.age_gap_days === 1 ? '' : 's'} behind the other, so the combined score
+                    mixes two points in time.
+                  </div>
+                )}
+
                 {/* Overall / SEO / GEO scores */}
                 <div style={{ marginBottom: '22px' }}>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                    <ScoreTile label="Overall Health" value={report.overall_health} />
+                    <ScoreTile label="Overall Health" value={report.url_mismatch ? null : report.overall_health} />
                     <ScoreTile label="SEO Score" value={report.seo?.audit?.seo?.score_100 ?? null} />
                     <ScoreTile label="GEO Score" value={report.geo?.audit?.geo?.score_100 ?? null} />
                   </div>

@@ -18,12 +18,67 @@ from pydantic import BaseModel, Field
 from . import platforms
 
 
+class TimelineBeat(BaseModel):
+    """One span of the clip and what physically happens in it.
+
+    A video model needs an explicit sequence: "picks up, looks at, uses, then close-up"
+    in one sentence gives it no ordering, so it tends to render a single frozen pose.
+    """
+
+    start: float = 0.0
+    end: float = 0.0
+    action: str = ""
+
+
 class VideoPlan(BaseModel):
+    """How the clip moves.
+
+    Layered deliberately, highest priority first (subject action -> camera -> secondary ->
+    environment). A compiler that has to truncate for a provider's prompt limit drops from
+    the bottom, so the main action is never the thing that gets cut.
+
+    NOTE: these fields are consumed only by providers whose `supports_prompt_motion` is
+    True. KenBurnsVideoProvider ignores them entirely — it hashes the prompt to pick a
+    zoom/pan preset and cannot render subject or environmental motion at all.
+    """
+
     duration: int = 5
-    camera_motion: str = "slow push-in"
+    # --- motion layers, most important first ---
+    primary_motion: str = ""        # what the subject physically DOES: "rotates clockwise"
+    camera_motion: str = ""         # concrete move: "orbits the bottle", not "cinematic"
+    secondary_motion: str = ""      # hair, clothing, reflections, steam, shadows
+    environment_motion: str = ""    # background, weather, crowd, passing scenery
+    motion_intensity: str = "medium"   # low | medium | high
+    timeline: list[TimelineBeat] = Field(default_factory=list)
+    # --- back-compat: older code reads subject_motion ---
     subject_motion: str = ""
     voiceover: str = ""
     scenes: list[dict] = Field(default_factory=list)   # [{duration, visual, camera, motion, text}]
+
+    def effective_primary(self) -> str:
+        """primary_motion is the new field; subject_motion is what the previous schema
+        used. Prefer the new one but keep older stored specs working."""
+        return (self.primary_motion or self.subject_motion or "").strip()
+
+    def build_timeline(self) -> list[TimelineBeat]:
+        """Return the authored timeline, or derive a simple three-beat one.
+
+        Even a derived beginning/middle/end beats a single undifferentiated sentence,
+        because it tells the model the scene must CHANGE over its duration.
+        """
+        if self.timeline:
+            return self.timeline
+        action = self.effective_primary()
+        if not action:
+            return []
+        d = max(self.duration, 2)
+        a, b = round(d * 0.3, 1), round(d * 0.7, 1)
+        camera = self.camera_motion or "the camera holds framing on the subject"
+        return [
+            TimelineBeat(start=0, end=a, action=f"{action} begins"),
+            TimelineBeat(start=a, end=b, action=f"{action} continues while {camera}"),
+            TimelineBeat(start=b, end=d, action=f"{action} continues to the final frame"),
+        ]
 
 
 class CreativeSpec(BaseModel):

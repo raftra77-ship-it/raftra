@@ -4,13 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "python src/scripts/sync_google_sheet.py && vite",
+    "sync-sheet": "python src/scripts/sync_google_sheet.py",
+    "build": "vite build",
+    "typecheck": "tsc -b",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
     "@paper-design/shaders-react": "^0.0.77",
+    "@types/animejs": "^3.1.13",
+    "animejs": "^4.5.0",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
@@ -25,6 +29,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
+    "supabase": "^2.109.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }

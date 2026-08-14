@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import database, models, schemas, auth
+import asyncio
 import os
 from core import meta_ads as meta, google_ads as gads
 
@@ -19,9 +20,12 @@ def discover_brands(db: Session = Depends(database.get_db), current_user: models
 
 @router.post("", response_model=schemas.WorkspaceResponse)
 def create_workspace(ws: schemas.WorkspaceCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    from agents.seo_geo import normalize_target_url
     new_ws = models.Workspace(
         name=ws.name,
-        company_url=ws.company_url,
+        # Normalized on the way in so a stray space typed at onboarding never reaches
+        # the crawler later as "https:// example.com" (HTTP 400).
+        company_url=normalize_target_url(ws.company_url) or ws.company_url,
         brand_logo=ws.brand_logo,
         brand_color=ws.brand_color,
         brand_voice=ws.brand_voice,
@@ -39,13 +43,15 @@ def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background
         raise HTTPException(status_code=403, detail="Workspace access denied")
     
     # Update initial values immediately
-    ws.company_url = req.url
+    from agents.seo_geo import normalize_target_url
+    clean_url = normalize_target_url(req.url) or req.url
+    ws.company_url = clean_url
     ws.brand_voice = req.tone
     db.commit()
-    
+
     # Fire off the onboarding background task to actually scrape and update the knowledge base
     from agents.creative_nodes.onboarding_graph import run_onboarding_pipeline
-    background_tasks.add_task(run_onboarding_pipeline, workspace_id, req.url)
+    background_tasks.add_task(run_onboarding_pipeline, workspace_id, clean_url)
     
     return {"status": "success", "message": "Knowledge Graph re-indexing started."}
 
@@ -569,7 +575,9 @@ async def publish_campaign(workspace_id: int, campaign_id: int,
     a simulated (DEMO) publish for that platform, and the response says so explicitly."""
     _require_workspace(workspace_id, db, current_user)
     camp = _get_campaign_or_404(workspace_id, campaign_id, db)
-    if (camp.status or "").upper() not in ("APPROVED", "PUBLISHED_DEMO"):
+    # PUBLISHED covers a real publish, PUBLISHED_DEMO a simulated one — both may be
+    # re-published (e.g. adding Google after Meta already went out), so accept either.
+    if (camp.status or "").upper() not in ("APPROVED", "PUBLISHED", "PUBLISHED_DEMO"):
         raise HTTPException(status_code=409, detail="Approve the strategy before publishing.")
 
     wanted = [p.lower() for p in ((req.platforms if req and req.platforms else None) or ["meta", "google"])]
@@ -616,11 +624,14 @@ async def publish_campaign(workspace_id: int, campaign_id: int,
                 }
                 continue
             except Exception as e:
-                # Surface the reason rather than silently demoing — a connected
-                # account that quietly falls back to a mock id is how a broken
-                # publish goes unnoticed for weeks.
-                m = _append_activity(m, f"Meta real publish failed, fell back to demo: {e}")
-                meta_error = str(e)
+                # A CONNECTED account that fails must NOT be demoted to a mock id. Reporting
+                # MOCK-META-... as success is how a broken publish went unnoticed: the API
+                # said status=success while nothing existed in Ads Manager. Leave Meta
+                # unpublished and let the caller surface the real reason — same contract
+                # the Google branch below already follows.
+                meta_error = getattr(e, "detail", None) or str(e)
+                m = _append_activity(m, f"Meta publish failed: {meta_error}")
+                continue
         elif p == "google" and gads_conn and gads_conn.refresh_token and gads_conn.customer_id:
             try:
                 result = await _launch_google_ad(camp, m, gads_conn, db, workspace_id)
@@ -668,14 +679,19 @@ async def publish_campaign(workspace_id: int, campaign_id: int,
         camp.metrics = m
         db.commit()
         raise HTTPException(status_code=502,
-                            detail=google_error or "Publish failed — nothing was created.")
+                            detail=(meta_error or google_error
+                                    or "Publish failed — nothing was created."))
 
     if not camp.version_group:
         camp.version_group = f"vg-{workspace_id}-{camp.id}"
-    camp.status = "PUBLISHED_DEMO"
     if any(modes.get(p) == "real" for p in succeeded) and camp.meta_campaign_id is None and modes.get("meta") == "real":
         camp.meta_campaign_id = ids.get("meta")
     overall_mode = "real" if all(modes.get(p) == "real" for p in succeeded) else ("mixed" if any(modes.get(p) == "real" for p in succeeded) else "demo")
+    # A genuinely real publish must not be labelled DEMO. This was hardcoded to
+    # PUBLISHED_DEMO, so a live Meta campaign still rendered as "Published (demo) — nothing
+    # was sent to a real ad account", contradicting the REAL pill beside it. Assigned after
+    # overall_mode exists; "mixed" stays DEMO because one platform did not go out for real.
+    camp.status = "PUBLISHED" if overall_mode == "real" else "PUBLISHED_DEMO"
     m["published_at"] = _dt.datetime.utcnow().isoformat()
     m["published_mode"] = overall_mode
     m["published_modes"] = modes
@@ -696,9 +712,10 @@ async def publish_campaign(workspace_id: int, campaign_id: int,
     if demo_names:
         parts.append(f"Published to {' & '.join(demo_names)} in DEMO mode — connect that ad account to publish for real.")
     if meta_error:
-        # A connected account that quietly demos is how a broken publish goes
-        # unnoticed; say exactly what stopped it.
-        parts.append(f"Meta was connected but the real publish failed: {meta_error}")
+        # Meta is now absent from `succeeded` when it fails, so this states plainly that
+        # nothing was created rather than implying a partial result.
+        parts.append(f"Meta was connected but the publish failed, so nothing was created "
+                     f"there: {meta_error}")
     if google_error:
         parts.append(f"Google Ads was connected but the publish failed, so nothing was created "
                      f"there: {google_error}")
@@ -723,7 +740,10 @@ def _append_activity(m: dict, label: str, keep: int = 40) -> dict:
 
 
 def _is_published(camp) -> bool:
-    return (camp.status or "").upper() == "PUBLISHED_DEMO"
+    # Matches PUBLISHED (at least one real platform) and PUBLISHED_DEMO (simulated).
+    # Comparing only to the demo value would leave a real publish editable, letting a
+    # live campaign's strategy be changed after it shipped.
+    return (camp.status or "").upper().startswith("PUBLISHED")
 
 
 @router.post("/{workspace_id}/campaigns/{campaign_id}/platforms")
@@ -1158,6 +1178,86 @@ def seo_run_status(workspace_id: int, pipeline: str = "SEO", db: Session = Depen
     }
 
 
+class PreflightBody(_BaseModel):
+    target_url: str
+
+
+@router.post("/{workspace_id}/seo/preflight")
+async def seo_preflight(workspace_id: int, body: PreflightBody,
+                        db: Session = Depends(database.get_db),
+                        current_user: models.User = Depends(auth.get_current_user)):
+    """Cheap reachability + gate check BEFORE spending a crawl.
+
+    Without this the only feedback loop was: run the pipeline, wait ~40s for Firecrawl and
+    the LLM, then discover the URL served a login page or a host 404. Those pages answer
+    HTTP 200 and score like any other page, so the user got a plausible-looking audit of
+    something that was not their site. One HTTP request up front turns that into an
+    immediate, specific message.
+
+    Deliberately advisory: it returns a verdict, it does not start or block anything. The
+    caller decides, so a slow-but-valid site is never made unauditable by this check.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    import httpx
+    from agents.seo_geo import detect_gate_page
+
+    # normalize_target_url strips whitespace anywhere in the value, not just the ends:
+    # a stored company_url like " ambraneindia.com" otherwise reaches the crawler as
+    # "https:// ambraneindia.com" and is rejected with HTTP 400.
+    from agents.seo_geo import normalize_target_url
+    url = normalize_target_url(body.target_url)
+    if not url:
+        return {"ok": False, "code": "EMPTY_URL",
+                "message": "Enter the website address you want audited."}
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    if not parts.netloc or "." not in parts.netloc:
+        return {"ok": False, "code": "INVALID_URL", "url": url,
+                "message": f"'{body.target_url}' is not a valid website address."}
+
+    # Retried because a single transient failure here is costly: this check gates the
+    # whole audit, so one DNS blip or dropped connection tells the user their perfectly
+    # live site is offline. Transport errors only - an HTTP status is a real answer and
+    # is handled below, so retrying it would just be slow.
+    r = None
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True,
+                                         headers={"User-Agent": "RaftraSEOBot/1.0"}) as c:
+                r = await c.get(url)
+            break
+        except httpx.TransportError as e:
+            last_exc = e
+            if attempt < 2:
+                await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s, then 1s
+        except Exception as e:
+            last_exc = e
+            break  # not a transport problem; retrying won't help
+
+    if r is None:
+        return {"ok": False, "code": "UNREACHABLE", "url": url,
+                "message": f"Could not reach {parts.netloc}. Check the address is correct "
+                           f"and the site is publicly online. ({type(last_exc).__name__})"}
+
+    if r.status_code >= 400:
+        return {"ok": False, "code": "HTTP_ERROR", "url": url, "status": r.status_code,
+                "message": f"{parts.netloc} returned HTTP {r.status_code}. Audit a page that "
+                           "loads successfully."}
+
+    gate = detect_gate_page(str(r.url), r.text, r.text)
+    if gate.get("is_gate"):
+        return {"ok": False, "code": "NOT_PUBLIC", "url": url, "final_url": str(r.url),
+                "markers": gate.get("markers", []),
+                "message": ("That address serves a login, placeholder or 'not deployed' page "
+                            "to visitors, not your real content. Make the site public (or "
+                            "audit a page that is) — auditing this would score the "
+                            "placeholder, not your site.")}
+
+    return {"ok": True, "url": url, "final_url": str(r.url),
+            "redirected": len(r.history) > 0}
+
+
 @router.post("/{workspace_id}/seo/cancel")
 def seo_cancel_run(workspace_id: int, pipeline: str = "SEO", db: Session = Depends(database.get_db),
                    current_user: models.User = Depends(auth.get_current_user)):
@@ -1232,14 +1332,52 @@ def audit_report(workspace_id: int, db: Session = Depends(database.get_db),
     order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
     priority_issues.sort(key=lambda i: order.get(i.get("severity"), 4))
 
+    # The two halves are fetched INDEPENDENTLY (latest SEO row, latest GEO row), so nothing
+    # guarantees they describe the same page or the same run. In practice they diverged
+    # badly: an SEO audit of a Shopify password gate was averaged with a two-week-old GEO
+    # audit of an entirely different site, producing a combined "Overall Health" that
+    # described neither. Detect the mismatch and let the client render them apart.
+    from urllib.parse import urlsplit
+
+    def _host_path(u):
+        p = urlsplit(u or "")
+        return (p.netloc.lower().removeprefix("www."), (p.path or "/").rstrip("/") or "/")
+
+    seo_url = (seo_data or {}).get("target_url")
+    geo_url = (geo_data or {}).get("target_url")
+    mismatch = bool(seo_data and geo_data and _host_path(seo_url) != _host_path(geo_url))
+
+    # Materially different ages mean one half is stale even when the URLs agree.
+    stale_days = None
+    if seo_data and geo_data and seo_data.get("created_at") and geo_data.get("created_at"):
+        try:
+            import datetime as _d
+            a = _d.datetime.fromisoformat(seo_data["created_at"])
+            b = _d.datetime.fromisoformat(geo_data["created_at"])
+            stale_days = round(abs((a - b).total_seconds()) / 86400, 1)
+        except Exception:
+            stale_days = None
+
     return {
         "has_audit": bool(seo_data or geo_data),
         "target_url": target_url,
         "generated_at": generated_at,
-        "overall_health": overall,
+        # A combined score across two different URLs is meaningless arithmetic, so it is
+        # withheld rather than shown as a real number.
+        "overall_health": None if mismatch else overall,
         "seo": seo_data,
         "geo": geo_data,
         "priority_issues": priority_issues,
+        # --- provenance, so the UI can show WHICH page and WHEN for each half ---
+        "seo_target_url": seo_url,
+        "geo_target_url": geo_url,
+        "seo_generated_at": (seo_data or {}).get("created_at"),
+        "geo_generated_at": (geo_data or {}).get("created_at"),
+        "url_mismatch": mismatch,
+        "age_gap_days": stale_days,
+        "stale_half": ("GEO" if (stale_days or 0) >= 1 and seo_data and geo_data
+                       and (seo_data.get("created_at") or "") > (geo_data.get("created_at") or "")
+                       else "SEO" if (stale_days or 0) >= 1 else None),
     }
 
 
@@ -1296,15 +1434,24 @@ def get_seo_audit_by_id(workspace_id: int, audit_id: int, db: Session = Depends(
 @router.delete("/{workspace_id}/seo/audits/{audit_id}")
 def delete_seo_audit(workspace_id: int, audit_id: int, db: Session = Depends(database.get_db),
                      current_user: models.User = Depends(auth.get_current_user)):
-    """Delete one past audit run (from Audit History, or the current report)."""
+    """Delete one past audit run (from Audit History, or the current report).
+
+    Idempotent by design. The client deletes a DAY, which can mean two rows (an SEO id and
+    a GEO id) taken from a report snapshot that may be seconds out of date — a re-run, a
+    prior delete, or a stale open tab all leave it holding an id that no longer exists.
+    404-ing there surfaced "Could not delete: Audit not found" even when the user's intent
+    (that audit should be gone) was already satisfied. DELETE on an absent resource is
+    conventionally a success, so report it as one and say which case it was.
+    """
     _require_workspace(workspace_id, db, current_user)
     row = db.query(models.SEOAudit).filter(models.SEOAudit.id == audit_id,
                                             models.SEOAudit.workspace_id == workspace_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Audit not found")
+        return {"status": "success", "deleted": False,
+                "message": "That audit was already removed."}
     db.delete(row)
     db.commit()
-    return {"status": "success", "message": "Audit deleted."}
+    return {"status": "success", "deleted": True, "message": "Audit deleted."}
 
 
 class RecommendationDecisionBody(_BaseModel):
@@ -1350,34 +1497,75 @@ def set_recommendation_decision(workspace_id: int, audit_id: int, body: Recommen
 @router.get("/{workspace_id}/publishing-queue")
 def publishing_queue(workspace_id: int, db: Session = Depends(database.get_db),
                      current_user: models.User = Depends(auth.get_current_user)):
-    """Every approved/edited recommendation across the latest SEO + GEO audits — the queue
-    of fixes ready to actually apply on the connected platform."""
+    """Approved/edited recommendations from the CURRENT SEO + GEO audits.
+
+    The docstring always said "latest", but the loop ran over every audit ever recorded.
+    Approvals are permanent, so a fix approved weeks ago against a different site kept
+    surfacing here — e.g. "Add a robots.txt" and "Publish an XML sitemap" from a 28 July
+    audit of another domain, both of which the current audit measures as already present.
+    Applying those would write stale fixes, for the wrong site, onto a live platform.
+
+    Three guards now:
+      1. only the latest SEO row and latest GEO row are considered;
+      2. an approval whose finding is absent from that audit is dropped as `resolved` —
+         the issue was fixed or the page changed since it was approved;
+      3. anything whose audit URL differs from the current target is flagged rather than
+         listed silently.
+    """
     _require_workspace(workspace_id, db, current_user)
     rows = (db.query(models.SEOAudit)
               .filter(models.SEOAudit.workspace_id == workspace_id)
               .order_by(models.SEOAudit.created_at.desc()).all())
-    items = []
-    for r in rows:
+
+    current_rows = [r for r in (_latest_pipeline_row(rows, "SEO"),
+                                _latest_pipeline_row(rows, "GEO")) if r is not None]
+    current_url = next(((r.keywords_data or {}).get("target_url") for r in current_rows
+                        if (r.keywords_data or {}).get("target_url")), None)
+
+    def _host_path(u):
+        from urllib.parse import urlsplit
+        p = urlsplit(u or "")
+        return (p.netloc.lower().removeprefix("www."), (p.path or "/").rstrip("/") or "/")
+
+    items, resolved, stale_urls = [], [], set()
+    for r in current_rows:
         kd = r.keywords_data or {}
         decisions = kd.get("decisions") or {}
         audit = kd.get("audit") or {}
         issues = audit.get("priority_issues") or audit.get("top_5_issues") or []
         by_key = {f"{it.get('area')}::{it.get('issue')}": it for it in issues}
+        row_url = kd.get("target_url")
+        off_target = bool(current_url and row_url and
+                          _host_path(row_url) != _host_path(current_url))
+        if off_target:
+            stale_urls.add(row_url)
         for key, d in decisions.items():
             if d.get("decision") not in ("approved", "edited"):
                 continue
-            src = by_key.get(key, {})
-            items.append({
+            src = by_key.get(key)
+            entry = {
                 "audit_id": r.id,
                 "pipeline": kd.get("pipeline"),
-                "target_url": kd.get("target_url"),
-                "area": src.get("area"),
-                "issue": d.get("edited_text") or src.get("issue"),
+                "target_url": row_url,
+                "area": (src or {}).get("area") or key.rsplit("::", 1)[0],
+                "issue": d.get("edited_text") or (src or {}).get("issue") or key.rsplit("::", 1)[-1],
                 "decision": d.get("decision"),
                 "decided_at": d.get("decided_at"),
-            })
+                "off_target": off_target,
+            }
+            # No matching finding in the audit this approval belongs to -> already handled.
+            (items if src else resolved).append(entry)
+
     items.sort(key=lambda x: x.get("decided_at") or "", reverse=True)
-    return {"items": items}
+    resolved.sort(key=lambda x: x.get("decided_at") or "", reverse=True)
+    return {
+        "items": items,
+        "target_url": current_url,
+        # Approved once, but the finding is gone from the current audit. Surfaced separately
+        # so the user can see they were dropped rather than silently losing them.
+        "resolved": resolved,
+        "stale_target_urls": sorted(stale_urls),
+    }
 
 
 # Social posts

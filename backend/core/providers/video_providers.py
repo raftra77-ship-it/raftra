@@ -35,7 +35,18 @@ _SAMPLE_VIDEOS = [
 
 class SampleVideoProvider(VideoProvider):
     """Keyless fallback - returns a random working sample clip so Video Ads always
-    show a (different) video even with no API key configured."""
+    show a (different) video even with no API key configured.
+
+    Every capability is False and that is not an oversight: this provider ignores both the
+    prompt and the image and returns a hardcoded public test clip. It has real motion but
+    zero relationship to the request.
+    """
+
+    supports_prompt_motion = False
+    supports_image_to_video = False
+    supports_negative_prompt = False
+    supports_subject_motion = False
+    supports_duration_control = False
 
     async def generate_video(self, image_url: str, prompt: str, duration: int = 5, **kwargs) -> str:
         return random.choice(_SAMPLE_VIDEOS)

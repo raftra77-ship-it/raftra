@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Search, BarChart3, TrendingUp, Globe, Users, Award, Zap, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
+import { Send, Search, BarChart3, TrendingUp, Globe, Users, Award, Zap, Activity, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -52,15 +52,15 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   const roasBarData = [
     { platform: 'Meta Ads', ROAS: 2.4 },
     { platform: 'Google Ads', ROAS: 3.1 },
-    { platform: 'TikTok', ROAS: 1.8 },
+    { platform: 'YouTube Ads', ROAS: 3.8 },
     { platform: 'Influencers', ROAS: 4.2 },
   ];
 
   const pieData = [
     { name: 'Meta Ads', value: 400 },
     { name: 'Google Ads', value: 300 },
-    { name: 'TikTok', value: 300 },
-    { name: 'LinkedIn', value: 200 },
+    { name: 'YouTube Ads', value: 300 },
+    { name: 'WhatsApp', value: 200 },
   ];
   const pieColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042'];
 
@@ -135,7 +135,7 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} fill="#8884d8" paddingAngle={5} dataKey="value">
-                {pieData.map((_entry, index) => (
+                {pieData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                 ))}
               </Pie>
@@ -392,9 +392,9 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
             
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[
-                { name: '@techguru_sam', platform: 'YouTube', roas: '5.2x', sales: '$12,400' },
-                { name: '@ai_daily', platform: 'TikTok', roas: '3.8x', sales: '$8,100' },
-                { name: '@marv_reviews', platform: 'Instagram', roas: '2.9x', sales: '$4,200' },
+                { name: '@vikram_tech', platform: 'YouTube', roas: '5.2x', sales: '₹95,000' },
+                { name: '@rahul_reviews', platform: 'Instagram', roas: '3.8x', sales: '₹68,000' },
+                { name: '@sneha_lifestyle', platform: 'Instagram', roas: '2.9x', sales: '₹34,000' },
               ].map((creator, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

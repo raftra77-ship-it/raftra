@@ -131,7 +131,23 @@ async def _load_image_bytes(image_url: str) -> bytes:
 
 
 class KenBurnsVideoProvider(VideoProvider):
-    """Turns the generated still into an MP4 with a slow camera move."""
+    """Turns the generated still into an MP4 with a slow camera move.
+
+    Capability flags are deliberately almost all False. This is ffmpeg, not a model: the
+    `prompt` argument is hashed to select one of four zoom/pan presets and its CONTENT is
+    never read. It cannot render subject action, environmental motion or anything a motion
+    prompt describes. Duration is the one real control it has.
+
+    It stays as the free fallback/preview provider — genuinely useful because the clip is
+    always the user's own generated creative — but callers must not send it a motion
+    prompt and expect the motion to appear.
+    """
+
+    supports_prompt_motion = False      # prompt is hashed, never interpreted
+    supports_image_to_video = False     # pans an image; does not animate its contents
+    supports_negative_prompt = False
+    supports_subject_motion = False     # camera movement only
+    supports_duration_control = True
 
     async def generate_video(self, image_url: str, prompt: str, duration: int = 5,
                              ad_ratio: str = "9:16", **kwargs) -> str:

@@ -388,6 +388,24 @@ def gh_authorize(workspace_id: int, db: Session = Depends(database.get_db), curr
     return {"url": gh.build_authorize_url(state)}
 
 
+@router.delete("/github/{workspace_id}")
+def gh_disconnect(workspace_id: int, db: Session = Depends(database.get_db),
+                  current_user: models.User = Depends(auth.get_current_user)):
+    """Drop this workspace's GitHub connection.
+
+    Matches the DELETE shape WordPress and Shopify already use. The stored token is a
+    GitHub OAuth grant the user can also revoke from their GitHub settings; deleting the
+    row here removes our copy and clears the selected repository, so reconnecting starts
+    clean rather than inheriting a stale repo_full_name.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_gh(workspace_id, db)
+    if conn:
+        db.delete(conn)
+        db.commit()
+    return {"status": "success", "message": "GitHub disconnected."}
+
+
 @router.get("/github/callback")
 async def gh_callback(state: str, code: str = None, error: str = None, db: Session = Depends(database.get_db)):
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
@@ -917,6 +935,32 @@ def meta_select_account(workspace_id: int, body: MetaAccountSelect, db: Session 
     conn.ad_account_id = body.ad_account_id.replace("act_", "")
     db.commit()
     return {"status": "success", "ad_account_id": conn.ad_account_id}
+
+
+@router.post("/meta/{workspace_id}/disconnect")
+async def meta_disconnect(workspace_id: int, db: Session = Depends(database.get_db),
+                          current_user: models.User = Depends(auth.get_current_user)):
+    """Drop this workspace's Meta connection.
+
+    Revocation is best-effort: if Meta rejects it (token already expired, network blip) the
+    local row is still deleted, so a workspace is never left holding credentials it cannot
+    use. Deleting the row also clears ad_account_id and page_id, which is what makes
+    reconnecting a genuinely clean start rather than inheriting stale selections.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_meta(workspace_id, db)
+    if not conn:
+        return {"status": "success", "message": "Already disconnected."}
+    if conn.access_token:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.delete(f"{meta.GRAPH}/me/permissions",
+                                    params={"access_token": conn.access_token})
+        except Exception as e:
+            print(f"Meta permission revoke failed (clearing locally anyway): {e}")
+    db.delete(conn)
+    db.commit()
+    return {"status": "success", "message": "Meta Ads disconnected."}
 
 
 @router.post("/meta/{workspace_id}/page")
@@ -2099,6 +2143,32 @@ async def wpcom_callback(state: str, code: str = None, error: str = None,
     conn.app_password = None
     db.commit()
     return RedirectResponse(f"{frontend}/dashboard?wordpress=connected")
+
+
+@router.get("/wordpress/{workspace_id}/pages")
+async def wp_pages(workspace_id: int, db: Session = Depends(database.get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    """Editable Pages on the connected site, for the "which page?" picker.
+
+    apply-seo-fixes has always accepted a page_id, but there was no way to discover one —
+    the UI could only tell the user to "pass a page_id", which is unreachable from a
+    browser. This is the list behind that choice.
+
+    Returns Pages only (not posts): the apply path writes to a page's title and body, and
+    a posts feed has no editable body of its own.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_wp(workspace_id, db)
+    if not conn or not (conn.app_password or conn.access_token) or not conn.site_url:
+        raise HTTPException(status_code=400, detail="Connect WordPress first.")
+    try:
+        pages = await wp.list_pages(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502,
+                            detail=f"Could not list {wp.describe(conn)} pages: {e}")
+    return {"pages": [{"id": p.get("id"), "title": p.get("title"),
+                       "link": p.get("link"), "status": p.get("status")}
+                      for p in (pages or [])]}
 
 
 @router.get("/wordpress/{workspace_id}/revisions")

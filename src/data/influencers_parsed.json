@@ -1,0 +1,1022 @@
+[
+  {
+    "id": "creator_1",
+    "name": "Yogesh Bhatt",
+    "creatorBrand": "Uttarakhand YB Digital",
+    "handle": "@uttarakhandyb.digital",
+    "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Local / City-based",
+    "allNiches": [
+      "Local / City-based"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹3,000",
+    "priceRange": "₹1,000 - ₹3,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "11,700",
+    "avgViews": "20k+ avg",
+    "location": "Rishikesh, Uttarakhand, India.",
+    "email": "uttarakhandybdigital@gmail.com",
+    "phone": "7579176831",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/uttarakhandyb.digital/"
+  },
+  {
+    "id": "creator_2",
+    "name": "Anushka Kaushik",
+    "creatorBrand": "Anushka Kaushik",
+    "handle": "@aanushkaanexttdoorr",
+    "avatar": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Local / City-based, Fashion",
+    "allNiches": [
+      "Local / City-based, Fashion"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹2,000 - ₹6,000",
+    "priceRange": "₹2,000 - ₹6,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "2,023",
+    "avgViews": "1.8M peak",
+    "location": "delhi India",
+    "email": "kaushikanshska@gmail.com",
+    "phone": "9650079111",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/aanushkaanexttdoorr?igsh=em12MHY2c3oyaHJi&utm_source=qr"
+  },
+  {
+    "id": "creator_3",
+    "name": "Arnav Gupta",
+    "creatorBrand": "Musclestroke_art",
+    "handle": "@musclestroke_art",
+    "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Art",
+    "allNiches": [
+      "Art"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹3,000",
+    "priceRange": "₹1,000 - ₹3,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "6,802",
+    "avgViews": "1.1M peak",
+    "location": "New Delhi, India",
+    "email": "musclestroke.art@gmail.com",
+    "phone": "8081317188",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/musclestroke_art?igsh=amM2bWVrbDlzMGhu&utm_source=qr"
+  },
+  {
+    "id": "creator_4",
+    "name": "Charika Mehra",
+    "creatorBrand": "Charika Mehra",
+    "handle": "@charika.mehra",
+    "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Education, Tech, Fashion, Lifestyle, Food",
+    "allNiches": [
+      "Education, Tech, Fashion, Lifestyle, Food"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹400 - ₹5,000",
+    "priceRange": "₹400 - ₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "1,955",
+    "avgViews": "166k avg",
+    "location": "India, Delhi",
+    "email": "charika04girl@gmail.com",
+    "phone": "9582600478",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/charika.mehra?igsh=ZnpxMTR2N2trZnY0&utm_source=qr"
+  },
+  {
+    "id": "creator_5",
+    "name": "Mahi Goyal",
+    "creatorBrand": "@mahhiii_g",
+    "handle": "@mahhiii_g",
+    "avatar": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Lifestyle",
+    "allNiches": [
+      "Lifestyle"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "Can discuss",
+    "priceRange": "Can discuss",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "868",
+    "avgViews": "View Profile",
+    "location": "Delhi, India",
+    "email": "mahigoyal3117@gmail.com",
+    "phone": "7373737449",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/mahhiii_g?igsh=MzA2cWR4bTVuaDh0&utm_source=qr"
+  },
+  {
+    "id": "creator_6",
+    "name": "Malvika",
+    "creatorBrand": "simplymalvika",
+    "handle": "@simplymalvika",
+    "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle, Beauty",
+    "allNiches": [
+      "Fashion, Lifestyle, Beauty"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹200 - ₹1,000",
+    "priceRange": "₹200 - ₹1,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "31,000",
+    "avgViews": "20k avg",
+    "location": "Delhi India",
+    "email": "malvikasiroha@gmail.com",
+    "phone": "7011931715",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/simplymalvika?igsh=MWU4Zjdsazg1bnpzdA%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_7",
+    "name": "Sarthak ghai",
+    "creatorBrand": "Sarthak ghai",
+    "handle": "@sarthak_ghaii",
+    "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fitness, Food",
+    "allNiches": [
+      "Fitness, Food"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹500 - ₹10,000",
+    "priceRange": "₹500 - ₹10,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "2,200",
+    "avgViews": "3k+ avg",
+    "location": "Delhi",
+    "email": "sarthakghai77@gmail.com",
+    "phone": "9711926268",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/sarthak_ghaii?igsh=MXZ1aXN0ejYwanRocA%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_8",
+    "name": "Ankit",
+    "creatorBrand": "Ankit.k.09",
+    "handle": "@ankit.k.09",
+    "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fitness, Lifestyle",
+    "allNiches": [
+      "Fitness, Lifestyle"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹4,000 - ₹25,000",
+    "priceRange": "₹4,000 - ₹25,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "95,000",
+    "avgViews": "93M+ reach",
+    "location": "New Delhi",
+    "email": "ak2303402@gmail.com",
+    "phone": "8882948289",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/ankit.k.09?igsh=MWpuNHVya3V0aThodg%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_9",
+    "name": "Tanya",
+    "creatorBrand": "@whoistanaaa",
+    "handle": "@whoistanaaa",
+    "avatar": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion",
+    "allNiches": [
+      "Fashion"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹2,000 - ₹5,000",
+    "priceRange": "₹2,000 - ₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "6.5k",
+    "avgViews": "500k reach",
+    "location": "Bengaluru",
+    "email": "tanyaghiofficial@gmail.com",
+    "phone": "9416400702",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/whoistanaaa?igsh=MXhqNDRxNmN1YjVm&utm_source=qr"
+  },
+  {
+    "id": "creator_10",
+    "name": "Ananya Bhatia",
+    "creatorBrand": "@ananyaanotpanday",
+    "handle": "@ananyaanotpanday",
+    "avatar": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle",
+    "allNiches": [
+      "Fashion, Lifestyle"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹300 - ₹2,000",
+    "priceRange": "₹300 - ₹2,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "1,667",
+    "avgViews": "10k avg (300k reach)",
+    "location": "India, Faridabad",
+    "email": "ananyabhatia2727@gmail.com",
+    "phone": "8882790870",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/ananyaanotpanday?igsh=MWc0MXk4ZHJ3YTZ5dA=="
+  },
+  {
+    "id": "creator_11",
+    "name": "Ankit kumar",
+    "creatorBrand": "ankren",
+    "handle": "@ankrena",
+    "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Lifestyle, Food, Couple reels",
+    "allNiches": [
+      "Lifestyle, Food, Couple reels"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹5,000 - ₹10,000",
+    "priceRange": "₹5,000 - ₹10,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "4,983",
+    "avgViews": "11.3M reach (3k avg)",
+    "location": "Delhi ( india )",
+    "email": "ankrena0610@gmail.com",
+    "phone": "8368813838",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/ankrena?igsh=bTBodmlsbXh6NG13"
+  },
+  {
+    "id": "creator_12",
+    "name": "Ankita Dwivedi",
+    "creatorBrand": "Yourfirst100K",
+    "handle": "@yourfirst.100k",
+    "avatar": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Education, Tech, AI, financial independence",
+    "allNiches": [
+      "Education, Tech, AI, financial independence"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹2,000 - ₹20,000",
+    "priceRange": "₹2,000 - ₹20,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "10.2k",
+    "avgViews": "27k avg",
+    "location": "Noida, India",
+    "email": "ankitadwivedi302005@gmail.com",
+    "phone": "7982899240",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/yourfirst.100k?igsh=cmZlZHFrZTF0cjBx&utm_source=qr"
+  },
+  {
+    "id": "creator_13",
+    "name": "Aanchal Pandey",
+    "creatorBrand": "Aanchal Pandey",
+    "handle": "@aanchallp",
+    "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle, Food",
+    "allNiches": [
+      "Fashion, Lifestyle, Food"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹350 - ₹2,200",
+    "priceRange": "₹350 - ₹2,200",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "2,705",
+    "avgViews": "View Profile",
+    "location": "New Delhi, India",
+    "email": "contactaanchallp@gmail.com",
+    "phone": "9354034575",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/aanchallp?igsh=MWVheXhraXhpM2pkbg%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_14",
+    "name": "Shreya singh",
+    "creatorBrand": "Creator- Shreya Singh",
+    "handle": "@sh.reyya_26",
+    "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fitness, Fashion, Lifestyle, Food",
+    "allNiches": [
+      "Fitness, Fashion, Lifestyle, Food"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹1,500 - ₹7,000",
+    "priceRange": "₹1,500 - ₹7,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "12,200",
+    "avgViews": "View Profile",
+    "location": "Delhi and India",
+    "email": "shreyasup2667@gmail.com",
+    "phone": "8208649205",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/sh.reyya_26?igsh=NTZoYTZqMHZmdWRw&utm_source=ig_contact_invite"
+  },
+  {
+    "id": "creator_15",
+    "name": "Fanish Kataria",
+    "creatorBrand": "Fanish.x",
+    "handle": "@fanish.x",
+    "avatar": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle, Food",
+    "allNiches": [
+      "Fashion, Lifestyle, Food"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹3,000",
+    "priceRange": "₹1,000 - ₹3,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "4.3k",
+    "avgViews": "20M reach",
+    "location": "Delhi India",
+    "email": "katariafanish@gmail.com",
+    "phone": "9999593499",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/fanish.x?igsh=MWJjZ2g5NXA3dW0yYg%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_16",
+    "name": "Sachin Yadav",
+    "creatorBrand": "Sachin Yadav",
+    "handle": "@sachin_ydv2528",
+    "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fitness, Fashion, Lifestyle",
+    "allNiches": [
+      "Fitness, Fashion, Lifestyle"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹4,000",
+    "priceRange": "₹1,000 - ₹4,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "View Profile",
+    "avgViews": "5k avg",
+    "location": "Noida - India",
+    "email": "sachinwork878@gmail.com",
+    "phone": "8920955969",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/sachin_ydv2528?igsh=aHBxdHpxdjJtbXhq&utm_source=qr"
+  },
+  {
+    "id": "creator_17",
+    "name": "Ishwarya Kaur",
+    "creatorBrand": "Ishwarya_kaur",
+    "handle": "@ishwarya_kaur",
+    "avatar": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Lifestyle",
+    "allNiches": [
+      "Lifestyle"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹500 - ₹4,000",
+    "priceRange": "₹500 - ₹4,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "24.8k",
+    "avgViews": "10k avg",
+    "location": "Delhi, India",
+    "email": "Ishwaryakaur2006@gmail.com",
+    "phone": "8586814950",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/ishwarya_kaur?igsh=MTQ0enFzNmc1d2NldQ=="
+  },
+  {
+    "id": "creator_18",
+    "name": "Anmol Khanna",
+    "creatorBrand": "_ak_vlogs",
+    "handle": "@_ak_vlogs",
+    "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Entertainment",
+    "allNiches": [
+      "Entertainment"
+    ],
+    "category": "Macro",
+    "isUGC": true,
+    "expectedPrice": "Can discuss",
+    "priceRange": "Can discuss",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "2,25,000",
+    "avgViews": "400k reach",
+    "location": "Delhi ,India",
+    "email": "anmolkhanna2345@gmail.com",
+    "phone": "9560988192",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/_ak_vlogs?igsh=MWRtYzFweDN2d3U4Ng=="
+  },
+  {
+    "id": "creator_19",
+    "name": "Drishti Rawat",
+    "creatorBrand": "@drishtiid06",
+    "handle": "@drishtiid06",
+    "avatar": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Couple content, content creator",
+    "allNiches": [
+      "Couple content, content creator"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹500 - ₹5,000",
+    "priceRange": "₹500 - ₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "2,380",
+    "avgViews": "100k+ avg (17.8M reach)",
+    "location": "Ghaziabad, India",
+    "email": "rawatdrishti17@gmail.com",
+    "phone": "+91 95993 96669",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/drishtiid06?igsh=b2Y5YmZjMWxxYW1h"
+  },
+  {
+    "id": "creator_20",
+    "name": "Roshan sharma",
+    "creatorBrand": "@roshansharmaaaa",
+    "handle": "@roshansharmaaaa",
+    "avatar": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle",
+    "allNiches": [
+      "Fashion, Lifestyle"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹800 - ₹4,800",
+    "priceRange": "₹800 - ₹4,800",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "1,560",
+    "avgViews": "71k avg",
+    "location": "Chandigarh india",
+    "email": "roshannnnn121@gmail.com",
+    "phone": "8264672554",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/roshansharmaaaa?igsh=dnYzMnVwcnF4dWs2"
+  },
+  {
+    "id": "creator_21",
+    "name": "Meenal Shukla",
+    "creatorBrand": "Meenal_shukla8",
+    "handle": "@meenal_shukla8",
+    "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fitness, Fashion, Lifestyle",
+    "allNiches": [
+      "Fitness, Fashion, Lifestyle"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹10,000 - ₹80,000",
+    "priceRange": "₹10,000 - ₹80,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "81,000",
+    "avgViews": "500k avg",
+    "location": "Pune ( india)",
+    "email": "meenalshukla8@gmail.com",
+    "phone": "8956579215",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "www.Instagram.com/meenal_shukla8"
+  },
+  {
+    "id": "creator_22",
+    "name": "Pritika",
+    "creatorBrand": "Content creator",
+    "handle": "@_pritika001",
+    "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle, Beauty",
+    "allNiches": [
+      "Fashion, Lifestyle, Beauty"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹500 - ₹5,000",
+    "priceRange": "₹500 - ₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "5,600",
+    "avgViews": "100k+ avg (700k reach)",
+    "location": "Chandigarh, India",
+    "email": "pritika030302@gmail.com",
+    "phone": "7876420053",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/_pritika001?igsh=aTB4ZWgzZmowNGdm&utm_source=qr"
+  },
+  {
+    "id": "creator_23",
+    "name": "Rubani anand",
+    "creatorBrand": "@rubani.anand",
+    "handle": "@rubani.anand",
+    "avatar": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Local / City-based, Fashion, Lifestyle, Food",
+    "allNiches": [
+      "Local / City-based, Fashion, Lifestyle, Food"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹8,000",
+    "priceRange": "₹1,000 - ₹8,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "7,500",
+    "avgViews": "5k-6k avg (400k reach)",
+    "location": "New delhi",
+    "email": "rubanianand1812@gmail.com",
+    "phone": "8929366651",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/rubani.anand?igsh=b2VyMXUzZmN1MHJ3"
+  },
+  {
+    "id": "creator_24",
+    "name": "Aayush",
+    "creatorBrand": "aayushhyrrr",
+    "handle": "@aayushhyrrr",
+    "avatar": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Lifestyle",
+    "allNiches": [
+      "Lifestyle"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹5,000",
+    "priceRange": "₹1,000 - ₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "6.2k",
+    "avgViews": "60k avg",
+    "location": "Rohtak, Haryana, India",
+    "email": "bhatiaaayush65@gmail.com",
+    "phone": "8053895116",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/aayushhyrrr?igsh=MWp6cjd6M2ZjMDE5bQ%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_25",
+    "name": "samaira rao",
+    "creatorBrand": "samaira rao - creator",
+    "handle": "@samairaa.r",
+    "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle",
+    "allNiches": [
+      "Fashion, Lifestyle"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹500 - ₹1,000",
+    "priceRange": "₹500 - ₹1,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "18.8k",
+    "avgViews": "2.5M peak (170k reach)",
+    "location": "gurgaon haryana india",
+    "email": "samrao112@yahoo.com",
+    "phone": "7065557556",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/samairaa.r?igsh=cGl3bWgwNHA0Mmpx"
+  },
+  {
+    "id": "creator_26",
+    "name": "Damia Arya",
+    "creatorBrand": "Damia Arya",
+    "handle": "@damiaarya",
+    "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fitness, Fashion, Lifestyle, Food",
+    "allNiches": [
+      "Fitness, Fashion, Lifestyle, Food"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹5,000",
+    "priceRange": "₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "28,000",
+    "avgViews": "View Profile",
+    "location": "East Delhi India",
+    "email": "damiaarya19@gmail.com",
+    "phone": "9810584263",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/damiaaryaa/"
+  },
+  {
+    "id": "creator_27",
+    "name": "Ananay Gupta",
+    "creatorBrand": "ananayguptaa",
+    "handle": "@ananayguptaa",
+    "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Micro series / Drama / looksmaxing",
+    "allNiches": [
+      "Micro series / Drama / looksmaxing"
+    ],
+    "category": "Macro",
+    "isUGC": true,
+    "expectedPrice": "₹5,000 - ₹240,000",
+    "priceRange": "₹5,000 - ₹240,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "1,01,545",
+    "avgViews": "3.1M reach",
+    "location": "Delhi, India",
+    "email": "ananaygupta1001@gmail.com",
+    "phone": "7303881165",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/ananayguptaa?utm_source=qr"
+  },
+  {
+    "id": "creator_28",
+    "name": "yogita",
+    "creatorBrand": "yogita",
+    "handle": "@yogitacasm",
+    "avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion",
+    "allNiches": [
+      "Fashion"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹800 - ₹3,800",
+    "priceRange": "₹800 - ₹3,800",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "6,900",
+    "avgViews": "50k-100k avg",
+    "location": "delhi,india",
+    "email": "yogitatannu9667@gmail.com",
+    "phone": "‎⁨‪+91 95996 86471‬⁩",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/yogitacasm?igsh=NzZyN2hkOWVoZThs&utm_source=qr"
+  },
+  {
+    "id": "creator_29",
+    "name": "Shiv kohli",
+    "creatorBrand": "Shiv kohli",
+    "handle": "@shiv._.kohli",
+    "avatar": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Fashion, Lifestyle",
+    "allNiches": [
+      "Fashion, Lifestyle"
+    ],
+    "category": "Nano",
+    "isUGC": true,
+    "expectedPrice": "₹3,000 - ₹12,000",
+    "priceRange": "₹3,000 - ₹12,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "View Profile",
+    "avgViews": "View Profile",
+    "location": "Chandigarh, India",
+    "email": "shivkohli301@gmail.com",
+    "phone": "9149438422",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/shiv._.kohli?igsh=MThxeGl0MW0yZHd1dQ%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_30",
+    "name": "Bristi Nandi",
+    "creatorBrand": "Bristi Nandi",
+    "handle": "@bristinandi31",
+    "avatar": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Entertainment & Growth",
+    "allNiches": [
+      "Entertainment & Growth"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹500 - ₹2,500",
+    "priceRange": "₹500 - ₹2,500",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "12,400",
+    "avgViews": "10k+ avg",
+    "location": "Kolkata & India",
+    "email": "bristinandi333@gmail.com",
+    "phone": "8918925923",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 25,
+    "recentWorks": [
+      "D2C Brand Collab"
+    ],
+    "profileLink": "https://www.instagram.com/bristinandi31?igsh=MWQ5eGptNnliZGs2Zw=="
+  }
+]

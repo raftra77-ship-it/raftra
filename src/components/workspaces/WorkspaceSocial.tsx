@@ -1,64 +1,262 @@
 import React, { useState } from 'react';
-import { Activity, Users, MessageCircle, Heart, Zap, Sparkles, UserCheck, ShieldCheck, CheckCircle2, Briefcase, TrendingUp, Search, Award, FileText } from 'lucide-react';
+import { 
+  Activity, Users, MessageCircle, Heart, Zap, Sparkles, UserCheck, 
+  ShieldCheck, CheckCircle2, Briefcase, TrendingUp, Search, 
+  Bot, DollarSign, Clock, ChevronRight, Send
+} from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 export interface SocialPostItem {
   id: string;
-  platform: 'Twitter' | 'LinkedIn' | 'Instagram';
+  platform: 'Instagram' | 'Facebook' | 'YouTube';
   caption: string;
   scheduledFor: string;
   status: 'draft' | 'scheduled' | 'published';
 }
 
 interface WorkspaceSocialProps {
-  posts: SocialPostItem[];
-  onOpenReview: (itemId: string) => void;
-  onComposePost: (caption: string, platform: 'Twitter' | 'LinkedIn' | 'Instagram') => void;
+  posts?: SocialPostItem[];
+  onOpenReview?: (itemId: string) => void;
+  onComposePost?: (caption: string, platform: 'Instagram' | 'Facebook' | 'YouTube') => void;
+}
+
+interface EnquiryItem {
+  id: string;
+  specialistTitle: string;
+  price: string;
+  name: string;
+  email: string;
+  phone: string;
+  notes: string;
+  createdAt: string;
 }
 
 export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
+  const [selectedSpecialistIndex, setSelectedSpecialistIndex] = useState<number>(0);
   
-  const [activeAgents, setActiveAgents] = useState<string[]>([]);
-  
-  // Hiring state
-  const [hiringManager, setHiringManager] = useState<{id: string, name: string, basePrice: number} | null>(null);
-  const [hirePrice, setHirePrice] = useState('');
+  // Enquiry Modal state
+  const [enquirySpecialist, setEnquirySpecialist] = useState<{id: string, name: string, price: string, basePrice: number} | null>(null);
+  const [enquiryForm, setEnquiryForm] = useState({ name: '', email: '', phone: '', notes: '' });
+  const [enquiriesList, setEnquiriesList] = useState<EnquiryItem[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 5000);
   };
-  
-  // States for toggles inside profiles
-  const [alexToggles, setAlexToggles] = useState({ planner: true, dm: false, funny: true });
-  const [sarahToggles, setSarahToggles] = useState({ planner: true, leadDm: true, thoughtLeadership: false });
-  const [maxToggles, setMaxToggles] = useState({ supportDm: true, faq: true, spam: true });
 
-  const handleDeploy = (agentId: string) => {
-    setActiveAgents(prev => prev.includes(agentId) ? prev.filter(a => a !== agentId) : [...prev, agentId]);
+  // Specialist Roles Data
+  const specialistRoles = [
+    {
+      id: 'social',
+      title: 'Social Media Manager',
+      price: 'Starting from ₹25,000/month',
+      basePrice: 25000,
+      icon: Share2Icon,
+      color: '#7C75FF',
+      automates: [
+        'AI Content Ideas',
+        'Caption Generation',
+        'Hashtags',
+        'Content Calendar',
+        'Scheduling',
+        'Analytics',
+        'Performance Reports'
+      ],
+      specialistDoes: [
+        'Final Content Strategy',
+        'Brand Communication',
+        'Community Management',
+        'Trend-based Decisions',
+        'High-level Campaign Planning'
+      ]
+    },
+    {
+      id: 'seo',
+      title: 'SEO & GEO Specialist',
+      price: 'Starting from ₹20,000/month',
+      basePrice: 20000,
+      icon: Search,
+      color: '#00E676',
+      automates: [
+        'Website Audit',
+        'GEO Audit',
+        'Keyword Research',
+        'Competitor Analysis',
+        'Blog Generation',
+        'Meta Tags',
+        'Schema',
+        'Internal Linking',
+        'AI Recommendations',
+        'One-click Publishing'
+      ],
+      specialistDoes: [
+        'Approve SEO Strategy',
+        'Advanced Technical SEO',
+        'Backlink Outreach',
+        'Digital PR',
+        'Content Planning'
+      ]
+    },
+    {
+      id: 'paid_ads',
+      title: 'Paid Ads Specialist',
+      price: 'Starting from ₹20,000/month',
+      basePrice: 20000,
+      icon: TrendingUp,
+      color: '#FFBD2E',
+      automates: [
+        'Campaign Suggestions',
+        'Audience Suggestions',
+        'Budget Recommendations',
+        'Creative Generation',
+        'Ad Publishing',
+        'Performance Analytics',
+        'Optimization Recommendations'
+      ],
+      specialistDoes: [
+        'Business Strategy',
+        'Scaling Decisions',
+        'Manual Optimization',
+        'Budget Approval',
+        'New Market Expansion'
+      ]
+    },
+    {
+      id: 'influencer',
+      title: 'Influencer Campaign Manager',
+      price: 'Starting from ₹20,000/month',
+      basePrice: 20000,
+      icon: Users,
+      color: '#FF5296',
+      automates: [
+        'Creator Discovery',
+        'Fake Follower Detection',
+        'Brand Matching',
+        'Campaign Tracking',
+        'Performance Analytics'
+      ],
+      specialistDoes: [
+        'Negotiation',
+        'Pricing',
+        'Relationship Management',
+        'Campaign Coordination'
+      ]
+    },
+    {
+      id: 'cro',
+      title: 'CRO Specialist',
+      price: 'Starting from ₹20,000/project',
+      basePrice: 20000,
+      icon: Activity,
+      color: '#EE82EE',
+      automates: [
+        'Funnel Analytics',
+        'Heatmap Insights (when integrated)',
+        'AI Recommendations',
+        'Landing Page Suggestions'
+      ],
+      specialistDoes: [
+        'Conversion Strategy',
+        'Experiment Design',
+        'A/B Testing Decisions',
+        'UX Improvements'
+      ]
+    }
+  ];
+
+  const currentSpecialist = specialistRoles[selectedSpecialistIndex];
+
+  const handleOpenEnquiry = (role: { id: string; title: string; price: string; basePrice: number }) => {
+    setEnquirySpecialist({ id: role.id, name: role.title, price: role.price, basePrice: role.basePrice });
+    setEnquiryForm({ name: '', email: '', phone: '', notes: '' });
   };
 
-  const isDeployed = (agentId: string) => activeAgents.includes(agentId);
+  const handleSubmitEnquiry = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enquirySpecialist) return;
+    if (!enquiryForm.name || !enquiryForm.email || !enquiryForm.phone) {
+      showToast('Please fill in your name, email, and phone number.');
+      return;
+    }
+
+    const newEnquiry: EnquiryItem = {
+      id: `enq_${Date.now()}`,
+      specialistTitle: enquirySpecialist.name,
+      price: enquirySpecialist.price,
+      name: enquiryForm.name,
+      email: enquiryForm.email,
+      phone: enquiryForm.phone,
+      notes: enquiryForm.notes,
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setEnquiriesList(prev => [newEnquiry, ...prev]);
+
+    // Background email dispatch, so the enquiry actually reaches someone rather than
+    // living only in this component's state until the page is refreshed.
+    fetch('https://formsubmit.co/ajax/raftra.77@gmail.com', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        _subject: `🚨 NEW SPECIALIST HIRE REQUEST: ${enquirySpecialist.name}`,
+        specialist_role: enquirySpecialist.name,
+        package_price: enquirySpecialist.price,
+        client_name: enquiryForm.name,
+        client_email: enquiryForm.email,
+        client_phone: enquiryForm.phone,
+        client_notes: enquiryForm.notes || 'N/A',
+        target_whatsapp_number: '+91 9650271859',
+        submitted_at: new Date().toLocaleString()
+      })
+    }).catch(() => {});
+
+    // Background notification dispatch (no browser tab / WhatsApp redirect).
+    fetch('/api/workspaces/social/enquiry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        specialist_role: enquirySpecialist.name,
+        package_price: enquirySpecialist.price,
+        client_name: enquiryForm.name,
+        client_email: enquiryForm.email,
+        client_phone: enquiryForm.phone,
+        client_notes: enquiryForm.notes || 'N/A'
+      })
+    }).catch(() => {});
+
+    showToast(`ENQUIRY SUBMITTED SUCCESSFULLY!\nEnquiry details sent directly to raftra.77@gmail.com & WhatsApp (+91 9650271859).\nOur team will get in touch shortly.`);
+    setEnquirySpecialist(null);
+    setEnquiryForm({ name: '', email: '', phone: '', notes: '' });
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '30px', paddingBottom: '40px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '36px', paddingBottom: '40px' }}>
       
-      <div>
-        <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Briefcase size={24} color="var(--primary)" /> Social Media Manager Hub
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Hire experienced human Social Media Managers. Raftra AI supports both you and your manager with powerful workflow automations.
-        </p>
+      {/* 1. PAGE HEADER */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(124,117,255,0.12)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '12px' }}>
+            <ShieldCheck size={14} color="#7C75FF" />
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#7C75FF', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Raftra Verified Network
+            </span>
+          </div>
+          <h2 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', margin: '0 0 8px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            Social Hub & Verified Specialist Operations
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '15px', maxWidth: '800px', margin: 0, lineHeight: 1.5 }}>
+            Raftra automates 60% – 80% of repetitive marketing tasks while verified specialists operate directly inside your Raftra workspace to drive strategy and decisions.
+          </p>
+        </div>
       </div>
 
-      {/* 1. TOP SECTION: Social Presence & Analytics */}
+      {/* 2. BRAND SOCIAL PRESENCE ANALYTICS */}
       <div>
-        <h3 style={{ fontSize: '16px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
-          <Activity size={18} color="var(--success)" /> Brand Social Presence
+        <h3 style={{ fontSize: '15px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
+          <Activity size={18} color="var(--success)" /> Live Brand Social Performance
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
           
           <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
@@ -103,330 +301,424 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
       </div>
 
-      <div style={{ height: '1px', background: 'var(--border)', margin: '10px 0' }} />
-
-      {/* 2. BOTTOM SECTION: Hire Human Managers & Assign AI */}
-      <div>
-        <h3 style={{ fontSize: '18px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '20px' }}>
-          <Users size={20} color="var(--primary)" /> Hire a Manager & Configure AI Support
-        </h3>
+      {/* 3. HERO POSITIONING CARD: HIRE A RAFTRA SPECIALIST */}
+      <div className="glow-card" style={{ padding: '32px', background: 'linear-gradient(135deg, rgba(124,117,255,0.1) 0%, rgba(10,10,14,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(124,117,255,0.2) 0%, transparent 70%)', pointerEvents: 'none' }} />
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
-          
-          {/* PROFILE 1: Alex */}
-          <div className="glow-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', border: isDeployed('alex') ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <img src="https://ui-avatars.com/api/?name=Alex+Carter&background=FF6B6B&color=fff&size=56" alt="Alex" style={{ borderRadius: '50%' }} />
-              <div>
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Alex Carter <CheckCircle2 size={12} color="var(--success)" /></h4>
-                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>Gen-Z & Lifestyle Expert</div>
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <Award size={14} color="var(--accent)" /> <b>Experience:</b> 4 Years
-              </div>
-              <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Gymshark, RedBull, H&M
-              </div>
-            </div>
-            
-            <h5 style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sparkles size={12} /> ENABLE RAFTRA AI SUPPORT:
-            </h5>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <Search size={14} color="var(--primary)" /> Trend & Website Scraper
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={alexToggles.planner} onChange={e => setAlexToggles(p => ({...p, planner: e.target.checked}))} disabled={isDeployed('alex')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <MessageCircle size={14} color="var(--primary)" /> Auto DM Responses
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={alexToggles.dm} onChange={e => setAlexToggles(p => ({...p, dm: e.target.checked}))} disabled={isDeployed('alex')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <Zap size={14} color="var(--primary)" /> Smart Commenting (Witty)
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={alexToggles.funny} onChange={e => setAlexToggles(p => ({...p, funny: e.target.checked}))} disabled={isDeployed('alex')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(255,255,255,0.06)', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <Briefcase size={14} color="#7C75FF" />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>Hire a Raftra Specialist</span>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', marginBottom: '8px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Monthly Retainer:</span>
-              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>$400<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: 'var(--success)', padding: '4px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={13} /> Verified Specialists
+              </span>
             </div>
-
-            <GlowButton 
-              variant="glow" 
-              onClick={() => { if (!isDeployed('alex')) setHiringManager({id: 'alex', name: 'Alex Carter', basePrice: 400}); }}
-              style={{ marginTop: '16px', padding: '12px', width: '100%', background: isDeployed('alex') ? 'rgba(0,230,118,0.1)' : '', borderColor: isDeployed('alex') ? 'var(--success)' : '', color: isDeployed('alex') ? 'var(--success)' : '' }}
-            >
-              {isDeployed('alex') ? <><CheckCircle2 size={16} style={{marginRight: '8px'}} /> Hire Request Sent</> : 'Send Hire Request & Enable AI'}
-            </GlowButton>
           </div>
 
-          {/* PROFILE 2: Sarah */}
-          <div className="glow-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', border: isDeployed('sarah') ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <img src="https://ui-avatars.com/api/?name=Sarah+Jenkins&background=4facfe&color=fff&size=56" alt="Sarah" style={{ borderRadius: '50%' }} />
-              <div>
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Sarah Jenkins <CheckCircle2 size={12} color="var(--success)" /></h4>
-                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>B2B & Corporate Strategist</div>
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <Award size={14} color="var(--accent)" /> <b>Experience:</b> 7 Years
-              </div>
-              <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Salesforce, Stripe, IBM
-              </div>
-            </div>
-            
-            <h5 style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sparkles size={12} /> ENABLE RAFTRA AI SUPPORT:
-            </h5>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <Search size={14} color="var(--primary)" /> B2B Knowledge Scraper
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={sarahToggles.planner} onChange={e => setSarahToggles(p => ({...p, planner: e.target.checked}))} disabled={isDeployed('sarah')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <UserCheck size={14} color="var(--primary)" /> Lead Gen Auto DMs
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={sarahToggles.leadDm} onChange={e => setSarahToggles(p => ({...p, leadDm: e.target.checked}))} disabled={isDeployed('sarah')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <Briefcase size={14} color="var(--primary)" /> Professional Commenting
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={sarahToggles.thoughtLeadership} onChange={e => setSarahToggles(p => ({...p, thoughtLeadership: e.target.checked}))} disabled={isDeployed('sarah')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', marginBottom: '8px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Monthly Retainer:</span>
-              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>$1,200<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
-            </div>
-
-            <GlowButton 
-              variant="glow" 
-              onClick={() => { if (!isDeployed('sarah')) setHiringManager({id: 'sarah', name: 'Sarah Jenkins', basePrice: 1200}); }}
-              style={{ marginTop: '16px', padding: '12px', width: '100%', background: isDeployed('sarah') ? 'rgba(0,230,118,0.1)' : '', borderColor: isDeployed('sarah') ? 'var(--success)' : '', color: isDeployed('sarah') ? 'var(--success)' : '' }}
-            >
-              {isDeployed('sarah') ? <><CheckCircle2 size={16} style={{marginRight: '8px'}} /> Hire Request Sent</> : 'Send Hire Request & Enable AI'}
-            </GlowButton>
+          <div>
+            <h3 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 12px 0', lineHeight: 1.3 }}>
+              Need expert assistance? Hire a Raftra Verified Specialist who works inside Raftra, not outside it.
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: '0 0 16px 0', maxWidth: '900px' }}>
+              Unlike traditional agencies, our specialists don't spend hours on repetitive tasks. Raftra automates audits, reporting, content generation, campaign monitoring, publishing, analytics, and recommendations—allowing specialists to focus on strategy and business growth.
+            </p>
           </div>
 
-          {/* PROFILE 3: Max */}
-          <div className="glow-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', border: isDeployed('max') ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <img src="https://ui-avatars.com/api/?name=Max+Rivera&background=43e97b&color=111&size=56" alt="Max" style={{ borderRadius: '50%' }} />
-              <div>
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>Max Rivera <CheckCircle2 size={12} color="var(--success)" /></h4>
-                <div style={{ fontSize: '12px', color: 'var(--primary)' }}>Community Manager</div>
-              </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>The result?</span>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{ background: 'rgba(124,117,255,0.2)', color: '#7C75FF', border: '1px solid rgba(124,117,255,0.3)', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <Zap size={13} /> Faster execution
+              </span>
+              <span style={{ background: 'rgba(0,230,118,0.2)', color: 'var(--success)', border: '1px solid rgba(0,230,118,0.3)', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <DollarSign size={13} /> Lower costs
+              </span>
+              <span style={{ background: 'rgba(238,130,238,0.2)', color: 'violet', border: '1px solid rgba(238,130,238,0.3)', padding: '6px 14px', borderRadius: '100px', fontSize: '13px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <TrendingUp size={13} /> Better outcomes
+              </span>
             </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <Award size={14} color="var(--accent)" /> <b>Experience:</b> 3 Years
-              </div>
-              <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <FileText size={14} color="var(--accent)" /> <b>Recent Works:</b> Discord, Reddit, Web3 Brands
-              </div>
-            </div>
-            
-            <h5 style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sparkles size={12} /> ENABLE RAFTRA AI SUPPORT:
-            </h5>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <MessageCircle size={14} color="var(--primary)" /> Support Auto DMs
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={maxToggles.supportDm} onChange={e => setMaxToggles(p => ({...p, supportDm: e.target.checked}))} disabled={isDeployed('max')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <Zap size={14} color="var(--primary)" /> FAQ Commenting
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={maxToggles.faq} onChange={e => setMaxToggles(p => ({...p, faq: e.target.checked}))} disabled={isDeployed('max')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px' }}>
-                  <ShieldCheck size={14} color="var(--primary)" /> Auto-Spam Deletion
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={maxToggles.spam} onChange={e => setMaxToggles(p => ({...p, spam: e.target.checked}))} disabled={isDeployed('max')} />
-                  <span className="slider"></span>
-                </label>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', marginBottom: '8px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Monthly Retainer:</span>
-              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>$650<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>/mo</span></span>
-            </div>
-
-            <GlowButton 
-              variant="glow" 
-              onClick={() => { if (!isDeployed('max')) setHiringManager({id: 'max', name: 'Max Rivera', basePrice: 650}); }}
-              style={{ marginTop: '16px', padding: '12px', width: '100%', background: isDeployed('max') ? 'rgba(0,230,118,0.1)' : '', borderColor: isDeployed('max') ? 'var(--success)' : '', color: isDeployed('max') ? 'var(--success)' : '' }}
-            >
-              {isDeployed('max') ? <><CheckCircle2 size={16} style={{marginRight: '8px'}} /> Hire Request Sent</> : 'Send Hire Request & Enable AI'}
-            </GlowButton>
           </div>
-
         </div>
       </div>
 
-      {/* Hiring Deal Finalization Modal */}
-      {hiringManager && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div className="glow-card" style={{ width: '450px', background: '#0a0a0c', padding: '30px', position: 'relative' }}>
-            <button onClick={() => {setHiringManager(null); setHirePrice('');}} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '24px' }}>&times;</button>
-            
-            <h3 style={{ fontSize: '20px', margin: '0 0 16px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Hire {hiringManager.name}
-            </h3>
-            
-            <div style={{ background: 'rgba(255, 171, 0, 0.1)', border: '1px solid rgba(255, 171, 0, 0.2)', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '12px', color: 'var(--warning)', lineHeight: '1.4' }}>
-              <strong>RAFTRA AI COMPLIANCE:</strong> All manager hires are securely processed through Raftra AI. A standard 10% platform commission applies to the final negotiated retainer.
-            </div>
+      {/* 4. SPECIALIST ROLES BREAKDOWN (WHAT RAFTRA AUTOMATES vs WHAT SPECIALIST DOES) */}
+      <div>
+        <div style={{ marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0' }}>
+            Choose Your Raftra Specialist
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
+            Every specialist works seamlessly inside Raftra's AI infrastructure with clear division of labor.
+          </p>
+        </div>
 
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Final Negotiated Monthly Retainer ($)</label>
-              <input
-                type="number"
-                placeholder={`e.g. ${hiringManager.basePrice}`}
-                value={hirePrice}
-                onChange={e => setHirePrice(e.target.value)}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--primary)', borderRadius: '8px', color: '#fff', outline: 'none', fontSize: '16px' }}
-              />
-            </div>
+        {/* Role Selector Tabs */}
+        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '20px' }}>
+          {specialistRoles.map((role, idx) => {
+            const Icon = role.icon;
+            const isSelected = selectedSpecialistIndex === idx;
+            return (
+              <button
+                key={role.id}
+                onClick={() => setSelectedSpecialistIndex(idx)}
+                style={{
+                  background: isSelected ? 'rgba(124,117,255,0.2)' : 'rgba(255,255,255,0.03)',
+                  border: isSelected ? '1px solid #7C75FF' : '1px solid var(--border)',
+                  borderRadius: '12px',
+                  padding: '12px 18px',
+                  color: isSelected ? '#fff' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Icon size={16} color={isSelected ? role.color : 'var(--text-muted)'} />
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: '14px', fontWeight: isSelected ? 600 : 500 }}>{role.title}</div>
+                  <div style={{ fontSize: '11px', color: isSelected ? '#7C75FF' : 'var(--text-muted)' }}>{role.price}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
 
-            {hirePrice && !isNaN(Number(hirePrice)) && (
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Total Retainer</span>
-                  <span style={{ color: '#fff' }}>${parseFloat(hirePrice).toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Raftra AI Fee (10%)</span>
-                  <span style={{ color: 'var(--primary)' }}>${(parseFloat(hirePrice) * 0.1).toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', fontSize: '14px', fontWeight: 600 }}>
-                  <span style={{ color: '#fff' }}>Manager Payout (90%)</span>
-                  <span style={{ color: 'var(--success)' }}>${(parseFloat(hirePrice) * 0.9).toFixed(2)}</span>
-                </div>
+        {/* Selected Specialist Active Card */}
+        <div className="glow-card" style={{ padding: '32px', background: '#0d0d12', border: `1px solid ${currentSpecialist.color}40`, borderRadius: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '28px', borderBottom: '1px solid var(--border)', paddingBottom: '20px' }}>
+            <div>
+              <div style={{ fontSize: '12px', color: currentSpecialist.color, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '4px' }}>
+                SPECIALIST DIVISION OF LABOR
               </div>
-            )}
+              <h4 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>
+                {currentSpecialist.title}
+              </h4>
+              <div style={{ fontSize: '16px', color: 'var(--success)', fontWeight: 600 }}>
+                {currentSpecialist.price}
+              </div>
+            </div>
 
             <GlowButton 
-              variant="glow" 
-              onClick={() => {
-                if (!hirePrice || isNaN(Number(hirePrice))) return;
-                showToast(`SUCCESS! Deal Locked.\n$${(parseFloat(hirePrice) * 0.1).toFixed(2)} credited to Raftra AI.\n$${(parseFloat(hirePrice) * 0.9).toFixed(2)} escrowed for ${hiringManager.name}.\nNotification sent.`);
-                handleDeploy(hiringManager.id);
-                setHiringManager(null);
-                setHirePrice('');
-              }} 
-              style={{ width: '100%', padding: '14px' }}
+              variant="glow"
+              onClick={() => handleOpenEnquiry({ id: currentSpecialist.id, title: currentSpecialist.title, price: currentSpecialist.price, basePrice: currentSpecialist.basePrice })}
+              style={{ padding: '12px 24px' }}
             >
-              Lock Deal & Send Notification
+              Hire {currentSpecialist.title}
             </GlowButton>
+          </div>
+
+          {/* 2-Column Comparison Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+            
+            {/* Column 1: What Raftra Automates */}
+            <div style={{ background: 'rgba(90,82,255,0.05)', border: '1px solid rgba(90,82,255,0.15)', borderRadius: '14px', padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ width: '32px', height: '32px', background: 'rgba(90,82,255,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Bot size={18} color="#7C75FF" />
+                </div>
+                <div>
+                  <h5 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 600 }}>What Raftra Automates</h5>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>60% – 80% automated repetitive work</span>
+                </div>
+              </div>
+
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {currentSpecialist.automates.map((item, idx) => (
+                  <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#e0e0e0' }}>
+                    <CheckCircle2 size={16} color="#7C75FF" style={{ flexShrink: 0 }} />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Column 2: What the Specialist Does */}
+            <div style={{ background: 'rgba(0,230,118,0.05)', border: '1px solid rgba(0,230,118,0.15)', borderRadius: '14px', padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ width: '32px', height: '32px', background: 'rgba(0,230,118,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserCheck size={18} color="var(--success)" />
+                </div>
+                <div>
+                  <h5 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 600 }}>What the Specialist Does</h5>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Strategy, creativity & business decisions</span>
+                </div>
+              </div>
+
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {currentSpecialist.specialistDoes.map((item, idx) => (
+                  <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#e0e0e0' }}>
+                    <ChevronRight size={16} color="var(--success)" style={{ flexShrink: 0 }} />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      {/* 5. WHY HIRE THROUGH RAFTRA? SECTION WITH IMPROVED COLORS, SPACING & PADDING */}
+      <div className="glow-card" style={{ padding: '36px 32px', background: 'linear-gradient(180deg, #0f0f18 0%, #08080d 100%)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(124,117,255,0.15)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '14px' }}>
+            <Zap size={14} color="#7C75FF" />
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#ffffff', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Raftra Advantage
+            </span>
+          </div>
+          <h3 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', color: '#ffffff', margin: '0 0 10px 0', fontWeight: 700 }}>
+            Why Hire Through Raftra?
+          </h3>
+          <p style={{ color: '#b0b0cc', fontSize: '15px', maxWidth: '720px', margin: '0 auto', lineHeight: 1.6 }}>
+            Compare how traditional agencies operate versus Raftra's AI-native specialist workflow.
+          </p>
+        </div>
+
+        {/* Workflow Comparison Diagram */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '32px', marginBottom: '40px' }}>
+          
+          {/* Traditional Agency */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', padding: '28px 24px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: '#8888aa', textTransform: 'uppercase', marginBottom: '20px', letterSpacing: '0.06em' }}>
+              Traditional Agency
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {['Audit', 'Manual Work', 'Reports', 'Meetings', 'Changes'].map((step, i, arr) => (
+                <React.Fragment key={i}>
+                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', padding: '14px 18px', borderRadius: '12px', color: '#cccccc', fontSize: '14px', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>{step}</span>
+                    <span style={{ fontSize: '11px', color: '#777799', fontWeight: 600, background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px' }}>Manual</span>
+                  </div>
+                  {i < arr.length - 1 && (
+                    <div style={{ textAlign: 'center', color: '#555577', fontSize: '14px', margin: '2px 0' }}>↓</div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          {/* With Raftra (IMPROVED HIGH-CONTRAST COLORS, SPACING & PADDING) */}
+          <div style={{ background: 'linear-gradient(180deg, rgba(90,82,255,0.12) 0%, rgba(90,82,255,0.04) 100%)', border: '1px solid rgba(124,117,255,0.4)', borderRadius: '20px', padding: '28px 24px', position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={16} color="#7C75FF" /> With Raftra
+              </div>
+              <span style={{ background: 'rgba(0,230,118,0.2)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em' }}>
+                HIGH EFFICIENCY
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[
+                { title: 'AI Audits', desc: 'Instant 24/7 scanning' },
+                { title: 'AI Recommendations', desc: 'Data-driven insights' },
+                { title: 'One-click Publishing', desc: 'Seamless deployment' },
+                { title: 'Live Analytics', desc: 'Real-time monitoring' },
+                { title: 'Specialist focuses only on strategy', desc: '100% high-leverage decisions' }
+              ].map((step, i, arr) => {
+                const isLast = i === arr.length - 1;
+                return (
+                  <React.Fragment key={i}>
+                    <div style={{ 
+                      background: isLast ? 'linear-gradient(135deg, rgba(0,230,118,0.18) 0%, rgba(0,230,118,0.08) 100%)' : 'rgba(255,255,255,0.06)', 
+                      border: isLast ? '1px solid rgba(0,230,118,0.5)' : '1px solid rgba(124,117,255,0.25)',
+                      padding: '14px 18px', 
+                      borderRadius: '12px', 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px'
+                    }}>
+                      <span style={{ fontSize: '14px', fontWeight: isLast ? 700 : 600, color: isLast ? '#00E676' : '#ffffff' }}>
+                        {step.title}
+                      </span>
+                      <span style={{ fontSize: '12px', fontWeight: 500, color: isLast ? '#76FFB7' : '#B0B0CC', whiteSpace: 'nowrap' }}>
+                        {step.desc}
+                      </span>
+                    </div>
+                    {!isLast && (
+                      <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0' }}>
+                        <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(124,117,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7C75FF', fontSize: '12px', fontWeight: 'bold' }}>
+                          ↓
+                        </div>
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Why it matters Grid */}
+        <div>
+          <h4 style={{ fontSize: '16px', color: '#ffffff', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+            Why It Matters
+          </h4>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+            {[
+              { icon: Zap, text: 'Up to 70% less repetitive work', color: '#7C75FF' },
+              { icon: Clock, text: 'AI handles monitoring 24/7', color: 'violet' },
+              { icon: UserCheck, text: 'Specialists focus on decisions, not data collection', color: '#00E676' },
+              { icon: DollarSign, text: 'Lower cost than a traditional agency', color: '#FFBD2E' },
+              { icon: Bot, text: 'Every specialist is trained on Raftra\'s AI workflows', color: '#7C75FF' },
+              { icon: TrendingUp, text: 'Faster campaign execution and optimization', color: '#FF5296' }
+            ].map((item, idx) => {
+              const ItemIcon = item.icon;
+              return (
+                <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '18px 22px', borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '38px', height: '38px', background: `${item.color}20`, borderRadius: '10px', border: `1px solid ${item.color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <ItemIcon size={18} color={item.color} />
+                  </div>
+                  <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: 500, lineHeight: 1.4 }}>
+                    {item.text}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
+
+      {/* SUBMITTED ENQUIRIES LIST (IF ANY EXIST) */}
+      {enquiriesList.length > 0 && (
+        <div className="glow-card" style={{ padding: '28px', background: 'rgba(0,230,118,0.03)', border: '1px solid rgba(0,230,118,0.2)', borderRadius: '16px' }}>
+          <h3 style={{ fontSize: '18px', color: '#fff', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CheckCircle2 size={20} color="var(--success)" /> Submitted Specialist Enquiries ({enquiriesList.length})
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {enquiriesList.map(enq => (
+              <div key={enq.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: 600, color: '#fff' }}>{enq.specialistTitle}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {enq.name} • {enq.email} • {enq.phone}
+                  </div>
+                  {enq.notes && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Brief: {enq.notes}</div>}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ background: 'rgba(0,230,118,0.15)', color: 'var(--success)', padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 600 }}>Enquiry Sent</span>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{enq.createdAt}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div style={{ position: 'fixed', bottom: '40px', right: '40px', background: 'var(--success)', color: '#000', padding: '16px 24px', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,230,118,0.3)', zIndex: 200, display: 'flex', alignItems: 'center', gap: '12px', fontWeight: 600, maxWidth: '400px', lineHeight: '1.5', whiteSpace: 'pre-line' }}>
-          <CheckCircle2 size={24} />
-          {toastMessage}
+      {/* 6. ENQUIRY CREATION MODAL */}
+      {enquirySpecialist && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
+          <div className="glow-card" style={{ width: '480px', maxWidth: '90%', background: '#0a0a0c', padding: '32px', position: 'relative', borderRadius: '20px', border: '1px solid #7C75FF' }}>
+            <button onClick={() => setEnquirySpecialist(null)} style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '24px' }}>&times;</button>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                SPECIALIST ENQUIRY
+              </div>
+              <h3 style={{ fontSize: '22px', margin: '0 0 6px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                Hire {enquirySpecialist.name}
+              </h3>
+              <div style={{ fontSize: '14px', color: 'var(--success)', fontWeight: 600 }}>
+                {enquirySpecialist.price}
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitEnquiry} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: '#ccc', marginBottom: '6px', fontWeight: 500 }}>Your Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Rahul Sharma"
+                  value={enquiryForm.name}
+                  onChange={e => setEnquiryForm(f => ({ ...f, name: e.target.value }))}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', outline: 'none', fontSize: '14px' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#ccc', marginBottom: '6px', fontWeight: 500 }}>Work Email *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="rahul@brand.com"
+                    value={enquiryForm.email}
+                    onChange={e => setEnquiryForm(f => ({ ...f, email: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', outline: 'none', fontSize: '14px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#ccc', marginBottom: '6px', fontWeight: 500 }}>Phone / WhatsApp *</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="+91 9876543210"
+                    value={enquiryForm.phone}
+                    onChange={e => setEnquiryForm(f => ({ ...f, phone: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', outline: 'none', fontSize: '14px' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: '#ccc', marginBottom: '6px', fontWeight: 500 }}>Requirements / Brand Brief (Optional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Tell us about your brand goals and what assistance you need..."
+                  value={enquiryForm.notes}
+                  onChange={e => setEnquiryForm(f => ({ ...f, notes: e.target.value }))}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '14px', color: '#fff', outline: 'none', fontSize: '14px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ background: 'rgba(124,117,255,0.08)', border: '1px solid rgba(124,117,255,0.2)', padding: '12px 16px', borderRadius: '100px', fontSize: '12px', color: '#b0b0cc', lineHeight: 1.4 }}>
+                <strong>RAFTRA VERIFIED GUARANTEE:</strong> Specialist will be assigned to your Raftra workspace within 24 hours of enquiry confirmation.
+              </div>
+
+              <GlowButton 
+                variant="glow" 
+                style={{ width: '100%', padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <Send size={16} /> Submit Specialist Enquiry
+              </GlowButton>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Toggle Switch CSS */}
-      <style dangerouslySetInnerHTML={{__html: `
-        .toggle-switch {
-          position: relative;
-          display: inline-block;
-          width: 36px;
-          height: 20px;
-        }
-        .toggle-switch input { 
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
-        .slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: var(--border);
-          transition: .2s;
-          border-radius: 34px;
-        }
-        .slider:before {
-          position: absolute;
-          content: "";
-          height: 14px;
-          width: 14px;
-          left: 3px;
-          bottom: 3px;
-          background-color: white;
-          transition: .2s;
-          border-radius: 50%;
-        }
-        input:checked + .slider {
-          background-color: var(--primary);
-        }
-        input:checked + .slider:before {
-          transform: translateX(16px);
-        }
-        input:disabled + .slider {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-      `}} />
+      {/* TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div style={{ position: 'fixed', bottom: '40px', right: '40px', background: 'var(--success)', color: '#000', padding: '16px 24px', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,230,118,0.3)', zIndex: 200, display: 'flex', alignItems: 'center', gap: '12px', fontWeight: 600, maxWidth: '420px', lineHeight: '1.5', whiteSpace: 'pre-line' }}>
+          <CheckCircle2 size={24} style={{ flexShrink: 0 }} />
+          <div>{toastMessage}</div>
+        </div>
+      )}
     </div>
+  );
+};
+
+// Helper Share2 icon wrapper to avoid variable collision
+const Share2Icon: React.FC<{ size?: number; color?: string }> = ({ size = 16, color = 'currentColor' }) => {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
   );
 };

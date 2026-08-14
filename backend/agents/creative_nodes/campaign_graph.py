@@ -247,17 +247,30 @@ async def supervisor_spec_node(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("Supervisor", "Campaign Spec Ready for Human Review.", "completed")
     return state
 
+async def objective_and_audience_node(state: CampaignState) -> CampaignState:
+    """Runs the budget and audience LLM calls concurrently.
+
+    These two are independent - audience_placement_node reads only 'prompt' and
+    'cached_context', never the objective/budget the other one produces - so running
+    them in sequence just added a whole extra LLM round-trip to the user's wait.
+    They write disjoint keys of the same state dict, so sharing it is safe.
+    """
+    await asyncio.gather(
+        objective_budget_node(state),
+        audience_placement_node(state),
+    )
+    return state
+
+
 workflow = StateGraph(CampaignState)
 workflow.add_node("context", fetch_campaign_context)
-workflow.add_node("budget", objective_budget_node)
-workflow.add_node("audience", audience_placement_node)
+workflow.add_node("plan", objective_and_audience_node)
 workflow.add_node("brief", creative_brief_node)
 workflow.add_node("supervisor", supervisor_spec_node)
 
 workflow.set_entry_point("context")
-workflow.add_edge("context", "budget")
-workflow.add_edge("budget", "audience")
-workflow.add_edge("audience", "brief")
+workflow.add_edge("context", "plan")
+workflow.add_edge("plan", "brief")
 workflow.add_edge("brief", "supervisor")
 workflow.add_edge("supervisor", END)
 

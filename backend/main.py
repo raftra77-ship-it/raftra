@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
+import threading
 
 load_dotenv()
 
@@ -52,15 +53,31 @@ def read_root():
 @app.on_event("startup")
 async def preload_embedding_model():
     """
-    Loads the RAG embedding model (bge-small-en-v1.5) once at boot.
-    Without this, loading it takes ~2 minutes the first time it's needed - and that
-    delay landed on whichever user's request happened to trigger it first, making
-    that one generation look like it had hung.
+    Warms the RAG embedding model (bge-small-en-v1.5) in a background thread.
+
+    Loading it takes ~2 minutes cold, so the first request that needed it used to
+    look like it had hung. Preloading fixed that, but doing it inline blocked uvicorn
+    from accepting *any* request until torch finished loading - on a low-memory box
+    that turned every restart into a multi-minute outage. Warming it off-thread keeps
+    the original benefit without holding up boot.
+
+    Set SKIP_EMBEDDING_PRELOAD=1 to skip entirely (useful when working on code that
+    never touches RAG).
     """
-    from core.embeddings import get_embedding_model
-    print("Pre-loading embedding model (bge-small-en-v1.5)...")
-    get_embedding_model()
-    print("Embedding model ready.")
+    if os.getenv("SKIP_EMBEDDING_PRELOAD", "").strip() in ("1", "true", "True"):
+        print("Skipping embedding preload (SKIP_EMBEDDING_PRELOAD set).")
+        return
+
+    def _warm():
+        try:
+            from core.embeddings import get_embedding_model
+            print("Pre-loading embedding model (bge-small-en-v1.5)...", flush=True)
+            get_embedding_model()
+            print("Embedding model ready.", flush=True)
+        except Exception as e:
+            print(f"Embedding preload failed (will load on first use): {e}", flush=True)
+
+    threading.Thread(target=_warm, name="embedding-preload", daemon=True).start()
 
 
 @app.on_event("startup")

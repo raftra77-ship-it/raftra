@@ -289,7 +289,7 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
 
       <button onClick={onManageIntegrations}
         style={{ width: '100%', marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', cursor: 'pointer' }}>
-        <ExternalLink size={14} /> Manage Integrations
+        <ExternalLink size={14} /> View Integrations
       </button>
     </div>
   );
@@ -333,7 +333,12 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
   // overwrite a URL the user has deliberately typed themselves.
   useEffect(() => {
     if (!siteUrl || urlEditedByUser) return;
-    const normalized = /^https?:\/\//i.test(siteUrl) ? siteUrl : `https://${siteUrl}`;
+    // Strip whitespace anywhere, not just the ends: a company_url saved as
+    // " ambraneindia.com" would otherwise become "https:// ambraneindia.com", which
+    // the crawler rejects with HTTP 400.
+    const cleaned = siteUrl.replace(/\s+/g, '');
+    if (!cleaned) return;
+    const normalized = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
     setTargetUrl(normalized);
   }, [siteUrl, urlEditedByUser]);
   const [toast, setToast] = useState<{ msg: string; pipeline?: 'SEO' | 'GEO' } | null>(null);

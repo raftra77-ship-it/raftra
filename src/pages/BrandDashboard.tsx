@@ -128,11 +128,20 @@ function VectorDatastores({ workspaceId, reindexing }: { workspaceId: number | n
   );
 }
 
+// Live agent feed socket. This cannot ride on the same relative path the REST calls use:
+// Vercel's rewrites do not proxy WebSocket upgrades, so in production it has to address
+// the backend host directly. Set VITE_WS_URL to e.g. wss://your-backend.onrender.com/ws.
+// The same-origin fallback only works if the API is served from the frontend's own domain.
+const WS_URL =
+  import.meta.env.VITE_WS_URL ||
+  (import.meta.env.DEV
+    ? 'ws://localhost:8005/ws'
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`);
+
 export function BrandDashboard() {
   const navigate = useNavigate();
   const { Razorpay } = useRazorpay();
   const [activeTab, setActiveTab] = useState<NavigationTab>('control');
-  const [creativeSeedPrompt, setCreativeSeedPrompt] = useState('');
 
   // User details extracted from JWT
   const [userName, setUserName] = useState<string>('User');
@@ -300,7 +309,7 @@ export function BrandDashboard() {
     let shouldReconnect = true;
 
     const connectWs = () => {
-      const ws = new WebSocket('ws://localhost:8005/ws');
+      const ws = new WebSocket(WS_URL);
 
       ws.onopen = () => {
         // Authenticate the socket: the server closes it unless the first frame
@@ -1101,7 +1110,7 @@ export function BrandDashboard() {
     );
   };
 
-  const handleComposeSocial = (caption: string, platform: 'Twitter' | 'LinkedIn' | 'Instagram') => {
+  const handleComposeSocial = (caption: string, platform: 'Instagram' | 'Facebook' | 'YouTube') => {
     handleTriggerSocial(platform, caption);
 
     const newPost: SocialPostItem = {
@@ -1637,7 +1646,7 @@ export function BrandDashboard() {
                 onOpenReview={handleOpenReview}
                 onGenerate={handleGenerateCreative}
                 onAssetSaved={handleAssetSaved}
-                initialPrompt={creativeSeedPrompt}
+                onNavigateTab={(tab: string) => setActiveTab(tab as NavigationTab)}
               />
             </div>
           )}
@@ -1651,7 +1660,7 @@ export function BrandDashboard() {
                 creativeAssets={creativeAssets}
                 onOpenReview={handleOpenReview}
                 onToggleStatus={handleToggleCampaign}
-                onOpenCreativeStudio={(seed: string) => { setCreativeSeedPrompt(seed); setActiveTab('studio'); }}
+                onOpenCreativeStudio={() => setActiveTab('studio')}
               />
             </div>
           )}
@@ -1816,7 +1825,7 @@ export function BrandDashboard() {
                 </p>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
-                {['Meta Ads Sandbox', 'Google Ads Sandbox', 'LinkedIn Marketing Node', 'Twitter Social API', 'ChatGPT citation pipeline', 'Gemini Citation context'].map((plat) => (
+                {['Meta Ads Sandbox', 'Google Ads Sandbox', 'Instagram Graph API', 'WhatsApp Business API', 'ChatGPT citation pipeline', 'Gemini Citation context'].map((plat) => (
                   <div key={plat} className="glow-card" style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <h4 style={{ fontSize: '14px' }}>{plat}</h4>

@@ -51,8 +51,38 @@ class ImageProvider(ABC):
         pass
 
 class VideoProvider(ABC):
-    """Abstract Base Class for all Video Generation providers."""
-    
+    """Abstract Base Class for all Video Generation providers.
+
+    Capability flags let callers know what a provider can ACTUALLY do, instead of sending
+    a detailed motion prompt to something that discards it. They default to False so a new
+    provider is assumed incapable until it declares otherwise — the safe direction, since
+    over-claiming is what makes a pipeline look broken.
+    """
+
+    # Does the provider read the prompt and render the described motion?
+    # False for Ken Burns (it hashes the prompt to pick a zoom/pan preset) and for the
+    # stock/sample providers (keyword lookup or random choice).
+    supports_prompt_motion: bool = False
+    # Can it animate a supplied image, rather than only panning across it?
+    supports_image_to_video: bool = False
+    # Does it accept a separate negative prompt? If not, never merge negatives into the
+    # main prompt — a model without the field reads "static image" as an instruction.
+    supports_negative_prompt: bool = False
+    # Can it render subject/environmental motion, or only move a virtual camera?
+    supports_subject_motion: bool = False
+    supports_duration_control: bool = False
+
+    @classmethod
+    def capabilities(cls) -> dict:
+        return {
+            "provider": cls.__name__,
+            "supports_prompt_motion": cls.supports_prompt_motion,
+            "supports_image_to_video": cls.supports_image_to_video,
+            "supports_negative_prompt": cls.supports_negative_prompt,
+            "supports_subject_motion": cls.supports_subject_motion,
+            "supports_duration_control": cls.supports_duration_control,
+        }
+
     @abstractmethod
     async def generate_video(self, image_url: str, prompt: str, duration: int = 5, **kwargs) -> str:
         """

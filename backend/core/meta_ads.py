@@ -242,6 +242,14 @@ async def publish_campaign(conn, name: str, objective: str) -> dict:
             "objective": meta_objective,
             "status": "PAUSED",                 # never auto-spend
             "special_ad_categories": "[]",
+            # Required by Meta whenever a campaign carries no campaign-level budget, which is
+            # our case: create_ad() puts daily_budget on the AD SET. Omitting it fails with
+            # "You must specify True or False in the field is_adset_budget_sharing_enabled".
+            #
+            # false deliberately. True lets Meta move up to 20% of an ad set's budget to other
+            # ad sets in the campaign — a silent reallocation of the user's money they never
+            # asked for. With false, each ad set spends exactly the budget shown in the UI.
+            "is_adset_budget_sharing_enabled": "false",
             **_auth(conn.access_token),
         })
     cid = _check(r, "Meta campaign create failed").get("id")
@@ -470,8 +478,31 @@ async def resolve_image_hash(conn, image_hash=None, image_url=None):
         r = await client.get(image_url)
     if r.status_code != 200 or not r.content:
         raise RuntimeError(f"Could not download the creative from {image_url[:80]} (HTTP {r.status_code}).")
-    name = image_url.rsplit("/", 1)[-1].split("?")[0] or "creative.jpg"
-    return await upload_ad_image(conn, r.content, filename=name)
+
+    # Meta infers the file type from the FILENAME EXTENSION and rejects anything without a
+    # recognised one ("The type of file is not supported"). Deriving the name from the URL
+    # path is unreliable: a Pollinations URL ends in the URL-encoded prompt, so the name came
+    # out as "a%20steaming%20cup%20of%20coffee" with no extension at all. Trust the served
+    # content-type instead, and sniff the magic bytes when the header is missing or generic.
+    content_type = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
+    ext = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+           "image/webp": "webp", "image/gif": "gif"}.get(content_type)
+    if not ext:
+        head = r.content[:12]
+        if head.startswith(b"\x89PNG\r\n\x1a\n"):
+            ext = "png"
+        elif head.startswith(b"\xff\xd8\xff"):
+            ext = "jpg"
+        elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+            ext = "webp"
+        elif head.startswith((b"GIF87a", b"GIF89a")):
+            ext = "gif"
+        else:
+            raise RuntimeError(
+                f"The creative at {image_url[:60]}… is not a recognised image "
+                f"(content-type {content_type or 'unknown'}). Meta only accepts "
+                "PNG, JPEG, WEBP or GIF.")
+    return await upload_ad_image(conn, r.content, filename=f"creative.{ext}")
 
 
 async def get_page_instagram(conn, page_id):

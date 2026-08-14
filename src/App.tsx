@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { LandingPage } from './components/LandingPage';
 import './App.css';
 
@@ -18,6 +18,7 @@ const CreatorPortal = lazy(() => import('./components/CreatorPortal').then(m => 
 const Security = lazy(() => import('./pages/Security').then(m => ({ default: m.Security })));
 const AboutUs = lazy(() => import('./pages/AboutUs').then(m => ({ default: m.AboutUs })));
 const FeaturePage = lazy(() => import('./pages/FeaturePage').then(m => ({ default: m.FeaturePage })));
+const InfluencerMarketplacePage = lazy(() => import('./pages/InfluencerMarketplacePage').then(m => ({ default: m.InfluencerMarketplacePage })));
 // Public legal pages. Meta/Google/Razorpay require these to be reachable before granting
 // production API access, so they must stay outside the authenticated routes below.
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
@@ -37,6 +38,29 @@ const RouteFallback = () => (
 
 export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Someone already signed in who lands on /login has nothing to do there - send them
+  // to their own dashboard by role. Scoped to /login only, so it never interferes with
+  // the OAuth handoff at /auth/callback or the password-reset routes.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      const decoded = JSON.parse(atob(token.split('.')[1]));
+      if (location.pathname.toLowerCase() === '/login') {
+        if (decoded.role === 'creator') {
+          navigate('/creator-dashboard', { replace: true });
+        } else if (decoded.role === 'brand') {
+          navigate('/dashboard', { replace: true });
+        }
+      }
+    } catch {
+      // Malformed token - clear it rather than leaving the app in a half-authed state.
+      localStorage.removeItem('token');
+    }
+  }, []);
 
   const handleLoginComplete = (hasWorkspace: boolean, isCreator?: boolean) => {
     if (isCreator) {
@@ -104,6 +128,14 @@ export default function App() {
 
           <Route path="/dashboard/*" element={
             <BrandDashboard />
+          } />
+
+          <Route path="/influencer-marketplace/*" element={
+            <InfluencerMarketplacePage />
+          } />
+
+          <Route path="/marketplace/*" element={
+            <InfluencerMarketplacePage />
           } />
 
           <Route path="/creator-dashboard/*" element={

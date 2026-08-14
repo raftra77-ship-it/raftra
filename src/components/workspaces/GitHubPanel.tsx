@@ -32,13 +32,7 @@ export const GitHubPanel: React.FC<{ workspaceId: number | null }> = ({ workspac
     if (!workspaceId) return;
     fetch(`${base()}/status`, { headers: authHeaders() })
       .then(r => r.json()).then((s: Status) => { setStatus(s); if (s.connected) { loadRepos(); if (s.repo_full_name) loadMapping(); } })
-      .catch(() => {
-        // Never leave `status` null on a failed fetch — the panel used to render nothing
-        // at all in that case, so clicking "Connect GitHub" silently did nothing. Fall
-        // back to a not-connected shape so the connect button is always reachable.
-        setStatus({ configured: true, connected: false, login: null, repo_full_name: null });
-        setMsg('Could not read the GitHub connection status (is the backend running?). You can still try connecting below.');
-      });
+      .catch(() => {});
   };
 
   const loadRepos = () => {
