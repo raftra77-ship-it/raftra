@@ -17,14 +17,21 @@ import {
   Users2,
   ShieldCheck,
   Sliders,
-  Share2
+  Share2,
+  ShoppingBag,
+  Globe,
+  GitBranch,
+  PenSquare,
+  Layout,
+  Store,
+  Code
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 interface IntegrationItem {
   id: string;
   name: string;
-  category: 'ad_accounts' | 'analytics' | 'productivity_crm';
+  category: 'ecommerce_cms' | 'ad_accounts' | 'analytics' | 'productivity_crm';
   description: string;
   iconBg: string;
   iconColor: string;
@@ -34,42 +41,95 @@ interface IntegrationItem {
   status: 'connected' | 'disconnected' | 'coming_soon';
   accountName?: string;
   lastSynced?: string;
+  configFields?: { label: string; placeholder: string; type?: string }[];
 }
 
 export const WorkspaceIntegrations: React.FC = () => {
-  const [filterCategory, setFilterCategory] = useState<'all' | 'ad_accounts' | 'analytics' | 'productivity_crm'>('all');
+  const [filterCategory, setFilterCategory] = useState<'all' | 'ecommerce_cms' | 'ad_accounts' | 'analytics' | 'productivity_crm'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeModalItem, setActiveModalItem] = useState<IntegrationItem | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [modalInputValues, setModalInputValues] = useState<Record<string, string>>({});
 
   // Integrations state
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([
-    // Ad Accounts
+    // ── 1. E-Commerce & CMS Platforms ──
+    {
+      id: 'shopify',
+      name: 'Shopify',
+      category: 'ecommerce_cms',
+      description: 'Sync store product catalogs, inventory, SKUs, sales revenue, customer orders, and automated catalog ads.',
+      iconBg: 'rgba(149, 191, 71, 0.15)',
+      iconColor: '#95BF47',
+      icon: <ShoppingBag size={20} color="#95BF47" />,
+      status: 'disconnected',
+      configFields: [
+        { label: 'Shopify Store URL', placeholder: 'your-brand.myshopify.com' },
+        { label: 'Admin API Access Token', placeholder: 'shpat_xxxxxxxxxxxxxxxxxxxxxxxx', type: 'password' }
+      ]
+    },
+    {
+      id: 'wordpress',
+      name: 'WordPress & WooCommerce',
+      category: 'ecommerce_cms',
+      description: 'Publish AI SEO blog posts, landing pages, and product articles with one-click direct CMS syncing.',
+      iconBg: 'rgba(33, 117, 155, 0.15)',
+      iconColor: '#21759B',
+      icon: <Globe size={20} color="#21759B" />,
+      status: 'disconnected',
+      configFields: [
+        { label: 'WordPress Site URL', placeholder: 'https://yourdomain.com' },
+        { label: 'Application Password / API Key', placeholder: 'xxxx xxxx xxxx xxxx', type: 'password' }
+      ]
+    },
+    {
+      id: 'webflow',
+      name: 'Webflow',
+      category: 'ecommerce_cms',
+      description: 'Direct CMS collection binding for automated landing page variants, design systems, and localized marketing funnels.',
+      iconBg: 'rgba(67, 83, 255, 0.15)',
+      iconColor: '#4353FF',
+      icon: <Layout size={20} color="#4353FF" />,
+      status: 'disconnected',
+      configFields: [
+        { label: 'Webflow Site ID', placeholder: '64e8b3fxxxxxxxxxxxxxx' },
+        { label: 'API Bearer Token', placeholder: 'wfb_xxxxxxxxxxxxxxxxxxxx', type: 'password' }
+      ]
+    },
+
+    // ── 2. Ad Accounts ──
     {
       id: 'meta_ads',
       name: 'Meta Ads',
       category: 'ad_accounts',
-      description: 'Run and optimize ads across Facebook, Instagram, Threads, and more.',
+      description: 'Run and optimize ads across Facebook, Instagram Feed & Reels, Threads, and Meta Audience Network.',
       iconBg: 'rgba(24, 119, 242, 0.15)',
       iconColor: '#1877F2',
       icon: <span style={{ fontWeight: 900, fontSize: '18px', color: '#1877F2' }}>∞</span>,
-      status: 'disconnected'
+      status: 'disconnected',
+      configFields: [
+        { label: 'Meta Ad Account ID', placeholder: 'act_123456789012345' },
+        { label: 'Pixel ID', placeholder: '123456789012345' }
+      ]
     },
     {
       id: 'google_ads',
       name: 'Google Ads',
       category: 'ad_accounts',
-      description: 'Run and optimize ads across Search, YouTube, Maps, Gmail, and more.',
+      description: 'Run and optimize high-intent ads across Search, YouTube, Maps, Gmail, and Performance Max.',
       iconBg: 'rgba(66, 133, 244, 0.15)',
       iconColor: '#4285F4',
       icon: <span style={{ fontWeight: 900, fontSize: '16px', color: '#4285F4' }}>G</span>,
-      status: 'disconnected'
+      status: 'disconnected',
+      configFields: [
+        { label: 'Google Ads Customer ID', placeholder: '123-456-7890' }
+      ]
     },
     {
       id: 'chatgpt_ads',
       name: 'ChatGPT Ads',
       category: 'ad_accounts',
-      description: 'Run and optimize ads in ChatGPT conversations.',
+      description: 'Run and optimize conversational sponsored recommendations in OpenAI answer engines.',
       iconBg: 'rgba(16, 163, 127, 0.15)',
       iconColor: '#10A37F',
       icon: <Sparkles size={20} color="#10A37F" />,
@@ -81,7 +141,7 @@ export const WorkspaceIntegrations: React.FC = () => {
       id: 'amazon_ads',
       name: 'Amazon Ads',
       category: 'ad_accounts',
-      description: 'Run and optimize product ads on Amazon.',
+      description: 'Run and optimize sponsored product and brand ads across Amazon Marketplace India & Global.',
       iconBg: 'rgba(255, 153, 0, 0.15)',
       iconColor: '#FF9900',
       icon: <span style={{ fontWeight: 900, fontSize: '17px', color: '#FF9900' }}>a</span>,
@@ -90,16 +150,20 @@ export const WorkspaceIntegrations: React.FC = () => {
       status: 'coming_soon'
     },
 
-    // Analytics
+    // ── 3. Analytics & SEO ──
     {
       id: 'ga4',
       name: 'Google Analytics 4',
       category: 'analytics',
-      description: 'Pull traffic, event, and conversion data across your site and campaigns.',
+      description: 'Pull traffic, customer purchase events, bounce rates, and conversion data across your site and funnels.',
       iconBg: 'rgba(249, 171, 0, 0.15)',
       iconColor: '#F9AB00',
       icon: <BarChart3 size={20} color="#F9AB00" />,
-      status: 'disconnected'
+      status: 'disconnected',
+      configFields: [
+        { label: 'GA4 Measurement ID', placeholder: 'G-XXXXXXXXXX' },
+        { label: 'Property ID', placeholder: '123456789' }
+      ]
     },
     {
       id: 'google_search_console',
@@ -109,39 +173,67 @@ export const WorkspaceIntegrations: React.FC = () => {
       iconBg: 'rgba(66, 133, 244, 0.15)',
       iconColor: '#4285F4',
       icon: <Search size={20} color="#4285F4" />,
-      status: 'disconnected'
+      status: 'disconnected',
+      configFields: [
+        { label: 'Verified Property URL', placeholder: 'https://yourdomain.com' }
+      ]
     },
 
-    // Productivity, Storage & CRM
+    // ── 4. Developer, Storage & CRM ──
+    {
+      id: 'github',
+      name: 'GitHub',
+      category: 'productivity_crm',
+      description: 'Sync custom landing page code, agent webhook repositories, CI/CD automated deployment, and pull request audits.',
+      iconBg: 'rgba(255, 255, 255, 0.12)',
+      iconColor: '#ffffff',
+      icon: <GitBranch size={20} color="#ffffff" />,
+      status: 'disconnected',
+      configFields: [
+        { label: 'GitHub Repository URL', placeholder: 'https://github.com/organization/repo' },
+        { label: 'Personal Access Token', placeholder: 'ghp_xxxxxxxxxxxxxxxxxxxx', type: 'password' }
+      ]
+    },
     {
       id: 'google_drive',
       name: 'Google Drive',
       category: 'productivity_crm',
-      description: 'Sync brand assets, video footage, product catalogs, and creative guidelines directly from Google Drive.',
+      description: 'Sync brand assets, raw video footage, product catalogs, and creative guidelines directly from Google Drive.',
       iconBg: 'rgba(52, 168, 83, 0.15)',
       iconColor: '#34A853',
       icon: <HardDrive size={20} color="#34A853" />,
-      status: 'disconnected'
+      status: 'disconnected',
+      configFields: [
+        { label: 'Shared Drive Folder URL', placeholder: 'https://drive.google.com/drive/folders/xxxx' }
+      ]
     },
     {
       id: 'slack',
       name: 'Slack',
       category: 'productivity_crm',
-      description: 'Receive real-time campaign alerts, creative approval requests, and performance updates in your Slack channels.',
+      description: 'Receive real-time campaign alerts, creative approval requests, and weekly ROAS summaries in your Slack channels.',
       iconBg: 'rgba(224, 30, 90, 0.15)',
       iconColor: '#E01E5A',
       icon: <MessageSquare size={20} color="#E01E5A" />,
-      status: 'disconnected'
+      status: 'disconnected',
+      configFields: [
+        { label: 'Slack Webhook URL', placeholder: 'https://hooks.slack.com/services/T00/B00/XXXX' },
+        { label: 'Target Channel Name', placeholder: '#growth-marketing' }
+      ]
     },
     {
       id: 'hubspot',
       name: 'HubSpot',
       category: 'productivity_crm',
-      description: 'Sync leads, CRM contacts, deals, and attribution pipelines directly with marketing automations.',
+      description: 'Sync leads, CRM contacts, deals, and multi-touch attribution pipelines directly with marketing automations.',
       iconBg: 'rgba(255, 122, 89, 0.15)',
       iconColor: '#FF7A59',
       icon: <Share2 size={20} color="#FF7A59" />,
-      status: 'disconnected'
+      status: 'disconnected',
+      configFields: [
+        { label: 'HubSpot Portal ID', placeholder: '12345678' },
+        { label: 'Private App Access Token', placeholder: 'pat-na1-xxxxxxxxxxxxxxxxxxxx', type: 'password' }
+      ]
     }
   ]);
 
@@ -154,6 +246,7 @@ export const WorkspaceIntegrations: React.FC = () => {
       setActiveModalItem(null);
     } else {
       // Open connect modal
+      setModalInputValues({});
       setActiveModalItem(item);
     }
   };
@@ -170,7 +263,7 @@ export const WorkspaceIntegrations: React.FC = () => {
       } : i));
       setIsConnecting(false);
       setActiveModalItem(null);
-    }, 800);
+    }, 700);
   };
 
   const filteredIntegrations = integrations.filter(item => {
@@ -182,9 +275,10 @@ export const WorkspaceIntegrations: React.FC = () => {
 
   const categories = [
     { id: 'all', label: 'All Integrations' },
+    { id: 'ecommerce_cms', label: 'E-Commerce & CMS' },
     { id: 'ad_accounts', label: 'Ad Accounts' },
-    { id: 'analytics', label: 'Analytics' },
-    { id: 'productivity_crm', label: 'Productivity & CRM' }
+    { id: 'analytics', label: 'Analytics & Search' },
+    { id: 'productivity_crm', label: 'Developer & CRM' }
   ];
 
   return (
@@ -196,19 +290,21 @@ export const WorkspaceIntegrations: React.FC = () => {
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(124, 117, 255, 0.12)', borderRadius: '100px', border: '1px solid rgba(124, 117, 255, 0.3)', marginBottom: '10px' }}>
             <Zap size={14} color="#7C75FF" />
             <span style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              INTEGRATION HUB
+              INTEGRATION & CONNECTORS HUB
             </span>
           </div>
-          <h2 style={{ fontSize: '28px', color: '#fff', margin: '0 0 6px 0', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
-            Connect your accounts
+
+          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>
+            Connected Channels & Storefronts
           </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0, maxWidth: '750px', lineHeight: 1.5 }}>
-            Connect your accounts so the agent has what it needs to work.
+
+          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
+            Connect your Shopify store, WordPress CMS, GitHub repos, Ad accounts, and Analytics to power autonomous marketing workflows.
           </p>
         </div>
 
-        {/* Search Input */}
-        <div style={{ position: 'relative', width: '260px' }}>
+        {/* Live Search Bar */}
+        <div style={{ position: 'relative', width: '280px' }}>
           <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
           <input
             type="text"
@@ -217,6 +313,7 @@ export const WorkspaceIntegrations: React.FC = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               width: '100%',
+              boxSizing: 'border-box',
               padding: '9px 12px 9px 36px',
               background: 'rgba(255, 255, 255, 0.04)',
               border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -256,13 +353,29 @@ export const WorkspaceIntegrations: React.FC = () => {
       {/* ── INTEGRATIONS GRID SECTION ──────────────────────────────── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '36px' }}>
 
-        {/* 1. Ad Accounts */}
+        {/* 1. E-Commerce & CMS */}
+        {(filterCategory === 'all' || filterCategory === 'ecommerce_cms') && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Store size={16} color="#00E676" />
+              <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                E-Commerce & CMS Platforms
+              </h3>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '18px' }}>
+              {filteredIntegrations.filter(i => i.category === 'ecommerce_cms').map(item => renderIntegrationCard(item))}
+            </div>
+          </div>
+        )}
+
+        {/* 2. Ad Accounts */}
         {(filterCategory === 'all' || filterCategory === 'ad_accounts') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Layers size={16} color="#7C75FF" />
               <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
-                Ad Accounts
+                Ad Accounts & Campaigns
               </h3>
             </div>
 
@@ -272,13 +385,13 @@ export const WorkspaceIntegrations: React.FC = () => {
           </div>
         )}
 
-        {/* 2. Analytics */}
+        {/* 3. Analytics & Search */}
         {(filterCategory === 'all' || filterCategory === 'analytics') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <BarChart3 size={16} color="#F9AB00" />
               <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
-                Analytics
+                Analytics & Organic Search
               </h3>
             </div>
 
@@ -288,13 +401,13 @@ export const WorkspaceIntegrations: React.FC = () => {
           </div>
         )}
 
-        {/* 3. Productivity & CRM */}
+        {/* 4. Developer, Storage & CRM */}
         {(filterCategory === 'all' || filterCategory === 'productivity_crm') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Share2 size={16} color="#00D2FF" />
+              <Code size={16} color="#00D2FF" />
               <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
-                Productivity, Storage & CRM
+                Developer, Storage & CRM
               </h3>
             </div>
 
@@ -348,64 +461,83 @@ export const WorkspaceIntegrations: React.FC = () => {
                     {activeModalItem.icon}
                   </div>
                   <div>
-                    <h3 style={{ fontSize: '19px', color: '#fff', margin: '0 0 2px 0', fontWeight: 800 }}>
-                      Connect {activeModalItem.name}
-                    </h3>
-                    <span style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 600 }}>OAuth 2.0 Secure Sync</span>
+                    <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase' }}>CONNECT INTEGRATION</span>
+                    <h3 style={{ fontSize: '20px', color: '#fff', margin: '2px 0 0 0', fontWeight: 800 }}>{activeModalItem.name}</h3>
                   </div>
                 </div>
                 <button
                   onClick={() => setActiveModalItem(null)}
-                  style={{ background: 'rgba(255,255,255,0.06)', border: 'none', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}
                 >
-                  <X size={16} />
+                  <X size={18} />
                 </button>
               </div>
 
               <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                {activeModalItem.description}
+                {activeModalItem.description} Connecting this platform allows Raftra AI to read live metrics and deploy approved creative variants seamlessly.
               </p>
 
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Permissions Granted:</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#fff' }}>
-                  <Check size={14} color="#00E676" /> Read campaign & ad set telemetry
+              {/* Dynamic Credentials / Config Form */}
+              {activeModalItem.configFields && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  {activeModalItem.configFields.map((field, idx) => (
+                    <div key={idx}>
+                      <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
+                        {field.label}
+                      </label>
+                      <input
+                        type={field.type || 'text'}
+                        placeholder={field.placeholder}
+                        value={modalInputValues[field.label] || ''}
+                        onChange={(e) => setModalInputValues({ ...modalInputValues, [field.label]: e.target.value })}
+                        style={{
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          padding: '10px 14px',
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          borderRadius: '10px',
+                          color: '#fff',
+                          fontSize: '13px',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                  ))}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#fff' }}>
-                  <Check size={14} color="#00E676" /> Push AI-generated creatives & copy variants
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#fff' }}>
-                  <Check size={14} color="#00E676" /> Real-time bid & ROAS telemetry sync
-                </div>
+              )}
+
+              {/* Permissions & Security Badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(0, 230, 118, 0.08)', borderRadius: '10px', border: '1px solid rgba(0, 230, 118, 0.2)' }}>
+                <ShieldCheck size={16} color="#00E676" />
+                <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 600 }}>
+                  256-Bit Encrypted Sandbox Vault • Zero Raw Credential Exposure
+                </span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+              {/* Modal Actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button
                   onClick={() => setActiveModalItem(null)}
-                  style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', padding: '9px 18px', borderRadius: '100px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '9px 18px',
+                    borderRadius: '100px',
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
                 >
                   Cancel
                 </button>
-                <button
+                <GlowButton
+                  variant="glow"
                   onClick={handleExecuteConnect}
-                  disabled={isConnecting}
-                  style={{
-                    background: 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
-                    color: '#000000',
-                    border: 'none',
-                    borderRadius: '100px',
-                    padding: '9px 24px',
-                    fontSize: '13px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(0,230,118,0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
+                  style={{ padding: '9px 24px', fontSize: '13px' }}
                 >
-                  {isConnecting ? 'Authenticating...' : `Authorize & Connect ${activeModalItem.name}`}
-                </button>
+                  {isConnecting ? 'Authorizing Connection...' : `Connect ${activeModalItem.name}`}
+                </GlowButton>
               </div>
             </motion.div>
           </div>
@@ -415,18 +547,17 @@ export const WorkspaceIntegrations: React.FC = () => {
     </div>
   );
 
+  // Helper renderer for integration cards
   function renderIntegrationCard(item: IntegrationItem) {
-    const isLocked = Boolean(item.isLocked || item.isComingSoon);
     const isConnected = item.status === 'connected';
+    const isLocked = item.isLocked || item.isComingSoon;
 
     return (
       <div
         key={item.id}
         className="glow-card"
         style={{
-          background: isLocked
-            ? 'linear-gradient(180deg, rgba(16, 16, 24, 0.4) 0%, rgba(8, 8, 12, 0.6) 100%)'
-            : 'linear-gradient(180deg, rgba(20, 20, 32, 0.75) 0%, rgba(10, 10, 16, 0.95) 100%)',
+          background: '#0a0a12',
           border: isConnected
             ? '1.5px solid rgba(0, 230, 118, 0.4)'
             : isLocked
@@ -525,7 +656,7 @@ export const WorkspaceIntegrations: React.FC = () => {
             </>
           ) : (
             <>
-              <span>Status: Disconnected</span>
+              <span>Status: Not Connected</span>
               <span style={{ color: '#7C75FF', cursor: 'pointer' }} onClick={() => handleConnectToggle(item)}>Setup ↗</span>
             </>
           )}

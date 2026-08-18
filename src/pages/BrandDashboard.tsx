@@ -76,10 +76,20 @@ import {
   ToyBrick,
   FileText,
   Settings,
+  Tag,
+  Layers,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  LogOut
+  LogOut,
+  User,
+  CreditCard,
+  ShieldCheck,
+  Plus,
+  X,
+  Check,
+  Mail,
+  Building
 } from 'lucide-react';
 
 type NavigationTab =
@@ -113,15 +123,28 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<NavigationTab>(defaultTab || 'control');
 
-  // User details extracted from JWT
-  const [userName, setUserName] = useState<string>('User');
+  // User details & account sync
+  const [userName, setUserName] = useState<string>('Aryan Verma');
+  const [userEmail, setUserEmail] = useState<string>('aryan070606@gmail.com');
+  const [creditsBalance, setCreditsBalance] = useState<number>(12000);
 
-  // UI Overlays
+  // UI Overlays & Modals
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
+  const [topUpSuccessMsg, setTopUpSuccessMsg] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isKbOpen, setIsKbOpen] = useState(true);
+
+  const handleTopUpCredits = (amount: number) => {
+    setCreditsBalance(prev => prev + amount);
+    setTopUpSuccessMsg(`Successfully credited ₹${amount.toLocaleString('en-IN')}!`);
+    setTimeout(() => {
+      setTopUpSuccessMsg('');
+    }, 2200);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -132,6 +155,8 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
       if (e.key === 'Escape') {
         setIsSearchOpen(false);
         setIsNotificationsOpen(false);
+        setIsProfileMenuOpen(false);
+        setIsCreditsModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -260,13 +285,8 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
     campaignHealth: 0,
     growthScore: 0
   });
-  const [creditsBalance, setCreditsBalance] = useState<number>(12000);
   const [billingBalance, setBillingBalance] = useState<number>(0);
   const [unlockedNodes, setUnlockedNodes] = useState<string[]>(['campaign', 'seo', 'analytics']);
-
-  const handleTopUpCredits = (amount: number) => {
-    setCreditsBalance(prev => prev + amount);
-  };
 
   // AI Agents Working Now
   const [agentsList, setAgentsList] = useState([
@@ -1184,8 +1204,8 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
         </div>
 
         <div className="sidebar-menu">
-          <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', marginBottom: '8px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-            CORE CHASSIS
+          <span className="sidebar-menu-category" style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', paddingLeft: '14px', marginBottom: '8px', display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            GROWTH PLATFORM
           </span>
 
           <button
@@ -1197,11 +1217,6 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
               <LayoutDashboard size={15} />
               <span>Home</span>
             </div>
-            {priorities.length > 0 && (
-              <span className="hero-pill-badge" style={{ background: 'var(--warning-glow)', color: 'var(--warning)', fontSize: '9px' }}>
-                {priorities.length}
-              </span>
-            )}
           </button>
 
           <button
@@ -1211,15 +1226,12 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
           >
             <div className="sidebar-item-left">
               <FileText size={15} />
-              <span>Reports</span>
+              <span>Market Intelligence</span>
             </div>
-            <span style={{ fontSize: '9px', background: 'rgba(124, 117, 255, 0.2)', color: '#7C75FF', border: '1px solid rgba(124, 117, 255, 0.4)', padding: '1px 6px', borderRadius: '100px', fontWeight: 800 }}>
-              New
-            </span>
           </button>
 
-          <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-            WORKSPACES
+          <span className="sidebar-menu-category" style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', paddingLeft: '14px', margin: '14px 0 6px', display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            EXECUTION SUITE
           </span>
 
           <button
@@ -1251,7 +1263,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
           >
             <div className="sidebar-item-left">
               <Globe2 size={15} />
-              <span>SEO + GEO</span>
+              <span>Search & AEO Engine</span>
             </div>
           </button>
 
@@ -1262,7 +1274,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
           >
             <div className="sidebar-item-left">
               <BarChart3 size={15} />
-              <span>Analytics</span>
+              <span>Growth Analytics</span>
             </div>
           </button>
 
@@ -1285,14 +1297,14 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
             <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Users2 size={15} />
-                <span>Influencer Marketplace</span>
+                <span>Creator Marketplace</span>
               </div>
-              <ExternalLink size={13} style={{ color: 'var(--primary, #5A52FF)' }} />
+              <ExternalLink size={12} style={{ color: 'var(--primary, #5A52FF)', opacity: 0.8 }} />
             </div>
           </button>
 
-          <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-            AUTOMATION
+          <span className="sidebar-menu-category" style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', paddingLeft: '14px', margin: '14px 0 6px', display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            OPERATIONS & DATA
           </span>
 
           <button
@@ -1302,7 +1314,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
           >
             <div className="sidebar-item-left">
               <Calendar size={15} />
-              <span>Scheduler</span>
+              <span>Marketing Calendar</span>
             </div>
           </button>
 
@@ -1316,16 +1328,19 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
               }}
               className={`sidebar-item ${activeTab === 'kb' || activeTab === 'kb_brands' || activeTab === 'kb_assets' ? 'active' : ''}`}
               style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              title="Brand Knowledge Vault"
             >
               <div className="sidebar-item-left">
                 <BookOpen size={15} />
-                <span>Knowledge Base</span>
+                <span>Brand Knowledge Vault</span>
               </div>
-              <ChevronDown size={13} style={{ transform: isKbOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', opacity: 0.7 }} />
+              {!isSidebarCollapsed && (
+                <ChevronDown size={13} style={{ transform: isKbOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', opacity: 0.7 }} />
+              )}
             </button>
 
             {isKbOpen && (
-              <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: '22px', gap: '2px', marginTop: '2px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: isSidebarCollapsed ? '0px' : '22px', gap: '3px', marginTop: '3px' }}>
                 <button
                   onClick={() => setActiveTab('kb_brands')}
                   className={`sidebar-item ${activeTab === 'kb_brands' || activeTab === 'kb' ? 'active' : ''}`}
@@ -1335,13 +1350,22 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
                     width: '100%',
                     textAlign: 'left',
                     fontSize: '12.5px',
-                    padding: '6px 12px',
+                    padding: isSidebarCollapsed ? '6px 0' : '6px 12px',
+                    justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
                     color: activeTab === 'kb_brands' || activeTab === 'kb' ? '#00E676' : 'var(--text-secondary)',
                     fontWeight: activeTab === 'kb_brands' || activeTab === 'kb' ? 700 : 500
                   }}
+                  title="Brand Guidelines (BG)"
                 >
-                  <span>Brands</span>
+                  <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Tag size={13} style={{ flexShrink: 0 }} />
+                    <span>Brand Guidelines</span>
+                  </div>
+                  {isSidebarCollapsed && (
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#00E676', background: 'rgba(0,230,118,0.15)', padding: '1px 4px', borderRadius: '4px' }}>BG</span>
+                  )}
                 </button>
+                
                 <button
                   onClick={() => setActiveTab('kb_assets')}
                   className={`sidebar-item ${activeTab === 'kb_assets' ? 'active' : ''}`}
@@ -1351,12 +1375,20 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
                     width: '100%',
                     textAlign: 'left',
                     fontSize: '12.5px',
-                    padding: '6px 12px',
+                    padding: isSidebarCollapsed ? '6px 0' : '6px 12px',
+                    justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
                     color: activeTab === 'kb_assets' ? '#00E676' : 'var(--text-secondary)',
                     fontWeight: activeTab === 'kb_assets' ? 700 : 500
                   }}
+                  title="Media Asset Vault (AV)"
                 >
-                  <span>Asset</span>
+                  <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Layers size={13} style={{ flexShrink: 0 }} />
+                    <span>Media Asset Vault</span>
+                  </div>
+                  {isSidebarCollapsed && (
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#00E676', background: 'rgba(0,230,118,0.15)', padding: '1px 4px', borderRadius: '4px' }}>AV</span>
+                  )}
                 </button>
               </div>
             )}
@@ -1369,7 +1401,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
           >
             <div className="sidebar-item-left">
               <ToyBrick size={15} />
-              <span>Integrations</span>
+              <span>Integrations & Connectors</span>
             </div>
           </button>
 
@@ -1380,28 +1412,61 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
           >
             <div className="sidebar-item-left">
               <Settings size={15} />
-              <span>Settings</span>
+              <span>Workspace & Billing</span>
             </div>
           </button>
         </div>
 
-        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 8px' }}>
-            <div className="user-avatar" style={{ flexShrink: 0 }}>{(brandProfile?.name || 'B').charAt(0)}</div>
-            <div className="sidebar-footer-info" style={{ minWidth: 0 }}>
-              <h4 style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{brandProfile?.name || 'Brand Workspace'}</h4>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{brandProfile?.url || 'loading...'}</p>
+        {/* Sidebar Footer: Active Brand Profile & Sign Out */}
+        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px', padding: '12px 10px 10px', background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.06)', borderRadius: '0 0 16px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '4px 6px' }}>
+            <div className="user-avatar" style={{ flexShrink: 0, width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '13px' }}>
+              {(brandProfile?.name || 'D').charAt(0)}
+            </div>
+            <div className="sidebar-footer-info" style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {brandProfile?.name || 'Demo Brand'}
+                </h4>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00E676', flexShrink: 0 }} title="Online Workspace" />
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '1px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {brandProfile?.url || 'https://demobrand.com/'}
+              </p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
             className="sidebar-item"
-            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '10px' }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              width: '100%',
+              textAlign: 'left',
+              padding: '7px 10px',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#ff4757';
+              e.currentTarget.style.borderColor = 'rgba(255, 71, 87, 0.3)';
+              e.currentTarget.style.background = 'rgba(255, 71, 87, 0.08)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+            }}
             title="Log Out"
           >
-            <div className="sidebar-item-left">
-              <LogOut size={15} />
-              <span>Sign Out</span>
+            <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <LogOut size={14} />
+              <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Sign Out</span>
             </div>
           </button>
         </div>
@@ -1515,9 +1580,9 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
             )}
           </div>
 
-          <div className="header-actions-group" style={{ position: 'relative' }}>
+          <div className="header-actions-group" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '10px' }}>
             {/* Search / Command Palette */}
-            <div className="topbar-search-trigger" onClick={() => setIsSearchOpen(true)}>
+            <div className="topbar-search-trigger" onClick={() => setIsSearchOpen(true)} title="Press ⌘K or Ctrl+K to open palette">
               <Search size={13} />
               <span>Search / Command palette...</span>
               <span style={{ fontSize: '9px', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
@@ -1526,15 +1591,15 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
             </div>
 
             {/* Notifications icon */}
-            <button className="topbar-icon-button" onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}>
+            <button className="topbar-icon-button" onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} title="View alerts & notifications">
               <Bell size={16} />
               {priorities.length > 0 && <span className="notification-badge-dot" />}
             </button>
 
             {/* Live Credit Tracker Widget */}
             <button
-              onClick={() => setActiveTab('settings')}
-              title="Click to view & top up execution credits in Settings"
+              onClick={() => setIsCreditsModalOpen(true)}
+              title="Click to recharge & view execution credits"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1544,7 +1609,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
                 color: '#00E676',
                 background: 'rgba(0, 230, 118, 0.12)',
                 border: '1px solid rgba(0, 230, 118, 0.3)',
-                padding: '4px 12px',
+                padding: '5px 12px',
                 borderRadius: '100px',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -1553,13 +1618,32 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
             >
               <Coins size={13} color="#00E676" />
               <span>₹{creditsBalance.toLocaleString('en-IN')} Credits</span>
-              <span style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.2)', border: '1px solid rgba(0, 230, 118, 0.4)', padding: '1px 6px', borderRadius: '100px', fontWeight: 800 }}>
+              <span style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.25)', border: '1px solid rgba(0, 230, 118, 0.5)', color: '#00E676', padding: '1px 6px', borderRadius: '100px', fontWeight: 800 }}>
                 + Add
               </span>
             </button>
 
-            {/* Profile Avatar */}
-            <div className="user-avatar" style={{ width: '28px', height: '28px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Profile Avatar Trigger */}
+            <div
+              className="user-avatar"
+              onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+              title={`${userName} (${userEmail})`}
+              style={{
+                width: '30px',
+                height: '30px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)',
+                color: '#fff',
+                fontWeight: 800,
+                borderRadius: '8px',
+                border: isProfileMenuOpen ? '2px solid #00E676' : '1px solid rgba(255,255,255,0.2)',
+                transition: 'all 0.15s ease'
+              }}
+            >
               {userName.charAt(0)}
             </div>
           </div>
@@ -1687,32 +1771,218 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
 
       {/* Search Command Palette Overlay */}
       {isSearchOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', justifyContent: 'center', paddingTop: '10vh' }} onClick={() => setIsSearchOpen(false)}>
-          <div style={{ width: '500px', background: '#0a0a0c', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', height: 'fit-content', maxHeight: '60vh' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', padding: '16px', borderBottom: '1px solid var(--border)' }}>
-              <Search size={16} style={{ color: 'var(--text-secondary)', marginRight: '12px' }} />
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', justifyContent: 'center', paddingTop: '10vh' }} onClick={() => setIsSearchOpen(false)}>
+          <div style={{ width: '560px', background: '#0a0a12', border: '1.5px solid rgba(90, 82, 255, 0.4)', borderRadius: '18px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.95), 0 0 35px rgba(90,82,255,0.25)', display: 'flex', flexDirection: 'column', height: 'fit-content', maxHeight: '70vh' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              <Search size={18} style={{ color: '#7C75FF', marginRight: '12px' }} />
               <input
                 autoFocus
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Type a command or search..."
-                style={{ flex: 1, background: 'transparent', border: 'none', color: 'white', fontSize: '15px', outline: 'none' }}
+                placeholder="Search workspaces, team, settings, or actions..."
+                style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '15px', outline: 'none' }}
               />
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', padding: '2px 6px', background: 'var(--bg-tertiary)', borderRadius: '4px' }}>ESC</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', padding: '3px 8px', background: 'rgba(255,255,255,0.06)', borderRadius: '6px' }}>ESC</span>
             </div>
-            <div style={{ padding: '8px', overflowY: 'auto' }}>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, padding: '8px', textTransform: 'uppercase' }}>Quick Actions</div>
-              {['Go to Studio', 'View Analytics', 'Check Campaigns', 'System Settings'].filter(item => item.toLowerCase().includes(searchQuery.toLowerCase())).map((item, idx) => (
-                <div key={idx} style={{ padding: '12px 16px', color: 'var(--text-primary)', fontSize: '13px', cursor: 'pointer', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '12px', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} onClick={() => { setIsSearchOpen(false); if (item === 'System Settings') setActiveTab('settings'); if (item === 'Go to Studio') setActiveTab('studio'); if (item === 'View Analytics') setActiveTab('analytics'); if (item === 'Check Campaigns') setActiveTab('campaign'); }}>
-                  <Sparkles size={14} style={{ color: 'var(--accent)' }} />
-                  {item}
+
+            <div style={{ padding: '12px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800, padding: '4px 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Quick Navigation & Actions</div>
+              
+              {[
+                { name: 'Home (Growth Overview)', icon: <LayoutDashboard size={15} color="#00E676" />, action: () => setActiveTab('control') },
+                { name: 'Market Intelligence Reports', icon: <FileText size={15} color="#7C75FF" />, action: () => setActiveTab('reports') },
+                { name: 'AI Creative Studio', icon: <Sparkles size={15} color="#00D2FF" />, action: () => setActiveTab('studio') },
+                { name: 'Campaign Manager', icon: <Megaphone size={15} color="#FF6B00" />, action: () => setActiveTab('campaign') },
+                { name: 'Search & AEO Engine', icon: <Globe2 size={15} color="#00E676" />, action: () => setActiveTab('seo') },
+                { name: 'Growth Analytics & ROAS', icon: <BarChart3 size={15} color="#FFB300" />, action: () => setActiveTab('analytics') },
+                { name: 'Social Hub & Automation', icon: <Share2 size={15} color="#00D2FF" />, action: () => setActiveTab('social') },
+                { name: 'Creator Marketplace', icon: <Users2 size={15} color="#7C75FF" />, action: () => window.open('/influencer-marketplace', '_blank') },
+                { name: 'Brand Guidelines & Knowledge Vault', icon: <BookOpen size={15} color="#00E676" />, action: () => setActiveTab('kb_brands') },
+                { name: 'Media Asset Vault', icon: <Layers size={15} color="#FF6B00" />, action: () => setActiveTab('kb_assets') },
+                { name: 'Team Members & Permissions (3 Active)', icon: <UserCheck size={15} color="#00D2FF" />, action: () => setActiveTab('settings') },
+                { name: 'Top-Up Execution Credits', icon: <Coins size={15} color="#00E676" />, action: () => setIsCreditsModalOpen(true) },
+                { name: 'Workspace Settings & Billing', icon: <Settings size={15} color="#7C75FF" />, action: () => setActiveTab('settings') }
+              ]
+                .filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      setIsSearchOpen(false);
+                      item.action();
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      color: '#fff',
+                      fontSize: '13.5px',
+                      cursor: 'pointer',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    {item.icon}
+                    <span style={{ fontWeight: 500 }}>{item.name}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Avatar Dropdown Menu Overlay */}
+      {isProfileMenuOpen && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 900 }} onClick={() => setIsProfileMenuOpen(false)} />
+          <div
+            style={{
+              position: 'fixed',
+              top: '64px',
+              right: '24px',
+              width: '290px',
+              background: '#0a0a12',
+              border: '1.5px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '18px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.95), 0 0 25px rgba(90,82,255,0.25)',
+              zIndex: 901,
+              overflow: 'hidden',
+              padding: '12px'
+            }}
+          >
+            {/* User Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 8px 12px 8px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '15px' }}>
+                {userName.charAt(0)}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {userName}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {userEmail}
+                </div>
+              </div>
+            </div>
+
+            {/* Plan & Team Sync Tag */}
+            <div style={{ padding: '10px', margin: '8px 0', background: 'rgba(0, 230, 118, 0.08)', border: '1px solid rgba(0, 230, 118, 0.25)', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.04em' }}>D2C Growth Suite</div>
+                <div style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.85)', marginTop: '2px' }}>₹8,999/mo • 3 Teammates</div>
+              </div>
+              <span style={{ fontSize: '10px', background: '#00E676', color: '#000', fontWeight: 800, padding: '2px 7px', borderRadius: '100px' }}>Active</span>
+            </div>
+
+            {/* Action Items */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <button onClick={() => { setIsProfileMenuOpen(false); setActiveTab('settings'); }} className="profile-menu-item">
+                <User size={14} color="#7C75FF" />
+                <span>Account & Profile Settings</span>
+              </button>
+              <button onClick={() => { setIsProfileMenuOpen(false); setActiveTab('settings'); }} className="profile-menu-item">
+                <Users2 size={14} color="#00D2FF" />
+                <span>Team Members (3 Active)</span>
+              </button>
+              <button onClick={() => { setIsProfileMenuOpen(false); setActiveTab('settings'); }} className="profile-menu-item">
+                <CreditCard size={14} color="#FFB300" />
+                <span>Plans & GST Invoicing</span>
+              </button>
+              <button onClick={() => { setIsProfileMenuOpen(false); setIsCreditsModalOpen(true); }} className="profile-menu-item">
+                <Coins size={14} color="#00E676" />
+                <span>Execution Credits (₹{creditsBalance.toLocaleString('en-IN')})</span>
+              </button>
+              <button onClick={() => { setIsProfileMenuOpen(false); setActiveTab('settings'); }} className="profile-menu-item">
+                <ShieldCheck size={14} color="#5A52FF" />
+                <span>Security & API Shield</span>
+              </button>
+            </div>
+
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
+            <button onClick={handleLogout} className="profile-menu-item" style={{ color: '#ff4757' }}>
+              <LogOut size={14} color="#ff4757" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Execution Credits Top-Up Modal */}
+      {isCreditsModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ width: '100%', maxWidth: '480px', background: '#0a0a12', border: '1.5px solid rgba(0, 230, 118, 0.4)', borderRadius: '24px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px', boxShadow: '0 20px 60px rgba(0,0,0,0.9), 0 0 30px rgba(0,230,118,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  EXECUTION CREDITS TOP-UP
+                </span>
+                <h3 style={{ fontSize: '20px', color: '#fff', margin: '4px 0 0 0', fontWeight: 800 }}>
+                  Current Balance: ₹{creditsBalance.toLocaleString('en-IN')}
+                </h3>
+              </div>
+              <button onClick={() => setIsCreditsModalOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {topUpSuccessMsg && (
+              <div style={{ background: 'rgba(0, 230, 118, 0.15)', border: '1px solid #00E676', color: '#00E676', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 size={16} color="#00E676" />
+                {topUpSuccessMsg}
+              </div>
+            )}
+
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              Execution credits power your autonomous agent workflows, AI image/video renderings, and live competitor scrapers. Choose a recharge pack:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {[
+                { amount: 2500, label: 'Starter Booster', bonus: '+2,500 Credits', desc: 'Ideal for creative testing & 50 AI image variants' },
+                { amount: 5000, label: 'Growth Booster', bonus: '+5,500 Credits (+10% FREE)', desc: 'Full month video generation & multi-channel sync', popular: true },
+                { amount: 15000, label: 'Scale Booster', bonus: '+18,000 Credits (+20% FREE)', desc: 'Heavy ad scaling & bi-weekly competitor ad scans' }
+              ].map((pack, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => handleTopUpCredits(pack.amount)}
+                  style={{
+                    background: pack.popular ? 'rgba(0, 230, 118, 0.08)' : 'rgba(255,255,255,0.03)',
+                    border: '1px solid',
+                    borderColor: pack.popular ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255,255,255,0.08)',
+                    borderRadius: '14px',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#00E676'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = pack.popular ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255,255,255,0.08)'}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: 800, color: '#fff' }}>+ ₹{pack.amount.toLocaleString('en-IN')}</span>
+                      {pack.popular && <span style={{ fontSize: '9px', background: '#00E676', color: '#000', fontWeight: 800, padding: '2px 6px', borderRadius: '100px' }}>POPULAR</span>}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, marginTop: '2px' }}>{pack.bonus}</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{pack.desc}</div>
+                  </div>
+                  <button style={{ background: 'rgba(0, 230, 118, 0.15)', border: '1px solid rgba(0, 230, 118, 0.35)', color: '#00E676', padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                    Recharge
+                  </button>
                 </div>
               ))}
-              {searchQuery && (
-                <div style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center' }}>
-                  Press Enter to search all workspaces for "{searchQuery}"
-                </div>
-              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+              <button onClick={() => setIsCreditsModalOpen(false)} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', color: '#fff', padding: '8px 18px', borderRadius: '100px', fontSize: '13px', cursor: 'pointer' }}>
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -1722,16 +1992,16 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
       {isNotificationsOpen && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 900 }} onClick={() => setIsNotificationsOpen(false)} />
-          <div style={{ position: 'absolute', top: '64px', right: '16px', width: '320px', background: '#0a0a0c', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: 901, overflow: 'hidden' }}>
-            <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '14px', fontWeight: 600 }}>Notifications</span>
-              {priorities.length > 0 && <span style={{ fontSize: '11px', background: 'var(--accent-glow)', color: 'var(--accent)', padding: '2px 8px', borderRadius: '12px' }}>{priorities.length} New</span>}
+          <div style={{ position: 'fixed', top: '64px', right: '80px', width: '330px', background: '#0a0a12', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.95)', zIndex: 901, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff' }}>Workspace Notifications</span>
+              {priorities.length > 0 && <span style={{ fontSize: '11px', background: 'rgba(90,82,255,0.2)', color: '#7C75FF', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>{priorities.length} New</span>}
             </div>
             <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
               {priorities.length > 0 ? (
                 priorities.map(priority => (
-                  <div key={priority.id} style={{ padding: '16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} onClick={() => setIsNotificationsOpen(false)}>
-                    <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '4px', color: 'white' }}>{priority.title}</div>
+                  <div key={priority.id} style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', transition: 'background 0.15s ease' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} onClick={() => setIsNotificationsOpen(false)}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '3px', color: '#fff' }}>{priority.title}</div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{priority.description}</div>
                   </div>
                 ))
@@ -1743,7 +2013,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
               )}
             </div>
             {priorities.length > 0 && (
-              <div style={{ padding: '12px', background: 'var(--bg-tertiary)', textAlign: 'center', fontSize: '12px', color: 'var(--accent)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setPriorities([])}>
+              <div style={{ padding: '10px', background: 'rgba(255,255,255,0.03)', textAlign: 'center', fontSize: '12px', color: '#00E676', cursor: 'pointer', fontWeight: 700 }} onClick={() => setPriorities([])}>
                 Mark all as read
               </div>
             )}
@@ -1759,6 +2029,28 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
         onApprove={handleApprove}
         onReject={handleReject}
       />
+
+      <style>{`
+        .profile-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 10px;
+          border-radius: 8px;
+          background: transparent;
+          border: none;
+          color: #ffffff;
+          cursor: pointer;
+          font-size: 12.5px;
+          font-weight: 500;
+          text-align: left;
+          width: 100%;
+          transition: all 0.15s ease;
+        }
+        .profile-menu-item:hover {
+          background: rgba(255, 255, 255, 0.06);
+        }
+      `}</style>
     </div>
   );
 }
