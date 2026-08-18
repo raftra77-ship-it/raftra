@@ -13,6 +13,13 @@ import type { ChatMessage } from '../components/workspaces/WorkspaceAnalytics';
 import { WorkspaceSocial } from '../components/workspaces/WorkspaceSocial';
 import type { SocialPostItem } from '../components/workspaces/WorkspaceSocial';
 import { WorkspaceInfluencer } from '../components/workspaces/WorkspaceInfluencer';
+import { WorkspaceIntegrations } from '../components/workspaces/WorkspaceIntegrations';
+import { BrandKnowledgeBase } from '../components/workspaces/BrandKnowledgeBase';
+import { WorkspaceAssets } from '../components/workspaces/WorkspaceAssets';
+import { WorkspaceScheduler } from '../components/workspaces/WorkspaceScheduler';
+import { WorkspaceReports } from '../components/workspaces/WorkspaceReports';
+import { WorkspaceSettings, type BrandItem } from '../components/workspaces/WorkspaceSettings';
+import { ModernHomeOverview } from '../components/ModernHomeOverview';
 import { GlowButton } from '../components/GlowButton';
 import '../App.css';
 
@@ -63,6 +70,8 @@ import {
   Zap,
   Search,
   Bell,
+  Calendar,
+  Coins,
   BookOpen,
   ToyBrick,
   FileText,
@@ -75,14 +84,18 @@ import {
 
 type NavigationTab =
   | 'control'
+  | 'reports'
   | 'studio'
   | 'campaign'
   | 'seo'
   | 'analytics'
   | 'social'
   | 'influencer'
+  | 'scheduler'
   | 'agents'
   | 'kb'
+  | 'kb_brands'
+  | 'kb_assets'
   | 'integrations'
   | 'settings';
 
@@ -108,6 +121,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isKbOpen, setIsKbOpen] = useState(true);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -144,13 +158,51 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
     }
   }, []);
 
-  // Brand data submitted from onboarding
+  // Brand data and multi-brand switching state
+  const [allBrands, setAllBrands] = useState<BrandItem[]>([
+    { id: 'b1', name: 'Demo Brand', url: 'https://demobrand.com/', industry: 'Consumer Electronics & D2C', color: '#FF6B00' },
+    { id: 'b2', name: 'Aura Premium', url: 'https://aura.com/', industry: 'Lifestyle Tech', color: '#5A52FF' }
+  ]);
+  const [activeBrandId, setActiveBrandId] = useState('b1');
+  const [isBrandDropdownOpen, setIsBrandDropdownOpen] = useState(false);
+
+  const activeBrand = allBrands.find(b => b.id === activeBrandId) || allBrands[0];
+
   const [brandProfile, setBrandProfile] = useState({
-    url: 'aura.com',
-    name: 'Aura Premium',
+    url: 'https://demobrand.com/',
+    name: 'Demo Brand',
     tone: 'Premium & Modern',
-    colors: 'Indigo & Obsidian',
+    colors: '#FF6B00',
   });
+
+  const handleSwitchBrand = (brandId: string) => {
+    setActiveBrandId(brandId);
+    setIsBrandDropdownOpen(false);
+    const found = allBrands.find(b => b.id === brandId);
+    if (found) {
+      setBrandProfile({
+        url: found.url,
+        name: found.name,
+        tone: 'Premium & Modern',
+        colors: found.color
+      });
+    }
+  };
+
+  const handleAddBrand = (newBrand: BrandItem) => {
+    setAllBrands(prev => [...prev, newBrand]);
+    handleSwitchBrand(newBrand.id);
+  };
+
+  const handleDeleteBrand = (brandId: string) => {
+    setAllBrands(prev => {
+      const updated = prev.filter(b => b.id !== brandId);
+      if (activeBrandId === brandId && updated.length > 0) {
+        handleSwitchBrand(updated[0].id);
+      }
+      return updated;
+    });
+  };
 
   // Reusable logs simulation
   const [logs, setLogs] = useState<LogLine[]>([
@@ -208,8 +260,13 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
     campaignHealth: 0,
     growthScore: 0
   });
+  const [creditsBalance, setCreditsBalance] = useState<number>(12000);
   const [billingBalance, setBillingBalance] = useState<number>(0);
   const [unlockedNodes, setUnlockedNodes] = useState<string[]>(['campaign', 'seo', 'analytics']);
+
+  const handleTopUpCredits = (amount: number) => {
+    setCreditsBalance(prev => prev + amount);
+  };
 
   // AI Agents Working Now
   const [agentsList, setAgentsList] = useState([
@@ -1147,6 +1204,20 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
             )}
           </button>
 
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`sidebar-item ${activeTab === 'reports' ? 'active' : ''}`}
+            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
+          >
+            <div className="sidebar-item-left">
+              <FileText size={15} />
+              <span>Reports</span>
+            </div>
+            <span style={{ fontSize: '9px', background: 'rgba(124, 117, 255, 0.2)', color: '#7C75FF', border: '1px solid rgba(124, 117, 255, 0.4)', padding: '1px 6px', borderRadius: '100px', fontWeight: 800 }}>
+              New
+            </span>
+          </button>
+
           <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
             WORKSPACES
           </span>
@@ -1221,30 +1292,75 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
           </button>
 
           <span className="sidebar-menu-category" style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-            AI NETWORK
+            AUTOMATION
           </span>
 
           <button
-            onClick={() => setActiveTab('agents')}
-            className={`sidebar-item ${activeTab === 'agents' ? 'active' : ''}`}
+            onClick={() => setActiveTab('scheduler')}
+            className={`sidebar-item ${activeTab === 'scheduler' ? 'active' : ''}`}
             style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
           >
             <div className="sidebar-item-left">
-              <Cpu size={15} />
-              <span>AI Agents</span>
+              <Calendar size={15} />
+              <span>Scheduler</span>
             </div>
           </button>
 
-          <button
-            onClick={() => setActiveTab('kb')}
-            className={`sidebar-item ${activeTab === 'kb' ? 'active' : ''}`}
-            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
-          >
-            <div className="sidebar-item-left">
-              <BookOpen size={15} />
-              <span>Knowledge Base</span>
-            </div>
-          </button>
+          <div>
+            <button
+              onClick={() => {
+                setIsKbOpen(!isKbOpen);
+                if (activeTab !== 'kb_brands' && activeTab !== 'kb_assets') {
+                  setActiveTab('kb_brands');
+                }
+              }}
+              className={`sidebar-item ${activeTab === 'kb' || activeTab === 'kb_brands' || activeTab === 'kb_assets' ? 'active' : ''}`}
+              style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <div className="sidebar-item-left">
+                <BookOpen size={15} />
+                <span>Knowledge Base</span>
+              </div>
+              <ChevronDown size={13} style={{ transform: isKbOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', opacity: 0.7 }} />
+            </button>
+
+            {isKbOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: '22px', gap: '2px', marginTop: '2px' }}>
+                <button
+                  onClick={() => setActiveTab('kb_brands')}
+                  className={`sidebar-item ${activeTab === 'kb_brands' || activeTab === 'kb' ? 'active' : ''}`}
+                  style={{
+                    background: activeTab === 'kb_brands' || activeTab === 'kb' ? 'rgba(0, 230, 118, 0.12)' : 'none',
+                    border: 'none',
+                    width: '100%',
+                    textAlign: 'left',
+                    fontSize: '12.5px',
+                    padding: '6px 12px',
+                    color: activeTab === 'kb_brands' || activeTab === 'kb' ? '#00E676' : 'var(--text-secondary)',
+                    fontWeight: activeTab === 'kb_brands' || activeTab === 'kb' ? 700 : 500
+                  }}
+                >
+                  <span>Brands</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('kb_assets')}
+                  className={`sidebar-item ${activeTab === 'kb_assets' ? 'active' : ''}`}
+                  style={{
+                    background: activeTab === 'kb_assets' ? 'rgba(0, 230, 118, 0.12)' : 'none',
+                    border: 'none',
+                    width: '100%',
+                    textAlign: 'left',
+                    fontSize: '12.5px',
+                    padding: '6px 12px',
+                    color: activeTab === 'kb_assets' ? '#00E676' : 'var(--text-secondary)',
+                    fontWeight: activeTab === 'kb_assets' ? 700 : 500
+                  }}
+                >
+                  <span>Asset</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => setActiveTab('integrations')}
@@ -1296,12 +1412,107 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
         <main className="dashboard-main">
         {/* Header/Top Bar */}
         <header className="dashboard-header">
-          {/* Workspace Switcher */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
-              {brandProfile?.name || (userName ? `${userName}'s Workspace` : 'My Workspace')}
-            </span>
-            <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
+          {/* Workspace / Brand Switcher Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setIsBrandDropdownOpen(!isBrandDropdownOpen)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                color: '#fff',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: activeBrand?.color || '#FF6B00' }} />
+              <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                {activeBrand?.name || 'Demo Brand'}
+              </span>
+              <ChevronDown size={13} style={{ color: 'var(--text-secondary)', transform: isBrandDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isBrandDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  left: 0,
+                  width: '260px',
+                  background: '#0a0a12',
+                  border: '1px solid rgba(255, 255, 255, 0.14)',
+                  borderRadius: '14px',
+                  padding: '8px',
+                  boxShadow: '0 12px 36px rgba(0,0,0,0.85)',
+                  zIndex: 500,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+              >
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800, padding: '6px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Switch Brand Workspace
+                </div>
+
+                {allBrands.map(b => (
+                  <button
+                    key={b.id}
+                    onClick={() => handleSwitchBrand(b.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      background: b.id === activeBrandId ? 'rgba(0, 230, 118, 0.12)' : 'transparent',
+                      border: 'none',
+                      color: b.id === activeBrandId ? '#00E676' : '#fff',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      width: '100%',
+                      fontSize: '13px',
+                      fontWeight: b.id === activeBrandId ? 700 : 500
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: b.color }} />
+                      <span>{b.name}</span>
+                    </div>
+                    {b.id === activeBrandId && <CheckCircle2 size={13} color="#00E676" />}
+                  </button>
+                ))}
+
+                <div style={{ width: '100%', height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
+
+                <button
+                  onClick={() => {
+                    setIsBrandDropdownOpen(false);
+                    setActiveTab('settings');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 600
+                  }}
+                >
+                  <Sparkles size={12} color="#7C75FF" />
+                  <span>Manage Brands in Settings</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="header-actions-group" style={{ position: 'relative' }}>
@@ -1320,14 +1531,31 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
               {priorities.length > 0 && <span className="notification-badge-dot" />}
             </button>
 
-            {/* AI Assistant button */}
+            {/* Live Credit Tracker Widget */}
             <button
-              onClick={() => setActiveTab('analytics')}
-              className="topbar-icon-button"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--accent)', background: 'var(--accent-glow)', padding: '4px 10px', borderRadius: 'var(--radius-md)' }}
+              onClick={() => setActiveTab('settings')}
+              title="Click to view & top up execution credits in Settings"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#00E676',
+                background: 'rgba(0, 230, 118, 0.12)',
+                border: '1px solid rgba(0, 230, 118, 0.3)',
+                padding: '4px 12px',
+                borderRadius: '100px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 0 12px rgba(0, 230, 118, 0.12)'
+              }}
             >
-              <Sparkles size={12} />
-              <span>AI Assistant</span>
+              <Coins size={13} color="#00E676" />
+              <span>₹{creditsBalance.toLocaleString('en-IN')} Credits</span>
+              <span style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.2)', border: '1px solid rgba(0, 230, 118, 0.4)', padding: '1px 6px', borderRadius: '100px', fontWeight: 800 }}>
+                + Add
+              </span>
             </button>
 
             {/* Profile Avatar */}
@@ -1341,230 +1569,21 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
         <div className="dashboard-content">
           {activeTab === 'control' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '35px' }}>
-              {/* Home Greeting Title */}
-              <div>
-                <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                  Good Morning {userName}
-                </h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                  Your marketing agents are working background operations. Here is today's summary context.
-                </p>
-              </div>
-              
-              {!workspaceId && (
-                <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', padding: '20px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start' }}>
-                  <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#fff' }}>No Workspace Setup Detected</h3>
-                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
-                    You need to initialize your brand's AI knowledge graph before the agents can operate.
-                  </p>
-                  <GlowButton variant="glow" onClick={() => navigate('/onboarding')}>
-                    Run Quick Setup Wizard
-                  </GlowButton>
-                </div>
-              )}
-
-              {/* Growth Summary metrics grid (6 cards!) */}
-              <div>
-                <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  TODAY'S GROWTH SUMMARY
-                </h3>
-                <div className="metrics-row">
-                  <div className="metric-widget" onClick={() => setActiveTab('analytics')}>
-                    <span className="metric-title">REVENUE</span>
-                    <span className="metric-value">${metrics.revenue.toLocaleString()}</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.revenue > 0 ? '+14.2%' : '0%'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
-                    <span className="metric-title">ROAS</span>
-                    <span className="metric-value">{metrics.roas}x</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.roas > 0 ? '+0.4x' : '0.0x'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('seo')}>
-                    <span className="metric-title">SEO VISIBILITY</span>
-                    <span className="metric-value">{metrics.seoVisibility}%</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.seoVisibility > 0 ? '+3.1%' : '0%'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('seo')}>
-                    <span className="metric-title">AI VISIBILITY</span>
-                    <span className="metric-value">{metrics.aiVisibility}%</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.aiVisibility > 0 ? '+12.8%' : '0%'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
-                    <span className="metric-title">CAMPAIGN HEALTH</span>
-                    <span className="metric-value">{metrics.campaignHealth}%</span>
-                    <span className="metric-trend up" style={{ color: 'var(--success)', fontSize: '10px' }}>{metrics.campaignHealth > 0 ? 'Optimal' : 'Offline'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('control')}>
-                    <span className="metric-title">GROWTH SCORE</span>
-                    <span className="metric-value">{metrics.growthScore}/100</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.growthScore > 0 ? 'Peak' : 'Offline'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* AI Agents Working Now (Agent status cards) */}
-              <div>
-                <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  AI AGENTS WORKING NOW
-                </h3>
-                <div className="agent-cards-grid">
-                  {agentsList.map((agent) => (
-                    <div key={agent.name} className="agent-status-card">
-                      <div className="agent-status-card-header">
-                        <div className="agent-name-row">
-                          <span className="agent-icon-bulb working" />
-                          <span className="agent-card-title">{agent.name}</span>
-                        </div>
-                      </div>
-
-                      <div className="agent-metric-detail-row">
-                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Current Task:</span>
-                          <span style={{ fontWeight: 500, color: '#fff', textAlign: 'right' }}>{agent.task}</span>
-                        </div>
-
-                        <div>
-                          <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                            <span>Progress</span>
-                            <span>{agent.progress}%</span>
-                          </div>
-                          <div className="agent-progress-chassis">
-                            <div className="agent-progress-fill" style={{ width: `${agent.progress}%` }} />
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>ETA:</span>
-                          <span>{agent.eta}</span>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Latest Result:</span>
-                          <span style={{ color: 'var(--success)', fontWeight: 600 }}>{agent.result}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Priorities & Recent actions grid */}
-              <div className="dashboard-grid-top">
-                <div className="attention-center">
-                  <div className="attention-header">
-                    <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                      AI PRIORITIES
-                    </h3>
-                    {priorities.length > 0 && (
-                      <span className="attention-badge">{priorities.length} Tasks Queue</span>
-                    )}
-                  </div>
-
-                  <div className="attention-list">
-                    {priorities.length === 0 ? (
-                      <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
-                        <CheckCircle2 size={22} style={{ color: 'var(--success)', marginBottom: '8px' }} />
-                        <p style={{ fontSize: '12px' }}>AI Priorities resolved. Network optimized.</p>
-                      </div>
-                    ) : (
-                      priorities.map((item) => (
-                        <div key={item.id} className="attention-item">
-                          <div className="attention-item-left">
-                            <Zap size={15} className="attention-icon" style={{ color: item.type === 'critical' ? '#ff4757' : '#ffae00' }} />
-                            <div>
-                              <h4>{item.title}</h4>
-                              <p>{item.description}</p>
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => handleFixPriority(item.title)}
-                              className="btn btn-primary"
-                              style={{ padding: '6px 12px', fontSize: '11px', background: 'var(--success-glow)', border: '1px solid rgba(0, 255, 157, 0.2)', color: 'var(--success)', boxShadow: 'none' }}
-                            >
-                              Fix Automatically
-                            </button>
-                            <button
-                              onClick={() => handleOpenReview(item.title)}
-                              className="btn btn-secondary"
-                              style={{ padding: '6px 12px', fontSize: '11px' }}
-                            >
-                              Review
-                            </button>
-                            <button
-                              onClick={() => handleIgnorePriority(item.title)}
-                              className="btn btn-secondary"
-                              style={{ padding: '6px 10px', fontSize: '11px', color: 'var(--text-secondary)' }}
-                            >
-                              Ignore
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Recent AI Actions Timeline */}
-                <div className="glow-card" style={{ padding: '24px' }}>
-                  <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                    RECENT AI ACTIONS
-                  </h3>
-                  <div className="timeline-list">
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Brand Analysis Completed</h4>
-                        <span>Study targets extracted & logo schemas cached</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Generated 15 Creatives</h4>
-                        <span>Static concepts uploaded to reviewing drafts</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Published Meta Campaign</h4>
-                        <span>Campaign limits pushed to target FB adset sandbox</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Updated SEO</h4>
-                        <span>Canonical rules & metadata schemas injected</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Generated Blog</h4>
-                        <span>AEO keywords articles drafting completed</span>
-                      </div>
-                    </div>
-                    <div className="timeline-item">
-                      <span className="timeline-bullet" />
-                      <div className="timeline-item-body">
-                        <h4>Found 8 Influencers</h4>
-                        <span>Audience indexes crawled & contract templates dished</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Terminal feed removed as requested */}
+              {/* MODERN HOME OVERVIEW (Brand Kit Extraction, Action Needed, Top Creatives, Schedules) */}
+              <ModernHomeOverview
+                userName={userName || 'aryan070606'}
+                brandName="Demo Brand"
+                onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+                onOpenReview={handleOpenReview}
+              />
             </div>
+          )}
+
+          {activeTab === 'reports' && (
+            <WorkspaceReports
+              onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+              brandName={brandProfile?.name || 'Demo Brand'}
+            />
           )}
 
           {activeTab === 'studio' && (
@@ -1628,192 +1647,39 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
             </div>
           )}
 
-          {activeTab === 'influencer' && workspaceId && (
+          {activeTab === 'influencer' && (
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
-
-              <WorkspaceInfluencer workspaceId={workspaceId} />
+              <WorkspaceInfluencer workspaceId={workspaceId || 1} />
             </div>
           )}
 
-          {activeTab === 'agents' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div>
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>AI Network Specialist Agents</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Manage specialized sub-agent rules, active graph operations, and status indicators in your growth pipeline.
-                </p>
-              </div>
-
-              {/* Agent Flow Diagram */}
-              <div className="glow-card" style={{ padding: '28px', background: 'rgba(90, 82, 255, 0.02)', border: '1px solid rgba(90, 82, 255, 0.1)' }}>
-                <h3 style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  RAFTRA MARKETING AGENT GRAPH PATHWAY
-                </h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
-                  {agentsList.map((agent, idx) => (
-                    <div key={agent.name} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div
-                        style={{
-                          background: agent.progress > 0 ? 'var(--accent-glow)' : 'rgba(255, 255, 255, 0.01)',
-                          border: '1px solid',
-                          borderColor: agent.progress > 0 ? 'var(--accent)' : 'var(--border-color)',
-                          borderRadius: '8px',
-                          padding: '10px 16px',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          color: agent.progress > 0 ? '#fff' : 'var(--text-secondary)',
-                        }}
-                      >
-                        <span className={`agent-icon-bulb ${agent.progress > 0 ? 'working' : 'idle'}`} style={{ width: '6px', height: '6px' }} />
-                        <span>{agent.name}</span>
-                      </div>
-                      {idx < agentsList.length - 1 && (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 'bold' }}>→</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Grid of Agent Cards */}
-              <div className="agent-cards-grid">
-                {agentsList.map((agent) => (
-                  <div key={agent.name} className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`badge-pulse ${agent.progress > 0 ? 'success' : 'warning'}`} style={{ width: '6px', height: '6px' }} />
-                      <h4 style={{ fontSize: '14px' }}>{agent.name}</h4>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Task:</span>
-                        <span style={{ fontWeight: 500, color: '#fff', textAlign: 'right' }}>{agent.task}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Progress:</span>
-                        <span>{agent.progress}%</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>ETA:</span>
-                        <span>{agent.eta}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '8px', marginTop: '4px' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Result:</span>
-                        <span style={{ color: 'var(--success)' }}>{agent.result}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {(activeTab === 'scheduler' || activeTab === 'agents') && (
+            <WorkspaceScheduler onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)} />
           )}
 
-          {activeTab === 'kb' && (
-            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '30px' }}>
+          {(activeTab === 'kb' || activeTab === 'kb_brands') && (
+            <BrandKnowledgeBase />
+          )}
 
-              <div>
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Vector Knowledge Base</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Scraped URLs, document guidelines, and semantic logs index used by your AI agents team.
-                </p>
-              </div>
-              <div className="workspace-grid-split">
-                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h3 style={{ fontSize: '16px' }}>Ingest Brand Guidelines</h3>
-                  <div className="form-group">
-                    <label>Resource URL / API Docs</label>
-                    <input type="text" value={brandProfile?.url || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, url: e.target.value }))} style={{ color: 'white' }} />
-                  </div>
-                  <div className="form-group">
-                    <label>Brand Voice Tone Context</label>
-                    <textarea rows={4} value={brandProfile?.tone || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, tone: e.target.value }))} style={{ color: 'white' }} />
-                  </div>
-                  <GlowButton variant="secondary" onClick={handleReindex} loading={isReindexing} style={{ width: '100%' }}>
-                    Re-index Knowledge Graph
-                  </GlowButton>
-                </div>
-                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h3 style={{ fontSize: '16px' }}>Vector Datastores</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px', display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><FileText size={14} /> BrandVoiceEmbeddings.idx</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>208 vectors</span>
-                    </div>
-                    <div style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px', display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><FileText size={14} /> CompetitorAudits.idx</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>85 vectors</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {activeTab === 'kb_assets' && (
+            <WorkspaceAssets />
           )}
 
           {activeTab === 'integrations' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div>
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Integrations Hub</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Toggle sandbox connections to enable direct publishing nodes.
-                </p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
-                {['Meta Ads Sandbox', 'Google Ads Sandbox', 'Instagram Graph API', 'WhatsApp Business API', 'ChatGPT citation pipeline', 'Gemini Citation context'].map((plat) => (
-                  <div key={plat} className="glow-card" style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h4 style={{ fontSize: '14px' }}>{plat}</h4>
-                      <span style={{ fontSize: '11px', color: 'var(--success)' }}>Connected</span>
-                    </div>
-                    <span className="badge-pulse success" />
-                  </div>
-                ))}
-              </div>
-            </div>
+            <WorkspaceIntegrations />
           )}
 
           {activeTab === 'settings' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div>
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Settings & Billing Center</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Manage company settings, active plans, billing tokens, and brand settings.
-                </p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Brand Configuration</h3>
-                  <div className="form-group">
-                    <label>Brand Name</label>
-                    <input type="text" value={brandProfile?.name || ''} onChange={(e) => setBrandProfile(prev => ({ ...prev, name: e.target.value }))} />
-                  </div>
-                  <div className="form-group">
-                    <label>Brand Hue Color</label>
-                    <input type="text" value={brandProfile?.colors || ''} onChange={(e) => setBrandProfile(prev => ({ ...prev, colors: e.target.value }))} />
-                  </div>
-                  <GlowButton variant="glow" onClick={() => alert('Settings saved successfully!')} style={{ width: '100%' }}>
-                    Save Settings
-                  </GlowButton>
-                </div>
-
-                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 600 }}>SaaS Account Balance</h3>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    Your current account credits balance is used to instantly activate specialist agent workspaces.
-                  </div>
-                  <div style={{ background: '#0a0a0c', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>CURRENT CREDITS BALANCE</span>
-                    <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>
-                      ${billingBalance.toFixed(2)}
-                    </div>
-                  </div>
-                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(100)} style={{ width: '100%' }}>
-                    Add $100 Credits (Mock Top Up)
-                  </GlowButton>
-                </div>
-              </div>
-            </div>
+            <WorkspaceSettings
+              onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+              brands={allBrands}
+              activeBrandId={activeBrandId}
+              onSwitchBrand={handleSwitchBrand}
+              onAddBrand={handleAddBrand}
+              onDeleteBrand={handleDeleteBrand}
+              creditsBalance={creditsBalance}
+              onTopUpCredits={handleTopUpCredits}
+            />
           )}
         </div>
       </main>

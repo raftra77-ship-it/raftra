@@ -19,7 +19,7 @@ const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[])
 
 import { BrandPostedDealsView } from './PostedDealsWorkflow';
 
-export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceId}) => {
+export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspaceId }) => {
   const [mainSubTab, setMainSubTab] = useState<'discover' | 'posted_deals' | 'my_collaborations'>('discover');
   const [creators, setCreators] = useState<InfluencerItemExtended[]>([]);
   const [filterNiche, setFilterNiche] = useState('All');
@@ -104,7 +104,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       contactInfo: guestContactInfo
     };
     localStorage.setItem('raftra_guest_brand', JSON.stringify(identity));
-    
+
     if (guestModalCreator) {
       const creator = guestModalCreator;
       setGuestModalCreator(null);
@@ -237,13 +237,13 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       window.removeEventListener('creatorProfileUpdated', handleSync);
     };
   }, [workspaceId]);
-  
+
   // Modals state
   const [activeChat, setActiveChat] = useState<InfluencerItemExtended | null>(null);
   const [viewProfile, setViewProfile] = useState<InfluencerItemExtended | null>(null);
 
   // Chat State
-  const [chatMessages, setChatMessages] = useState<{sender: 'brand'|'creator'|'system', text: string}[]>([]);
+  const [chatMessages, setChatMessages] = useState<{ sender: 'brand' | 'creator' | 'system', text: string }[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [showFinalize, setShowFinalize] = useState(false);
   const [finalPrice, setFinalPrice] = useState('');
@@ -262,7 +262,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     const delivs = finalDeliverables.trim() || 'UGC Video + Reel';
     const roomKey = getChatKey(activeChat);
     const storageKey = `raftra_chat_${roomKey}`;
-    
+
     const proposalMsg = { sender: 'brand' as const, workspaceId, text: JSON.stringify({ type: 'proposal', amount: price, deliverables: delivs }) };
     const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
     const updated = [...currentMsgs, proposalMsg];
@@ -307,7 +307,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     // Load existing messages from localStorage (history)
     const saved = localStorage.getItem(storageKey);
     if (saved) {
-      try { setChatMessages(JSON.parse(saved)); } catch (err) {}
+      try { setChatMessages(JSON.parse(saved)); } catch (err) { }
     }
 
     // Connect to backend WebSocket room
@@ -331,7 +331,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             return updated;
           });
         }
-      } catch (err) {}
+      } catch (err) { }
     };
 
     ws.onerror = (e) => console.warn('[Brand Chat WS] error:', e);
@@ -349,7 +349,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     const storageKey = `raftra_chat_${roomKey}`;
     const savedChat = localStorage.getItem(storageKey);
     if (savedChat) {
-      try { setChatMessages(JSON.parse(savedChat)); return; } catch (err) {}
+      try { setChatMessages(JSON.parse(savedChat)); return; } catch (err) { }
     }
     // First time opening — seed with intro messages that include workspaceId so creator knows which brand
     const initialMsgs = [
@@ -362,7 +362,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
   const isAntiBypassViolation = (text: string): boolean => {
     const lower = text.toLowerCase();
-    
+
     // Obfuscated / spaced out phone numbers check (e.g. 9 8 7 6 5 4 3 2 1 0 or 9876543210)
     const normalizedDigits = text.replace(/[^0-9]/g, '');
     if (normalizedDigits.length >= 10 && /[6-9]\d{9}/.test(normalizedDigits)) {
@@ -434,7 +434,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     if (filterFollowers !== 'All') {
       const cat = (c.category || '').toLowerCase();
       const fStr = (c.followers || '').replace(/,/g, '').toLowerCase();
-      
+
       if (filterFollowers === 'Nano') {
         followerMatch = cat === 'nano' || (!fStr.includes('k') && !fStr.includes('m') && parseFloat(fStr) < 10000) || (fStr.includes('k') && parseFloat(fStr) < 10);
       } else if (filterFollowers === 'Micro') {
@@ -509,7 +509,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       if ((e.key === storageKey || e.key === 'raftra_creator_inbox_chat' || e.key === 'raftra_chat_creator_11') && e.newValue) {
         try {
           setChatMessages(JSON.parse(e.newValue));
-        } catch (err) {}
+        } catch (err) { }
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -517,12 +517,12 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   }, [activeChat]);
 
   const [showEmailReceiptModal, setShowEmailReceiptModal] = useState<boolean>(false);
-  const [paidDealInfo, setPaidDealInfo] = useState<{amount: number, creator: InfluencerItemExtended} | null>(null);
+  const [paidDealInfo, setPaidDealInfo] = useState<{ amount: number, creator: InfluencerItemExtended } | null>(null);
 
   const handlePayRazorpay = async (amount: number) => {
     try {
       const payload = JSON.stringify({ type: 'payment_complete', amount });
-      
+
       if (activeChat) {
         const storageKey = getChatKey(activeChat);
         const currentMsgs = JSON.parse(localStorage.getItem(storageKey) || JSON.stringify(chatMessages));
@@ -545,18 +545,18 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ brand_whatsapp: '9876543210' })
-              }).catch(() => {});
+              }).catch(() => { });
             }
-          }).catch(() => {});
+          }).catch(() => { });
       }
-    } catch(e) {
+    } catch (e) {
       console.error(e);
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px', paddingBottom: '40px', position: 'relative' }}>
-      
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -685,7 +685,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <div style={{ fontSize: '36px' }}>🔒</div>
             <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#fff', margin: 0 }}>Posted Deals — Subscriber Dashboard Feature</h3>
             <p style={{ fontSize: '15px', color: 'var(--text-secondary)', maxWidth: '580px', margin: 0, lineHeight: 1.6 }}>
-              Posting campaign briefs and receiving applications from creators is exclusive to <strong>Registered Brand & Creator Members</strong>. 
+              Posting campaign briefs and receiving applications from creators is exclusive to <strong>Registered Brand & Creator Members</strong>.
               Sign in to your account or register as a Brand to broadcast requirements or manage your campaigns.
             </p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -719,7 +719,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <div style={{ fontSize: '36px' }}>🔒</div>
             <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#fff', margin: 0 }}>My Collaborations — Locked Member Feature</h3>
             <p style={{ fontSize: '15px', color: 'var(--text-secondary)', maxWidth: '580px', margin: 0, lineHeight: 1.6 }}>
-              Tracking active brand collaborations, content deliverables & escrow payouts is exclusive to <strong>Registered Brand & Creator Members</strong>. 
+              Tracking active brand collaborations, content deliverables & escrow payouts is exclusive to <strong>Registered Brand & Creator Members</strong>.
               Sign in to your account or register to manage your active deals.
             </p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -754,7 +754,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   Get Free Expert Advice & Curated Influencer Matching
                 </h3>
                 <p style={{ fontSize: '14.5px', color: 'rgba(255,255,255,0.85)', margin: 0, maxWidth: '850px', lineHeight: 1.6 }}>
-                  Whether you are a Brand, Customer, or Creator — share your website, Instagram page & campaign goals. Our Creator Strategists will curate influencers, negotiate rates & revert back within 2 hours.
+                  Whether you are a Brand, Customer, or Creator — share your website, Instagram page & campaign goals. Our Creator Strategists will curate influencers, negotiate rates & revert back within 24 hours.
                 </p>
               </div>
 
@@ -849,8 +849,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                     <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎉</div>
                     <h4 style={{ fontSize: '20px', color: '#00E676', margin: '0 0 6px 0', fontWeight: 800 }}>Inquiry Received!</h4>
                     <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.9)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
-                      Thank you! Your details have been sent to our Creator Strategy Team at <strong>raftra.77mail.com</strong>.<br/>
-                      Our strategist will analyze your brand / handle and revert back with curated creator recommendations within 2 hours.
+                      Thank you! Your details have been sent to our Creator Strategy Team at <strong>raftra.77mail.com</strong>.<br />
+                      Our strategist will analyze your brand / handle and revert back with curated creator recommendations within 24 hours.
                     </p>
                     <button onClick={() => setExpertInquirySubmitted(false)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '8px 20px', borderRadius: '100px', fontSize: '12.5px', cursor: 'pointer' }}>
                       Submit Another Request
@@ -982,290 +982,290 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             )}
           </div>
 
-      {/* PLATFORM PROTECTION & DISINTERMEDIATION SAFETY BANNER */}
-      <div 
-        style={{
-          background: 'linear-gradient(135deg, rgba(255, 179, 0, 0.12) 0%, rgba(220, 38, 38, 0.12) 100%)',
-          border: '1.5px solid #FFB300',
-          borderRadius: '16px',
-          padding: '16px 22px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 4px 20px rgba(255,179,0,0.15)'
-        }}
-      >
-        <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(255, 179, 0, 0.2)', border: '1px solid #FFB300', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <ShieldAlert size={24} color="#FFB300" />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '14px', fontWeight: 900, color: '#FFB300', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>🛡️ RAFTRA 100% ESCROW PROTECTION POLICY</span>
-            <span style={{ fontSize: '10px', background: '#dc2626', color: '#fff', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>STRICT RULE</span>
-          </div>
-          <p style={{ fontSize: '13px', color: '#fff', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
-            Pay ONLY via Raftra Web Chat & Escrow Vault. Raftra is <b>NOT responsible</b> for deals taken off-platform (direct wire transfers or IG DMs). Sharing contact info in chat = <b>instant account suspension</b>.
-          </p>
-        </div>
-      </div>
-
-      {/* BRAND WORKFLOW STEPPER (HOW TO USE) */}
-      <div 
-        className="glow-card" 
-        style={{
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          padding: '22px 24px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <h3 style={{ fontSize: '17px', margin: '0 0 2px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
-              ⚡ HOW BRAND CAMPAIGNS WORK (5 SIMPLE STEPS)
-            </h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, fontWeight: 500 }}>
-              Follow this exact step-by-step process from negotiation to payout release.
-            </p>
-          </div>
-          <span style={{ fontSize: '11px', padding: '6px 12px', background: 'rgba(0,230,118,0.15)', color: '#00E676', border: '1px solid #00E676', borderRadius: '20px', fontWeight: 800 }}>
-            BRAND CAMPAIGN FLOW
-          </span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-          {[
-            { step: '1', title: 'Negotiate Directly with Influencer', tag: 'Web Chat Discussion', desc: 'Open Web Chat & discuss project requirements directly with creator.' },
-            { step: '2', title: 'Send Finalize Deal Proposal', tag: 'Price (₹) & Deliverables', desc: 'Click "Finalize Deal", enter final price & deliverables, and send proposal.' },
-            { step: '3', title: 'Accept Proposal & Go to Payment', tag: 'Pay via Escrow Vault', desc: 'Once creator accepts proposal ➔ Click "Proceed to Secure Payment Page".' },
-            { step: '4', title: 'Get Email & WhatsApp Contact', tag: 'Exchange Deliverables', desc: 'Receive email receipt ➔ Open WhatsApp link with creator & exchange deliverables.' },
-            { step: '5', title: 'Send Satisfactory Message', tag: 'Release Payout to Creator', desc: 'Work done & satisfactory? Send timestamped satisfaction code to influencer for payout release.' }
-          ].map(item => (
-            <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px', position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '11.5px', fontWeight: 900, color: '#00E676', letterSpacing: '0.05em' }}>STEP {item.step}</span>
-                  <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#00E676', color: '#000', fontWeight: 900, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.step}</span>
-                </div>
-                <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#fff', marginBottom: '6px', lineHeight: 1.3 }}>{item.title}</div>
-                <div style={{ fontSize: '10.5px', color: '#00C4CC', fontWeight: 700, marginBottom: '8px', background: 'rgba(0,196,204,0.1)', padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.tag}</div>
-              </div>
-              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, fontWeight: 500 }}>{item.desc}</div>
+          {/* PLATFORM PROTECTION & DISINTERMEDIATION SAFETY BANNER */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(255, 179, 0, 0.12) 0%, rgba(220, 38, 38, 0.12) 100%)',
+              border: '1.5px solid #FFB300',
+              borderRadius: '16px',
+              padding: '16px 22px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              boxShadow: '0 4px 20px rgba(255,179,0,0.15)'
+            }}
+          >
+            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(255, 179, 0, 0.2)', border: '1px solid #FFB300', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ShieldAlert size={24} color="#FFB300" />
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Filters row */}
-      <div id="creators-discovery-grid" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div className="glow-card" style={{ padding: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '130px', fontWeight: 700 }}>
-            <Search size={14} color="#00E676" /> FILTER BY NICHE:
-          </span>
-          {['All', 'Local / City-based', 'Fashion', 'Fitness', 'Lifestyle', 'Art', 'Education', 'Tech', 'Food', 'Couple Reels'].map((niche) => (
-            <button
-              key={niche}
-              onClick={() => setFilterNiche(niche)}
-              style={{
-                padding: '6px 14px',
-                fontSize: '12px',
-                background: filterNiche === niche ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255,255,255,0.02)',
-                border: '1px solid',
-                borderColor: filterNiche === niche ? '#00E676' : 'var(--border)',
-                borderRadius: '20px',
-                color: filterNiche === niche ? '#00E676' : 'var(--text-secondary)',
-                fontWeight: filterNiche === niche ? 700 : 400,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              {niche}
-            </button>
-          ))}
-        </div>
-
-        <div className="glow-card" style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
-            <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '110px', fontWeight: 700 }}>
-              ⚡ FOLLOWERS:
-            </span>
-            {[
-              { id: 'All', label: 'All Creators' },
-              { id: 'Nano', label: 'Nano (< 10k)' },
-              { id: 'Micro', label: 'Micro (10k - 100k)' },
-              { id: 'Macro', label: 'Macro (100k+)' }
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setFilterFollowers(item.id)}
-                style={{
-                  padding: '5px 14px',
-                  fontSize: '11.5px',
-                  background: filterFollowers === item.id ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.02)',
-                  border: '1px solid',
-                  borderColor: filterFollowers === item.id ? '#5A52FF' : 'var(--border)',
-                  borderRadius: '20px',
-                  color: filterFollowers === item.id ? '#fff' : 'var(--text-secondary)',
-                  fontWeight: filterFollowers === item.id ? 700 : 400,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <ArrowUpDown size={12} color="#00E676" /> Sort:
-            </span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              style={{
-                background: 'rgba(0, 230, 118, 0.1)',
-                border: '1px solid rgba(0, 230, 118, 0.3)',
-                borderRadius: '6px',
-                color: '#00E676',
-                padding: '4px 10px',
-                fontSize: '11.5px',
-                fontWeight: 600,
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="featured" style={{ background: '#121216', color: '#fff' }}>🔥 Top Reach (Recommended)</option>
-              <option value="followers_desc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: High ➔ Low ⬇️</option>
-              <option value="followers_asc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: Low ➔ High ⬆️</option>
-              <option value="price_desc" style={{ background: '#121216', color: '#fff' }}>💰 Price: High ➔ Low ⬇️</option>
-              <option value="price_asc" style={{ background: '#121216', color: '#fff' }}>💰 Price: Low ➔ High ⬆️</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Influencers grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
-        {sortedCreators.map((creator) => (
-          <div key={creator.id} className="glow-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column' }}>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <img
-                  src={creator.avatar || ("https://ui-avatars.com/api/?name=" + creator.name.replace(' ', '+') + "&background=random&color=fff&size=56")}
-                  alt={creator.name}
-                  style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }}
-                />
-                <div>
-                  <h4 style={{ fontSize: '17px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px', color: '#fff', fontWeight: 700 }}>
-                    {creator.name} <BadgeCheck size={15} color="#00E676" />
-                  </h4>
-                  <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 600 }}>{creator.handle}</div>
-                  {creator.location && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>📍 {creator.location}</div>
-                  )}
-                </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '14px', fontWeight: 900, color: '#FFB300', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🛡️ RAFTRA 100% ESCROW PROTECTION POLICY</span>
+                <span style={{ fontSize: '10px', background: '#dc2626', color: '#fff', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>STRICT RULE</span>
               </div>
-              <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '5px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                {creator.category.toUpperCase()}
+              <p style={{ fontSize: '13px', color: '#fff', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
+                Pay ONLY via Raftra Web Chat & Escrow Vault. Raftra is <b>NOT responsible</b> for deals taken off-platform (direct wire transfers or IG DMs). Sharing contact info in chat = <b>instant account suspension</b>.
+              </p>
+            </div>
+          </div>
+
+          {/* BRAND WORKFLOW STEPPER (HOW TO USE) */}
+          <div
+            className="glow-card"
+            style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid var(--border)',
+              borderRadius: '16px',
+              padding: '22px 24px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '17px', margin: '0 0 2px 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+                  ⚡ HOW BRAND CAMPAIGNS WORK (5 SIMPLE STEPS)
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, fontWeight: 500 }}>
+                  Follow this exact step-by-step process from negotiation to payout release.
+                </p>
+              </div>
+              <span style={{ fontSize: '11px', padding: '6px 12px', background: 'rgba(0,230,118,0.15)', color: '#00E676', border: '1px solid #00E676', borderRadius: '20px', fontWeight: 800 }}>
+                BRAND CAMPAIGN FLOW
               </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Followers</span>
-                {(!creator.followers || creator.followers.toLowerCase().includes('view profile')) ? (
-                  <a 
-                    href={creator.profileLink || '#'} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    View Profile ↗
-                  </a>
-                ) : (
-                  <span style={{ color: '#fff', fontWeight: 700 }}>{creator.followers}</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
-                {(!creator.avgViews || creator.avgViews.toLowerCase().includes('view profile')) ? (
-                  <a 
-                    href={creator.profileLink || '#'} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    View Profile ↗
-                  </a>
-                ) : (
-                  <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Activity size={14} /> {creator.avgViews}
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
-                <span style={{ color: creator.fakeFollowerScore < 5 ? '#00E676' : 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <ShieldAlert size={14} /> {creator.fakeFollowerScore}%
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Collab Price Range</span>
-                <span style={{ color: '#00E676', fontWeight: 700 }}>
-                  {creator.expectedPrice}
-                </span>
-              </div>
-              
-              <div style={{ marginTop: '8px' }}>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 600, letterSpacing: '0.05em' }}>AVAILABLE FOR:</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {creator.deliverables.map(d => {
-                    const isUGC = d.toLowerCase().includes('ugc');
-                    return (
-                      <span
-                        key={d}
-                        style={{
-                          fontSize: '12px',
-                          background: isUGC ? 'rgba(255, 77, 77, 0.15)' : 'rgba(0, 230, 118, 0.1)',
-                          color: isUGC ? '#FF4D4D' : '#00E676',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          border: isUGC ? '1px solid rgba(255, 77, 77, 0.4)' : '1px solid rgba(0, 230, 118, 0.2)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          fontWeight: isUGC ? 700 : 500
-                        }}
-                      >
-                        {isUGC ? <Video size={12} color="#FF4D4D" /> : d.includes('Video') ? <Video size={12} /> : <ImageIcon size={12} />} {d}
-                      </span>
-                    );
-                  })}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+              {[
+                { step: '1', title: 'Negotiate Directly with Influencer', tag: 'Web Chat Discussion', desc: 'Open Web Chat & discuss project requirements directly with creator.' },
+                { step: '2', title: 'Send Finalize Deal Proposal', tag: 'Price (₹) & Deliverables', desc: 'Click "Finalize Deal", enter final price & deliverables, and send proposal.' },
+                { step: '3', title: 'Accept Proposal & Go to Payment', tag: 'Pay via Escrow Vault', desc: 'Once creator accepts proposal ➔ Click "Proceed to Secure Payment Page".' },
+                { step: '4', title: 'Get Email & WhatsApp Contact', tag: 'Exchange Deliverables', desc: 'Receive email receipt ➔ Open WhatsApp link with creator & exchange deliverables.' },
+                { step: '5', title: 'Send Satisfactory Message', tag: 'Release Payout to Creator', desc: 'Work done & satisfactory? Send timestamped satisfaction code to influencer for payout release.' }
+              ].map(item => (
+                <div key={item.step} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px', position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '11.5px', fontWeight: 900, color: '#00E676', letterSpacing: '0.05em' }}>STEP {item.step}</span>
+                      <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#00E676', color: '#000', fontWeight: 900, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.step}</span>
+                    </div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#fff', marginBottom: '6px', lineHeight: 1.3 }}>{item.title}</div>
+                    <div style={{ fontSize: '10.5px', color: '#00C4CC', fontWeight: 700, marginBottom: '8px', background: 'rgba(0,196,204,0.1)', padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.tag}</div>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, fontWeight: 500 }}>{item.desc}</div>
                 </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <GlowButton variant="glow" onClick={() => handleNegotiateClick(creator)} style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
-                <MessageCircle size={14} /> Negotiate
-              </GlowButton>
-              {creator.profileLink && (
-                <button
-                  onClick={() => window.open(creator.profileLink, '_blank')}
-                  style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <ExternalLink size={14} /> Profile
-                </button>
-              )}
+              ))}
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* Filters row */}
+          <div id="creators-discovery-grid" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="glow-card" style={{ padding: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '130px', fontWeight: 700 }}>
+                <Search size={14} color="#00E676" /> FILTER BY NICHE:
+              </span>
+              {['All', 'Local / City-based', 'Fashion', 'Fitness', 'Lifestyle', 'Art', 'Education', 'Tech', 'Food', 'Couple Reels'].map((niche) => (
+                <button
+                  key={niche}
+                  onClick={() => setFilterNiche(niche)}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    background: filterNiche === niche ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255,255,255,0.02)',
+                    border: '1px solid',
+                    borderColor: filterNiche === niche ? '#00E676' : 'var(--border)',
+                    borderRadius: '20px',
+                    color: filterNiche === niche ? '#00E676' : 'var(--text-secondary)',
+                    fontWeight: filterNiche === niche ? 700 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {niche}
+                </button>
+              ))}
+            </div>
+
+            <div className="glow-card" style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                <span style={{ fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '110px', fontWeight: 700 }}>
+                  ⚡ FOLLOWERS:
+                </span>
+                {[
+                  { id: 'All', label: 'All Creators' },
+                  { id: 'Nano', label: 'Nano (< 10k)' },
+                  { id: 'Micro', label: 'Micro (10k - 100k)' },
+                  { id: 'Macro', label: 'Macro (100k+)' }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setFilterFollowers(item.id)}
+                    style={{
+                      padding: '5px 14px',
+                      fontSize: '11.5px',
+                      background: filterFollowers === item.id ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.02)',
+                      border: '1px solid',
+                      borderColor: filterFollowers === item.id ? '#5A52FF' : 'var(--border)',
+                      borderRadius: '20px',
+                      color: filterFollowers === item.id ? '#fff' : 'var(--text-secondary)',
+                      fontWeight: filterFollowers === item.id ? 700 : 400,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <ArrowUpDown size={12} color="#00E676" /> Sort:
+                </span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{
+                    background: 'rgba(0, 230, 118, 0.1)',
+                    border: '1px solid rgba(0, 230, 118, 0.3)',
+                    borderRadius: '6px',
+                    color: '#00E676',
+                    padding: '4px 10px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="featured" style={{ background: '#121216', color: '#fff' }}>🔥 Top Reach (Recommended)</option>
+                  <option value="followers_desc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: High ➔ Low ⬇️</option>
+                  <option value="followers_asc" style={{ background: '#121216', color: '#fff' }}>👥 Followers: Low ➔ High ⬆️</option>
+                  <option value="price_desc" style={{ background: '#121216', color: '#fff' }}>💰 Price: High ➔ Low ⬇️</option>
+                  <option value="price_asc" style={{ background: '#121216', color: '#fff' }}>💰 Price: Low ➔ High ⬆️</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Influencers grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
+            {sortedCreators.map((creator) => (
+              <div key={creator.id} className="glow-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column' }}>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <img
+                      src={creator.avatar || ("https://ui-avatars.com/api/?name=" + creator.name.replace(' ', '+') + "&background=random&color=fff&size=56")}
+                      alt={creator.name}
+                      style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }}
+                    />
+                    <div>
+                      <h4 style={{ fontSize: '17px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '6px', color: '#fff', fontWeight: 700 }}>
+                        {creator.name} <BadgeCheck size={15} color="#00E676" />
+                      </h4>
+                      <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 600 }}>{creator.handle}</div>
+                      {creator.location && (
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>📍 {creator.location}</div>
+                      )}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '5px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {creator.category.toUpperCase()}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Followers</span>
+                    {(!creator.followers || creator.followers.toLowerCase().includes('view profile')) ? (
+                      <a
+                        href={creator.profileLink || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        View Profile ↗
+                      </a>
+                    ) : (
+                      <span style={{ color: '#fff', fontWeight: 700 }}>{creator.followers}</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Avg Views / Reach</span>
+                    {(!creator.avgViews || creator.avgViews.toLowerCase().includes('view profile')) ? (
+                      <a
+                        href={creator.profileLink || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        View Profile ↗
+                      </a>
+                    ) : (
+                      <span style={{ color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Activity size={14} /> {creator.avgViews}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Fake Follower Score</span>
+                    <span style={{ color: creator.fakeFollowerScore < 5 ? '#00E676' : 'var(--warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <ShieldAlert size={14} /> {creator.fakeFollowerScore}%
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Collab Price Range</span>
+                    <span style={{ color: '#00E676', fontWeight: 700 }}>
+                      {creator.expectedPrice}
+                    </span>
+                  </div>
+
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 600, letterSpacing: '0.05em' }}>AVAILABLE FOR:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {creator.deliverables.map(d => {
+                        const isUGC = d.toLowerCase().includes('ugc');
+                        return (
+                          <span
+                            key={d}
+                            style={{
+                              fontSize: '12px',
+                              background: isUGC ? 'rgba(255, 77, 77, 0.15)' : 'rgba(0, 230, 118, 0.1)',
+                              color: isUGC ? '#FF4D4D' : '#00E676',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              border: isUGC ? '1px solid rgba(255, 77, 77, 0.4)' : '1px solid rgba(0, 230, 118, 0.2)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: isUGC ? 700 : 500
+                            }}
+                          >
+                            {isUGC ? <Video size={12} color="#FF4D4D" /> : d.includes('Video') ? <Video size={12} /> : <ImageIcon size={12} />} {d}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <GlowButton variant="glow" onClick={() => handleNegotiateClick(creator)} style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
+                    <MessageCircle size={14} /> Negotiate
+                  </GlowButton>
+                  {creator.profileLink && (
+                    <button
+                      onClick={() => window.open(creator.profileLink, '_blank')}
+                      style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <ExternalLink size={14} /> Profile
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </>
       )}
 
@@ -1287,9 +1287,9 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <form onSubmit={handleSaveGuestIdentity} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ fontSize: '12.5px', color: '#ccc', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Your Full Name *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   value={guestContactName}
                   onChange={e => setGuestContactName(e.target.value)}
                   placeholder="e.g. Rahul Sharma"
@@ -1299,9 +1299,9 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
               <div>
                 <label style={{ fontSize: '12.5px', color: '#ccc', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Brand / Business Name or Project *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   value={guestBrandName}
                   onChange={e => setGuestBrandName(e.target.value)}
                   placeholder="e.g. Zenith Apparel or Personal Project"
@@ -1311,9 +1311,9 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
 
               <div>
                 <label style={{ fontSize: '12.5px', color: '#ccc', display: 'block', marginBottom: '6px', fontWeight: 600 }}>WhatsApp / Work Email (for confirmation & receipt) *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   value={guestContactInfo}
                   onChange={e => setGuestContactInfo(e.target.value)}
                   placeholder="e.g. +91 98765 43210 or rahul@brand.com"
@@ -1340,7 +1340,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       {activeChat && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)', padding: '20px' }}>
           <div className="glow-card" style={{ width: '850px', height: '82vh', background: '#08080a', border: '1px solid rgba(90,82,255,0.4)', borderRadius: '20px', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.6)' }}>
-            
+
             {/* Chat Header */}
             <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -1376,13 +1376,13 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                   );
                 }
                 const isBrand = msg.sender === 'brand';
-                
+
                 let parsedContent: any = null;
                 try {
                   if (msg.text.trim().startsWith('{')) {
                     parsedContent = JSON.parse(msg.text);
                   }
-                } catch (e) {}
+                } catch (e) { }
 
                 if (parsedContent && parsedContent.type === 'proposal') {
                   return (
@@ -1456,11 +1456,11 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isBrand ? 'right' : 'left' }}>
                       {isBrand ? 'You (Brand)' : activeChat.name}
                     </div>
-                    <div style={{ 
-                      background: isBrand ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.06)', 
+                    <div style={{
+                      background: isBrand ? 'rgba(90, 82, 255, 0.2)' : 'rgba(255,255,255,0.06)',
                       border: '1px solid',
                       borderColor: isBrand ? 'rgba(90, 82, 255, 0.4)' : 'var(--border)',
-                      padding: '12px 18px', 
+                      padding: '12px 18px',
                       borderRadius: isBrand ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
                       color: '#fff',
                       fontSize: '13.5px',
@@ -1540,7 +1540,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
           <div className="glow-card" style={{ width: '600px', maxHeight: '85vh', background: '#0a0a0c', padding: '30px', position: 'relative', overflowY: 'auto' }}>
             <button onClick={() => setViewProfile(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '24px' }}>&times;</button>
-            
+
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '30px' }}>
               <img src={"https://ui-avatars.com/api/?name=" + viewProfile.name.replace(' ', '+') + "&background=random&color=fff&size=80"} alt={viewProfile.name} style={{ borderRadius: '50%', border: '2px solid var(--primary)' }} />
@@ -1706,15 +1706,15 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.9)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
                 Connect with creator on WhatsApp/Instagram for content production. <b>SEND THE SATISFACTORY MESSAGE BELOW TO THE INFLUENCER ONLY AFTER WORK IS DELIVERED AND YOU ARE 100% SATISFIED.</b> The influencer will upload a screenshot proof of this timestamped message to Team Raftra for Escrow Payout release.
               </p>
-              
+
               <div style={{ background: '#070709', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px', fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: '#00E676', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                {`--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Ambrane India\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`}
+                {`--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Demo Brand\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`}
               </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
                 <button
                   onClick={() => {
-                    const text = `--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Ambrane India\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`;
+                    const text = `--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Demo Brand\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`;
                     navigator.clipboard.writeText(text);
                     alert("Copied Satisfactory Approval Message! Send this to influencer on WhatsApp once work is delivered.");
                   }}
@@ -1743,7 +1743,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       )}
 
       {/* Global Styles for Animations */}
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}} />
     </div>

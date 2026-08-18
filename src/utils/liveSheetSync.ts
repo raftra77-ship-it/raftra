@@ -20,7 +20,7 @@ const FEMALE_AVATARS = [
   "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80"
 ];
 
-const FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi', 'ishwarya', 'rubani', 'samaira', 'pritika', 'drishti', 'meenal', 'damia'];
+const FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi', 'ishwarya', 'rubani', 'samaira', 'pritika', 'drishti', 'meenal', 'preethi', 'preeti', 'bhakti', 'vanshita', 'yogita', 'bristi', 'damia', 'payal', 'navya'];
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
@@ -96,16 +96,21 @@ function parsePricingDetails(col11Text: string, handle = '', name = ''): { expec
   const h = handle.toLowerCase();
   const n = name.toLowerCase();
   const txt = (col11Text || '').trim();
-  const txtLower = txt.toLowerCase();
+  const txtLower = txt.lower ? txt.toLowerCase() : '';
 
-  if (h.includes('mahhiii') || h.includes('_ak_vlogs') || h.includes('anmol') || txtLower.includes('discuss') || txtLower.includes('negotiable') || !txt) {
+  if (h.includes('mahhiii') || h.includes('_ak_vlogs') || txtLower.includes('discuss') || txtLower.includes('negotiable') || !txt) {
     return { expectedPrice: "Can discuss", priceRange: "Can discuss" };
   }
 
+  if (h.includes('preethi') || h.includes('preeti') || n.includes('preethi') || n.includes('preeti')) return { expectedPrice: "₹1,000 - ₹17,000", priceRange: "₹1,000 - ₹17,000" };
+  if (h.includes('bhakti') || n.includes('bhakti')) return { expectedPrice: "₹200 - ₹2,000", priceRange: "₹200 - ₹2,000" };
+  if (h.includes('vanshita') || n.includes('vanshita')) return { expectedPrice: "₹500 - ₹5,000", priceRange: "₹500 - ₹5,000" };
+  if (h.includes('ayusshh.kapoorr') || (n.includes('ayush') && n.includes('kapoor'))) return { expectedPrice: "₹8,000 - ₹25,000", priceRange: "₹8,000 - ₹25,000" };
+  if (h.includes('vishwas') || n.includes('vishwas')) return { expectedPrice: "₹4,000 - ₹10,000", priceRange: "₹4,000 - ₹10,000" };
   if (h.includes('rubani') || n.includes('rubani')) return { expectedPrice: "₹1,000 - ₹8,000", priceRange: "₹1,000 - ₹8,000" };
   if (h.includes('samaira') || n.includes('samaira')) return { expectedPrice: "₹500 - ₹1,000", priceRange: "₹500 - ₹1,000" };
   if (h.includes('pritika') || n.includes('pritika') || h.includes('_pritika001')) return { expectedPrice: "₹500 - ₹5,000", priceRange: "₹500 - ₹5,000" };
-  if (h.includes('aayush') || h.includes('aayushhyrrr')) return { expectedPrice: "₹1,000 - ₹5,000", priceRange: "₹1,000 - ₹5,000" };
+  if (h.includes('aayushhyrrr')) return { expectedPrice: "₹1,000 - ₹5,000", priceRange: "₹1,000 - ₹5,000" };
   if (h.includes('uttarakhandyb')) return { expectedPrice: "₹1,000 - ₹3,000", priceRange: "₹1,000 - ₹3,000" };
   if (h.includes('aanushkaanexttdoorr')) return { expectedPrice: "₹2,000 - ₹6,000", priceRange: "₹2,000 - ₹6,000" };
   if (h.includes('musclestroke')) return { expectedPrice: "₹1,000 - ₹3,000", priceRange: "₹1,000 - ₹3,000" };
@@ -123,8 +128,10 @@ function parsePricingDetails(col11Text: string, handle = '', name = ''): { expec
   if (h.includes('sachin')) return { expectedPrice: "₹1,000 - ₹4,000", priceRange: "₹1,000 - ₹4,000" };
   if (h.includes('ishwarya') || n.includes('kaur')) return { expectedPrice: "₹500 - ₹4,000", priceRange: "₹500 - ₹4,000" };
   if (h.includes('drishti') || n.includes('rawat')) return { expectedPrice: "₹500 - ₹5,000", priceRange: "₹500 - ₹5,000" };
-  if (h.includes('roshan') || n.includes('sharma')) return { expectedPrice: "₹800 - ₹4,800", priceRange: "₹800 - ₹4,800" };
+  if (h.includes('roshan') || (n.includes('roshan') && n.includes('sharma'))) return { expectedPrice: "₹800 - ₹4,800", priceRange: "₹800 - ₹4,800" };
   if (h.includes('meenal') || n.includes('shukla')) return { expectedPrice: "₹10,000 - ₹80,000", priceRange: "₹10,000 - ₹80,000" };
+  if (h.includes('payal') || n.includes('payal')) return { expectedPrice: "₹1,000 - ₹5,000", priceRange: "₹1,000 - ₹5,000" };
+  if (h.includes('navya') || h.includes('navvyyaaaaa') || n.includes('navya') || h.includes('38') || n.includes('38')) return { expectedPrice: "₹1,000 - ₹3,000+", priceRange: "₹1,000 - ₹3,000+" };
 
   const matches: number[] = [];
   const regex = /₹?\s*(\d+[\d,]*)\s*(k|k)?/gi;
@@ -155,10 +162,15 @@ function parseFollowers(metricsText: string, handle = '', name = ''): string {
   const n = name.toLowerCase();
   const m = (metricsText || '').trim();
 
+  if (h.includes('preethi') || h.includes('preeti') || n.includes('preethi') || n.includes('preeti')) return "8,400";
+  if (h.includes('bhakti') || n.includes('bhakti')) return "5,000";
+  if (h.includes('vanshita') || n.includes('vanshita')) return "5,980";
+  if (h.includes('ayusshh.kapoorr') || (n.includes('ayush') && n.includes('kapoor'))) return "20,880";
+  if (h.includes('vishwas') || n.includes('vishwas')) return "17.3k";
   if (h.includes('rubani') || n.includes('rubani')) return "7,500";
   if (h.includes('samaira') || n.includes('samaira')) return "18.8k";
   if (h.includes('pritika') || n.includes('pritika') || h.includes('_pritika001')) return "5,600";
-  if (h.includes('aayush') || h.includes('aayushhyrrr')) return "6.2k";
+  if (h.includes('aayushhyrrr')) return "6.2k";
   if (h.includes('meenal') || n.includes('meenal')) return "81,000";
   if (h.includes('ankrena')) return "4,983";
   if (h.includes('uttarakhandyb')) return "11,700";
@@ -179,12 +191,14 @@ function parseFollowers(metricsText: string, handle = '', name = ''): string {
   if (h.includes('ishwarya') || n.includes('kaur')) return "24.8k";
   if (h.includes('anmol') || h.includes('_ak_vlogs') || n.includes('khanna')) return "2,25,000";
   if (h.includes('drishti') || n.includes('rawat')) return "2,380";
-  if (h.includes('roshan') || n.includes('sharma')) return "1,560";
+  if (h.includes('roshan') || (n.includes('roshan') && n.includes('sharma'))) return "1,560";
   if (h.includes('damia')) return "28,000";
   if (h.includes('ananay')) return "1,01,545";
   if (h.includes('yogita')) return "6,900";
   if (h.includes('shiv')) return "View Profile";
   if (h.includes('bristi')) return "12,400";
+  if (h.includes('payal') || n.includes('payal')) return "27,400";
+  if (h.includes('navya') || h.includes('navvyyaaaaa') || n.includes('navya') || h.includes('38') || n.includes('38')) return "7,570";
 
   const patBefore = m.match(/([\d,\.]+\s*[kKmM\+]*)\s*(?:total\s*)?followers?/i);
   if (patBefore) {
@@ -219,10 +233,15 @@ function parseReach(metricsText: string, handle = '', name = ''): string {
   if (m.toLowerCase().includes('don') && m.toLowerCase().includes('know')) return "View Profile";
   if (m.toLowerCase().includes('idk')) return "View Profile";
 
+  if (h.includes('preethi') || h.includes('preeti') || n.includes('preethi') || n.includes('preeti')) return "20k avg";
+  if (h.includes('bhakti') || n.includes('bhakti')) return "View Profile";
+  if (h.includes('vanshita') || n.includes('vanshita')) return "8k-10k avg";
+  if (h.includes('ayusshh.kapoorr') || (n.includes('ayush') && n.includes('kapoor'))) return "View Profile";
+  if (h.includes('vishwas') || n.includes('vishwas')) return "79.3k avg";
   if (h.includes('rubani') || n.includes('rubani')) return "5k-6k avg (400k reach)";
   if (h.includes('samaira') || n.includes('samaira')) return "2.5M peak (170k reach)";
   if (h.includes('pritika') || n.includes('pritika') || h.includes('_pritika001')) return "100k+ avg (700k reach)";
-  if (h.includes('aayush') || h.includes('aayushhyrrr')) return "60k avg";
+  if (h.includes('aayushhyrrr')) return "60k avg";
   if (h.includes('meenal') || n.includes('meenal')) return "500k avg";
   if (h.includes('ankrena')) return "11.3M reach (3k avg)";
   if (h.includes('uttarakhandyb')) return "20k+ avg";
@@ -243,12 +262,14 @@ function parseReach(metricsText: string, handle = '', name = ''): string {
   if (h.includes('ishwarya') || n.includes('kaur')) return "10k avg";
   if (h.includes('anmol') || h.includes('_ak_vlogs') || n.includes('khanna')) return "400k reach";
   if (h.includes('drishti') || n.includes('rawat')) return "100k+ avg (17.8M reach)";
-  if (h.includes('roshan') || n.includes('sharma')) return "71k avg";
+  if (h.includes('roshan') || (n.includes('roshan') && n.includes('sharma'))) return "71k avg";
   if (h.includes('damia')) return "View Profile";
   if (h.includes('ananay')) return "3.1M reach";
   if (h.includes('yogita')) return "50k-100k avg";
   if (h.includes('shiv')) return "View Profile";
   if (h.includes('bristi')) return "10k+ avg";
+  if (h.includes('payal') || n.includes('payal')) return "3-4M reach";
+  if (h.includes('navya') || h.includes('navvyyaaaaa') || n.includes('navya') || h.includes('38') || n.includes('38')) return "2.0M reach";
 
   const viewsMatch = m.match(/(?:avg|average)?\s*views?[:\s-]*([\d,\.kKmM\+\s\-]+(?:avg|min|peak)?)/i);
   if (viewsMatch) return viewsMatch[1].trim();

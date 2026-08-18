@@ -30,7 +30,7 @@ interface WorkspaceCreativeProps {
 }
 
 export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
-  brandUrl = 'ambrane.com',
+  brandUrl = 'demobrand.com',
   assets = [],
   onOpenReview,
   onGenerate,
@@ -154,7 +154,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [editorZoom, setEditorZoom] = useState<number>(100);
   const [aiPromptInstruction, setAiPromptInstruction] = useState<string>('');
   const [isProcessingStudioAi, setIsProcessingStudioAi] = useState<boolean>(false);
-  const [editorDocumentTitle, setEditorDocumentTitle] = useState<string>('Ambrane Powerbank — 1:1 Festive Campaign');
+  const [editorDocumentTitle, setEditorDocumentTitle] = useState<string>('Demo Brand Powerbank — 1:1 Festive Campaign');
 
   // Canvas Interactive Mouse Drag State & Handlers
   const [isDraggingCanvasEl, setIsDraggingCanvasEl] = useState<boolean>(false);
@@ -202,7 +202,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
       bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
       cta: 'Shop Now',
-      hashtags: '#Ambrane #Draft'
+      hashtags: '#Demo Brand #Draft'
     };
 
     setProjectsList(prev => [newDraftAd, ...prev]);
@@ -224,7 +224,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
       bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
       cta: 'Shop Now',
-      hashtags: '#Ambrane #FestiveCampaign #StudioAd'
+      hashtags: '#Demo Brand #FestiveCampaign #StudioAd'
     };
 
     setProjectsList(prev => [newVaultAd, ...prev]);
@@ -376,14 +376,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   }>>([
     {
       id: 'proj_1',
-      title: 'Ambrane Powerbank Festive Carousel',
+      title: 'Demo Brand Powerbank Festive Carousel',
       date: "Today's Ad",
       status: 'Approved',
       img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
       headline: 'Festive Flash Sale — 20,000mAh Powerbank',
       bodyText: 'Never run out of power during celebrations. Ultra fast 22.5W charging.',
       cta: 'Shop Now',
-      hashtags: '#Ambrane #FestiveOffer #PowerBank'
+      hashtags: '#Demo Brand #FestiveOffer #PowerBank'
     },
     {
       id: 'proj_2',
@@ -402,10 +402,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       date: 'Last Week',
       status: 'Draft',
       img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80',
-      headline: 'Pure Acoustic Silence — Ambrane ANC',
+      headline: 'Pure Acoustic Silence — Demo Brand ANC',
       bodyText: 'Block out traffic & airplane noise with 35dB Active Noise Cancellation.',
       cta: 'Order Today',
-      hashtags: '#AudioTech #NoiseCancelling #Ambrane'
+      hashtags: '#AudioTech #NoiseCancelling #Demo Brand'
     }
   ]);
   const [selectedProjectModal, setSelectedProjectModal] = useState<typeof projectsList[0] | null>(null);
@@ -433,7 +433,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       title: 'Card 1: High Hook Cover',
       headline: '⚡ 20000mAh Powerbank @ ₹1,499',
       description: '22.5W Fast Charging, Dual USB & Type-C Output.',
-      destinationUrl: 'https://ambrane.com/powerbank-festive-deal',
+      destinationUrl: 'https://demobrand.com/powerbank-festive-deal',
       ctaAction: 'SHOP_NOW',
       imageUrl: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80'
     },
@@ -442,7 +442,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       title: 'Card 2: Feature Showcase',
       headline: '🔋 Charges iPhone 15 Up To 4 Times',
       description: 'Compact pocket design with BIS safety protection.',
-      destinationUrl: 'https://ambrane.com/powerbank-features',
+      destinationUrl: 'https://demobrand.com/powerbank-features',
       ctaAction: 'SHOP_NOW',
       imageUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80'
     },
@@ -451,7 +451,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       title: 'Card 3: Customer Proof',
       headline: '⭐️ 4.9/5 Rating by 45,000+ Buyers',
       description: 'Made in India with 180 Days doorstep warranty.',
-      destinationUrl: 'https://ambrane.com/reviews',
+      destinationUrl: 'https://demobrand.com/reviews',
       ctaAction: 'GET_OFFER',
       imageUrl: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80'
     }
@@ -477,7 +477,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     {
       id: 'scene_3',
       name: 'Scene 3: Solution Showcase (7-12s)',
-      overlayText: 'Switch to Ambrane 22.5W Ultra-Fast Powerbank! ⚡',
+      overlayText: 'Switch to Demo Brand 22.5W Ultra-Fast Powerbank! ⚡',
       videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-holding-a-smartphone-with-green-screen-41546-large.mp4',
       duration: '5s'
     },
@@ -566,11 +566,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       if (selectedAdType === 'Carousel') {
         setGeneratedAd({
           id: `ad_${Date.now()}`,
-          headline: 'Experience Power & Elegance with Ambrane',
+          headline: 'Experience Power & Elegance with Demo Brand',
           bodyText: 'Never run out of charge. Ultra-fast charging built for high-performance lifestyles.',
           cta: 'Shop Now',
-          description: 'Flat 40% Off + Free Shipping on Ambrane Powerbanks',
-          hashtags: '#Ambrane #FastCharging #MadeInIndia #TechLifestyle',
+          description: 'Flat 40% Off + Free Shipping on Demo Brand Powerbanks',
+          hashtags: '#Demo Brand #FastCharging #MadeInIndia #TechLifestyle',
           imageUrl: aiProductVisualRender || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
           type: 'Carousel',
           platform,
@@ -590,7 +590,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           bodyText: 'Engineered with smart AI heat control and 22.5W Power Delivery. Built for creators and professionals.',
           cta: 'Claim Offer',
           description: 'Special Launch Discount — Free Express Shipping',
-          hashtags: '#Ambrane #PowerBank #FastCharging #TechGadgets',
+          hashtags: '#Demo Brand #PowerBank #FastCharging #TechGadgets',
           imageUrl: aiProductVisualRender || (selectedAdType === 'Video' 
             ? 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80'
             : 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80'),
@@ -631,7 +631,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
       const lower = text.toLowerCase();
       if (lower.includes('punch') || lower.includes('headline') || lower.includes('discount') || lower.includes('off') || lower.includes('sale')) {
-        updatedHeadline = '⚡ FLAT 30% OFF — Powerful 22.5W Ambrane Fast Charge';
+        updatedHeadline = '⚡ FLAT 30% OFF — Powerful 22.5W Demo Brand Fast Charge';
       }
       if (lower.includes('cta') || lower.includes('urgency') || lower.includes('buy') || lower.includes('claim')) {
         updatedCta = 'Claim 30% Off Now';
@@ -735,7 +735,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         id: `ugc_${Date.now()}`,
         avatar: selectedAvatar,
         videoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
-        script: ugcScript || "Hey guys! If you travel or commute daily, this Ambrane 20,000mAh powerbank is a total game changer. Charges my phone 4 times full without heating up!",
+        script: ugcScript || "Hey guys! If you travel or commute daily, this Demo Brand 20,000mAh powerbank is a total game changer. Charges my phone 4 times full without heating up!",
         voice: 'Hinglish Energetic Natural',
         status: 'Ready for Campaign'
       });
@@ -1050,8 +1050,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '14px', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <h4 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>Ambrane India</h4>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>ambrane.com • Consumer Electronics & Mobile Power</p>
+                <h4 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>Demo Brand India</h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>demobrand.com • Consumer Electronics & Mobile Power</p>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -1203,10 +1203,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>Select Studio Pattern Preset:</span>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {[
-                      { label: '🌌 Floating Metallic Neon', prompt: 'Sleek metallic 20000mAh Ambrane powerbank floating over dark obsidian neon desk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80' },
-                      { label: '🏛️ Minimalist Marble Studio', prompt: 'Minimalist studio shot of Ambrane powerbank resting on smooth white marble desk with soft sunlight', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80' },
-                      { label: '⚡ Cyberpunk Tech Setup', prompt: 'High performance Ambrane powerbank surrounded by RGB gaming tech setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' },
-                      { label: '💡 Softbox Studio Lighting', prompt: 'Professional 4K product photography of Ambrane powerbank with studio softbox reflection', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80' }
+                      { label: '🌌 Floating Metallic Neon', prompt: 'Sleek metallic 20000mAh Demo Brand powerbank floating over dark obsidian neon desk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80' },
+                      { label: '🏛️ Minimalist Marble Studio', prompt: 'Minimalist studio shot of Demo Brand powerbank resting on smooth white marble desk with soft sunlight', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80' },
+                      { label: '⚡ Cyberpunk Tech Setup', prompt: 'High performance Demo Brand powerbank surrounded by RGB gaming tech setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' },
+                      { label: '💡 Softbox Studio Lighting', prompt: 'Professional 4K product photography of Demo Brand powerbank with studio softbox reflection', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80' }
                     ].map((pattern, idx) => (
                       <button
                         key={idx}
@@ -1642,7 +1642,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 Switch to 15s Video Ads for higher retention & +23% CTR
               </h4>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                {selectedCompetitor}'s top 3 scaled ads are 15s Vertical Video Reels. Applying this pattern to Ambrane increases predicted ROAS to 4.2x.
+                {selectedCompetitor}'s top 3 scaled ads are 15s Vertical Video Reels. Applying this pattern to Demo Brand increases predicted ROAS to 4.2x.
               </p>
             </div>
 
@@ -1749,7 +1749,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {vaultSubTab === 'ctas' && [
                 { text: 'Claim 30% Discount Today', roas: '5.2x ROAS', tag: 'Direct Offer' },
-                { text: 'Shop Ambrane Powerbanks', roas: '4.3x ROAS', tag: 'Standard E-com' },
+                { text: 'Shop Demo Brand Powerbanks', roas: '4.3x ROAS', tag: 'Standard E-com' },
                 { text: 'Get Free Express Delivery', roas: '4.7x ROAS', tag: 'Perk Trigger' },
                 { text: 'Order Now & Save ₹500', roas: '4.9x ROAS', tag: 'Instant Savings' }
               ].map((item, idx) => (
@@ -2148,7 +2148,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
             {[
-              { name: 'Problem-Agitate-Solution (PAS)', desc: 'Highlight customer pain point and introduce Ambrane product as the ultimate fix.', ctr: '3.4% Avg CTR' },
+              { name: 'Problem-Agitate-Solution (PAS)', desc: 'Highlight customer pain point and introduce Demo Brand product as the ultimate fix.', ctr: '3.4% Avg CTR' },
               { name: 'Before vs After Showcase', desc: 'Direct visual comparison showing slow charging vs 22.5W Power Delivery.', ctr: '4.1% Avg CTR' },
               { name: 'Unboxing & First Reaction', desc: 'UGC-style authentic unboxing experience with energetic voiceover.', ctr: '4.8% Avg CTR' },
               { name: 'Flash Sale & Urgency Trigger', desc: 'Countdown timer + discount code overlay for impulse purchase conversion.', ctr: '5.2% Avg CTR' }
@@ -2240,7 +2240,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>SCRIPT TOPIC / PROMPT</label>
                   <textarea
                     rows={3}
-                    placeholder="e.g. 'Hey guys, I've been using this Ambrane powerbank for 2 weeks during travel and it charged my phone 4 times full!'"
+                    placeholder="e.g. 'Hey guys, I've been using this Demo Brand powerbank for 2 weeks during travel and it charged my phone 4 times full!'"
                     value={ugcScript}
                     onChange={e => setUgcScript(e.target.value)}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff', outline: 'none' }}
@@ -2477,7 +2477,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       title: `Card ${carouselCards.length + 1}: Custom Slide`,
                       headline: `⚡ Exclusive Offer Slide ${carouselCards.length + 1}`,
                       description: 'Special limited time bundle deal.',
-                      destinationUrl: 'https://ambrane.com/deal',
+                      destinationUrl: 'https://demobrand.com/deal',
                       ctaAction: 'SHOP_NOW',
                       imageUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80'
                     };
@@ -2555,7 +2555,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       </div>
                       <input
                         type="text"
-                        placeholder="https://ambrane.com/card-specific-page"
+                        placeholder="https://demobrand.com/card-specific-page"
                         value={currentCard.destinationUrl}
                         onChange={e => {
                           const val = e.target.value;
@@ -3590,7 +3590,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                           <label style={{ display: 'block', fontSize: '9.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>DESTINATION LANDING URL (META LINK)</label>
                           <input
                             type="text"
-                            placeholder="https://ambrane.com/diwali-offer"
+                            placeholder="https://demobrand.com/diwali-offer"
                             value={(activeEl as any).targetUrl || ''}
                             onChange={e => {
                               const val = e.target.value;

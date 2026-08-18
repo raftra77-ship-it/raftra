@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Sparkles, Check, 
-  Image as ImageIcon, Video, 
+import {
+  Sparkles, Check,
+  Image as ImageIcon, Video,
   Users2, ShieldCheck, Layers, BarChart3, Search, Cpu, MessageSquare, Lock, Wand2
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
@@ -88,7 +88,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
   const [currency, setCurrency] = useState<'INR' | 'USD'>(() => (localStorage.getItem('currency') as 'INR' | 'USD') || 'INR');
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [adSpendIndex, setAdSpendIndex] = useState<number>(3); // Default ₹50,001 – ₹2,00,000 tier
-  
+
   // Inquiry Form State for Enterprise Sales Inquiry
   const [showInquiryModal, setShowInquiryModal] = useState<boolean>(false);
   const [inquiryForm, setInquiryForm] = useState({
@@ -145,7 +145,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
     if (billingCycle === 'annual') {
       const discountedInr = inrAnnual || inrMonthly * 10;
       const originalInr = inrMonthly * 12;
-      
+
       const discountedUsd = Math.round(usdMonthly * 10);
       const originalUsd = usdMonthly * 12;
 
@@ -200,10 +200,10 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         : 'linear-gradient(180deg, #141422 0%, #05050a 100%)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-      border: isHovered 
-        ? '2px solid rgba(255, 255, 255, 0.65)' 
-        : isPopular 
-          ? '1.5px solid rgba(0, 230, 118, 0.5)' 
+      border: isHovered
+        ? '2px solid rgba(255, 255, 255, 0.65)'
+        : isPopular
+          ? '1.5px solid rgba(0, 230, 118, 0.5)'
           : '1px solid rgba(255, 255, 255, 0.28)',
       borderRadius: '24px',
       display: 'flex',
@@ -223,12 +223,12 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
   return (
     <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', padding: '60px 20px 100px 20px', fontFamily: 'var(--font-sans)', overflowY: 'auto', position: 'relative' }}>
-      
+
       {/* SHADER MESH MESH GRADIENT FLOWY BACKGROUND */}
       <FlowyBackground />
 
       <div style={{ maxWidth: '1720px', margin: '0 auto', padding: '0 40px', position: 'relative', zIndex: 1 }}>
-        
+
         {/* HEADER HERO */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -239,9 +239,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(124,117,255,0.12)', borderRadius: '100px', border: '1px solid rgba(124,117,255,0.3)', marginBottom: '16px', color: '#7C75FF', fontWeight: 600, fontSize: '13.5px' }}>
             <Sparkles size={14} /> RAFTRA TRANSPARENT PRICING & GROWTH PLANS
           </div>
-          
+
           <h1 style={{ fontSize: '52px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', fontWeight: 800, lineHeight: 1.2 }}>
-            Scale Your Brand with Flexible AI Suites.<br/>Simple, Transparent & Value-Packed.
+            Scale Your Brand with Flexible AI Suites.<br />Simple, Transparent & Value-Packed.
           </h1>
 
           <p style={{ fontSize: '19px', color: 'var(--text-secondary)', maxWidth: '1150px', margin: '0 auto', lineHeight: 1.5 }}>
@@ -249,17 +249,17 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </p>
 
           {/* ALL PAID PLANS INCLUDE PILL BAR */}
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            gap: '10px', 
-            margin: '24px auto 0 auto', 
-            padding: '16px 28px', 
-            background: 'rgba(0, 230, 118, 0.06)', 
-            border: '1px solid rgba(0, 230, 118, 0.25)', 
-            borderRadius: '16px', 
-            maxWidth: '1350px' 
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+            margin: '24px auto 0 auto',
+            padding: '16px 28px',
+            background: 'rgba(0, 230, 118, 0.06)',
+            border: '1px solid rgba(0, 230, 118, 0.25)',
+            borderRadius: '16px',
+            maxWidth: '1350px'
           }}>
             <div style={{ fontSize: '13.5px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               ✓ ALL PAID PLANS INCLUDE:
@@ -276,13 +276,13 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         </motion.div>
 
         {/* IMPORTANT PRICING & BUDGET DISCLAIMER BANNER */}
-        <div style={{ 
-          maxWidth: '1450px', 
-          margin: '0 auto 36px auto', 
-          padding: '20px 28px', 
-          background: 'rgba(255, 179, 0, 0.08)', 
-          border: '1px solid rgba(255, 179, 0, 0.3)', 
-          borderRadius: '16px', 
+        <div style={{
+          maxWidth: '1450px',
+          margin: '0 auto 36px auto',
+          padding: '20px 28px',
+          background: 'rgba(255, 179, 0, 0.08)',
+          border: '1px solid rgba(255, 179, 0, 0.3)',
+          borderRadius: '16px',
           boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
           display: 'flex',
           flexDirection: 'column',
@@ -300,39 +300,39 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         </div>
 
         {/* TOP CONTROLS BAR: CURRENCY (LEFT), AD SPEND (CENTER), BILLING (RIGHT) */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          flexWrap: 'wrap', 
-          gap: '20px', 
-          maxWidth: '1280px', 
-          margin: '0 auto 40px auto', 
-          padding: '0 20px' 
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '20px',
+          maxWidth: '1280px',
+          margin: '0 auto 40px auto',
+          padding: '0 20px'
         }}>
-          
+
           {/* Left: Currency Toggle (Fully Rounded Edges) */}
-          <div style={{ 
-            background: 'rgba(255, 255, 255, 0.04)', 
-            backdropFilter: 'blur(16px)', 
-            WebkitBackdropFilter: 'blur(16px)', 
-            padding: '6px', 
-            borderRadius: '100px', 
-            border: '1px solid rgba(255, 255, 255, 0.12)', 
-            display: 'flex', 
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.04)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            padding: '6px',
+            borderRadius: '100px',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            display: 'flex',
             alignItems: 'center',
             gap: '6px'
           }}>
-            <button 
+            <button
               onClick={() => handleCurrencyChange('INR')}
-              style={{ 
-                background: currency === 'INR' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent', 
-                color: currency === 'INR' ? '#00E676' : '#ffffff', 
-                border: currency === 'INR' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent', 
-                padding: '10px 24px', 
-                borderRadius: '100px', 
-                fontSize: '15.5px', 
-                fontWeight: currency === 'INR' ? 800 : 600, 
+              style={{
+                background: currency === 'INR' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent',
+                color: currency === 'INR' ? '#00E676' : '#ffffff',
+                border: currency === 'INR' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent',
+                padding: '10px 24px',
+                borderRadius: '100px',
+                fontSize: '15.5px',
+                fontWeight: currency === 'INR' ? 800 : 600,
                 cursor: 'pointer',
                 boxShadow: currency === 'INR' ? '0 4px 14px rgba(0, 230, 118, 0.15)' : 'none',
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -340,16 +340,16 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             >
               INR (₹)
             </button>
-            <button 
+            <button
               onClick={() => handleCurrencyChange('USD')}
-              style={{ 
-                background: currency === 'USD' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent', 
-                color: currency === 'USD' ? '#00E676' : '#ffffff', 
-                border: currency === 'USD' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent', 
-                padding: '10px 24px', 
-                borderRadius: '100px', 
-                fontSize: '15.5px', 
-                fontWeight: currency === 'USD' ? 800 : 600, 
+              style={{
+                background: currency === 'USD' ? 'linear-gradient(180deg, #1c1c2b 0%, #0a0a10 100%)' : 'transparent',
+                color: currency === 'USD' ? '#00E676' : '#ffffff',
+                border: currency === 'USD' ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid transparent',
+                padding: '10px 24px',
+                borderRadius: '100px',
+                fontSize: '15.5px',
+                fontWeight: currency === 'USD' ? 800 : 600,
                 cursor: 'pointer',
                 boxShadow: currency === 'USD' ? '0 4px 14px rgba(0, 230, 118, 0.15)' : 'none',
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -398,16 +398,16 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </div>
 
           {/* Right: Billing Cycle Toggle */}
-          <div 
+          <div
             onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'annual' : 'monthly')}
-            style={{ 
-              background: 'rgba(255, 255, 255, 0.04)', 
-              backdropFilter: 'blur(16px)', 
-              WebkitBackdropFilter: 'blur(16px)', 
-              padding: '8px 24px', 
-              borderRadius: '100px', 
-              border: '1px solid rgba(255, 255, 255, 0.12)', 
-              display: 'flex', 
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              padding: '8px 24px',
+              borderRadius: '100px',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              display: 'flex',
               alignItems: 'center',
               gap: '16px',
               cursor: 'pointer',
@@ -415,9 +415,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               transition: 'all 0.2s ease'
             }}
           >
-            <span style={{ 
-              fontSize: '16px', 
-              fontWeight: billingCycle === 'monthly' ? 800 : 500, 
+            <span style={{
+              fontSize: '16px',
+              fontWeight: billingCycle === 'monthly' ? 800 : 500,
               color: billingCycle === 'monthly' ? '#00E676' : '#ffffff',
               transition: 'all 0.2s ease'
             }}>
@@ -448,9 +448,9 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ 
-                fontSize: '16px', 
-                fontWeight: billingCycle === 'annual' ? 800 : 500, 
+              <span style={{
+                fontSize: '16px',
+                fontWeight: billingCycle === 'annual' ? 800 : 500,
                 color: billingCycle === 'annual' ? '#00E676' : '#ffffff',
                 transition: 'all 0.2s ease'
               }}>
@@ -465,12 +465,12 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         </div>
 
         {/* CATEGORY NAV TABS (SINGLE ROW HORIZONTAL SPAN — LARGE TEXT & PADDED BUTTONS) */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          gap: '10px', 
-          flexWrap: 'nowrap', 
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '10px',
+          flexWrap: 'nowrap',
           width: '100%',
           maxWidth: '1600px',
           margin: '0 auto 48px auto',
@@ -495,13 +495,13 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 onClick={() => setActiveCategory(tab.id as any)}
                 style={{
                   flex: '1 1 auto',
-                  background: isSelected 
-                    ? '#000000' 
+                  background: isSelected
+                    ? '#000000'
                     : 'rgba(255, 255, 255, 0.04)',
                   backdropFilter: 'blur(16px)',
                   WebkitBackdropFilter: 'blur(16px)',
-                  border: isSelected 
-                    ? '1.5px solid rgba(0, 230, 118, 0.5)' 
+                  border: isSelected
+                    ? '1.5px solid rgba(0, 230, 118, 0.5)'
                     : '1px solid rgba(255, 255, 255, 0.12)',
                   color: isSelected ? '#00E676' : '#ffffff',
                   padding: '12px 20px',
@@ -514,8 +514,8 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   justifyContent: 'center',
                   gap: '8px',
                   whiteSpace: 'nowrap',
-                  boxShadow: isSelected 
-                    ? '0 4px 20px rgba(0, 230, 118, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15)' 
+                  boxShadow: isSelected
+                    ? '0 4px 20px rgba(0, 230, 118, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15)'
                     : '0 2px 8px rgba(0,0,0,0.2)',
                   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
@@ -543,7 +543,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
-              
+
               {/* 1. D2C Growth Pack ⭐ */}
               <div
                 onMouseEnter={() => setHoveredCard('pack_d2c_growth')}
@@ -706,12 +706,12 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </ul>
                 </div>
 
-                <GlowButton 
-                  variant="glow" 
+                <GlowButton
+                  variant="glow"
                   onClick={() => {
                     const el = document.getElementById('enterprise-inquiry-form');
                     if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }} 
+                  }}
                   style={{ marginTop: '32px', padding: '14px', fontSize: '14px', fontWeight: 800 }}
                 >
                   Contact Sales & Get Enterprise Growth 🚀
@@ -721,7 +721,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             {/* EMBEDDED ENTERPRISE SALES QUERY FORM SECTION */}
-            <div 
+            <div
               id="enterprise-inquiry-form"
               style={{
                 marginTop: '48px',
@@ -751,8 +751,8 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <div style={{ fontSize: '36px', marginBottom: '10px' }}>🚀</div>
                   <h4 style={{ fontSize: '22px', color: '#00E676', margin: '0 0 8px 0', fontWeight: 800 }}>Inquiry Submitted to raftra.77mail.com!</h4>
                   <p style={{ fontSize: '14.5px', color: 'rgba(255,255,255,0.9)', margin: '0 0 18px 0', lineHeight: 1.6 }}>
-                    Thank you! Your Enterprise Growth inquiry has been sent to <strong>raftra.77mail.com</strong>.<br/>
-                    Our Dedicated Brand Strategist & Ads team will review your requirements and contact you within 2 hours.
+                    Thank you! Your Enterprise Growth inquiry has been sent to <strong>raftra.77mail.com</strong>.<br />
+                    Our Dedicated Brand Strategist & Ads team will review your requirements and contact you within 24 hours.
                   </p>
                   <button onClick={() => setInquirySubmitted(false)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '10px 24px', borderRadius: '100px', fontSize: '13.5px', cursor: 'pointer', fontWeight: 700 }}>
                     Submit Another Inquiry
@@ -886,7 +886,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
-              
+
               {/* 1. Creator Launch Pack */}
               <div
                 onMouseEnter={() => setHoveredCard('pack_creator_launch')}
@@ -899,7 +899,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </div>
 
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Creator Launch Pack</h3>
-                  
+
                   <div style={{ fontSize: '36px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
                     {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
                       <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
@@ -1003,7 +1003,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-              
+
               {/* Starter */}
               <div
                 onMouseEnter={() => setHoveredCard('cs_starter')}
@@ -1057,7 +1057,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     <li style={{ display: 'flex', gap: '8px' }}><Check size={16} color="var(--success)" /> 15s / 30s / 60s AI Video Ads</li>
                     <li style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <Check size={16} color="var(--success)" /> 
+                        <Check size={16} color="var(--success)" />
                         <strong style={{ color: '#FFB300' }}>🚧 AI UGC Video Reels & Avatars (Coming Soon)</strong>
                       </div>
                       <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', paddingLeft: '24px' }}>
@@ -1123,7 +1123,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               }}
             >
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '36px', alignItems: 'center', width: '100%' }}>
-                
+
                 {/* Left Column: Title, Ad Spend Dropdown, Price & Action CTA */}
                 <div style={{ borderRight: '1px solid rgba(255, 255, 255, 0.1)', paddingRight: '28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
@@ -1139,8 +1139,8 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                         <Layers size={13} /> SELECT YOUR MONTHLY AD SPEND:
                       </label>
-                      <select 
-                        value={adSpendIndex} 
+                      <select
+                        value={adSpendIndex}
                         onChange={(e) => setAdSpendIndex(Number(e.target.value))}
                         style={{
                           width: '100%',
@@ -1208,14 +1208,14 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                       'Campaign History',
                       'Export Reports'
                     ].map((feature, idx) => (
-                      <div key={idx} style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '8px', 
-                        padding: '6px 10px', 
-                        background: 'rgba(255,255,255,0.03)', 
-                        borderRadius: '8px', 
-                        border: '1px solid rgba(255,255,255,0.06)' 
+                      <div key={idx} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '6px 10px',
+                        background: 'rgba(255,255,255,0.03)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255,255,255,0.06)'
                       }}>
                         <Check size={13} color="var(--success)" style={{ flexShrink: 0 }} />
                         <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{feature}</span>
@@ -1238,7 +1238,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-              
+
               {/* Starter */}
               <div
                 onMouseEnter={() => setHoveredCard('seo_starter')}
@@ -1344,7 +1344,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '28px' }}>
-              
+
               {/* Social Hub Card */}
               <div
                 onMouseEnter={() => setHoveredCard('inc_social')}
@@ -1355,7 +1355,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <div style={{ display: 'inline-block', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.3)', color: 'var(--success)', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, marginBottom: '16px' }}>
                     INCLUDED FREE WITH PLATFORM ACCESS
                   </div>
-                  
+
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>
                     Social Hub Workspace & Social Analytics
                   </h3>
@@ -1434,7 +1434,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
         {/* ==================== AI CREDIT CONSUMPTION TABLE & TOP-UPS ==================== */}
         {activeCategory === 'credits' && (
           <div className="glow-card" style={{ padding: '36px', background: '#0b0b10', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '24px', marginBottom: '60px' }}>
-            
+
             <div style={{ textAlign: 'center', marginBottom: '32px' }}>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(0,230,118,0.12)', borderRadius: '100px', border: '1px solid rgba(0,230,118,0.3)', marginBottom: '8px' }}>
                 <ShieldCheck size={13} color="var(--success)" />
@@ -1449,7 +1449,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-              
+
               {/* Image Credits */}
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <h4 style={{ fontSize: '15px', color: '#7C75FF', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>

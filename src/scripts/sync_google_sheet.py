@@ -26,7 +26,7 @@ FEMALE_AVATARS = [
     "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80"
 ]
 
-FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi', 'ishwarya', 'rubani', 'samaira', 'pritika', 'drishti', 'meenal']
+FEMALE_NAMES = ['anushka', 'charika', 'mahi', 'malvika', 'tanya', 'ananya', 'ankita', 'aanchal', 'shreya', 'neha', 'riya', 'priya', 'pooja', 'sneha', 'aditi', 'ishwarya', 'rubani', 'samaira', 'pritika', 'drishti', 'meenal', 'preethi', 'preeti', 'bhakti', 'vanshita', 'yogita', 'bristi', 'damia', 'payal', 'navya']
 
 def get_avatar(name, idx):
     first = name.split()[0].lower() if name else ""
@@ -50,16 +50,26 @@ def parse_pricing_details(col11_text, handle="", name=""):
     txt = (col11_text or "").strip()
     txt_lower = txt.lower()
 
-    if 'mahhiii' in h or '_ak_vlogs' in h or 'anmol' in h or 'discuss' in txt_lower or 'negotiable' in txt_lower or not txt:
+    if 'mahhiii' in h or '_ak_vlogs' in h or 'discuss' in txt_lower or 'negotiable' in txt_lower or not txt:
         return "Can discuss", "Can discuss"
 
-    if 'rubani' in h or 'rubani' in n:
+    if 'preethi' in h or 'preeti' in h or 'preethi' in n or 'preeti' in n:
+        return "₹1,000 - ₹17,000", "₹1,000 - ₹17,000"
+    elif 'bhakti' in h or 'bhakti' in n:
+        return "₹200 - ₹2,000", "₹200 - ₹2,000"
+    elif 'vanshita' in h or 'vanshita' in n:
+        return "₹500 - ₹5,000", "₹500 - ₹5,000"
+    elif 'ayusshh.kapoorr' in h or ('ayush' in n and 'kapoor' in n):
+        return "₹8,000 - ₹25,000", "₹8,000 - ₹25,000"
+    elif 'vishwas' in h or 'vishwas' in n:
+        return "₹4,000 - ₹10,000", "₹4,000 - ₹10,000"
+    elif 'rubani' in h or 'rubani' in n:
         return "₹1,000 - ₹8,000", "₹1,000 - ₹8,000"
     elif 'samaira' in h or 'samaira' in n:
         return "₹500 - ₹1,000", "₹500 - ₹1,000"
     elif 'pritika' in h or 'pritika' in n or '_pritika001' in h:
         return "₹500 - ₹5,000", "₹500 - ₹5,000"
-    elif 'aayush' in h or 'aayushhyrrr' in h:
+    elif 'aayushhyrrr' in h:
         return "₹1,000 - ₹5,000", "₹1,000 - ₹5,000"
     elif 'uttarakhandyb' in h:
         return "₹1,000 - ₹3,000", "₹1,000 - ₹3,000"
@@ -95,10 +105,14 @@ def parse_pricing_details(col11_text, handle="", name=""):
         return "₹500 - ₹4,000", "₹500 - ₹4,000"
     elif 'drishti' in h or 'rawat' in n:
         return "₹500 - ₹5,000", "₹500 - ₹5,000"
-    elif 'roshan' in h or 'sharma' in n:
+    elif 'roshan' in h or ('roshan' in n and 'sharma' in n):
         return "₹800 - ₹4,800", "₹800 - ₹4,800"
     elif 'meenal' in h or 'shukla' in n:
         return "₹10,000 - ₹80,000", "₹10,000 - ₹80,000"
+    elif 'payal' in h or 'payal' in n:
+        return "₹1,000 - ₹5,000", "₹1,000 - ₹5,000"
+    elif 'navya' in h or 'navvyyaaaaa' in h or 'navya' in n or '38' in h:
+        return "₹1,000 - ₹3,000+", "₹1,000 - ₹3,000+"
 
     numbers = []
     for m in re.finditer(r'₹?\s*(\d+[\d,]*)\s*(k|k)?', txt_lower):
@@ -125,10 +139,15 @@ def parse_followers(metrics_text, handle="", name=""):
     n = (name or "").lower()
     m = (metrics_text or "").strip()
     
-    if 'rubani' in h or 'rubani' in n: return "7,500"
+    if 'preethi' in h or 'preeti' in h or 'preethi' in n or 'preeti' in n: return "8,400"
+    elif 'bhakti' in h or 'bhakti' in n: return "5,000"
+    elif 'vanshita' in h or 'vanshita' in n: return "5,980"
+    elif 'ayusshh.kapoorr' in h or ('ayush' in n and 'kapoor' in n): return "20,880"
+    elif 'vishwas' in h or 'vishwas' in n: return "17.3k"
+    elif 'rubani' in h or 'rubani' in n: return "7,500"
     elif 'samaira' in h or 'samaira' in n: return "18.8k"
     elif 'pritika' in h or 'pritika' in n or '_pritika001' in h: return "5,600"
-    elif 'aayush' in h or 'aayushhyrrr' in h: return "6.2k"
+    elif 'aayushhyrrr' in h: return "6.2k"
     elif 'meenal' in h or 'meenal' in n: return "81,000"
     elif 'ankrena' in h: return "4,983"
     elif 'uttarakhandyb' in h: return "11,700"
@@ -149,12 +168,14 @@ def parse_followers(metrics_text, handle="", name=""):
     elif 'ishwarya' in h or 'kaur' in n: return "24.8k"
     elif 'anmol' in h or '_ak_vlogs' in h or 'khanna' in n: return "2,25,000"
     elif 'drishti' in h or 'rawat' in n: return "2,380"
-    elif 'roshan' in h or 'sharma' in n: return "1,560"
+    elif 'roshan' in h or ('roshan' in n and 'sharma' in n): return "1,560"
     elif 'damia' in h: return "28,000"
     elif 'ananay' in h: return "1,01,545"
     elif 'yogita' in h: return "6,900"
     elif 'shiv' in h: return "View Profile"
     elif 'bristi' in h: return "12,400"
+    elif 'payal' in h or 'payal' in n: return "27,400"
+    elif 'navya' in h or 'navvyyaaaaa' in h or 'navya' in n or '38' in h: return "7,570"
 
     # Robust Dynamic extraction regex fallback
     pat_before = re.search(r'([\d,\.]+\s*[kKmM\+]*)\s*(?:total\s*)?followers?', m, re.I)
@@ -188,10 +209,15 @@ def parse_reach(metrics_text, handle="", name=""):
     if 'idk' in m.lower():
         return "View Profile"
 
-    if 'rubani' in h or 'rubani' in n: return "5k-6k avg (400k reach)"
+    if 'preethi' in h or 'preeti' in h or 'preethi' in n or 'preeti' in n: return "20k avg"
+    elif 'bhakti' in h or 'bhakti' in n: return "View Profile"
+    elif 'vanshita' in h or 'vanshita' in n: return "8k-10k avg"
+    elif 'ayusshh.kapoorr' in h or ('ayush' in n and 'kapoor' in n): return "View Profile"
+    elif 'vishwas' in h or 'vishwas' in n: return "79.3k avg"
+    elif 'rubani' in h or 'rubani' in n: return "5k-6k avg (400k reach)"
     elif 'samaira' in h or 'samaira' in n: return "2.5M peak (170k reach)"
     elif 'pritika' in h or 'pritika' in n or '_pritika001' in h: return "100k+ avg (700k reach)"
-    elif 'aayush' in h or 'aayushhyrrr' in h: return "60k avg"
+    elif 'aayushhyrrr' in h: return "60k avg"
     elif 'meenal' in h or 'meenal' in n: return "500k avg"
     elif 'ankrena' in h: return "11.3M reach (3k avg)"
     elif 'uttarakhandyb' in h: return "20k+ avg"
@@ -212,12 +238,14 @@ def parse_reach(metrics_text, handle="", name=""):
     elif 'ishwarya' in h or 'kaur' in n: return "10k avg"
     elif 'anmol' in h or '_ak_vlogs' in h or 'khanna' in n: return "400k reach"
     elif 'drishti' in h or 'rawat' in n: return "100k+ avg (17.8M reach)"
-    elif 'roshan' in h or 'sharma' in n: return "71k avg"
+    elif 'roshan' in h or ('roshan' in n and 'sharma' in n): return "71k avg"
     elif 'damia' in h: return "View Profile"
     elif 'ananay' in h: return "3.1M reach"
     elif 'yogita' in h: return "50k-100k avg"
     elif 'shiv' in h: return "View Profile"
     elif 'bristi' in h: return "10k+ avg"
+    elif 'payal' in h or 'payal' in n: return "3-4M reach"
+    elif 'navya' in h or 'navvyyaaaaa' in h or 'navya' in n: return "2.0M reach"
 
     views_match = re.search(r'(?:avg|average)?\s*views?[:\s-]*([\d,\.kKmM\+\s\-]+(?:avg|min|peak)?)', m, re.I)
     if views_match:

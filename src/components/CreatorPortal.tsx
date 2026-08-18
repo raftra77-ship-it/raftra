@@ -1569,7 +1569,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '13px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px' }}>
-              <div><span style={{ color: 'var(--text-muted)' }}>Billed To:</span> <br/><b style={{ color: '#fff' }}>Ambrane India (Brand Partner)</b></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Billed To:</span> <br/><b style={{ color: '#fff' }}>Demo Brand (Brand Partner)</b></div>
               <div><span style={{ color: 'var(--text-muted)' }}>Creator Beneficiary:</span> <br/><b style={{ color: '#fff' }}>Ankit Kumar (@ankrena)</b></div>
               <div><span style={{ color: 'var(--text-muted)' }}>Bank Name:</span> <b style={{ color: '#fff' }}>{bankDetails.bankName}</b></div>
               <div><span style={{ color: 'var(--text-muted)' }}>Account No:</span> <b style={{ color: '#fff' }}>{bankDetails.accountNumber}</b></div>
