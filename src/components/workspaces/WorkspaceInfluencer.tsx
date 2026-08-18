@@ -142,60 +142,18 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
       if (Array.isArray(data) && data.length > 0) {
-        const mapped = data.map((inf: any) => {
-          const nicheLower = (inf.niche || '').toLowerCase();
-          let recentWorks = ['Local Brand', 'Startup X'];
-          let topComments = [
-            { author: 'Marketing Director', text: `"${inf.name.split(' ')[0]} was amazing to work with! Delivered the UGC video 2 days early and it converted well."` }
-          ];
-
-          if (nicheLower.includes('fitness') || nicheLower.includes('health') || nicheLower.includes('gym')) {
-            recentWorks = ['Gymshark', 'MyProtein', 'Lululemon'];
-            topComments = [
-              { author: 'Campaign Manager, Gymshark', text: `"${inf.name.split(' ')[0]}'s fitness content is incredibly authentic. Our CPA dropped by 30%."` },
-              { author: 'Founder, FitApp', text: `"Great engagement on the story posts!"` }
-            ];
-          } else if (nicheLower.includes('tech') || nicheLower.includes('saas') || nicheLower.includes('software')) {
-            recentWorks = ['Notion', 'Figma', 'Vercel'];
-            topComments = [
-              { author: 'Growth Lead, Notion', text: `"Extremely clear technical breakdown. The audience loved the tutorial format."` },
-              { author: 'Marketing, Figma', text: `"High quality production and great CTR on the links."` }
-            ];
-          } else if (nicheLower.includes('fashion') || nicheLower.includes('beauty') || nicheLower.includes('style')) {
-            recentWorks = ['Zara', 'Sephora', 'Fenty Beauty'];
-            topComments = [
-              { author: 'PR Manager, Sephora', text: `"The makeup transition reel went viral. Highly recommended for beauty campaigns!"` },
-              { author: 'Brand Rep, Zara', text: `"Beautiful aesthetic and perfectly aligned with our brand voice."` }
-            ];
+        const enriched = INITIAL_CREATORS.map(c => {
+          const matched = data.find((inf: any) => inf.handle === c.handle || inf.id?.toString() === c.id || inf.name?.toLowerCase() === c.name?.toLowerCase());
+          if (matched) {
+            return {
+              ...c,
+              expectedPrice: matched.base_rate ? `₹${matched.base_rate.toLocaleString('en-IN')}` : c.expectedPrice,
+              fakeFollowerScore: matched.success_rate ? Math.max(1, 100 - matched.success_rate) : c.fakeFollowerScore
+            };
           }
-
-          if (inf.recent_collabs && inf.recent_collabs.length > 0) {
-            recentWorks = inf.recent_collabs;
-          }
-
-          if (inf.recent_reviews && inf.recent_reviews.length > 0) {
-            topComments = inf.recent_reviews;
-          }
-
-          return {
-            id: inf.id.toString(), // influencer id for chat
-            name: inf.name,
-            handle: inf.handle,
-            platform: inf.platform,
-            niche: inf.niche,
-            category: 'Micro' as const,
-            expectedPrice: inf.base_rate ? `₹${inf.base_rate.toLocaleString()}` : 'Negotiable',
-            deliverables: ['UGC Video'],
-            followers: '10k+',
-            fakeFollowerScore: 100 - inf.success_rate,
-            rating: 4.8,
-            reviewsCount: 10,
-            recentWorks,
-            topComments,
-            recentPosts: inf.recent_posts || []
-          };
+          return c;
         });
-        setCreators(mergeCustomProfile(mapped));
+        setCreators(mergeCustomProfile(enriched));
       } else {
         setCreators(mergeCustomProfile(INITIAL_CREATORS));
       }

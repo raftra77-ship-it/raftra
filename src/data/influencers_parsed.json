@@ -1245,7 +1245,7 @@
       "Static Post"
     ],
     "followers": "114k",
-    "avgViews": "View Profile",
+    "avgViews": "100k-500k avg",
     "location": "India Ghaziabad",
     "email": "arushchaudhary805@gmail.com",
     "phone": "7668289371",
@@ -1289,6 +1289,78 @@
     "recentWorks": [
       "D2C Brand Collab"
     ],
-    "profileLink": "https://www.instagram.com/navvyyaaaaa?igsh=MTk0MjJoaHpsNmwzNA%3D%3D&utm_source=qr\n\n\n\n\nhttps://youtube.com/@navyamongaaa?si=ZOW1aGj2yW8pEZ1N"
+    "profileLink": "https://www.instagram.com/navvyyaaaaa?igsh=MTk0MjJoaHpsNmwzNA%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_39",
+    "name": "Devanshu Singhal",
+    "creatorBrand": "Scentseiiii",
+    "handle": "@scentseiiii",
+    "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Perfumes, Lifestyle",
+    "allNiches": [
+      "Perfumes",
+      "Lifestyle"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹9,000",
+    "priceRange": "₹1,000 - ₹9,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "13.2k",
+    "avgViews": "25k-40k avg",
+    "location": "Delhi , India",
+    "email": "scentsei.perfume@gmail.com",
+    "phone": "9266724676",
+    "fakeFollowerScore": 1,
+    "rating": 4.9,
+    "reviewsCount": 24,
+    "recentWorks": [
+      "D2C Perfume Collab",
+      "Grooming Review"
+    ],
+    "profileLink": "https://www.instagram.com/scentseiiii?igsh=MW1nYW11bnc1cGJqdg%3D%3D&utm_source=qr"
+  },
+  {
+    "id": "creator_40",
+    "name": "Manav Yadav",
+    "creatorBrand": "@manavyadxv",
+    "handle": "@manavyadxv",
+    "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80",
+    "platform": "Instagram",
+    "niche": "Lifestyle, Funny, Relatable",
+    "allNiches": [
+      "Lifestyle",
+      "Relatable"
+    ],
+    "category": "Micro",
+    "isUGC": true,
+    "expectedPrice": "₹1,000 - ₹5,000",
+    "priceRange": "₹1,000 - ₹5,000",
+    "deliverables": [
+      "UGC Video",
+      "Reel",
+      "Story",
+      "Static Post"
+    ],
+    "followers": "12.5k",
+    "avgViews": "20k-30k avg",
+    "location": "New Delhi, India",
+    "email": "manavyadxv@gmail.com",
+    "phone": "8882701232",
+    "fakeFollowerScore": 1,
+    "rating": 4.85,
+    "reviewsCount": 22,
+    "recentWorks": [
+      "D2C Brand Collab",
+      "Humour Reel"
+    ],
+    "profileLink": "https://www.instagram.com/manavyadxv?igsh=MXNjNG83OTFqeXc1NA%3D%3D&utm_source=qr"
   }
 ]
