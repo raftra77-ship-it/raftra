@@ -258,23 +258,10 @@ MAX_BUDGET_CAP = ₹50,000 / day`
         </div>
 
         {/* ── 2-COLUMN DOCUMENTATION LAYOUT ───────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '32px', alignItems: 'start' }}>
+        <div className="manuals-main-grid">
           
           {/* LEFT SIDEBAR NAVIGATION */}
-          <div
-            className="glow-card"
-            style={{
-              background: '#0a0a12',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '20px',
-              padding: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              position: 'sticky',
-              top: '90px'
-            }}
-          >
+          <div className="manuals-sidebar glow-card">
             <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', padding: '8px 12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               DOCUMENTATION CHAPTERS
             </div>
@@ -457,6 +444,48 @@ MAX_BUDGET_CAP = ₹50,000 / day`
         </div>
 
       </main>
+
+      <style>{`
+        .manuals-main-grid {
+          display: grid;
+          grid-template-columns: 280px 1fr;
+          gap: 28px;
+          align-items: start;
+        }
+        .manuals-sidebar {
+          background: #0a0a12;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 20px;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          position: sticky;
+          top: 90px;
+        }
+
+        @media (max-width: 960px) {
+          .manuals-main-grid {
+            grid-template-columns: 1fr !important;
+            gap: 20px !important;
+          }
+          .manuals-sidebar {
+            position: static !important;
+            display: flex !important;
+            flex-direction: row !important;
+            overflow-x: auto !important;
+            padding: 10px !important;
+            white-space: nowrap !important;
+            gap: 8px !important;
+          }
+          .manuals-sidebar > div {
+            display: none !important;
+          }
+          .manuals-sidebar button {
+            flex-shrink: 0 !important;
+          }
+        }
+      `}</style>
 
       <Footer />
     </div>
