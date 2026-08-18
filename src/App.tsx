@@ -11,6 +11,9 @@ import { Security } from './pages/Security';
 import { AboutUs } from './pages/AboutUs';
 import { FeaturePage } from './pages/FeaturePage';
 import { InfluencerMarketplacePage } from './pages/InfluencerMarketplacePage';
+import { BlogPage } from './pages/BlogPage';
+import { CareersPage } from './pages/CareersPage';
+import { UserManualsPage } from './pages/UserManualsPage';
 import './App.css';
 
 import { FlowyBackground } from './components/FlowyBackground';
@@ -85,6 +88,14 @@ export default function App() {
         <Route path="/security" element={<Security />} />
         <Route path="/about" element={<AboutUs />} />
         <Route path="/features/:featureId" element={<FeaturePage />} />
+        
+        <Route path="/blog" element={<BlogPage />} />
+        <Route path="/blogs" element={<BlogPage />} />
+        <Route path="/careers" element={<CareersPage />} />
+        <Route path="/jobs" element={<CareersPage />} />
+        <Route path="/docs" element={<UserManualsPage />} />
+        <Route path="/manuals" element={<UserManualsPage />} />
+        <Route path="/documentation" element={<UserManualsPage />} />
         
         <Route path="/login" element={
           <AuthScreen onLoginComplete={handleLoginComplete} />

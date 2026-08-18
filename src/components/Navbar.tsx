@@ -8,6 +8,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
   const navigate = useNavigate();
   const location = useLocation();
   const [hoverFeature, setHoverFeature] = useState(false);
+  const [hoverResources, setHoverResources] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isNavHovered, setIsNavHovered] = useState(false);
 
@@ -67,6 +68,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
       onMouseLeave={() => {
         setIsNavHovered(false);
         setHoverFeature(false);
+        setHoverResources(false);
       }}
       initial={false}
       animate={{
@@ -89,7 +91,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         top: '16px',
         display: 'flex',
         alignItems: 'center',
-        justify: isCollapsed ? 'center' : 'space-between',
+        justifyContent: isCollapsed ? 'center' : 'space-between',
         background: 'rgba(14, 14, 26, 0.88)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
@@ -98,7 +100,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         boxShadow: isCollapsed
           ? '0 10px 30px rgba(90, 82, 255, 0.4), 0 0 20px rgba(90, 82, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
           : '0 12px 40px -5px rgba(0, 0, 0, 0.7), 0 0 25px rgba(90, 82, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-        zIndex: 1000,
+        zIndex: 999,
         cursor: isCollapsed ? 'pointer' : 'default',
         overflow: isCollapsed ? 'hidden' : 'visible'
       }}
@@ -108,15 +110,16 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         }
       }}
     >
-      {/* Logo Container */}
+      {/* Brand Logo / Icon */}
       <div 
         style={{
-          cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          flex: isCollapsed ? '0 0 auto' : '1 1 0%',
-          justify: isCollapsed ? 'center' : 'flex-start'
+          gap: isCollapsed ? '0px' : '10px',
+          cursor: 'pointer',
+          flex: isCollapsed ? 'none' : '1 1 0%',
+          justifyContent: isCollapsed ? 'center' : 'flex-start',
+          userSelect: 'none'
         }}
         onClick={(e) => {
           e.stopPropagation();
@@ -135,7 +138,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         )}
       </div>
 
-      {/* Center 5 Links (GPU Accelerated Smooth Opacity Morph) */}
+      {/* Center Links */}
       <motion.div
         animate={{
           opacity: isCollapsed ? 0 : 1,
@@ -143,7 +146,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           pointerEvents: isCollapsed ? 'none' : 'auto'
         }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', flex: '2 1 0%', whiteSpace: 'nowrap' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px', flex: '2 1 0%', whiteSpace: 'nowrap' }}
       >
         <button onClick={handleScrollToFriction} className="nav-link-btn">
           The Friction
@@ -153,6 +156,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           Security
         </button>
 
+        {/* The Solution Dropdown */}
         <div 
           style={{ position: 'relative' }}
           onMouseEnter={() => setHoverFeature(true)}
@@ -209,6 +213,77 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
                       }}
                     >
                       {feat.name}
+                    </button>
+                  ))}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Resources Dropdown (Blogs, Careers, User Manuals) */}
+        <div 
+          style={{ position: 'relative' }}
+          onMouseEnter={() => setHoverResources(true)}
+          onMouseLeave={() => setHoverResources(false)}
+        >
+          <button className="nav-link-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            Resources <ChevronDown size={14} />
+          </button>
+          
+          <AnimatePresence>
+            {hoverResources && (
+              <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', paddingTop: '10px', zIndex: 1000 }}>
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  style={{
+                    background: 'rgba(12, 12, 22, 0.98)',
+                    backdropFilter: 'blur(24px)',
+                    border: '1px solid rgba(0, 230, 118, 0.4)',
+                    borderRadius: '16px',
+                    padding: '12px',
+                    minWidth: '260px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.9), 0 0 25px rgba(0,230,118,0.25)'
+                  }}
+                >
+                  {[
+                    { name: 'Growth Blog', path: '/blog', desc: 'Marketing playbooks & case studies' },
+                    { name: 'Careers', path: '/careers', desc: 'Remote internships & opportunities' },
+                    { name: 'User Manuals & Docs', path: '/docs', desc: 'Platform documentation & guides' }
+                  ].map((res, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => { setHoverResources(false); navigate(res.path); }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ffffff',
+                        textAlign: 'left',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '3px',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(0,230,118,0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, color: '#ffffff', fontSize: '13.5px' }}>{res.name}</span>
+                      <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.72)', lineHeight: 1.35 }}>{res.desc}</span>
                     </button>
                   ))}
                 </motion.div>

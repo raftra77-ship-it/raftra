@@ -20,7 +20,8 @@ import {
   Lightbulb,
   Zap,
   AlertCircle,
-  TrendingDown
+  TrendingDown,
+  BookOpen
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import { motion } from 'framer-motion';
@@ -919,6 +920,173 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         </div>
       </section>
 
+      {/* ── KNOWLEDGE, STORIES & CAREER HUB (BLOGS, CAREERS, USER MANUALS) ── */}
+      <section className="section-container" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '80px', paddingBottom: '40px' }}>
+        <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 48px auto' }}>
+          <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-mono)' }}>
+            RESOURCES & COMMUNITY
+          </span>
+          <h2 style={{ fontSize: '42px', fontWeight: 900, color: '#fff', margin: '12px 0 16px 0', fontFamily: 'var(--font-heading)' }}>
+            Knowledge, Playbooks & Open Roles
+          </h2>
+          <p style={{ fontSize: '17px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+            Discover how top brands scale with autonomous AI marketing, master the platform with interactive manuals, or join our team.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+          
+          {/* Card 1: Growth Blogs */}
+          <div
+            onClick={() => navigate('/blog')}
+            className="glow-card"
+            style={{
+              background: '#0a0a12',
+              border: '1.5px solid rgba(124, 117, 255, 0.3)',
+              borderRadius: '24px',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '20px',
+              cursor: 'pointer',
+              transition: 'all 0.25s ease'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(124, 117, 255, 0.15)', border: '1px solid rgba(124, 117, 255, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <BookOpen size={24} color="#7C75FF" />
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(124, 117, 255, 0.15)', color: '#7C75FF', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
+                  WEEKLY ARTICLES
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '22px', color: '#fff', margin: '0 0 10px 0', fontWeight: 800 }}>
+                Raftra Growth Blog
+              </h3>
+
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Deep dives into creative psychology, Meta ad tear-downs of rivals like Portronics & StuffCool, and Answer Engine Optimization (AEO).
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)' }}>
+                <div>• Autonomous Meta Ad scaling in 2026</div>
+                <div>• Dominating ChatGPT & Perplexity Citations</div>
+                <div>• Diwali festive run-up e-com playbook</div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#7C75FF', fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                Explore Articles <ArrowRight size={15} />
+              </span>
+            </div>
+          </div>
+
+          {/* Card 2: Careers */}
+          <div
+            onClick={() => navigate('/careers')}
+            className="glow-card"
+            style={{
+              background: '#0a0a12',
+              border: '1.5px solid rgba(0, 230, 118, 0.35)',
+              borderRadius: '24px',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '20px',
+              cursor: 'pointer',
+              boxShadow: '0 8px 30px rgba(0, 230, 118, 0.12)',
+              transition: 'all 0.25s ease'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 230, 118, 0.15)', border: '1px solid rgba(0, 230, 118, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Rocket size={24} color="#00E676" />
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.35)', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
+                  INTERNSHIP PROGRAM
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '22px', color: '#fff', margin: '0 0 10px 0', fontWeight: 800 }}>
+                Join Team Raftra
+              </h3>
+
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Hands-on remote internships working directly on AI agent graphs, growth marketing pipelines, and modern design systems.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)' }}>
+                <div>• AI & LLM Engineering Intern (Unpaid • Certificate + LOR)</div>
+                <div>• Growth Marketing Intern (Unpaid • PPO Opportunity)</div>
+                <div>• UI/UX Product Design Intern (Unpaid • Live Portfolio)</div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#00E676', fontSize: '13.5px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                View Internships & Apply <ArrowRight size={15} />
+              </span>
+            </div>
+          </div>
+
+          {/* Card 3: User Manuals */}
+          <div
+            onClick={() => navigate('/docs')}
+            className="glow-card"
+            style={{
+              background: '#0a0a12',
+              border: '1.5px solid rgba(0, 210, 255, 0.3)',
+              borderRadius: '24px',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '20px',
+              cursor: 'pointer',
+              transition: 'all 0.25s ease'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Cpu size={24} color="#00D2FF" />
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(0, 210, 255, 0.15)', color: '#00D2FF', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
+                  OFFICIAL GUIDES
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '22px', color: '#fff', margin: '0 0 10px 0', fontWeight: 800 }}>
+                User Manuals & Docs
+              </h3>
+
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Interactive step-by-step documentation, code rules, API triggers, Brand Kit ingestion checks, and creator escrow setup guides.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)' }}>
+                <div>• Brand Kit extraction & font guardrails</div>
+                <div>• 1-Click Meta & Google ad deployment</div>
+                <div>• Creator Escrow Vault milestone release</div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#00D2FF', fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                Read Documentation <ArrowRight size={15} />
+              </span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
       {/* Footer / Outro CTA */}
       <section className="section-container" style={{ textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '80px' }}>
         <h2 className="section-title text-gradient-glow" style={{ fontSize: '36px' }}>
@@ -931,10 +1099,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           Start Scaling Now
         </GlowButton>
       </section>
-
-      <footer style={{ borderTop: '1px solid var(--border-color)', padding: '40px 24px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
-        <p>© {new Date().getFullYear()} Raftra AI. Built for high-growth enterprises.</p>
-      </footer>
       {/* Creator Portal Modal */}
       {showCreatorPortal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
