@@ -231,6 +231,76 @@ class Influencer(Base):
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     workspace = relationship("Workspace", back_populates="influencers")
 
+class Deal(Base):
+    """A brand's collaboration offer to a creator, and the escrow state around it.
+
+    The creator side is keyed by `influencer_handle` rather than a user id: creators are
+    discovered and messaged by handle long before (and often without) having an account
+    here, so a foreign key would make a deal impossible to raise for anyone not yet
+    registered. The handle is stored normalised (lower-case, no leading '@') so the
+    brand's "@Samairaa.R" and the creator's "samairaa.r" resolve to the same row.
+    """
+    __tablename__ = "deals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+
+    brand_name = Column(String, nullable=True)
+    brand_whatsapp = Column(String, nullable=True)
+
+    influencer_handle = Column(String, index=True)      # normalised: no '@', lower-case
+    influencer_name = Column(String, nullable=True)
+    influencer_email = Column(String, nullable=True)
+    influencer_phone = Column(String, nullable=True)
+
+    amount = Column(Float, default=0.0)
+    deliverables = Column(String, nullable=True)
+
+    # pending -> active (creator accepted, escrow locked) -> delivered (brand released)
+    # -> paid (payout disbursed). These exact strings drive the creator's status pills.
+    status = Column(String, default="pending", index=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    accepted_at = Column(DateTime, nullable=True)
+    released_at = Column(DateTime, nullable=True)
+
+
+class Payout(Base):
+    """A creator's payout request against their delivered deals, plus the proof a human
+    auditor reviews before disbursing.
+
+    Bank details are stored so the payout can actually be made, but never returned in
+    full by the API - see `_payout_json` in payout_routes.py, which masks the account
+    number so a leaked response cannot be used to reconstruct it.
+    """
+    __tablename__ = "payouts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=True)
+
+    creator_handle = Column(String, index=True)         # normalised, matches Deal
+    creator_name = Column(String, nullable=True)
+
+    amount = Column(Float, default=0.0)
+
+    # Proof-of-delivery the creator uploads, checked by a human before approval.
+    screenshot_url = Column(Text, nullable=True)
+    token_submitted = Column(String, nullable=True)
+
+    bank_account_holder = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
+    account_number = Column(String, nullable=True)
+    ifsc_code = Column(String, nullable=True)
+    upi_id = Column(String, nullable=True)
+
+    # under_review -> paid | rejected
+    status = Column(String, default="under_review", index=True)
+    admin_note = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    approved_at = Column(DateTime, nullable=True)
+
+
 class AgentTask(Base):
     __tablename__ = "agent_tasks"
 

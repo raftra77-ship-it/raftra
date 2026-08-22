@@ -96,8 +96,8 @@ export const GA4Panel: React.FC<{ workspaceId: number | null }> = ({ workspaceId
 
   return (
     <div className="glow-card" style={{ padding: '20px' }}>
-      <h3 style={{ fontSize: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        Google Analytics 4 — Traffic
+      <h3 style={{ fontSize: '15px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.3, minWidth: 0 }}>
+        <span style={{ minWidth: 0 }}>Google Analytics 4</span>
         <span style={{ marginLeft: 'auto', ...statusBadge(hasProperty ? 'connected' : isConnected ? 'pending' : 'disconnected') }}>
           {hasProperty ? 'CONNECTED' : isConnected ? 'PROPERTY NEEDED' : 'NOT CONNECTED'}
         </span>

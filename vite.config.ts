@@ -10,6 +10,14 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8005',
         changeOrigin: true
+      },
+      // Without this the dev server has no route for /ws, so every WebSocket the app
+      // opens (agent activity feed, brand<->creator chat) silently hangs in dev while
+      // working in production. `ws: true` makes Vite forward the upgrade handshake.
+      '/ws': {
+        target: 'ws://127.0.0.1:8005',
+        ws: true,
+        changeOrigin: true
       }
     }
   },
@@ -17,6 +25,11 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8005',
+        changeOrigin: true
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:8005',
+        ws: true,
         changeOrigin: true
       }
     }

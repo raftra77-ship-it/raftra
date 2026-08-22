@@ -32,7 +32,7 @@ export const InfoTile: React.FC<{ label: string; value: string; accent?: string 
 export const BenefitChips: React.FC<{ items: string[] }> = ({ items }) => (
   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', marginBottom: '16px' }}>
     {items.map(b => (
-      <span key={b} style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', borderRadius: '20px', padding: '4px 10px' }}>
+      <span key={b} style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '100px', padding: '5px 12px' }}>
         {b}
       </span>
     ))}
@@ -49,18 +49,24 @@ export const Spinner: React.FC = () => (
 
 export function connectorBtn(bg: string, disabled?: boolean): React.CSSProperties {
   return {
-    display: 'inline-flex', alignItems: 'center', gap: '7px',
-    padding: '9px 16px', background: bg, border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
-    color: '#fff', fontSize: '13px', fontWeight: 600, cursor: disabled ? 'wait' : 'pointer',
-    opacity: disabled ? 0.7 : 1,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+    padding: '10px 18px', background: bg, border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px',
+    color: '#fff', fontSize: '13.5px', fontWeight: 600, cursor: disabled ? 'wait' : 'pointer',
+    opacity: disabled ? 0.7 : 1, transition: 'all 0.2s ease', whiteSpace: 'nowrap',
   };
 }
 
 export function statusBadge(state: 'connected' | 'pending' | 'disconnected'): React.CSSProperties {
   const map = {
-    connected: { c: '#22C55E', bg: 'rgba(34,197,94,0.12)', b: 'rgba(34,197,94,0.3)' },
-    pending: { c: '#ffae00', bg: 'rgba(255,174,0,0.12)', b: 'rgba(255,174,0,0.35)' },
-    disconnected: { c: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.06)', b: 'var(--border-color)' },
+    connected: { c: '#00E676', bg: 'rgba(0,230,118,0.12)', b: 'rgba(0,230,118,0.35)' },
+    pending: { c: '#FFBD2E', bg: 'rgba(255,189,46,0.12)', b: 'rgba(255,189,46,0.35)' },
+    disconnected: { c: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.05)', b: 'rgba(255,255,255,0.15)' },
   }[state];
-  return { fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px', color: map.c, background: map.bg, border: `1px solid ${map.b}`, borderRadius: '6px', padding: '2px 8px' };
+  // Pill shape + nowrap: at 10px in a narrow column "NOT CONNECTED" wrapped onto two
+  // lines and pushed the panel title out of alignment.
+  return {
+    fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.06em', whiteSpace: 'nowrap',
+    color: map.c, background: map.bg, border: `1px solid ${map.b}`,
+    borderRadius: '100px', padding: '3px 10px', flexShrink: 0,
+  };
 }

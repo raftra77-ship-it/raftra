@@ -136,25 +136,45 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
   const recallImproved = vis && vis.previous_recognised === false && vis.current_recognised === true;
   const recallWorsened = vis && vis.previous_recognised === true && vis.current_recognised === false;
 
+  // Green for SEO, purple for GEO — same accents as the two pipeline pills.
+  const accent = pipeline === 'GEO' ? '#7C75FF' : '#00E676';
+  const accentBg = pipeline === 'GEO' ? 'rgba(124,117,255,0.15)' : 'rgba(0,230,118,0.15)';
+  const accentBd = pipeline === 'GEO' ? 'rgba(124,117,255,0.4)' : 'rgba(0,230,118,0.4)';
+
   return (
     <div className="glow-card">
-      <h3 style={{ fontSize: '16px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Month-over-Month Change ({pipeline})
-      </h3>
-      {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>}
+      {/* Accent tracks the pipeline so this card visually belongs to the SEO (green) or
+          GEO (purple) half of the workspace, matching the pipeline pills above. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+        <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: accentBg, border: `1px solid ${accentBd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <TrendingUp size={18} color={accent} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <h3 style={{ fontSize: '17px', margin: 0, color: '#fff', fontWeight: 700, lineHeight: 1.25, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            Month-over-Month Change
+            <span style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.06em', color: accent, background: accentBg, border: `1px solid ${accentBd}`, borderRadius: '100px', padding: '3px 10px', whiteSpace: 'nowrap' }}>
+              {pipeline}
+            </span>
+          </h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+            What moved between your two most recent {pipeline} runs.
+          </p>
+        </div>
+      </div>
+      {loading && <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Loading…</p>}
       {!loading && (!data || data.runs_available === 0) && (
-        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+        <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
           No runs yet — run the {pipeline} pipeline to start building history.
         </p>
       )}
       {!loading && data && data.runs_available === 1 && (
-        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+        <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
           First run recorded. The comparison appears automatically after the next run.
         </p>
       )}
       {!loading && data && data.runs_available > 1 && (
         <>
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
             {new Date(data.previous_run.date).toLocaleDateString()} → {new Date(data.current_run.date).toLocaleDateString()}
             {'  ·  Score '}{data.previous_run.score} → <b style={{ color: '#fff' }}>{data.current_run.score}</b>
           </div>
@@ -162,7 +182,7 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
             {data.changes.map((c: any) => {
               const a = arrow(c.direction);
               return (
-                <div key={c.metric} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                <div key={c.metric} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>{c.metric}</span>
                   <span style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)' }}>{disp(c.previous)} → {disp(c.current)}</span>
@@ -176,7 +196,7 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
           </div>
           {vis && (
             <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '14px', marginBottom: '8px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Recognised by AI answer engines</span>
                 <span style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <span style={{ color: 'var(--text-muted)' }}>{disp(vis.previous_recognised)} → {disp(vis.current_recognised)}</span>
@@ -186,7 +206,7 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
                 </span>
               </div>
               {vis.current_recall && (
-                <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, margin: 0 }}>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, margin: 0 }}>
                   "{vis.current_recall}"
                 </p>
               )}
@@ -209,19 +229,28 @@ const ExplainerCard: React.FC = () => {
   ];
   return (
     <div className="glow-card">
-      <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Globe size={16} style={{ color: '#00ff9d' }} /> How SEO + GEO works here
-      </h3>
-      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 16px' }}>
-        The workflow, from audit to live changes.
-      </p>
+      {/* Card header matches the workspace header pattern at card scale: tinted icon
+          tile + title + supporting line. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Globe size={18} color="#00E676" />
+        </div>
+        <div>
+          <h3 style={{ fontSize: '17px', margin: 0, color: '#fff', fontWeight: 700, lineHeight: 1.25 }}>
+            How SEO + GEO works here
+          </h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+            The workflow, from audit to live changes.
+          </p>
+        </div>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {steps.map(s => (
           <div key={s.n} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <span style={{ flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.35)', color: '#00ff9d', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
+            <span style={{ flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(0,255,157,0.12)', border: '1px solid rgba(0,255,157,0.35)', color: '#00ff9d', fontSize: '13px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
             <span>
-              <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600, color: '#fff' }}>{s.t}</span>
-              <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{s.d}</span>
+              <span style={{ display: 'block', fontSize: '14.5px', fontWeight: 600, color: '#fff' }}>{s.t}</span>
+              <span style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{s.d}</span>
             </span>
           </div>
         ))}
@@ -258,29 +287,47 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
     { key: 'ga4', name: 'Google Analytics', Icon: TrendingUp, connected: !!(st.gsc?.connected && st.gsc?.ga4_property_id) },
   ];
 
+  // Matches statusBadge() in ConnectorUI so the pills read identically here and inside
+  // the connector panels below.
   const badge = (connected: boolean) => (
-    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap',
-      color: connected ? '#00ff9d' : 'var(--text-secondary)', background: connected ? 'rgba(0,255,157,0.1)' : 'rgba(255,255,255,0.05)',
-      border: `1px solid ${connected ? 'rgba(0,255,157,0.35)' : 'var(--border-color)'}` }}>
-      {connected ? 'Connected' : 'Not Connected'}
+    <span style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.06em', padding: '3px 10px', borderRadius: '100px', whiteSpace: 'nowrap', flexShrink: 0,
+      color: connected ? '#00E676' : 'var(--text-secondary)', background: connected ? 'rgba(0,230,118,0.12)' : 'rgba(255,255,255,0.05)',
+      border: `1px solid ${connected ? 'rgba(0,230,118,0.35)' : 'rgba(255,255,255,0.15)'}` }}>
+      {connected ? 'CONNECTED' : 'NOT CONNECTED'}
     </span>
   );
 
   return (
     <div className="glow-card">
-      <h3 style={{ fontSize: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <ExternalLink size={16} style={{ color: '#00ff9d' }} /> Connected Platforms
-      </h3>
-      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
-        These are the platforms used to pull real data and apply approved fixes.
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+        <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <ExternalLink size={18} color="#00E676" />
+        </div>
+        <div>
+          <h3 style={{ fontSize: '17px', margin: 0, color: '#fff', fontWeight: 700, lineHeight: 1.25 }}>
+            Connected Platforms
+          </h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+            Used to pull real data and apply approved fixes.
+          </p>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {/* Connected rows get a faint green wash and border so the state is readable at
+            a glance, not only from the pill on the right. */}
         {rows.map(({ key, name, Icon, connected }) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '9px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
-              <Icon size={14} style={{ color: connected ? '#00ff9d' : 'var(--text-muted)', flexShrink: 0 }} />
-              <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+          <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '11px 14px',
+            background: connected ? 'rgba(0,230,118,0.05)' : 'rgba(255,255,255,0.02)',
+            border: `1px solid ${connected ? 'rgba(0,230,118,0.22)' : 'rgba(255,255,255,0.10)'}`,
+            borderRadius: '12px', transition: 'all 0.2s ease' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <span style={{ width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: connected ? 'rgba(0,230,118,0.12)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${connected ? 'rgba(0,230,118,0.3)' : 'rgba(255,255,255,0.10)'}` }}>
+                <Icon size={15} style={{ color: connected ? '#00E676' : 'var(--text-muted)' }} />
+              </span>
+              <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
             </span>
             {badge(connected)}
           </div>
@@ -288,8 +335,8 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
       </div>
 
       <button onClick={onManageIntegrations}
-        style={{ width: '100%', marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', cursor: 'pointer' }}>
-        <ExternalLink size={14} /> View Integrations
+        style={{ width: '100%', marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '11px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+        <ExternalLink size={15} /> View Integrations
       </button>
     </div>
   );
@@ -391,32 +438,41 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
       {toast && (
         <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 7000, display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(24,26,34,0.98)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '10px', padding: '13px 16px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', maxWidth: '360px' }}>
-          <span style={{ fontSize: '13px', color: '#fff', flex: 1 }}>{toast.msg}</span>
+          <span style={{ fontSize: '14px', color: '#fff', flex: 1 }}>{toast.msg}</span>
           {toast.pipeline && (
-            <button onClick={() => { setToast(null); setReportOpen(true); }} style={{ fontSize: '12px', fontWeight: 700, color: '#ffae00', background: 'rgba(255,174,0,0.1)', border: '1px solid rgba(255,174,0,0.4)', borderRadius: '7px', padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap' }}>View Running Audit</button>
+            <button onClick={() => { setToast(null); setReportOpen(true); }} style={{ fontSize: '13px', fontWeight: 700, color: '#ffae00', background: 'rgba(255,174,0,0.1)', border: '1px solid rgba(255,174,0,0.4)', borderRadius: '7px', padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap' }}>View Running Audit</button>
           )}
-          <button onClick={() => setToast(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0, fontSize: '14px' }}>✕</button>
+          <button onClick={() => setToast(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0, fontSize: '15px' }}>✕</button>
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>SEO + GEO/AEO Dominance</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            Dominate search lists on Google AND answer outputs on LLMs (ChatGPT, Claude, Gemini, Perplexity) using automated entity optimizations.
-          </p>
+      {/* Header follows the Creative Studio pattern: tinted icon tile + uppercase title +
+          muted subtitle, so the workspaces read as one family. */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Search size={24} color="#00E676" />
+          </div>
+          <div>
+            <div style={{ fontSize: '22px', color: '#fff', fontWeight: 800, letterSpacing: '0.03em', fontFamily: 'var(--font-heading)', lineHeight: 1.2 }}>
+              SEO + GEO WORKSPACE
+            </div>
+            <div style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              Rank on Google and get cited by AI search — audit, review, then apply the fixes.
+            </div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="text"
             value={targetUrl}
             onChange={(e) => { setTargetUrl(e.target.value); setUrlEditedByUser(true); }}
             placeholder="Target URL..."
-            style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px', width: '200px' }}
+            style={{ padding: '9px 14px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '14px', width: '220px' }}
           />
           <button onClick={() => setReportOpen(true)}
-            style={{ fontSize: '12.5px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 15px', cursor: 'pointer' }}>
-            View Report
+            style={{ fontSize: '13.5px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '9px 16px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <FileText size={14} /> View Report
           </button>
           <GlowButton variant="glow" disabled={seoRunning}
             onClick={() => seoRunning ? setToast({ msg: 'An audit is already running for this website.', pipeline: 'SEO' }) : triggerPipeline('SEO', targetUrl)}
@@ -430,9 +486,9 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '10px' }}>
         {/* SEO Pipeline */}
         <div className="glow-card" style={{ padding: '20px', background: 'rgba(0, 255, 157, 0.01)', border: '1px solid rgba(0, 255, 157, 0.08)' }}>
-          <h3 style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            TRADITIONAL SEO PIPELINE GRAPH
-          </h3>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: '#00E676', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '100px', padding: '4px 12px', marginBottom: '14px' }}>
+            <Search size={11} /> TRADITIONAL SEO PIPELINE
+          </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
             {SEO_STAGE_LABELS.map(({ key, label, description, Icon }, idx, arr) => {
               const isActive = seoRunning && seoRun.current_stage === key;
@@ -444,9 +500,9 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   cursor: 'pointer',
                   background: isActive ? 'rgba(0, 255, 157, 0.2)' : isCompleted ? 'rgba(0, 255, 157, 0.05)' : 'rgba(255, 255, 255, 0.02)',
                   border: isActive ? '1px solid var(--success)' : isCompleted ? '1px solid rgba(0, 255, 157, 0.5)' : '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  padding: '6px 10px',
-                  fontSize: '10px',
+                  borderRadius: '100px',
+                  padding: '6px 12px',
+                  fontSize: '12px',
                   fontWeight: 500,
                   display: 'flex',
                   alignItems: 'center',
@@ -460,7 +516,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   {isCompleted && !isActive && <Check size={10} color="var(--success)" />}
                   <span>{label}</span>
                 </div>
-                {idx < arr.length - 1 && <span style={{ color: isActive ? 'var(--success)' : 'var(--text-muted)', fontSize: '11px' }}>→</span>}
+                {idx < arr.length - 1 && <span style={{ color: isActive ? 'var(--success)' : 'var(--text-muted)', fontSize: '12px' }}>→</span>}
               </div>
             )})}
           </div>
@@ -469,12 +525,12 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
         {/* GEO/AEO Pipeline */}
         <div className="glow-card" style={{ padding: '20px', background: 'rgba(90, 82, 255, 0.01)', border: '1px solid rgba(90, 82, 255, 0.08)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-              AEO / GEO CITATIONS PIPELINE GRAPH
-            </h3>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: '#7C75FF', background: 'rgba(124,117,255,0.12)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '100px', padding: '4px 12px' }}>
+              <Radar size={11} /> AI / GEO CITATIONS PIPELINE
+            </div>
             <GlowButton variant="glow" disabled={geoRunning}
               onClick={() => geoRunning ? setToast({ msg: 'An audit is already running for this website.', pipeline: 'GEO' }) : triggerPipeline('GEO', targetUrl)}
-              style={{ fontSize: '11px', padding: '4px 12px', ...(geoRunning ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
+              style={{ fontSize: '12px', padding: '4px 12px', ...(geoRunning ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
               {geoRunning ? 'GEO Running…' : 'Run GEO Pipeline'}
             </GlowButton>
           </div>
@@ -489,9 +545,9 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   cursor: 'pointer',
                   background: isActive ? 'rgba(90, 82, 255, 0.2)' : isCompleted ? 'rgba(0, 255, 157, 0.1)' : 'rgba(90, 82, 255, 0.05)',
                   border: `1px solid ${isActive ? '#5a52ff' : isCompleted ? '#00ff9d' : 'var(--accent)'}`,
-                  borderRadius: '4px',
-                  padding: '6px 10px',
-                  fontSize: '10px',
+                  borderRadius: '100px',
+                  padding: '6px 12px',
+                  fontSize: '12px',
                   fontWeight: 500,
                   display: 'flex',
                   alignItems: 'center',
@@ -502,7 +558,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
                   <span className={isActive ? "badge-pulse warning" : isCompleted ? "badge-pulse success" : ""} style={{ width: '4px', height: '4px', backgroundColor: isActive ? '#ffae00' : isCompleted ? '#00ff9d' : 'var(--accent)', display: isActive || isCompleted ? 'block' : 'none' }} />
                   <span>{label}</span>
                 </div>
-                {idx < arr.length - 1 && <span style={{ color: isActive || isCompleted ? '#fff' : 'var(--text-muted)', fontSize: '11px' }}>→</span>}
+                {idx < arr.length - 1 && <span style={{ color: isActive || isCompleted ? '#fff' : 'var(--text-muted)', fontSize: '12px' }}>→</span>}
               </div>
             )})}
           </div>
@@ -515,12 +571,19 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
           <ExplainerCard />
           {/* Search Console + GA4 are analytics/tracking sources — they feed the month-over-month tracking below. */}
           <div className="glow-card">
-            <h3 style={{ fontSize: '16px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Search Console &amp; Analytics
-            </h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
-              Connect Google Search Console &amp; GA4 to pull real rankings, clicks and traffic — this powers the performance tracking below.
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <TrendingUp size={18} color="#7C75FF" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '17px', margin: 0, color: '#fff', fontWeight: 700, lineHeight: 1.25 }}>
+                  Search Console &amp; Analytics
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+                  Connect Google Search Console &amp; GA4 to pull real rankings, clicks and traffic.
+                </p>
+              </div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
               <SearchConsolePanel workspaceId={workspaceId ?? null} onRunAudit={() => triggerPipeline('SEO', targetUrl)} />
               <GA4Panel workspaceId={workspaceId ?? null} />

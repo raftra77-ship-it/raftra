@@ -3,9 +3,37 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="C:\Users\Ambn\Pictures\download.png" />
+  <!-- Was an absolute Windows path (C:\Users\Ambn\Pictures\download.png) from another
+       machine, so the icon 404'd everywhere. public/favicon.svg already existed. -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>raftra</title>
+  <meta name="theme-color" content="#030303" />
+
+  <!-- Fonts: preconnect opens the TCP/TLS handshake to both Google font hosts before the
+       stylesheet is even requested. Lighthouse reported "no origins were preconnected"
+       and flagged fonts.gstatic.com as the top candidate. Loading via <link> here rather
+       than an @import in index.css also removes a request chain — the @import could not
+       start until index.css had been downloaded and parsed. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" />
+
+  <title>Raftra AI — Growth Operating System for Premium Brands</title>
+  <meta name="description"
+    content="Raftra AI is an AI Growth Operating System: create ads, launch campaigns across Meta and Google, rank on Google and AI search, track analytics, manage social, and hire verified influencers — from one platform." />
+
+  <!-- Link previews for shared URLs (Slack, WhatsApp, X, LinkedIn). -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Raftra AI" />
+  <meta property="og:title" content="Raftra AI — Growth Operating System for Premium Brands" />
+  <meta property="og:description"
+    content="Your entire growth team, powered by AI. Ads, campaigns, SEO + GEO, analytics, social and influencers in one workspace." />
+  <meta property="og:image" content="/favicon.svg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Raftra AI — Growth Operating System for Premium Brands" />
+  <meta name="twitter:description"
+    content="Your entire growth team, powered by AI. Ads, campaigns, SEO + GEO, analytics, social and influencers in one workspace." />
 </head>
 
 <body>

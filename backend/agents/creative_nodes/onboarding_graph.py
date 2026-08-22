@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 
@@ -45,6 +46,34 @@ def _html_to_text(html: str) -> str:
 _MAX_KB_PAGES = 5
 _PER_PAGE_CHARS = 3000
 _UA = "Mozilla/5.0 (compatible; RaftraBot/1.0)"
+
+# A page has to be worth embedding. Error bodies are the trap: a crawler that renders
+# JavaScript returns the site's 404 page as ordinary content, and once embedded a stub
+# like "Not Found" scores against every query and crowds real brand content out of the
+# top-k results. It also lands in scraped_content, so the LLM synthesizes the brand
+# profile partly from error text.
+_MIN_PAGE_WORDS = 20
+
+_ERROR_PAGE_OPENER_RE = re.compile(
+    r"^\s*(?:error\s*)?(?:\d{3}\b\s*[-:|]?\s*)?"
+    r"(not found|page not found|forbidden|unauthorized|access denied|bad request|"
+    r"internal server error|service unavailable|gateway time-?out|too many requests)",
+    re.I,
+)
+
+
+def _is_useful_page(text: str) -> bool:
+    """True if `text` looks like real page content rather than an error or empty shell."""
+    stripped = _html_to_text(text or "")
+    words = stripped.split()
+    if len(words) < _MIN_PAGE_WORDS:
+        return False
+    # Wordier error pages ("404 - Page Not Found. The page you requested...") clear the
+    # word count, so also reject anything that *opens* with an error phrase and is short
+    # enough that it can't plausibly be real content too.
+    if len(words) < 60 and _ERROR_PAGE_OPENER_RE.match(stripped):
+        return False
+    return True
 
 
 def _extract_internal_links(html: str, base_url: str, limit: int) -> list:
@@ -104,12 +133,24 @@ async def _firecrawl_crawl(client, url: str, limit: int, key: str) -> list:
             status = pj.get("status")
             if status == "completed":
                 out = []
-                for d in (pj.get("data") or [])[:limit]:
+                # Scan the whole result set rather than the first `limit` entries: if the
+                # crawl surfaced error pages early, we still want `limit` good ones.
+                for d in (pj.get("data") or []):
                     md = (d.get("markdown") or "").strip()
                     meta = d.get("metadata") or {}
                     src = meta.get("sourceURL") or meta.get("url") or url
-                    if md:
-                        out.append({"url": src, "content": md[:_PER_PAGE_CHARS]})
+                    # Firecrawl passes the origin's status through, and returns a 404 body
+                    # as markdown just as happily as a real page — so check both.
+                    status = meta.get("statusCode")
+                    if status not in (None, 200, "200"):
+                        print(f"Firecrawl: skipping {src} (HTTP {status})")
+                        continue
+                    if not _is_useful_page(md):
+                        print(f"Firecrawl: skipping {src} (error page or near-empty)")
+                        continue
+                    out.append({"url": src, "content": md[:_PER_PAGE_CHARS]})
+                    if len(out) >= limit:
+                        break
                 return out
             if status in ("failed", "cancelled"):
                 print(f"Firecrawl crawl {status}")

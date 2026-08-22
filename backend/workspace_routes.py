@@ -1689,14 +1689,17 @@ async def send_chat_message(workspace_id: int, influencer_id: int, msg: ChatMess
 def get_my_influencer(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
     if not inf:
+        # follower_count/engagement_rate are not columns on Influencer, and passing them
+        # raised a TypeError that surfaced as a 500 on this endpoint for every creator who
+        # did not already have a row - i.e. all of them on first load. The portal caught
+        # the failure silently and fell back to its hardcoded placeholder card, which is
+        # why every creator appeared as the same person.
         inf = models.Influencer(
             user_id=current_user.id,
             name=f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email.split('@')[0],
             niche="",
             platform="instagram",
             handle="",
-            follower_count=0,
-            engagement_rate=0.0
         )
         db.add(inf)
         db.commit()

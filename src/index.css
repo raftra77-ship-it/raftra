@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+/* Fonts moved to index.html as <link> + preconnect. A CSS @import serialises the
+   request behind index.css being downloaded and parsed, which is why Lighthouse
+   reported render-blocking requests and no preconnected origins. */
 
 :root {
   --bg-primary: #030303;
@@ -157,66 +159,49 @@ p {
   gap: 8px;
 }
 
-.btn-primary {
-  background: var(--accent);
-  color: var(--text-primary);
-  box-shadow: 0 4px 20px -2px rgba(90, 82, 255, 0.4);
+/* Brushed-metal buttons. The face is a 200%-wide charcoal->grey->charcoal gradient;
+   hover slides it to `right center` so the lighter band travels across, reading as a
+   light reflection rather than a colour change. The inset top hairline is what makes
+   it look like a machined edge instead of a flat rectangle.
+   Replaces the previous indigo/glow treatment. */
+.btn-primary, .btn-glow, .btn-grad {
+  position: relative;
+  background-image: linear-gradient(to right, #12121c 0%, #3c3c4f 51%, #12121c 100%);
+  background-size: 200% auto;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
 }
 
-.btn-primary:hover {
-  background: #6e67ff;
-  box-shadow: 0 4px 30px 2px rgba(90, 82, 255, 0.6);
-  transform: translateY(-1px);
+.btn-primary:hover, .btn-glow:hover, .btn-grad:hover {
+  background-position: right center;
+  border-color: rgba(255, 255, 255, 0.65);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.95), 0 0 25px rgba(255, 255, 255, 0.18);
+  transform: translateY(-2px);
+  color: #ffffff !important;
+  text-decoration: none;
 }
 
 .btn-secondary {
-  background: transparent;
-  color: var(--text-primary);
-  border-color: var(--border-color);
-}
-
-.btn-secondary:hover {
   background: rgba(255, 255, 255, 0.03);
-  border-color: var(--text-muted);
-}
-
-.btn-glow {
-  position: relative;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-muted) 100%);
   color: var(--text-primary);
-  border: none;
-  z-index: 1;
-}
-
-.btn-glow::after {
-  content: '';
-  position: absolute;
-  top: -1px; left: -1px; right: -1px; bottom: -1px;
-  background: linear-gradient(135deg, #8c85ff, var(--accent));
-  border-radius: var(--radius-md);
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.btn-glow:hover::after {
-  opacity: 1;
-}
-
-.btn-glow-shadow {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--accent);
-  border-radius: var(--radius-md);
-  filter: blur(15px);
-  z-index: -2;
-  opacity: 0.4;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   transition: var(--transition-smooth);
 }
 
-.btn-glow:hover .btn-glow-shadow {
-  opacity: 0.8;
-  filter: blur(20px);
+.btn-secondary:hover {
+  background: linear-gradient(to right, #1a1a28 0%, #2e2e3e 100%);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+}
+
+/* GlowButton still renders this div for variant="glow". It used to be a blurred indigo
+   bloom behind the button, which fights the metal finish - neutralised rather than
+   removed so the component needs no change. */
+.btn-glow-shadow {
+  display: none;
 }
 
 /* Badge animation */

@@ -200,10 +200,18 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
         if part:
             parts.append(part)
 
+    # This is structured extraction against a schema, not open reasoning, so the model's
+    # thinking budget is spent for nothing here - and on 2.5 it is charged against
+    # maxOutputTokens. With a real brand context (~1.1k chars) it burned ~1341 of the old
+    # 1400 limit, leaving too few tokens to finish the JSON: the response came back
+    # truncated, _extract_json failed, and every request silently fell back to the verbatim
+    # heuristic. The better the brand knowledge, the more reliably it broke.
+    # Disabling thinking fixes the cause; the raised ceiling is headroom for long specs.
     payload = {
         "contents": [{"parts": parts}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1400,
-                             "responseMimeType": "application/json"},
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096,
+                             "responseMimeType": "application/json",
+                             "thinkingConfig": {"thinkingBudget": 0}},
     }
     url = _GEMINI_URL.format(model=(model or _DEFAULT_MODEL))
     try:
@@ -212,13 +220,21 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
         if r.status_code != 200:
             print(f"[creative.analyzer] Gemini {r.status_code}: {r.text[:200]}")
             return _heuristic_spec(prompt, media_type, platform, reference_image_url, placement)
-        text = r.json()["candidates"][0]["content"]["parts"][0].get("text", "")
+        body = r.json()
+        candidate = (body.get("candidates") or [{}])[0]
+        finish = candidate.get("finishReason")
+        text = ((candidate.get("content") or {}).get("parts") or [{}])[0].get("text", "")
     except Exception as e:
         print(f"[creative.analyzer] call failed: {e}")
         return _heuristic_spec(prompt, media_type, platform, reference_image_url, placement)
 
     data = _extract_json(text)
     if not data:
+        # This branch used to return silently, which is how a 100%-failing analyzer went
+        # unnoticed: the caller just saw a plausible spec built from the raw prompt.
+        # finishReason is the tell - MAX_TOKENS here means the budget above needs raising.
+        print(f"[creative.analyzer] unparseable response (finishReason={finish}, "
+              f"{len(text)} chars); falling back to the verbatim prompt")
         return _heuristic_spec(prompt, media_type, platform, reference_image_url, placement)
     return build_spec(data, prompt=prompt, media_type=media_type, platform=platform,
                       placement=placement, reference_image_url=reference_image_url)
