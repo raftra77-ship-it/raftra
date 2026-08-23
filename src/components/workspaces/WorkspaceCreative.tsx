@@ -25,6 +25,12 @@ export type ProjectCard = {
   real?: boolean;
 };
 
+// Every product placeholder here used to point at Unsplash photo-1609592424074, which now
+// 404s — that one dead URL was the default for the Image ad, the Carousel, both Save
+// actions and the studio background, so the generated ad rendered as a broken image.
+const PRODUCT_IMG = 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80';
+const productImg = (w: number) => PRODUCT_IMG.replace('w=800', `w=${w}`);
+
 export interface CreativeAsset {
   id: string;
   headline: string;
@@ -88,7 +94,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     {
       id: 'el_bg',
       type: 'image',
-      content: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      content: PRODUCT_IMG,
       x: 0,
       y: 0,
       width: 100,
@@ -216,7 +222,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       title: editorDocumentTitle || 'Draft Campaign Design',
       date: 'Just now (Draft)',
       status: 'Draft' as const,
-      img: bgEl?.content || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      img: bgEl?.content || PRODUCT_IMG,
       headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
       bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
       cta: 'Shop Now',
@@ -238,7 +244,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       title: editorDocumentTitle || 'Powerbank Festive Campaign',
       date: 'Just now (Studio Design)',
       status: 'Approved' as const,
-      img: bgEl?.content || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      img: bgEl?.content || PRODUCT_IMG,
       headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
       bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
       cta: 'Shop Now',
@@ -430,7 +436,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       title: 'Ambrane Powerbank Festive Carousel',
       date: "Today's Ad",
       status: 'Approved',
-      img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+      img: PRODUCT_IMG,
       headline: 'Festive Flash Sale — 20,000mAh Powerbank',
       bodyText: 'Never run out of power during celebrations. Ultra fast 22.5W charging.',
       cta: 'Shop Now',
@@ -486,10 +492,24 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [isGeneratingUgc, setIsGeneratingUgc] = useState(false);
   const [ugcStepText, setUgcStepText] = useState('');
   const [ugcProgress, setUgcProgress] = useState(0);
+  const [ugcVoice, setUgcVoice] = useState('Hinglish Energetic Natural Voice');
+  // One poster per avatar. The preview used to show the same stock photo for everyone,
+  // so picking "Aarav (Male 24)" rendered a woman.
+  const AI_AVATARS: Record<string, { poster: string; label: string }> = {
+    'Aarav - Tech Reviewer': { poster: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80', label: 'Aarav — Tech Reviewer' },
+    'Ananya - Lifestyle Creator': { poster: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80', label: 'Ananya — Lifestyle Creator' },
+    'Rohan - Fitness Enthusiast': { poster: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80', label: 'Rohan — Fitness Expert' },
+  };
+  const ugcVideoRef = useRef<HTMLVideoElement>(null);
+  const [isUgcPlaying, setIsUgcPlaying] = useState(false);
+  const [ugcVideoFailed, setUgcVideoFailed] = useState(false);
   const [generatedUgcReel, setGeneratedUgcReel] = useState<{
     id: string;
     avatar: string;
+    // Empty when this workspace has no rendered video yet — the preview then falls back
+    // to the avatar poster instead of a dead player.
     videoUrl: string;
+    posterUrl: string;
     script: string;
     voice: string;
     status: string;
@@ -504,7 +524,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       description: '22.5W Fast Charging, Dual USB & Type-C Output.',
       destinationUrl: 'https://ambrane.com/powerbank-festive-deal',
       ctaAction: 'SHOP_NOW',
-      imageUrl: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80'
+      imageUrl: PRODUCT_IMG
     },
     {
       id: 'c2',
@@ -859,6 +879,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const handleGenerateAiUgcReel = () => {
     setIsGeneratingUgc(true);
     setUgcProgress(20);
+    setUgcVideoFailed(false);
+    setIsUgcPlaying(false);
     setUgcStepText('Synthesizing AI Avatar Voiceover (Hinglish Accent)...');
 
     setTimeout(() => {
@@ -874,15 +896,23 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setTimeout(() => {
       setUgcProgress(100);
       setIsGeneratingUgc(false);
+      // The preview used to be a still image behind a decorative play button, so nothing
+      // ever played. Use a real rendered video from this workspace when one exists —
+      // `assets` already carries them — and fall back to the avatar poster when it doesn't.
+      const renderedVideo = assets.find(a => a.videoUrl)?.videoUrl || '';
+      const avatarMeta = AI_AVATARS[selectedAvatar];
       setGeneratedUgcReel({
         id: `ugc_${Date.now()}`,
         avatar: selectedAvatar,
-        videoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+        videoUrl: renderedVideo,
+        posterUrl: avatarMeta?.poster || AI_AVATARS['Aarav - Tech Reviewer'].poster,
         script: ugcScript || "Hey guys! If you travel or commute daily, this Ambrane 20,000mAh powerbank is a total game changer. Charges my phone 4 times full without heating up!",
-        voice: 'Hinglish Energetic Natural',
+        voice: ugcVoice,
         status: 'Ready for Campaign'
       });
-      triggerToast('Sample reel assembled — preview only, no video was rendered.');
+      triggerToast(renderedVideo
+        ? 'AI UGC Reel Video Generated Successfully! 🎬'
+        : 'UGC script and avatar ready — no rendered video in this workspace yet, showing the avatar still.');
     }, 2600);
   };
 
@@ -922,7 +952,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {
         id: 'el_bg',
         type: 'image',
-        content: adData.imageUrl || adData.img || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
+        content: adData.imageUrl || adData.img || PRODUCT_IMG,
         x: 0,
         y: 0,
         width: 100,
@@ -1349,7 +1379,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       { label: '🌌 Floating Metallic Neon', prompt: 'Sleek metallic 20000mAh Ambrane powerbank floating over dark obsidian neon desk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80' },
                       { label: '🏛️ Minimalist Marble Studio', prompt: 'Minimalist studio shot of Ambrane powerbank resting on smooth white marble desk with soft sunlight', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80' },
                       { label: '⚡ Cyberpunk Tech Setup', prompt: 'High performance Ambrane powerbank surrounded by RGB gaming tech setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' },
-                      { label: '💡 Softbox Studio Lighting', prompt: 'Professional 4K product photography of Ambrane powerbank with studio softbox reflection', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80' }
+                      { label: '💡 Softbox Studio Lighting', prompt: 'Professional 4K product photography of Ambrane powerbank with studio softbox reflection', img: productImg(600) }
                     ].map((pattern, idx) => (
                       <button
                         key={idx}
@@ -1594,7 +1624,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 
                 <div>
                   <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#000' }}>
-                    <img src={generatedAd.imageUrl} alt="Generated Ad" style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block' }} />
+                    {/* Last-resort guard: if the creative URL ever dies again, swap in the
+                        placeholder instead of leaving a broken-image icon in the ad preview. */}
+                    <img src={generatedAd.imageUrl} alt="Generated Ad"
+                      onError={e => { const i = e.currentTarget; if (i.src !== PRODUCT_IMG) i.src = PRODUCT_IMG; }}
+                      style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block' }} />
                     {generatedAd.type === 'Video' && (
                       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(124,117,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                         <Play size={24} color="#fff" style={{ marginLeft: '4px' }} />
@@ -2088,7 +2122,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   hook: 'High contrast red discount badge with glowing price strike-through',
                   psychology: 'Direct offer incentive + Impulse purchase urgency',
                   targetAudience: '18-35 Price Sensitive E-commerce Buyers',
-                  img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80'
+                  img: productImg(600)
                 }
               ].map(ad => (
                 <div key={ad.id} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
@@ -2484,7 +2518,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>VOICE & LANGUAGE</label>
-                    <select style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}>
+                    {/* Was unbound, so the preview always claimed "Hinglish" whatever you picked. */}
+                    <select value={ugcVoice} onChange={e => setUgcVoice(e.target.value)}
+                      style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}>
                       <option>Hinglish Energetic Natural Voice</option>
                       <option>Hindi Authentic Conversational</option>
                       <option>Indian English Professional Accent</option>
@@ -2545,15 +2581,50 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px' }}>
-                    {/* Playable Video Card */}
+                    {/* Playable Video Card — a real <video> so the play button actually plays.
+                        Falls back to the avatar poster if there is no video, or if the one we
+                        picked fails to load, rather than leaving a black rectangle. */}
                     <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#000', maxHeight: '380px' }}>
-                      <img src={generatedUgcReel.videoUrl} alt="AI Avatar Reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(124,117,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 0 30px rgba(124,117,255,0.6)' }}>
-                        <Play size={28} color="#fff" style={{ marginLeft: '4px' }} />
-                      </div>
-                      <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16, background: 'rgba(0,0,0,0.75)', padding: '10px 14px', borderRadius: '10px', fontSize: '11px', color: '#fff' }}>
-                        🗣️ Voice: {generatedUgcReel.voice}
-                      </div>
+                      {generatedUgcReel.videoUrl && !ugcVideoFailed ? (
+                        <video
+                          ref={ugcVideoRef}
+                          src={generatedUgcReel.videoUrl}
+                          poster={generatedUgcReel.posterUrl}
+                          controls
+                          playsInline
+                          loop
+                          preload="metadata"
+                          onPlay={() => setIsUgcPlaying(true)}
+                          onPause={() => setIsUgcPlaying(false)}
+                          onError={() => { setUgcVideoFailed(true); setIsUgcPlaying(false); }}
+                          style={{ width: '100%', height: '100%', maxHeight: '380px', objectFit: 'cover', display: 'block' }}
+                        />
+                      ) : (
+                        <img src={generatedUgcReel.posterUrl} alt={`${generatedUgcReel.avatar} avatar still`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      )}
+
+                      {/* Big play affordance only while paused — it would sit on top of the
+                          picture during playback otherwise. */}
+                      {generatedUgcReel.videoUrl && !ugcVideoFailed && !isUgcPlaying && (
+                        <div onClick={() => ugcVideoRef.current?.play()} title="Play reel"
+                          style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(124,117,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 0 30px rgba(124,117,255,0.6)' }}>
+                          <Play size={28} color="#fff" style={{ marginLeft: '4px' }} />
+                        </div>
+                      )}
+
+                      {(!generatedUgcReel.videoUrl || ugcVideoFailed) && (
+                        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '86%', textAlign: 'center', background: 'rgba(0,0,0,0.78)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '10px', padding: '12px', fontSize: '11.5px', color: '#ffae00', lineHeight: 1.5 }}>
+                          {ugcVideoFailed ? 'That video could not be loaded — showing the avatar still.' : 'No rendered video in this workspace yet — showing the avatar still.'}
+                        </div>
+                      )}
+
+                      {/* Top-left, not bottom — the bottom strip belongs to the player's own
+                          controls and the caption used to sit on top of them. */}
+                      {!isUgcPlaying && (
+                        <div style={{ position: 'absolute', top: 14, left: 14, maxWidth: 'calc(100% - 28px)', background: 'rgba(0,0,0,0.75)', padding: '7px 12px', borderRadius: '9px', fontSize: '11px', color: '#fff', pointerEvents: 'none' }}>
+                          🗣️ {generatedUgcReel.voice}
+                        </div>
+                      )}
                     </div>
 
                     {/* Script Transcript & Actions */}
@@ -3515,7 +3586,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   <div style={{ fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginTop: '6px' }}>STOCK STUDIO BACKDROPS</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     {[
-                      { name: 'Metallic Dark', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=400&q=80' },
+                      { name: 'Metallic Dark', img: productImg(400) },
                       { name: 'Neon Cyberpunk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=400&q=80' },
                       { name: 'Minimal Marble', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=400&q=80' },
                       { name: 'Tech Setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80' }

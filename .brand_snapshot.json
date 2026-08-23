@@ -1,0 +1,14 @@
+{
+ "company_url": "https://dsahelper.onrender.com/",
+ "brand_voice": "**DSA Mastery Hub** adopts an energetic, encouraging, and direct tone that makes technical learning feel accessible and motivating. The platform primarily targets beginner to intermediate programmers, computer science students, and job seekers preparing for technical coding interviews. Its core value proposition lies in delivering a structured, beginner-friendly curriculum covering essential data structures and algorithms, paired with hands-on coding challenges and gamified motivation.",
+ "brand_color": "#030303",
+ "target_audience": "Growth marketers, startup founders.",
+ "guidelines": "**DSA Mastery Hub** adopts an energetic, encouraging, and direct tone that makes technical learning feel accessible and motivating. The platform primarily targets beginner to intermediate programmers, computer science students, and job seekers preparing for technical coding interviews. Its core value proposition lies in delivering a structured, beginner-friendly curriculum covering essential data structures and algorithms, paired with hands-on coding challenges and gamified motivation.",
+ "palette": [
+  "#030303"
+ ],
+ "typography": {
+  "heading": "Outfit"
+ },
+ "is_onboarded": true
+}

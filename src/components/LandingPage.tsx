@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -24,7 +24,10 @@ import {
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import { motion } from 'framer-motion';
-import { PricingScreen } from './PricingScreen';
+// Lazy: PricingScreen is 1500+ lines and only renders under the 'pricing' sub-view below.
+// Importing it statically pulled it into the landing-page chunk and defeated the lazy
+// route in App.tsx — the build warned about exactly this (INEFFECTIVE_DYNAMIC_IMPORT).
+const PricingScreen = lazy(() => import('./PricingScreen').then(m => ({ default: m.PricingScreen })));
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 
@@ -175,7 +178,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         <Navbar />
 
         <div style={{ marginTop: '100px' }}>
-          <PricingScreen onComplete={onStartFree} />
+          <Suspense fallback={<div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>Loading pricing…</div>}>
+            <PricingScreen onComplete={onStartFree} />
+          </Suspense>
         </div>
       </div>
     );

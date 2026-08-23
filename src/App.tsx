@@ -36,6 +36,43 @@ const RouteFallback = () => (
   </div>
 );
 
+// Reads the JWT payload without trusting it for anything but routing. The server still
+// authorises every request; this only decides which screen to show.
+function readToken(): { role?: string; exp?: number } | null {
+  const raw = localStorage.getItem('token');
+  // A failed restore can leave the literal string "undefined" here, which is not a token.
+  if (!raw || raw === 'undefined' || raw === 'null') return null;
+  try {
+    const payload = JSON.parse(atob(raw.split('.')[1]));
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;   // expired
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// Gate for every screen that shows account data. Previously only /dashboard was protected
+// (incidentally, inside a fetch effect) — /creator-dashboard and /onboarding rendered in
+// full for anonymous visitors, leaking a complete creator profile.
+function RequireAuth({ children, role }: { children: React.ReactElement; role?: 'brand' | 'creator' }) {
+  const navigate = useNavigate();
+  const payload = readToken();
+  const ok = !!payload && (!role || payload.role === role);
+
+  useEffect(() => {
+    if (payload && role && payload.role !== role) {
+      // Signed in, wrong side of the product — send them to their own dashboard rather
+      // than to a login screen they don't need.
+      navigate(payload.role === 'creator' ? '/creator-dashboard' : '/dashboard', { replace: true });
+    } else if (!payload) {
+      localStorage.removeItem('token');   // clears expired/corrupt values
+      navigate('/login', { replace: true });
+    }
+  }, [ok]);
+
+  return ok ? children : <RouteFallback />;
+}
+
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -123,11 +160,15 @@ export default function App() {
           } />
 
           <Route path="/onboarding" element={
-            <OnboardingWizard onComplete={handleOnboardingComplete} />
+            <RequireAuth>
+              <OnboardingWizard onComplete={handleOnboardingComplete} />
+            </RequireAuth>
           } />
 
           <Route path="/dashboard/*" element={
-            <BrandDashboard />
+            <RequireAuth role="brand">
+              <BrandDashboard />
+            </RequireAuth>
           } />
 
           <Route path="/influencer-marketplace/*" element={
@@ -139,10 +180,12 @@ export default function App() {
           } />
 
           <Route path="/creator-dashboard/*" element={
-            <CreatorPortal onLogout={() => {
-              localStorage.removeItem('token');
-              navigate('/');
-            }} />
+            <RequireAuth role="creator">
+              <CreatorPortal onLogout={() => {
+                localStorage.removeItem('token');
+                navigate('/');
+              }} />
+            </RequireAuth>
           } />
           <Route path="*" element={<LandingPage onStartFree={() => navigate('/login')} onBookDemo={() => {}} />} />
         </Routes>

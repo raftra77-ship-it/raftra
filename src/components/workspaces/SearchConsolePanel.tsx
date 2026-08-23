@@ -93,8 +93,8 @@ export const SearchConsolePanel: React.FC<{ workspaceId: number | null; onRunAud
 
   return (
     <div className="glow-card" style={{ padding: '20px' }}>
-      <h3 style={{ fontSize: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        Google Search Console
+      <h3 style={{ fontSize: '15px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.3, minWidth: 0 }}>
+        <span style={{ minWidth: 0 }}>Google Search Console</span>
         <span style={{ marginLeft: 'auto', ...statusBadge(isConnected ? 'connected' : connecting ? 'pending' : 'disconnected') }}>
           {isConnected ? 'CONNECTED' : connecting ? 'CONNECTING...' : 'NOT CONNECTED'}
         </span>
