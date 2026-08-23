@@ -1,11 +1,29 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Sparkles, Users, Video, 
-  ShieldCheck, CheckCircle2, TrendingUp, Layers, Zap, 
-  Upload, Image as ImageIcon, Wand2, Film, RefreshCw, BarChart2, 
-  Play, Copy, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save
+  Sparkles, Video, 
+  ShieldCheck, CheckCircle2, TrendingUp, Zap, 
+  Upload, Image as ImageIcon, Wand2, RefreshCw, BarChart2, Search, 
+  Play, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
+import { PreviewBadge, PreviewNote } from './PreviewMark';
+
+// One card in the Recent Projects / Ad Library grids. `real` marks a row that came from
+// this workspace's own generated assets rather than the seeded demo entries, because the two
+// support different actions: a demo card can be edited and removed locally, a real one has a
+// database row behind it and has to go through the review flow.
+export type ProjectCard = {
+  id: string;
+  title: string;
+  date: string;
+  status: 'Approved' | 'In Review' | 'Draft';
+  img: string;
+  headline: string;
+  bodyText: string;
+  cta: string;
+  hashtags: string;
+  real?: boolean;
+};
 
 export interface CreativeAsset {
   id: string;
@@ -23,7 +41,7 @@ interface WorkspaceCreativeProps {
   brandUrl?: string;
   assets?: CreativeAsset[];
   onOpenReview?: (assetId: string) => void;
-  onGenerate?: (prompt: string, referenceAd?: any, config?: any) => void;
+  onGenerate?: (prompt: string, referenceAd?: any, config?: any) => void | Promise<any>;
   onAssetSaved?: (asset: CreativeAsset) => void;
   workspaceId?: number;
   onNavigateTab?: (tab: string) => void;
@@ -337,13 +355,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   // Interactive Custom Ad Editor State
   const [isEditingMode, setIsEditingMode] = useState(false);
-  const [customAiInstruction, setCustomAiInstruction] = useState('');
   const [isApplyingInstruction, setIsApplyingInstruction] = useState(false);
   const [copyToast, setCopyToast] = useState<string | null>(null);
 
   // Generation & Output State
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationElapsed, setGenerationElapsed] = useState(0);
+  // Asset ids present when Generate was pressed, so the one that arrives afterwards can be
+  // recognised as this run's output.
+  const generationBaseline = useRef<Set<string>>(new Set());
+  // Backend id of the ad currently on screen. Variations are asked for by creative id, so
+  // only an ad that came from a real run can be varied.
+  const [generatedCreativeId, setGeneratedCreativeId] = useState<number | null>(null);
   const [generatedAd, setGeneratedAd] = useState<{
     id: string;
     headline: string;
@@ -360,20 +384,47 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   // Competitor Intelligence State
   const [selectedCompetitor, setSelectedCompetitor] = useState<'Boat' | 'Noise' | 'Realme'>('Boat');
+
+  // Live competitor research. There is no lawful feed of a rival's commercial ads - Meta's Ad
+  // Library API only returns political and social-issue ads outside the EU, and Google's
+  // Transparency Center has no API - so this reads what is genuinely public: the competitor's
+  // own site plus search results, extracted into positioning, offers, hooks and CTAs, with
+  // the sources returned so every claim can be checked.
+  const [competitorQuery, setCompetitorQuery] = useState('');
+  const [competitorLoading, setCompetitorLoading] = useState(false);
+  const [competitorError, setCompetitorError] = useState<string | null>(null);
+  const [competitorResult, setCompetitorResult] = useState<any | null>(null);
+
+  const researchCompetitor = async () => {
+    const name = competitorQuery.trim();
+    if (!name || !workspaceId || competitorLoading) return;
+    setCompetitorLoading(true);
+    setCompetitorError(null);
+    setCompetitorResult(null);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/competitors/analyze`, {
+        method: 'POST',
+        headers: token
+          ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+          : { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ competitor: name }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && data.detail) || `Research failed (${res.status})`);
+      setCompetitorResult(data);
+    } catch (err: any) {
+      setCompetitorError(err?.message || 'Could not reach the research service.');
+    } finally {
+      setCompetitorLoading(false);
+    }
+  };
   const [vaultSubTab, setVaultSubTab] = useState<'hooks' | 'headlines' | 'ctas'>('hooks');
 
   // Projects Modal State
-  const [projectsList, setProjectsList] = useState<Array<{
-    id: string;
-    title: string;
-    date: string;
-    status: 'Approved' | 'In Review' | 'Draft';
-    img: string;
-    headline: string;
-    bodyText: string;
-    cta: string;
-    hashtags: string;
-  }>>([
+  // Seeded demo ads. These are the empty state - what the studio shows a workspace that has
+  // not generated anything yet - and are replaced by real assets as soon as any exist.
+  const [projectsList, setProjectsList] = useState<ProjectCard[]>([
     {
       id: 'proj_1',
       title: 'Ambrane Powerbank Festive Carousel',
@@ -408,7 +459,25 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       hashtags: '#AudioTech #NoiseCancelling #Ambrane'
     }
   ]);
-  const [selectedProjectModal, setSelectedProjectModal] = useState<typeof projectsList[0] | null>(null);
+  const [selectedProjectModal, setSelectedProjectModal] = useState<ProjectCard | null>(null);
+
+  // This workspace's actual generated ads, shaped for the same grids. `assets` was being
+  // passed in and ignored, so the Projects and Ad Library tabs showed the three seeded demo
+  // ads to every workspace - including ones with dozens of real generated assets sitting in
+  // the database. Real assets win when there are any; the demo set remains the empty state.
+  const realProjects: ProjectCard[] = assets.map(a => ({
+    id: a.id,
+    title: a.headline || 'Generated ad',
+    date: a.type || 'Generated',
+    status: a.status === 'approved' ? 'Approved' : a.status === 'rejected' ? 'Draft' : 'In Review',
+    img: a.imageUrl || '',
+    headline: a.headline || '',
+    bodyText: a.bodyText || '',
+    cta: a.cta || '',
+    hashtags: '',
+    real: true,
+  }));
+  const displayProjects: ProjectCard[] = realProjects.length > 0 ? realProjects : projectsList;
 
   // UGC State & Realistic Generation Flow
   const [ugcSubTab, setUgcSubTab] = useState<'ai_ugc' | 'hire_human'>('ai_ugc');
@@ -552,110 +621,184 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     }
   };
 
-  // Generate Ad Action
-  const handleGenerateAd = () => {
+  // Generate Ad Action.
+  //
+  // This used to fabricate its own result: a scripted 1.8s progress bar (20% -> 50% -> 85%)
+  // followed by a fixed Ambrane powerbank ad with a stock photo - identical no matter what
+  // was typed - and only then did it fire the real generation, whose output was never shown.
+  // The seeded demo ads still have a job (they are the empty state for the Projects and Ad
+  // Library tabs), but once someone enters their own brief, what comes back has to be theirs.
+  //
+  // The real asset arrives asynchronously: the backend renders it, writes the row, and
+  // broadcasts it over the WebSocket, which lands in `assets` via the dashboard. The effects
+  // below wait for that instead of inventing a placeholder.
+  const handleGenerateAd = async () => {
+    if (isGenerating) return;
+    if (!onGenerate) {
+      setGenerationError('Generation is not connected in this view.');
+      return;
+    }
+    generationBaseline.current = new Set(assets.map(a => a.id));
+    setGenerationError(null);
+    setGeneratedAd(null);
+    setGenerationElapsed(0);
     setIsGenerating(true);
-    setGenerationProgress(20);
 
-    const timer1 = setTimeout(() => setGenerationProgress(50), 600);
-    const timer2 = setTimeout(() => setGenerationProgress(85), 1200);
-    const timer3 = setTimeout(() => {
-      setGenerationProgress(100);
-      setIsGenerating(false);
+    const job = await Promise.resolve(onGenerate(productPrompt || 'Brand Knowledge Generation', undefined, {
+      // Pass what the user actually chose. The old call sent the prompt alone, so the format,
+      // platform and ratio selectors above had no effect on what the backend produced.
+      format: selectedAdType,
+      platform,
+      ratio: aspectRatio,
+      reference_image: aiProductVisualRender || undefined,
+    })).catch(() => null);
 
-      if (selectedAdType === 'Carousel') {
-        setGeneratedAd({
-          id: `ad_${Date.now()}`,
-          headline: 'Experience Power & Elegance with Ambrane',
-          bodyText: 'Never run out of charge. Ultra-fast charging built for high-performance lifestyles.',
-          cta: 'Shop Now',
-          description: 'Flat 40% Off + Free Shipping on Ambrane Powerbanks',
-          hashtags: '#Ambrane #FastCharging #MadeInIndia #TechLifestyle',
-          imageUrl: aiProductVisualRender || 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80',
-          type: 'Carousel',
-          platform,
-          aspectRatio,
-          cards: [
-            { title: 'Slide 1: Powerhouse Capacity', desc: '20,000mAh Lithium Polymer Battery', img: 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=600&q=80' },
-            { title: 'Slide 2: 22.5W Fast Charge', desc: 'Charge 50% in just 30 minutes', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80' },
-            { title: 'Slide 3: Ultra Metallic Finish', desc: 'Aircraft grade aluminum shell', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80' },
-            { title: 'Slide 4: Multi-Layer Protection', desc: 'BIS certified short-circuit safe', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' },
-            { title: 'Slide 5: Special Offer', desc: 'Get ₹500 instant discount today', img: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80' }
-          ]
-        });
-      } else {
-        setGeneratedAd({
-          id: `ad_${Date.now()}`,
-          headline: selectedAdType === 'Video' ? 'Charge 10x Faster On The Go ⚡' : 'Unstoppable Power in Your Pocket ⚡',
-          bodyText: 'Engineered with smart AI heat control and 22.5W Power Delivery. Built for creators and professionals.',
-          cta: 'Claim Offer',
-          description: 'Special Launch Discount — Free Express Shipping',
-          hashtags: '#Ambrane #PowerBank #FastCharging #TechGadgets',
-          imageUrl: aiProductVisualRender || (selectedAdType === 'Video' 
-            ? 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80'
-            : 'https://images.unsplash.com/photo-1609592424074-1ef5a498b8df?auto=format&fit=crop&w=800&q=80'),
-          type: selectedAdType,
-          platform,
-          aspectRatio
-        });
-      }
+    // A creative_id is the reliable way to follow the run: /api/creative/jobs reports
+    // processing, completed or failed and carries the provider's own error message. Without
+    // one (the older fallback route) we wait for the asset to arrive over the WebSocket
+    // instead, which the effect below handles.
+    if (!job || !job.creative_id || !workspaceId) return;
 
-      if (onGenerate) {
-        onGenerate(productPrompt || 'Brand Knowledge Generation');
-      }
-    }, 1800);
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
 
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
-    };
-  };
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const d = await fetch(`/api/creative/jobs/${job.creative_id}?workspace_id=${workspaceId}`, { headers })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (!d || d.status === 'processing') continue;
 
-  // Custom User AI Refinement Command Handler
-  const handleApplyCustomInstruction = (presetText?: string) => {
-    const text = presetText || customAiInstruction;
-    if (!text || !generatedAd) return;
-
-    setIsApplyingInstruction(true);
-
-    setTimeout(() => {
-      setIsApplyingInstruction(false);
-      setCustomAiInstruction('');
-
-      let updatedHeadline = generatedAd.headline;
-      let updatedBody = generatedAd.bodyText;
-      let updatedCta = generatedAd.cta;
-      let updatedImg = generatedAd.imageUrl;
-      let updatedHashtags = generatedAd.hashtags;
-
-      const lower = text.toLowerCase();
-      if (lower.includes('punch') || lower.includes('headline') || lower.includes('discount') || lower.includes('off') || lower.includes('sale')) {
-        updatedHeadline = '⚡ FLAT 30% OFF — Powerful 22.5W Ambrane Fast Charge';
-      }
-      if (lower.includes('cta') || lower.includes('urgency') || lower.includes('buy') || lower.includes('claim')) {
-        updatedCta = 'Claim 30% Off Now';
-      }
-      if (lower.includes('dark') || lower.includes('obsidian') || lower.includes('theme') || lower.includes('neon') || lower.includes('bg')) {
-        updatedImg = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80';
-      }
-      if (lower.includes('insta') || lower.includes('short') || lower.includes('story') || lower.includes('simple')) {
-        updatedBody = 'Compact 20,000mAh battery that fits right in your palm. BIS certified multi-protection.';
+      if (d.status === 'failed' || (!d.image_url && !d.video_url)) {
+        setIsGenerating(false);
+        setGenerationError(d.error || 'The image provider returned no asset for this prompt.');
+        return;
       }
 
       setGeneratedAd({
-        ...generatedAd,
-        headline: updatedHeadline,
-        bodyText: updatedBody,
-        cta: updatedCta,
-        imageUrl: updatedImg,
-        hashtags: updatedHashtags
+        id: String(d.creative_id),
+        headline: d.headline || '',
+        bodyText: d.primary_text || '',
+        cta: d.cta || '',
+        description: d.optimized_prompt || '',
+        hashtags: '',
+        imageUrl: d.image_url || d.video_url || '',
+        type: d.type === 'video' ? 'Video' : selectedAdType,
+        platform: d.platform || platform,
+        aspectRatio: d.aspect_ratio || aspectRatio,
       });
-      triggerToast('AI Refinement applied to ad preview!');
-    }, 900);
+      setGeneratedCreativeId(d.creative_id);
+      setIsGenerating(false);
+      return;
+    }
+
+    setIsGenerating(false);
+    setGenerationError('Still rendering after 3 minutes — check the Creative agent in the AI Agents tab.');
   };
 
-  // Apply winning vault item to active ad
+  // Adopt the first asset that was not already present when this run started.
+  useEffect(() => {
+    if (!isGenerating) return;
+    const fresh = assets.find(a => !generationBaseline.current.has(a.id));
+    if (!fresh) return;
+    setGeneratedAd({
+      id: fresh.id,
+      headline: fresh.headline,
+      bodyText: fresh.bodyText,
+      cta: fresh.cta,
+      description: '',
+      hashtags: '',
+      imageUrl: fresh.imageUrl || '',
+      type: fresh.type || selectedAdType,
+      platform,
+      aspectRatio,
+    });
+    setIsGenerating(false);
+  }, [assets, isGenerating, selectedAdType, platform, aspectRatio]);
+
+  // A failed run produces no asset and no message on this channel, so cap the wait rather
+  // than spin forever. The pipeline reports its own errors in the AI Agents tab.
+  useEffect(() => {
+    if (!isGenerating) return;
+    const tick = setInterval(() => setGenerationElapsed(e => e + 1), 1000);
+    const giveUp = setTimeout(() => {
+      setIsGenerating(false);
+      setGenerationError('No ad came back within 3 minutes. Check the Creative agent in the AI Agents tab for what happened.');
+    }, 180000);
+    return () => { clearInterval(tick); clearTimeout(giveUp); };
+  }, [isGenerating]);
+
+  // Ask the backend for a real variation of the ad on screen.
+  //
+  // This replaces a handler that matched keywords in a free-text box ("discount" -> a fixed
+  // "FLAT 30% OFF" headline, "dark" -> a different stock photo) and called nothing. The
+  // backend has had /api/creative/{id}/variation all along: it edits the stored creative
+  // spec and re-renders, so the subject stays the same while the styling changes. Its six
+  // named styles are what the buttons below offer - no free-text rewriting is claimed,
+  // because no endpoint does that yet.
+  const VARIATION_STYLES: { kind: string; label: string }[] = [
+    { kind: 'luxury', label: '✨ Luxury' },
+    { kind: 'minimal', label: '◻️ Minimal' },
+    { kind: 'energetic', label: '⚡ Energetic' },
+    { kind: 'ugc', label: '📱 UGC / candid' },
+    { kind: 'different_background', label: '🌄 Different background' },
+    { kind: 'different_position', label: '↔️ Reposition subject' },
+  ];
+
+  const handleVariation = async (kind: string) => {
+    if (!generatedCreativeId || !workspaceId || isApplyingInstruction) return;
+    setIsApplyingInstruction(true);
+    setGenerationError(null);
+
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token
+      ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      : { 'Content-Type': 'application/json' };
+
+    try {
+      const res = await fetch(`/api/creative/${generatedCreativeId}/variation`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ workspace_id: workspaceId, kind }),
+      });
+      const started = await res.json().catch(() => null);
+      if (!res.ok || !started || !started.creative_id) {
+        throw new Error((started && started.detail) || `variation returned ${res.status}`);
+      }
+
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const d = await fetch(`/api/creative/jobs/${started.creative_id}?workspace_id=${workspaceId}`, { headers })
+          .then(r => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (!d || d.status === 'processing') continue;
+        if (d.status === 'failed' || (!d.image_url && !d.video_url)) {
+          throw new Error(d.error || 'The variation produced no asset.');
+        }
+        setGeneratedAd({
+          id: String(d.creative_id),
+          headline: d.headline || '',
+          bodyText: d.primary_text || '',
+          cta: d.cta || '',
+          description: d.optimized_prompt || '',
+          hashtags: '',
+          imageUrl: d.image_url || d.video_url || '',
+          type: d.type === 'video' ? 'Video' : selectedAdType,
+          platform: d.platform || platform,
+          aspectRatio: d.aspect_ratio || aspectRatio,
+        });
+        setGeneratedCreativeId(d.creative_id);
+        triggerToast(`Rendered the ${kind.replace('_', ' ')} variation.`);
+        return;
+      }
+      throw new Error('The variation is still rendering after 3 minutes.');
+    } catch (err: any) {
+      setGenerationError(`Could not build that variation: ${err?.message || 'server unreachable'}`);
+    } finally {
+      setIsApplyingInstruction(false);
+    }
+  };
+
   const handleApplyVaultItemToAd = (type: 'headline' | 'hook' | 'cta', text: string) => {
     if (!generatedAd) {
       setSelectedAdType('Image');
@@ -739,7 +882,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         voice: 'Hinglish Energetic Natural',
         status: 'Ready for Campaign'
       });
-      triggerToast('AI UGC Reel Video Generated Successfully! 🎬');
+      triggerToast('Sample reel assembled — preview only, no video was rendered.');
     }, 2600);
   };
 
@@ -1352,7 +1495,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               {isGenerating ? (
                 <>
                   <RefreshCw size={20} className="spin-animation" />
-                  Generating High-Converting Ad ({generationProgress}%)...
+                  Generating your {selectedAdType.toLowerCase()} ad… {generationElapsed}s
                 </>
               ) : (
                 <>
@@ -1361,6 +1504,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </>
               )}
             </GlowButton>
+
+            {isGenerating && (
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '10px 0 0 0', lineHeight: 1.5 }}>
+                Rendering on the server — this takes a while for image and video ads. The result appears here as soon as it lands.
+              </p>
+            )}
+            {generationError && (
+              <p style={{ fontSize: '12px', color: 'var(--warning)', margin: '10px 0 0 0', lineHeight: 1.5 }}>{generationError}</p>
+            )}
           </div>
 
           {/* GENERATED AD OUTPUT & INTERACTIVE AD EDITOR */}
@@ -1404,46 +1556,37 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               <div style={{ background: 'linear-gradient(135deg, rgba(124,117,255,0.15) 0%, rgba(10,10,16,0.95) 100%)', border: '1px solid rgba(124,117,255,0.3)', padding: '20px', borderRadius: '18px', marginBottom: '28px' }}>
                 <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Wand2 size={16} color="#7C75FF" />
-                  <span>Ask AI to modify or customize this ad (Custom User Instruction)</span>
+                  <span>Restyle this ad</span>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                  <input
-                    type="text"
-                    placeholder="e.g. 'Make headline punchier with a 25% discount offer'..."
-                    value={customAiInstruction}
-                    onChange={e => setCustomAiInstruction(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleApplyCustomInstruction()}
-                    style={{ flex: 1, minWidth: '260px', padding: '12px 18px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', outline: 'none', fontSize: '14px' }}
-                  />
-                  <GlowButton
-                    variant="glow"
-                    onClick={() => handleApplyCustomInstruction()}
-                    disabled={isApplyingInstruction || !customAiInstruction}
-                    style={{ padding: '12px 24px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    {isApplyingInstruction ? <RefreshCw size={15} className="spin-animation" /> : <Send size={15} />}
-                    {isApplyingInstruction ? 'Applying Changes...' : 'Apply Instruction'}
-                  </GlowButton>
-                </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.55 }}>
+                  Each style re-renders the same product through the stored creative spec, so the subject stays put and
+                  only the look changes. {generatedCreativeId ? '' : 'Available on ads generated in this session.'}
+                </p>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Quick Presets:</span>
-                  {[
-                    { label: '⚡ Punchier Headline', prompt: 'Make headline punchier with 25% Off discount' },
-                    { label: '💰 Add 25% Off Offer', prompt: 'Add 25% off offer and urgency CTA' },
-                    { label: '🎨 Dark Obsidian Theme', prompt: 'Change background to dark obsidian neon theme' },
-                    { label: '📱 Shorten for Insta Reel', prompt: 'Shorten body text for Insta Reel' }
-                  ].map((chip, idx) => (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {VARIATION_STYLES.map(v => (
                     <button
-                      key={idx}
-                      onClick={() => handleApplyCustomInstruction(chip.prompt)}
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#ddd', padding: '4px 12px', borderRadius: '100px', fontSize: '11px', cursor: 'pointer' }}
+                      key={v.kind}
+                      onClick={() => handleVariation(v.kind)}
+                      disabled={isApplyingInstruction || !generatedCreativeId}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+                        color: generatedCreativeId ? '#ddd' : 'var(--text-muted)', padding: '8px 14px', borderRadius: '100px',
+                        fontSize: '12px', cursor: isApplyingInstruction || !generatedCreativeId ? 'not-allowed' : 'pointer',
+                        opacity: isApplyingInstruction ? 0.6 : 1,
+                      }}
                     >
-                      {chip.label}
+                      {v.label}
                     </button>
                   ))}
                 </div>
+
+                {isApplyingInstruction && (
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '12px 0 0 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <RefreshCw size={14} className="spin-animation" /> Rendering the variation…
+                  </p>
+                )}
               </div>
 
               {/* Preview & Editable Details Grid */}
@@ -1574,14 +1717,108 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   RAFTRA AD INTELLIGENCE & META AD BENCHMARKS
                 </span>
               </div>
-              <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0' }}>
+              <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 Winning Competitor Ads & Psychological Vault
+                <PreviewBadge />
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
                 Analyze top scaling competitor ads, psychological hooks, and high-converting CTAs tracked across active market campaigns.
               </p>
             </div>
           </div>
+
+          {/* ---------------------------------------------------------------- live research */}
+          <div className="glow-card" style={{ padding: '24px', background: '#0c0c14', border: '1px solid rgba(124,117,255,0.25)', borderRadius: '18px' }}>
+            <h3 style={{ fontSize: '16px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>
+              Research a competitor
+            </h3>
+            <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+              Reads the brand's own site and what search returns about them, then extracts positioning, offers, hooks and
+              CTAs — every source listed so you can check it. It cannot show a rival's paid ads: no public API exposes
+              commercial ad creatives.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="Competitor name or website, e.g. boat-lifestyle.com"
+                value={competitorQuery}
+                onChange={e => setCompetitorQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && researchCompetitor()}
+                style={{ flex: 1, minWidth: '260px', padding: '12px 18px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', color: '#fff', outline: 'none', fontSize: '14px' }}
+              />
+              <GlowButton
+                variant="glow"
+                onClick={researchCompetitor}
+                disabled={competitorLoading || !competitorQuery.trim()}
+                style={{ padding: '12px 24px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                {competitorLoading ? <RefreshCw size={15} className="spin-animation" /> : <Search size={15} />}
+                {competitorLoading ? 'Reading their site…' : 'Research'}
+              </GlowButton>
+            </div>
+
+            {competitorError && (
+              <p style={{ fontSize: '12px', color: 'var(--warning)', margin: '12px 0 0 0', lineHeight: 1.55 }}>{competitorError}</p>
+            )}
+
+            {competitorResult && (
+              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                  {[
+                    { label: 'POSITIONING', value: competitorResult.positioning },
+                    { label: 'AUDIENCE', value: competitorResult.audience },
+                    { label: 'TONE', value: competitorResult.tone },
+                  ].filter(f => f.value).map(f => (
+                    <div key={f.label} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '14px' }}>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '6px' }}>{f.label}</div>
+                      <div style={{ fontSize: '12.5px', color: '#fff', lineHeight: 1.6 }}>{f.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {[
+                  { label: 'Offers found', items: competitorResult.offers, color: '#00E676' },
+                  { label: 'Hooks they lead with', items: competitorResult.hooks, color: '#7C75FF' },
+                  { label: 'Calls to action', items: competitorResult.ctas, color: '#FFB74D' },
+                ].filter(g => Array.isArray(g.items) && g.items.length > 0).map(g => (
+                  <div key={g.label}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '8px' }}>{g.label.toUpperCase()}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {g.items.map((item: string, i: number) => (
+                        <span key={i} style={{ fontSize: '12px', color: '#fff', background: 'rgba(255,255,255,0.04)', border: `1px solid ${g.color}44`, borderRadius: '100px', padding: '6px 14px' }}>
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {competitorResult.notes && (
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.65 }}>{competitorResult.notes}</p>
+                )}
+
+                {Array.isArray(competitorResult.sources) && competitorResult.sources.length > 0 && (
+                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '8px' }}>READ FROM</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {competitorResult.sources.map((src: any, i: number) => (
+                        <a key={i} href={src.url} target="_blank" rel="noreferrer noopener"
+                           style={{ fontSize: '11.5px', color: '#8B85FF', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {src.url}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <PreviewNote>
+            The brands, hooks and metrics below this line are an illustrative sample — they are not tracked from any ad
+            library. Use the panel above for real research.
+          </PreviewNote>
 
           {/* COMPETITOR BRAND CARDS */}
           <div>
@@ -1926,7 +2163,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-            {projectsList.map((proj) => (
+            {displayProjects.map((proj) => (
                 <div
                   key={proj.id}
                   onClick={() => setSelectedProjectModal(proj)}
@@ -2030,17 +2267,33 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
                 {/* MODAL ACTION BUTTONS */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
-                  {/* Remove from Recent Projects */}
-                  <button
-                    onClick={() => {
-                      setProjectsList(prev => prev.filter(p => p.id !== selectedProjectModal.id));
-                      setSelectedProjectModal(null);
-                      triggerToast('Removed from Recent Projects! 🗑️');
-                    }}
-                    style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
-                  >
-                    <X size={14} /> Remove from Projects
-                  </button>
+                  {/* Remove: demo cards only. A real asset lives in the database, and dropping
+                      it from local state would look like a delete while changing nothing. */}
+                  {!selectedProjectModal.real && (
+                    <button
+                      onClick={() => {
+                        setProjectsList(prev => prev.filter(p => p.id !== selectedProjectModal.id));
+                        setSelectedProjectModal(null);
+                        triggerToast('Removed from Recent Projects! 🗑️');
+                      }}
+                      style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
+                    >
+                      <X size={14} /> Remove from Projects
+                    </button>
+                  )}
+
+                  {/* Real assets go through the review drawer, which approves against the API. */}
+                  {selectedProjectModal.real && onOpenReview && (
+                    <button
+                      onClick={() => {
+                        onOpenReview(selectedProjectModal.id);
+                        setSelectedProjectModal(null);
+                      }}
+                      style={{ background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.5)', color: '#8B85FF', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
+                    >
+                      <Check size={14} /> Open in Review
+                    </button>
+                  )}
 
                   {/* Open in Editor */}
                   <GlowButton
@@ -2079,12 +2332,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
 
             <div style={{ fontSize: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: '12px', color: '#fff', fontWeight: 600 }}>
-              🏛️ Total Approved Assets: <span style={{ color: '#00E676', fontWeight: 800 }}>{projectsList.filter(p => p.status === 'Approved').length}</span>
+              🏛️ Total Approved Assets: <span style={{ color: '#00E676', fontWeight: 800 }}>{displayProjects.filter(p => p.status === 'Approved').length}</span>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-            {projectsList.filter(p => p.status === 'Approved').map(proj => (
+            {displayProjects.filter(p => p.status === 'Approved').map(proj => (
               <div
                 key={proj.id}
                 className="glow-card"
@@ -2209,8 +2462,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           {ugcSubTab === 'ai_ugc' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>Create AI UGC Video Reel</h3>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>Select an AI human avatar, voice model, and script topic to generate an authentic UGC Reel.</p>
+                <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  Create AI UGC Video Reel
+                  <PreviewBadge />
+                </h3>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>Select an AI human avatar, voice model, and script topic to see how a UGC Reel would be assembled.</p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                   <div>
@@ -2247,6 +2503,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   />
                 </div>
 
+                <PreviewNote>
+                  Preview: this demonstrates the reel flow with a sample script and a still frame. No avatar, voiceover
+                  or video is rendered, and nothing is sent to a video provider.
+                </PreviewNote>
+
                 <GlowButton
                   variant="glow"
                   onClick={handleGenerateAiUgcReel}
@@ -2274,11 +2535,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <CheckCircle2 size={20} color="var(--success)" />
                       <h4 style={{ fontSize: '18px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
-                        AI UGC Reel Ready ({generatedUgcReel.avatar})
+                        Sample UGC Reel ({generatedUgcReel.avatar})
                       </h4>
+                      <PreviewBadge />
                     </div>
-                    <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', color: 'var(--success)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
-                      9:16 Vertical Reel • 1080p
+                    <span style={{ fontSize: '11px', background: 'rgba(255,174,0,0.12)', color: 'var(--warning)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
+                      Still frame • no video rendered
                     </span>
                   </div>
 

@@ -128,6 +128,234 @@ function VectorDatastores({ workspaceId, reindexing }: { workspaceId: number | n
   );
 }
 
+// Live connector status for the Integrations Hub. These cards used to be a hardcoded list
+// that read "Connected" for every platform no matter what was actually linked - and two of
+// the six had no backend connector at all. Each card now reads the same /status endpoint its
+// own connector panel uses, so green means genuinely connected for this workspace.
+type IntegrationView = {
+  configured: boolean;     // are the server-side app credentials present at all?
+  connected: boolean;      // does this workspace hold a live token?
+  detail: string | null;   // which account / site is linked
+  incomplete: string | null; // connected, but a required selection is still missing
+};
+
+const INTEGRATIONS: {
+  key: string;
+  name: string;
+  statusPath: (ws: number) => string;
+  read: (s: any) => IntegrationView;
+  connectTab: NavigationTab;
+  connectLabel: string;
+  unconfiguredHint: string;
+}[] = [
+  {
+    key: 'meta',
+    name: 'Meta Ads',
+    statusPath: (ws) => `/api/connectors/meta/${ws}/status`,
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.name || s.ad_account_id || null,
+      // Publishing needs BOTH an ad account and a Page - the backend folds that into
+      // ready_to_publish, so a token alone is not a finished connection.
+      incomplete: s.connected && !s.ready_to_publish ? 'Ad account and Page not selected yet' : null,
+    }),
+    connectTab: 'campaign',
+    connectLabel: 'Campaign Manager',
+    unconfiguredHint: 'Server is missing META_APP_ID / META_APP_SECRET.',
+  },
+  {
+    key: 'google-ads',
+    name: 'Google Ads',
+    statusPath: (ws) => `/api/connectors/google-ads/${ws}/status`,
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.email || s.customer_id || null,
+      incomplete: s.connected && !s.customer_id ? 'Ads account not selected yet' : null,
+    }),
+    connectTab: 'campaign',
+    connectLabel: 'Campaign Manager',
+    unconfiguredHint: 'Server is missing GOOGLE_ADS_CLIENT_ID / SECRET / DEVELOPER_TOKEN.',
+  },
+  {
+    key: 'search-console',
+    name: 'Google Search Console',
+    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.site_url || s.email || null,
+      incomplete: s.connected && !s.site_url ? 'Site not selected yet' : null,
+    }),
+    connectTab: 'seo',
+    connectLabel: 'SEO + GEO',
+    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
+  },
+  {
+    key: 'ga4',
+    name: 'Google Analytics 4',
+    // GA4 rides on the Search Console OAuth grant, so it shares that status payload. It only
+    // counts as connected once a property id is saved too - the same gate the GA4 panel uses.
+    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.ga4_property_id ? `Property ${s.ga4_property_id}` : null,
+      incomplete: s.connected && !s.ga4_property_id ? 'GA4 property id not set yet' : null,
+    }),
+    connectTab: 'seo',
+    connectLabel: 'SEO + GEO',
+    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
+  },
+  {
+    key: 'wordpress',
+    name: 'WordPress',
+    statusPath: (ws) => `/api/connectors/wordpress/${ws}/status`,
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.site_name || s.site_url || null,
+      incomplete: null,
+    }),
+    connectTab: 'seo',
+    connectLabel: 'SEO + GEO',
+    unconfiguredHint: '',
+  },
+  {
+    key: 'shopify',
+    name: 'Shopify',
+    statusPath: (ws) => `/api/connectors/shopify/${ws}/status`,
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.shop_name || s.shop_domain || null,
+      incomplete: s.connected && !s.blog_id ? 'Blog not selected yet' : null,
+    }),
+    connectTab: 'seo',
+    connectLabel: 'SEO + GEO',
+    unconfiguredHint: 'Server is missing SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET.',
+  },
+  {
+    key: 'github',
+    name: 'GitHub',
+    statusPath: (ws) => `/api/connectors/github/${ws}/status`,
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.repo_full_name || s.login || null,
+      incomplete: s.connected && !s.repo_full_name ? 'Repository not selected yet' : null,
+    }),
+    connectTab: 'seo',
+    connectLabel: 'SEO + GEO',
+    unconfiguredHint: 'Server is missing GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET.',
+  },
+];
+
+function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | null; onConnect: (tab: NavigationTab) => void }) {
+  // 'error' is kept distinct from "not connected": a status call that failed tells us
+  // nothing, and guessing in either direction is what produced the old wrong badges.
+  const [states, setStates] = useState<Record<string, IntegrationView | 'error'>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setStates({}); setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    Promise.all(INTEGRATIONS.map((i) =>
+      fetch(i.statusPath(workspaceId), { headers })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((s) => [i.key, i.read(s)] as [string, IntegrationView | 'error'])
+        .catch(() => [i.key, 'error'] as [string, IntegrationView | 'error'])
+    )).then((entries) => {
+      if (!cancelled) setStates(Object.fromEntries(entries));
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  if (!workspaceId) {
+    return <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>No workspace loaded yet.</p>;
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
+      {INTEGRATIONS.map((i) => {
+        const st = states[i.key];
+        const view = st && st !== 'error' ? st : null;
+        const connected = !!view && view.connected && !view.incomplete;
+        const warning = !!view && view.connected && !!view.incomplete;
+
+        const label = loading || !st ? 'Checking…'
+          : st === 'error' ? 'Status unavailable'
+          : warning ? 'Setup incomplete'
+          : connected ? 'Connected'
+          : view && view.configured ? 'Not connected'
+          : 'Not configured';
+
+        const sub = !view ? null
+          : warning ? view.incomplete
+          : connected ? view.detail
+          : view.configured ? null
+          : (i.unconfiguredHint || null);
+
+        const color = connected ? 'var(--success)' : warning ? 'var(--warning)' : 'var(--text-muted)';
+
+        return (
+          <div key={i.key} className="glow-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+            <div style={{ minWidth: 0 }}>
+              <h4 style={{ fontSize: '14px' }}>{i.name}</h4>
+              <span style={{ fontSize: '11px', color, display: 'block' }}>{label}</span>
+              {sub && (
+                <span title={sub} style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginTop: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '190px' }}>
+                  {sub}
+                </span>
+              )}
+              {view && view.configured && !view.connected && (
+                <button
+                  onClick={() => onConnect(i.connectTab)}
+                  style={{ marginTop: '6px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
+                >
+                  Connect in {i.connectLabel} →
+                </button>
+              )}
+            </div>
+            {connected ? <span className="badge-pulse success" />
+              : warning ? <span className="badge-pulse warning" />
+              : <span style={{ width: '8px', height: '8px', borderRadius: '50%', border: '1px solid var(--text-muted)', flexShrink: 0 }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// node_update frames carry the pipeline that emitted them; agent_tasks rows are keyed by
+// agent_type. This maps one to the other so live node progress lands on the right card.
+const PIPELINE_TO_AGENT: Record<string, string> = {
+  creative_studio: 'CREATIVE',
+  campaign_manager: 'CAMPAIGN',
+  seo_geo: 'SEO',
+  geo_pipeline: 'GEO',
+  social_hub: 'SOCIAL',
+  analytics: 'ANALYST',
+  influencer_market: 'INFLUENCER',
+};
+
+// The four states agent_tasks can actually report. There is no percentage or ETA in that
+// table, so the cards no longer show either.
+const AGENT_STATUS: Record<string, { label: string; color: string; live: boolean }> = {
+  RUNNING: { label: 'Running', color: 'var(--warning)', live: true },
+  COMPLETED: { label: 'Completed', color: 'var(--success)', live: false },
+  FAILED: { label: 'Failed', color: 'var(--danger)', live: false },
+  IDLE: { label: 'Idle', color: 'var(--text-muted)', live: false },
+};
+
+const agentStatus = (s: string) => AGENT_STATUS[s] || { label: s || 'Unknown', color: 'var(--text-muted)', live: false };
+
 // Live agent feed socket. This cannot ride on the same relative path the REST calls use:
 // Vercel's rewrites do not proxy WebSocket upgrades, so in production it has to address
 // the backend host directly. Set VITE_WS_URL to e.g. wss://your-backend.onrender.com/ws.
@@ -186,12 +414,16 @@ export function BrandDashboard() {
     }
   }, []);
 
-  // Brand data submitted from onboarding
+  // Brand data submitted from onboarding. Empty until the real workspace loads - these
+  // used to default to a placeholder brand ('aura.com' / 'Aura Premium'), which the
+  // Knowledge Base form then offered up for indexing. Re-indexing writes this URL back to
+  // the workspace and rebuilds the vector store from it, so a placeholder here quietly
+  // replaces a real brand's knowledge base with a stranger's website.
   const [brandProfile, setBrandProfile] = useState({
-    url: 'aura.com',
-    name: 'Aura Premium',
-    tone: 'Premium & Modern',
-    colors: 'Indigo & Obsidian',
+    url: '',
+    name: '',
+    tone: '',
+    colors: '',
   });
 
   // Reusable logs simulation. Only the setter is used — agents append here, but the list is
@@ -245,40 +477,32 @@ export function BrandDashboard() {
   // AI Priorities List
   const [priorities, setPriorities] = useState<{ id: string; title: string; description: string; type: string }[]>([]);
 
-  // Metrics, Billing and node locks state
-  const [metrics, setMetrics] = useState({
-    revenue: 0,
-    roas: 0.0,
-    seoVisibility: 0,
-    aiVisibility: 0,
-    campaignHealth: 0,
-    growthScore: 0
-  });
+  // Metrics, Billing and node locks state.
+  // null until /metrics answers - it used to start at all-zeros, which renders exactly like
+  // a loaded workspace whose numbers really are zero, so the tiles asserted "0%" for a
+  // second or two on every visit (and permanently whenever the request failed).
+  type Metrics = {
+    revenue: number; roas: number; seoVisibility: number; aiVisibility: number;
+    campaignHealth: number; campaignsLive?: number; campaignsLaunched?: number; growthScore: number;
+  };
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [billingBalance, setBillingBalance] = useState<number>(0);
   const [unlockedNodes, setUnlockedNodes] = useState<string[]>([]);
 
-  // AI Agents Working Now
-  const [agentsList, setAgentsList] = useState([
-    { name: 'Brand Intelligence Agent', task: 'Ingesting brand docs and target coordinates', progress: 100, eta: 'Done', result: 'Colors & Tone cached' },
-    { name: 'Competitor Intelligence Agent', task: 'Auditing competitor search keyword bids', progress: 85, eta: '30s', result: '3 rival ad funnels cached' },
-    { name: 'Creative Strategy Agent', task: 'Analyzing target angles performance matrix', progress: 60, eta: '2 min', result: '2 hook vectors selected' },
-    { name: 'Copywriting Agent', task: 'Drafting high-converting copy hooks', progress: 40, eta: '3 min', result: 'Angle A: Tools draft set' },
-    { name: 'Design Agent', task: 'Generating layout specifications & prompts', progress: 25, eta: '5 min', result: 'Palette matching synced' },
-    { name: 'Video Agent', task: 'Structuring dynamic UGC video storyboard', progress: 10, eta: '8 min', result: 'Scene triggers mapped' },
-    { name: 'Voice Agent', task: 'Compiling text-to-speech audio outline', progress: 5, eta: '12 min', result: 'Tonal frequencies set' },
-    { name: 'Quality Review Agent', task: 'Awaiting human review queue approvals', progress: 0, eta: 'On Hold', result: 'Ready for verify desk' },
-    { name: 'Publishing Agent', task: 'Pulsing connections sync to active channels', progress: 0, eta: 'Blocked', result: 'Awaiting triggers' },
-    { name: 'SEO Agent', task: 'Idle', progress: 0, eta: 'Waiting', result: 'Ready for targets' },
-    { name: 'GEO Agent', task: 'Idle', progress: 0, eta: 'Waiting', result: 'Ready for targets' },
-  ]);
 
   // Dynamic simulation log loops
-  const [isWsConnected, setIsWsConnected] = useState(false);
+  const [, setIsWsConnected] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [isReindexing, setIsReindexing] = useState(false);
+  // Outcome of the last re-index, shown in the Knowledge Base tab. Previously the only
+  // report of success or failure went to console.log.
+  const [reindexMsg, setReindexMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   // Real agent activity + recent actions from the backend (not hardcoded).
   const [realAgents, setRealAgents] = useState<any[]>([]);
+  // Which graph node each pipeline is currently executing, from the node_update stream.
+  // Keyed by agent_type so it can be shown against that agent's real status.
+  const [liveNodes, setLiveNodes] = useState<Record<string, string>>({});
   const [recentActions, setRecentActions] = useState<any[]>([]);
   // Ref so the (mount-only) WebSocket handler can read the current workspace id.
   const workspaceIdRef = useRef<number | null>(null);
@@ -296,14 +520,23 @@ export function BrandDashboard() {
       .then(r => r.json()).then(d => { if (d && Array.isArray(d.actions)) setRecentActions(d.actions); }).catch(() => {});
   }
 
-  // Map real agent status -> the card fields the panel renders.
-  const displayAgents = realAgents.map((a) => ({
-    name: a.name,
-    task: a.summary || (a.status === 'RUNNING' ? 'Working…' : a.status === 'IDLE' ? 'No runs yet' : a.status),
-    progress: a.status === 'COMPLETED' ? 100 : a.status === 'RUNNING' ? 50 : 0,
-    eta: a.status === 'RUNNING' ? 'Running' : a.status === 'COMPLETED' ? 'Done' : a.status === 'FAILED' ? 'Failed' : 'Idle',
-    result: a.status === 'FAILED' ? (a.summary || 'Failed') : a.status === 'COMPLETED' ? 'Completed' : a.status === 'RUNNING' ? 'In progress' : 'Ready',
-  }));
+  // Map real agent rows -> the fields the cards render. Everything here comes from the
+  // agent_tasks table. That table has no progress percentage and no ETA, so the cards no
+  // longer show either: the old ones animated a random 0-100% every 7 seconds, which made
+  // an idle agent network look permanently busy.
+  const displayAgents = realAgents.map((a) => {
+    const node = a.status === 'RUNNING' ? liveNodes[a.type] : undefined;
+    return {
+      type: a.type as string,
+      name: a.name as string,
+      status: (a.status || 'IDLE') as string,
+      task: node ? `Running: ${node}`
+        : a.summary || (a.status === 'RUNNING' ? 'Working…' : a.status === 'IDLE' ? 'No runs yet' : ''),
+      // updated_at is a naive UTC timestamp from the backend, so mark it as UTC before
+      // converting, or every time renders hours off.
+      updated: a.updated_at ? new Date(`${a.updated_at}Z`).toLocaleString() : '',
+    };
+  });
 
   useEffect(() => {
     let shouldReconnect = true;
@@ -329,12 +562,10 @@ export function BrandDashboard() {
               refreshDashboardActivity();
             }
           } else if (data.type === 'node_update') {
-            setAgentsList((prev) => prev.map((agent) => {
-              if (agent.name.toLowerCase().includes(data.pipeline.split('_')[0])) {
-                return { ...agent, task: `Running Node: ${data.node}`, progress: data.status === 'completed' ? 100 : 50, result: data.status.toUpperCase() };
-              }
-              return agent;
-            }));
+            const agentType = PIPELINE_TO_AGENT[data.pipeline];
+            if (agentType && data.node) {
+              setLiveNodes((prev) => ({ ...prev, [agentType]: data.node }));
+            }
           } else if (data.type === 'new_creative_asset') {
             setCreativeAssets((prev) => [
               {
@@ -422,10 +653,10 @@ export function BrandDashboard() {
           const ws = data[0];
           setWorkspaceId(ws.id);
           setBrandProfile({
-            url: ws.company_url || 'aura.com',
+            url: ws.company_url || '',
             name: ws.name,
-            tone: ws.brand_voice || 'Premium & Modern',
-            colors: ws.brand_color || 'Indigo & Obsidian'
+            tone: ws.brand_voice || '',
+            colors: ws.brand_color || ''
           });
         }
       })
@@ -492,12 +723,14 @@ export function BrandDashboard() {
       .then(res => res.json())
       .then(() => {});
 
-    // Metrics
+    // Metrics. A non-OK response used to be parsed as if it were data, so an error body
+    // ({"detail": ...}) could land in state with every metric undefined.
     fetch(`/api/workspaces/${workspaceId}/metrics`, { headers })
-      .then(res => res.json())
+      .then(res => (res.ok ? res.json() : null))
       .then(data => {
-        if (data && typeof data === 'object') setMetrics(data);
-      });
+        if (data && typeof data === 'object' && typeof data.growthScore === 'number') setMetrics(data);
+      })
+      .catch(() => {});
 
     // Real agent activity + recent actions
     fetch(`/api/workspaces/${workspaceId}/agents`, { headers })
@@ -524,49 +757,10 @@ export function BrandDashboard() {
       .catch(err => console.error(err));
   }, [workspaceId]);
 
-  // Dynamic simulation log loops (fallback only)
-  useEffect(() => {
-    if (isWsConnected) return;
+  // A 7-second interval used to invent agent log lines and nudge every agent's progress bar
+  // by a random amount. It has been removed: the dashboard renders real activity from
+  // /agents and the WebSocket feed, and simulated movement was indistinguishable from work.
 
-    const interval = setInterval(() => {
-      const timeStr = new Date().toLocaleTimeString();
-      const agents = ['Creative Agent', 'SEO Agent', 'Performance Marketer', 'Growth Strategist'];
-      const messages = [
-        'Evaluating Meta Campaign CTR curves... Fatigues levels acceptable.',
-        'Analyzing search term intent on Perplexity engine reference list.',
-        'Compiling blog drafts, optimizing schema metadata graphs.',
-        'Refined landing page keyword matches for Claude citations score.',
-        'Drafting video ad asset copy for summer conversion campaign.',
-      ];
-
-      const randomAgent = agents[Math.floor(Math.random() * agents.length)];
-      const randomMsg = messages[Math.floor(Math.random() * messages.length)];
-
-      setLogs((prev) => [
-        ...prev,
-        {
-          id: String(Date.now()),
-          time: timeStr,
-          agent: randomAgent,
-          message: randomMsg,
-        },
-      ]);
-
-      // Randomize agent progress variables slightly
-      setAgentsList((prev) =>
-        prev.map((agent) => {
-          const step = Math.floor(Math.random() * 5);
-          const nextVal = agent.progress + step >= 100 ? 20 : agent.progress + step;
-          return {
-            ...agent,
-            progress: nextVal,
-          };
-        })
-      );
-    }, 7000);
-
-    return () => clearInterval(interval);
-  }, [isWsConnected]);
 
   // Onboarding completion is handled by App.tsx's own handleOnboardingComplete, which owns
   // the /onboarding route. The duplicate that lived here was never called.
@@ -577,34 +771,85 @@ export function BrandDashboard() {
     navigate('/');
   };
 
-  const handleReindex = () => {
+  // Re-indexing rebuilds this workspace's vector knowledge base: the backend stores the URL
+  // and tone, then runs the onboarding pipeline (crawl -> summarise -> embed into Qdrant) as
+  // a background task. That takes far longer than the request, and it can still fail after
+  // the 200 (vector store unreachable, crawl found nothing), so this waits on the ONBOARDING
+  // agent row rather than assuming it worked. The previous version dropped the spinner after
+  // a fixed 3 seconds and reported only to the console, so a failed re-index was
+  // indistinguishable from a finished one.
+  const handleReindex = async () => {
     if (!workspaceId) return;
-    setIsReindexing(true);
+
+    const url = (brandProfile?.url || '').trim();
+    if (!url) {
+      // An empty URL still reaches the pipeline, which finds no content and then replaces
+      // this workspace's vectors with a single "No content extracted" placeholder.
+      setReindexMsg({ ok: false, text: 'Add a resource URL first - re-indexing rebuilds the knowledge base from that URL, and running it empty would wipe what is already indexed.' });
+      return;
+    }
+
     const token = localStorage.getItem('token');
     const headers = {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-    fetch(`/api/workspaces/${workspaceId}/reindex`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ url: brandProfile?.url || '', tone: brandProfile?.tone || '' })
-    })
-      .then(res => res.json())
-      .then(data => {
-        console.log("Re-indexing started:", data);
-        setTimeout(() => setIsReindexing(false), 3000);
-      })
-      .catch(err => {
-        console.error("Failed to reindex:", err);
-        setIsReindexing(false);
+
+    const readOnboarding = async () => {
+      const r = await fetch(`/api/workspaces/${workspaceId}/agents`, { headers });
+      if (!r.ok) return null;
+      const d = await r.json();
+      return (d && Array.isArray(d.agents) ? d.agents : []).find((a: any) => a.type === 'ONBOARDING') || null;
+    };
+
+    setIsReindexing(true);
+    setReindexMsg({ ok: true, text: `Crawling ${url} and rebuilding the vector store...` });
+
+    // Snapshot the row first: a COMPLETED left over from the previous re-index must not be
+    // read as this one finishing.
+    const before = await readOnboarding().catch(() => null);
+
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/reindex`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ url, tone: brandProfile?.tone || '' })
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail || `server returned ${res.status}`);
+
+      // Poll for a terminal state. The ceiling is generous on purpose: a Firecrawl crawl
+      // alone can run ~80s before the LLM summary and embedding steps even start.
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const now = await readOnboarding().catch(() => null);
+        if (!now) continue;
+        const isThisRun = !before || now.updated_at !== before.updated_at;
+        if (!isThisRun || now.status === 'RUNNING') continue;
+        if (now.status === 'COMPLETED') {
+          setReindexMsg({ ok: true, text: 'Knowledge base rebuilt.' });
+        } else {
+          setReindexMsg({ ok: false, text: `Re-indexing failed: ${now.summary || 'see the AI Agents tab for the reason'}` });
+        }
+        refreshDashboardActivity();
+        return;
+      }
+      setReindexMsg({ ok: true, text: 'Still running - follow its progress in the AI Agents tab.' });
+    } catch (err: any) {
+      setReindexMsg({ ok: false, text: `Could not re-index: ${err?.message || 'server unreachable'}` });
+    } finally {
+      setIsReindexing(false);
+    }
   };
 
-  const handleGenerateCreative = (prompt: string, referenceAd?: any, config?: any) => {
-    if (!workspaceId) return;
+  // Kicks off a real generation and hands the job back to the caller. It used to swallow the
+  // response entirely, which threw away the creative_id the studio needs to follow the run -
+  // leaving the UI with no way to know whether the render succeeded, failed, or is still
+  // going.
+  const handleGenerateCreative = async (prompt: string, referenceAd?: any, config?: any) => {
+    if (!workspaceId) return null;
     const token = localStorage.getItem('token');
-    
+
     // Fallback headers for bypass if no token
     const headers: HeadersInit = token ? {
       'Authorization': `Bearer ${token}`,
@@ -615,29 +860,30 @@ export function BrandDashboard() {
     };
 
     // The spec-driven pipeline (/api/creative/generate) analyses the prompt, resolves the
-    // platform's real aspect ratio and uses any uploaded reference image. The older
-    // /api/agents/{id}/creative route stays as the fallback so nothing breaks if the new
-    // endpoint is unavailable.
-    fetch('/api/creative/generate', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        workspace_id: workspaceId,
-        prompt,
-        type: String(config?.format || 'Video').toLowerCase().includes('video') ? 'video' : 'image',
-        platform: config?.platform || null,
-        reference_image: config?.reference_image || null,
-        optimized_prompt_override: config?.optimized_prompt_override || null,
-        options: { duration: parseInt(String(config?.length || '15s'), 10) || 15 },
-      })
-    })
-      .then(res => {
-        if (res.ok) return res.json();
-        throw new Error(`creative/generate returned ${res.status}`);
-      })
-      .catch(err => {
-        console.warn('Spec-driven generation unavailable, falling back:', err);
-        return fetch(`/api/agents/${workspaceId}/creative`, {
+    // platform's real aspect ratio and uses any uploaded reference image. It answers with a
+    // creative_id and a poll url. The older /api/agents/{id}/creative route stays as the
+    // fallback so nothing breaks if the new endpoint is unavailable — it has no job id, so
+    // callers fall back to waiting for the asset to arrive over the WebSocket.
+    try {
+      const res = await fetch('/api/creative/generate', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          prompt,
+          type: String(config?.format || 'Video').toLowerCase().includes('video') ? 'video' : 'image',
+          platform: config?.platform || null,
+          reference_image: config?.reference_image || null,
+          optimized_prompt_override: config?.optimized_prompt_override || null,
+          options: { duration: parseInt(String(config?.length || '15s'), 10) || 15 },
+        })
+      });
+      if (!res.ok) throw new Error(`creative/generate returned ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('Spec-driven generation unavailable, falling back:', err);
+      try {
+        await fetch(`/api/agents/${workspaceId}/creative`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -650,8 +896,11 @@ export function BrandDashboard() {
             engine_mode: config?.mode || 'Video Ad'
           })
         });
-      })
-      .catch(err => console.error("Error running creative studio agent:", err));
+      } catch (e) {
+        console.error("Error running creative studio agent:", e);
+      }
+      return null;
+    }
   };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1367,7 +1616,7 @@ export function BrandDashboard() {
             <div className="user-avatar">{(brandProfile?.name || 'B').charAt(0)}</div>
             <div>
               <h4 style={{ fontSize: '13px', fontWeight: 600 }}>{brandProfile?.name || 'Brand Workspace'}</h4>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{brandProfile?.url || 'loading...'}</p>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{brandProfile?.url || (workspaceId ? 'No site URL set' : 'loading...')}</p>
             </div>
           </div>
           <button 
@@ -1461,40 +1710,44 @@ export function BrandDashboard() {
                   TODAY'S GROWTH SUMMARY
                 </h3>
                 <div className="metrics-row">
+                  {/* No trend figures: /metrics returns a single snapshot with no previous
+                      period to compare against, and the numbers that used to sit here
+                      ('+14.2%', '+3.1%', '+12.8%') were literals that never changed. */}
                   <div className="metric-widget" onClick={() => setActiveTab('analytics')}>
                     <span className="metric-title">REVENUE</span>
-                    <span className="metric-value">${metrics.revenue.toLocaleString()}</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.revenue > 0 ? '+14.2%' : '0%'}</span>
+                    <span className="metric-value">{metrics ? `$${metrics.revenue.toLocaleString()}` : '—'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
                     <span className="metric-title">ROAS</span>
-                    <span className="metric-value">{metrics.roas}x</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.roas > 0 ? '+0.4x' : '0.0x'}</span>
+                    <span className="metric-value">{metrics ? `${metrics.roas}x` : '—'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('seo')}>
                     <span className="metric-title">SEO VISIBILITY</span>
-                    <span className="metric-value">{metrics.seoVisibility}%</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.seoVisibility > 0 ? '+3.1%' : '0%'}</span>
+                    <span className="metric-value">{metrics ? `${metrics.seoVisibility}%` : '—'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('seo')}>
                     <span className="metric-title">AI VISIBILITY</span>
-                    <span className="metric-value">{metrics.aiVisibility}%</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.aiVisibility > 0 ? '+12.8%' : '0%'}</span>
+                    <span className="metric-value">{metrics ? `${metrics.aiVisibility}%` : '—'}</span>
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
                     <span className="metric-title">CAMPAIGN HEALTH</span>
-                    <span className="metric-value">{metrics.campaignHealth}%</span>
-                    <span className="metric-trend up" style={{ color: 'var(--success)', fontSize: '10px' }}>{metrics.campaignHealth > 0 ? 'Optimal' : 'Offline'}</span>
+                    <span className="metric-value">{metrics ? `${metrics.campaignHealth}%` : '—'}</span>
+                    {metrics && typeof metrics.campaignsLaunched === 'number' && (
+                      <span className="metric-trend up" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                        {metrics.campaignsLaunched > 0
+                          ? `${metrics.campaignsLive} of ${metrics.campaignsLaunched} live`
+                          : 'No campaigns launched yet'}
+                      </span>
+                    )}
                   </div>
 
                   <div className="metric-widget" onClick={() => setActiveTab('control')}>
                     <span className="metric-title">GROWTH SCORE</span>
-                    <span className="metric-value">{metrics.growthScore}/100</span>
-                    <span className="metric-trend up" style={{ fontSize: '10px' }}>{metrics.growthScore > 0 ? 'Peak' : 'Offline'}</span>
+                    <span className="metric-value">{metrics ? `${metrics.growthScore}/100` : '—'}</span>
                   </div>
                 </div>
               </div>
@@ -1514,7 +1767,7 @@ export function BrandDashboard() {
                     <div key={agent.name} className="agent-status-card">
                       <div className="agent-status-card-header">
                         <div className="agent-name-row">
-                          <span className="agent-icon-bulb working" />
+                          <span className={`agent-icon-bulb ${agentStatus(agent.status).live ? 'working' : 'idle'}`} />
                           <span className="agent-card-title">{agent.name}</span>
                         </div>
                       </div>
@@ -1525,25 +1778,17 @@ export function BrandDashboard() {
                           <span style={{ fontWeight: 500, color: '#fff', textAlign: 'right' }}>{agent.task}</span>
                         </div>
 
-                        <div>
-                          <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                            <span>Progress</span>
-                            <span>{agent.progress}%</span>
-                          </div>
-                          <div className="agent-progress-chassis">
-                            <div className="agent-progress-fill" style={{ width: `${agent.progress}%` }} />
-                          </div>
-                        </div>
-
                         <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>ETA:</span>
-                          <span>{agent.eta}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>Status:</span>
+                          <span style={{ color: agentStatus(agent.status).color, fontWeight: 600 }}>{agentStatus(agent.status).label}</span>
                         </div>
 
-                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Latest Result:</span>
-                          <span style={{ color: 'var(--success)', fontWeight: 600 }}>{agent.result}</span>
-                        </div>
+                        {agent.updated && (
+                          <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Last activity:</span>
+                            <span style={{ color: 'var(--text-muted)' }}>{agent.updated}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1672,8 +1917,8 @@ export function BrandDashboard() {
                 <WorkspaceSEO
                   blogs={seoBlogs}
                   onOpenReview={handleOpenReview}
-                  seoAgent={agentsList.find(a => a.name === 'SEO Agent')}
-                  geoAgent={agentsList.find(a => a.name === 'GEO Agent')}
+                  seoAgent={displayAgents.find(a => a.type === 'SEO')}
+                  geoAgent={displayAgents.find(a => a.type === 'GEO')}
                   onTriggerSEO={handleTriggerSEO}
                   onTriggerGEO={handleTriggerGEO}
                   workspaceId={workspaceId}
@@ -1688,6 +1933,7 @@ export function BrandDashboard() {
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
               {renderLockOverlay('analytics', 129)}
               <WorkspaceAnalytics
+                workspaceId={workspaceId}
                 chatHistory={chatHistory}
                 onSendMessage={handleSendClaudeMessage}
               />
@@ -1727,62 +1973,75 @@ export function BrandDashboard() {
                   RAFTRA MARKETING AGENT GRAPH PATHWAY
                 </h3>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
-                  {agentsList.map((agent, idx) => (
-                    <div key={agent.name} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div
-                        style={{
-                          background: agent.progress > 0 ? 'var(--accent-glow)' : 'rgba(255, 255, 255, 0.01)',
-                          border: '1px solid',
-                          borderColor: agent.progress > 0 ? 'var(--accent)' : 'var(--border-color)',
-                          borderRadius: '8px',
-                          padding: '10px 16px',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          color: agent.progress > 0 ? '#fff' : 'var(--text-secondary)',
-                        }}
-                      >
-                        <span className={`agent-icon-bulb ${agent.progress > 0 ? 'working' : 'idle'}`} style={{ width: '6px', height: '6px' }} />
-                        <span>{agent.name}</span>
+                  {displayAgents.length === 0 && (
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>No agents have run in this workspace yet.</span>
+                  )}
+                  {displayAgents.map((agent, idx) => {
+                    // A node is lit only when that agent has actually run: highlighted while
+                    // RUNNING, outlined once it has a finished run, dim when it never ran.
+                    const st = agentStatus(agent.status);
+                    const touched = agent.status !== 'IDLE';
+                    return (
+                      <div key={agent.type} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div
+                          title={`${st.label}${agent.task ? ' — ' + agent.task : ''}`}
+                          style={{
+                            background: st.live ? 'var(--accent-glow)' : 'rgba(255, 255, 255, 0.01)',
+                            border: '1px solid',
+                            borderColor: st.live ? 'var(--accent)' : touched ? 'var(--border-color)' : 'transparent',
+                            borderRadius: '8px',
+                            padding: '10px 16px',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            color: touched ? '#fff' : 'var(--text-muted)',
+                          }}
+                        >
+                          <span className={`agent-icon-bulb ${st.live ? 'working' : 'idle'}`} style={{ width: '6px', height: '6px' }} />
+                          <span>{agent.name}</span>
+                        </div>
+                        {idx < displayAgents.length - 1 && (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 'bold' }}>→</span>
+                        )}
                       </div>
-                      {idx < agentsList.length - 1 && (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 'bold' }}>→</span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Grid of Agent Cards */}
               <div className="agent-cards-grid">
-                {agentsList.map((agent) => (
-                  <div key={agent.name} className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`badge-pulse ${agent.progress > 0 ? 'success' : 'warning'}`} style={{ width: '6px', height: '6px' }} />
-                      <h4 style={{ fontSize: '14px' }}>{agent.name}</h4>
+                {displayAgents.map((agent) => {
+                  const st = agentStatus(agent.status);
+                  return (
+                    <div key={agent.type} className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {st.live
+                          ? <span className="badge-pulse warning" style={{ width: '6px', height: '6px' }} />
+                          : <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: st.color, flexShrink: 0 }} />}
+                        <h4 style={{ fontSize: '14px' }}>{agent.name}</h4>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Status:</span>
+                          <span style={{ fontWeight: 600, color: st.color }}>{st.label}</span>
+                        </div>
+                        {agent.updated && (
+                          <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Last activity:</span>
+                            <span style={{ color: 'var(--text-muted)' }}>{agent.updated}</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', gap: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '8px', marginTop: '4px' }}>
+                          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>Last run:</span>
+                          <span style={{ color: agent.status === 'FAILED' ? 'var(--danger)' : '#fff', textAlign: 'right' }}>{agent.task || '—'}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Task:</span>
-                        <span style={{ fontWeight: 500, color: '#fff', textAlign: 'right' }}>{agent.task}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Progress:</span>
-                        <span>{agent.progress}%</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>ETA:</span>
-                        <span>{agent.eta}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '8px', marginTop: '4px' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Result:</span>
-                        <span style={{ color: 'var(--success)' }}>{agent.result}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1810,6 +2069,11 @@ export function BrandDashboard() {
                   <GlowButton variant="secondary" onClick={handleReindex} loading={isReindexing} style={{ width: '100%' }}>
                     Re-index Knowledge Graph
                   </GlowButton>
+                  {reindexMsg && (
+                    <span style={{ fontSize: '12px', lineHeight: 1.55, color: reindexMsg.ok ? 'var(--text-secondary)' : 'var(--warning)' }}>
+                      {reindexMsg.text}
+                    </span>
+                  )}
                 </div>
                 <VectorDatastores workspaceId={workspaceId} reindexing={isReindexing} />
               </div>
@@ -1821,20 +2085,10 @@ export function BrandDashboard() {
               <div>
                 <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Integrations Hub</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Toggle sandbox connections to enable direct publishing nodes.
+                  Live connection status for every platform this workspace can publish to or pull data from.
                 </p>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
-                {['Meta Ads Sandbox', 'Google Ads Sandbox', 'Instagram Graph API', 'WhatsApp Business API', 'ChatGPT citation pipeline', 'Gemini Citation context'].map((plat) => (
-                  <div key={plat} className="glow-card" style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h4 style={{ fontSize: '14px' }}>{plat}</h4>
-                      <span style={{ fontSize: '11px', color: 'var(--success)' }}>Connected</span>
-                    </div>
-                    <span className="badge-pulse success" />
-                  </div>
-                ))}
-              </div>
+              <IntegrationsHub workspaceId={workspaceId} onConnect={setActiveTab} />
             </div>
           )}
 

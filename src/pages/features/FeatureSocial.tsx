@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Share2, Bot, CheckCircle2, Calendar, MessageCircle, TrendingUp, Image as ImageIcon, 
-  Briefcase, Video, Loader2, Check, ArrowRight, UserCheck, ShieldCheck, Zap,
-  FileText, Award, DollarSign, Users, Sparkles
+  Share2, CheckCircle2, Calendar, MessageCircle, TrendingUp, Image as ImageIcon, 
+  Briefcase, ArrowRight, UserCheck, ShieldCheck, Zap,
+  Award
 } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
 import { useNavigate } from 'react-router-dom';

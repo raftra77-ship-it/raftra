@@ -78,7 +78,9 @@ async def verify_instagram_profile(username: str, niche: str):
     gemini_key = os.getenv("GEMINI_API_KEY")
     
     if not firecrawl_key or not gemini_key:
-        return _mock_verification(username, niche)
+        return _mock_verification(
+            username, niche,
+            "Verification needs FIRECRAWL_API_KEY and GEMINI_API_KEY, which are not both set.")
         
     try:
         app = FirecrawlApp(api_key=firecrawl_key)
@@ -89,7 +91,22 @@ async def verify_instagram_profile(username: str, niche: str):
         genai.configure(api_key=gemini_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
         
-        prompt = f"You are an Influencer Verification Agent. Analyze the following scraped markdown from an Instagram profile for '{username}'. Your goal is to detect if this is a real profile, find any recent collaborations, and extract posts. Niche specified: {niche}. If the markdown looks like a login wall or is empty, simulate a realistic verification result based on the username '{username}' and niche '{niche}'. Otherwise, extract real data. Look for fake follower flags. Return ONLY a raw JSON object (no markdown fences) with this exact schema: {{\"verification_status\": \"verified\" or \"rejected_fake_followers\", \"recent_collabs\": [\"Brand1\"], \"recent_posts\": [{{\"url\": \"https://instagram.com/p/...\", \"type\": \"image\"}}], \"recent_reviews\": [{{\"author\": \"Brand Name\", \"text\": \"Review text\"}}]}} Scraped Markdown: {markdown_content[:2000]}"
+        prompt = (
+            f"You are an Influencer Verification Agent. Analyse the scraped markdown from the "
+            f"Instagram profile '{username}' (stated niche: {niche}).\n\n"
+            "HARD RULES:\n"
+            "1. Never invent collaborations, posts or reviews. Every item you return must appear "
+            "in the scraped text.\n"
+            "2. If the markdown is empty, a login wall, or does not clearly belong to this "
+            "profile, return verification_status \"unverified\" with empty lists. Do NOT "
+            "simulate or guess a plausible result.\n"
+            "3. Only return \"verified\" when the scraped text genuinely shows this profile.\n"
+            "4. Return \"rejected_fake_followers\" if the text shows clear fake-follower signals.\n\n"
+            "Return ONLY raw JSON (no fences) with this schema: "
+            "{\"verification_status\": \"verified\" | \"unverified\" | \"rejected_fake_followers\", "
+            "\"recent_collabs\": [], \"recent_posts\": [], \"recent_reviews\": []}\n\n"
+            f"Scraped Markdown: {markdown_content[:2000]}"
+        )
         
         response = model.generate_content(prompt)
         # Strip markdown code fences (```json ... ``` or ``` ... ```) that Gemini sometimes adds
@@ -98,25 +115,32 @@ async def verify_instagram_profile(username: str, niche: str):
         raw = re.sub(r'\s*```$', '', raw)
         result = json.loads(raw.strip())
         
-        # Treat anything that is not explicitly a fake-follower rejection as verified
-        if result.get("verification_status") != "rejected_fake_followers":
-            result["verification_status"] = "verified"
-        
+        # Verification must be earned, not assumed. This previously treated anything that was
+        # not an explicit fake-follower rejection as verified, which meant an empty scrape (the
+        # normal outcome, since Instagram serves a login wall) came back "verified".
+        if result.get("verification_status") not in ("verified", "rejected_fake_followers"):
+            result["verification_status"] = "unverified"
+        result["simulated"] = False
         return result
         
     except Exception as e:
         print(f"Verification error: {e}")
-        return _mock_verification(username, niche)
+        return _mock_verification(username, niche, f"The profile could not be read: {e}")
 
-def _mock_verification(username, niche):
+def _mock_verification(username, niche, reason="Verification is not configured on this server."):
+    """Used when verification cannot run at all.
+
+    It used to return verification_status "verified" along with invented collaborations
+    ("<niche> Brand Co", "Global Agency") and an invented testimonial, which the caller then
+    wrote onto the creator's public profile. That manufactured third-party endorsements for a
+    real person and showed them to brands as social proof. It now reports plainly that nothing
+    was checked, and returns nothing to store.
+    """
     return {
-        "verification_status": "verified",
-        "recent_collabs": [f"{niche} Brand Co", "Global Agency"],
-        "recent_posts": [
-            {"url": f"https://instagram.com/{username}/p/1", "type": "image"},
-            {"url": f"https://instagram.com/{username}/p/2", "type": "reel"}
-        ],
-        "recent_reviews": [
-            {"author": "Marketing Director", "text": f"{username} was great to work with!"}
-        ]
+        "verification_status": "unverified",
+        "simulated": True,
+        "reason": reason,
+        "recent_collabs": [],
+        "recent_posts": [],
+        "recent_reviews": [],
     }

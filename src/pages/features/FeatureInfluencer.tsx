@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Users2, Bot, CheckCircle2, ShieldCheck, UserCheck, Star, Activity, MapPin, 
-  ArrowRight, Search, DollarSign, MessageSquare, Zap, FileText, Check, Award,
-  Lock, Sparkles
+  Users2, Bot, CheckCircle2, ShieldCheck, UserCheck, ArrowRight, DollarSign, MessageSquare, Zap, FileText, Check, Award
 } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
 import { useNavigate } from 'react-router-dom';

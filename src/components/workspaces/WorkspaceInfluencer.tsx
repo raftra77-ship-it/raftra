@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2, ArrowUpDown } from 'lucide-react';
+import { Search, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 import parsedCreatorsData from '../../data/influencers_parsed.json';
@@ -212,6 +212,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         const liveSheetCreators = await fetchLiveGoogleSheetCreators();
         if (isMounted && liveSheetCreators && liveSheetCreators.length > 0) {
           setCreators(mergeCustomProfile(liveSheetCreators));
+          syncCreatorsToDatabase(liveSheetCreators);
         }
       } catch (err) {
         console.warn('Live sheet sync error:', err);
@@ -254,6 +255,117 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
   const getChatKey = (creator: InfluencerItemExtended) =>
     `ws${workspaceId}_${(creator.handle || creator.id).replace('@', '').toLowerCase()}`;
 
+  // Conversations used to live only in localStorage, so history vanished on a device change
+  // and the creator's side had no record of it. The server has always had chat endpoints
+  // (GET/POST /api/workspaces/{id}/influencers/{id}/chat) - they were simply never called.
+  //
+  // Only creators that exist as rows in the influencers table can be persisted: the endpoint
+  // keys on a numeric influencer id. Creators loaded from the bundled JSON or the Google Sheet
+  // have string ids and no row, so those conversations stay local until they are imported.
+  // Handle -> database id for every creator known to the influencers table, whatever list
+  // they were rendered from. A ref rather than state: only event handlers read it, and the
+  // creator cards must not re-render every time the sheet re-syncs.
+  const dbIdsByHandle = useRef<Record<string, number>>({});
+  const hasImportedCreators = useRef(false);
+
+  const normaliseHandle = (value: string) => (value || '').trim().replace(/^@/, '').toLowerCase();
+
+  // Sheet rates are ranges - "₹2,000 - ₹5,000". base_rate is a single number, so it takes the
+  // lower bound, the price a brand starts from. Stripping every non-digit instead would run
+  // the two ends of the range together into 20005000.
+  const parseStartingRate = (price?: string): number => {
+    const match = String(price || '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : 0;
+  };
+
+  const dbInfluencerId = (creator: InfluencerItemExtended | null): number | null => {
+    if (!creator) return null;
+    const mapped = dbIdsByHandle.current[normaliseHandle(creator.handle || '')];
+    if (mapped) return mapped;
+    const id = Number(creator.id);
+    return Number.isInteger(id) && id > 0 ? id : null;
+  };
+
+  // Creators arriving from the Google Sheet have generated string ids and no database row, so
+  // nothing can be keyed on them - not a chat message, not a deal. This imports the ones that
+  // are missing and records the ids that come back. Runs once per mount, not on the 15-second
+  // sheet poll, and only sends handles the table does not already hold.
+  const syncCreatorsToDatabase = async (list: InfluencerItemExtended[]) => {
+    if (hasImportedCreators.current || !workspaceId || !list.length) return;
+    hasImportedCreators.current = true;
+    try {
+      const existingRes = await fetch(`/api/workspaces/${workspaceId}/influencers`, { headers: authHeaders() });
+      if (existingRes.ok) {
+        const rows = await existingRes.json();
+        if (Array.isArray(rows)) {
+          rows.forEach((r: any) => {
+            const key = normaliseHandle(r.handle || '');
+            if (key && r.id) dbIdsByHandle.current[key] = r.id;
+          });
+        }
+      }
+
+      // Everything with a usable handle is sent, not only the rows that are missing: the
+      // endpoint upserts, so this also carries rate and niche changes from the sheet through
+      // to the catalogue instead of letting the two drift apart.
+      const importable = list.filter(c => normaliseHandle(c.handle || '') && c.name);
+      if (!importable.length) return;
+
+      const res = await fetch(`/api/workspaces/${workspaceId}/influencers/import`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          creators: importable.slice(0, 200).map(c => ({
+            name: c.name,
+            handle: normaliseHandle(c.handle || ''),
+            platform: (c.platform || 'instagram').toLowerCase(),
+            niche: c.niche || null,
+            base_rate: parseStartingRate(c.expectedPrice),
+            success_rate: typeof c.fakeFollowerScore === 'number' ? 100 - c.fakeFollowerScore : null,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error(`import returned ${res.status}`);
+      const data = await res.json();
+      if (data && data.ids) dbIdsByHandle.current = { ...dbIdsByHandle.current, ...data.ids };
+    } catch (err) {
+      // Non-fatal: the marketplace still browses fine, but chats and deals for these creators
+      // stay local until the import succeeds.
+      console.warn('Creator import failed; chat and deals stay local for sheet creators:', err);
+      hasImportedCreators.current = false;
+    }
+  };
+
+  const authHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem('token');
+    return token
+      ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      : { 'Content-Type': 'application/json' };
+  };
+
+  // Server rows -> the shape this chat renders. sender_type is 'brand' | 'influencer' | 'system'.
+  const fromServerMessages = (rows: any[]) =>
+    rows.map(r => ({
+      sender: (r.sender_type === 'influencer' ? 'creator' : r.sender_type) as 'brand' | 'creator' | 'system',
+      text: r.content || '',
+    }));
+
+  const persistMessage = async (creator: InfluencerItemExtended, text: string, senderType: 'brand' | 'system') => {
+    const influencerId = dbInfluencerId(creator);
+    if (!influencerId) return;
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/influencers/${influencerId}/chat`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ content: text, sender_type: senderType }),
+      });
+    } catch (err) {
+      // The message is already on screen and mirrored locally; a failed write must not
+      // swallow it, but it should be visible in the console rather than silent.
+      console.warn('Chat message could not be saved to the server:', err);
+    }
+  };
+
 
   const handleLockDeal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,13 +385,16 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
       brandWsRef.current.send(JSON.stringify(proposalMsg));
     }
 
+    // The deal is now recorded server-side, so it survives this browser and the creator can
+    // see the same record. Previously this posted to an endpoint that did not exist: the 404
+    // came back as a response rather than a throw, so the catch never fired and the failure
+    // was invisible. brand_name is no longer sent - the server takes it from the workspace.
     try {
-      await fetch('/api/deals/propose', {
+      const res = await fetch('/api/deals/propose', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({
           workspace_id: workspaceId,
-          brand_name: 'Demo Brand',
           brand_whatsapp: '9876543210',
           influencer_handle: activeChat.handle,
           influencer_name: activeChat.name,
@@ -289,8 +404,12 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           deliverables: delivs
         })
       });
-    } catch (err) {
-      console.error("Backend deal proposal dispatch error:", err);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && data.detail) || `server returned ${res.status}`);
+      if (data && data.deal) setActiveDealId(data.deal.id);
+    } catch (err: any) {
+      console.error("Deal could not be recorded:", err);
+      setDealError(`The offer was sent in chat but could not be recorded: ${err?.message || 'server unreachable'}`);
     }
 
     setShowFinalize(false);
@@ -343,17 +462,40 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     };
   }, [activeChat]);
 
-  const handleOpenChat = (creator: InfluencerItemExtended) => {
+  const handleOpenChat = async (creator: InfluencerItemExtended) => {
     setActiveChat(creator);
     const roomKey = getChatKey(creator);
     const storageKey = `raftra_chat_${roomKey}`;
+    const influencerId = dbInfluencerId(creator);
+
+    // Stored history wins over anything cached locally: it is the copy both sides share.
+    if (influencerId) {
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/influencers/${influencerId}/chat`, {
+          headers: authHeaders(),
+        });
+        if (res.ok) {
+          const rows = await res.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            const history = fromServerMessages(rows);
+            setChatMessages(history as any);
+            localStorage.setItem(storageKey, JSON.stringify(history));
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load chat history, falling back to this device:', err);
+      }
+    }
+
     const savedChat = localStorage.getItem(storageKey);
     if (savedChat) {
       try { setChatMessages(JSON.parse(savedChat)); return; } catch (err) {}
     }
+
     // First time opening — seed with intro messages that include workspaceId so creator knows which brand
     const initialMsgs = [
-      { sender: 'system', workspaceId, text: `🔒 SECURE ESCROW END-TO-END WORKSPACE #${workspaceId} ACTIVATED` },
+      { sender: 'system', workspaceId, text: `Workspace #${workspaceId} — agree the amount and deliverables here so both sides keep the same record.` },
       { sender: 'creator', workspaceId, text: `Hi! Thanks for reaching out. I'm open to collaborations for your brand campaign. My rate per reel is ${creator.expectedPrice}. What deliverables are you looking for?` }
     ];
     setChatMessages(initialMsgs as any);
@@ -415,6 +557,9 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     if (brandWsRef.current?.readyState === WebSocket.OPEN) {
       brandWsRef.current.send(JSON.stringify(newMsg));
     }
+
+    // ...and store it, so the conversation survives this browser.
+    persistMessage(activeChat, input, 'brand');
   };
 
   useEffect(() => {
@@ -516,6 +661,11 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
     return () => window.removeEventListener('storage', handleStorage);
   }, [activeChat]);
 
+  // Server id of the deal currently under discussion, and any failure to record it. Both
+  // used to be invisible: the proposal was written to localStorage and the API call's result
+  // was discarded.
+  const [activeDealId, setActiveDealId] = useState<number | null>(null);
+  const [dealError, setDealError] = useState<string | null>(null);
   const [showEmailReceiptModal, setShowEmailReceiptModal] = useState<boolean>(false);
   const [paidDealInfo, setPaidDealInfo] = useState<{amount: number, creator: InfluencerItemExtended} | null>(null);
 
@@ -534,20 +684,23 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
         setPaidDealInfo({ amount, creator: activeChat });
         setShowEmailReceiptModal(true);
 
-        // Notify backend & trigger email dispatch with token & brand contact number
-        const cleanHandle = activeChat.handle.replace('@', '').toLowerCase();
-        fetch(`/api/deals/creator/${cleanHandle}`)
-          .then(r => r.json())
-          .then(deals => {
-            if (Array.isArray(deals) && deals.length > 0) {
-              const activeDeal = deals[0];
-              fetch(`/api/deals/${activeDeal.id}/release`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ brand_whatsapp: '9876543210' })
-              }).catch(() => {});
-            }
-          }).catch(() => {});
+        // Approve the deliverables on the recorded deal. This used to look the deal up via
+        // /api/deals/creator/{handle} - an endpoint that returned any creator's deals to any
+        // caller, and 404'd here anyway - then fire a release whose failure was swallowed.
+        if (activeDealId) {
+          fetch(`/api/deals/${activeDealId}/release`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ brand_whatsapp: '9876543210' })
+          })
+            .then(async r => {
+              if (!r.ok) {
+                const d = await r.json().catch(() => null);
+                throw new Error((d && d.detail) || `server returned ${r.status}`);
+              }
+            })
+            .catch(err => setDealError(`Could not approve the deliverables: ${err.message}`));
+        }
       }
     } catch(e) {
       console.error(e);
@@ -1004,7 +1157,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <span style={{ fontSize: '10px', background: '#dc2626', color: '#fff', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>STRICT RULE</span>
           </div>
           <p style={{ fontSize: '13px', color: '#fff', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
-            Pay ONLY via Raftra Web Chat & Escrow Vault. Raftra is <b>NOT responsible</b> for deals taken off-platform (direct wire transfers or IG DMs). Sharing contact info in chat = <b>instant account suspension</b>.
+            Agree every deal in Raftra Web Chat so both sides hold the same record. Raftra is <b>NOT responsible</b> for deals taken off-platform (direct wire transfers or IG DMs). Sharing contact info in chat = <b>instant account suspension</b>.
           </p>
         </div>
       </div>
@@ -1038,7 +1191,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
           {[
             { step: '1', title: 'Negotiate Directly with Influencer', tag: 'Web Chat Discussion', desc: 'Open Web Chat & discuss project requirements directly with creator.' },
             { step: '2', title: 'Send Finalize Deal Proposal', tag: 'Price (₹) & Deliverables', desc: 'Click "Finalize Deal", enter final price & deliverables, and send proposal.' },
-            { step: '3', title: 'Accept Proposal & Go to Payment', tag: 'Pay via Escrow Vault', desc: 'Once creator accepts proposal ➔ Click "Proceed to Secure Payment Page".' },
+            { step: '3', title: 'Confirm the Deal', tag: 'Recorded in chat', desc: 'Once the creator accepts ➔ click "Confirm Deal & Contact Creator" to lock the agreed amount and deliverables.' },
             { step: '4', title: 'Get Email & WhatsApp Contact', tag: 'Exchange Deliverables', desc: 'Receive email receipt ➔ Open WhatsApp link with creator & exchange deliverables.' },
             { step: '5', title: 'Send Satisfactory Message', tag: 'Release Payout to Creator', desc: 'Work done & satisfactory? Send timestamped satisfaction code to influencer for payout release.' }
           ].map(item => (
@@ -1355,11 +1508,25 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               <button onClick={() => setActiveChat(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px' }}>&times;</button>
             </div>
 
+            {/* A deal that failed to record is the difference between an agreement both sides
+                can see and one that exists only in this browser, so it has to be visible. */}
+            {dealError && (
+              <div style={{ background: 'rgba(220,38,38,0.12)', borderBottom: '1px solid rgba(220,38,38,0.35)', padding: '12px 24px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                <ShieldAlert size={18} color="#f87171" style={{ flexShrink: 0, marginTop: '1px' }} />
+                <div style={{ fontSize: '12px', color: '#fca5a5', lineHeight: 1.5, flex: 1 }}>{dealError}</div>
+                <button
+                  onClick={() => setDealError(null)}
+                  style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: 0 }}
+                  aria-label="Dismiss"
+                >×</button>
+              </div>
+            )}
+
             {/* Raftra Anti-Bypass & Escrow Notice Banner */}
             <div style={{ background: 'linear-gradient(90deg, rgba(220, 38, 38, 0.12) 0%, rgba(255, 179, 0, 0.12) 100%)', borderBottom: '1px solid rgba(220, 38, 38, 0.3)', padding: '12px 24px', display: 'flex', gap: '12px', alignItems: 'center' }}>
               <ShieldAlert size={18} color="#FFB300" style={{ flexShrink: 0 }} />
               <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.9)', lineHeight: '1.4' }}>
-                <strong style={{ color: '#FFB300' }}>ESCROW SECURITY ACTIVE:</strong> Finalize deal below. Funds stay 100% locked in <b>Raftra Vault</b> until work is delivered & approved. Exchanging phone numbers/social DMs triggers <b>chat block</b>.
+                <strong style={{ color: '#FFB300' }}>KEEP THE DEAL ON RAFTRA:</strong> Agree the amount and deliverables below so both sides have the same record. Deals taken off-platform lose every protection Raftra can offer.
               </div>
             </div>
 
@@ -1431,9 +1598,15 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                         <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)', marginTop: '4px', marginBottom: '18px' }}>
                           Deliverables: {parsedContent.deliverables || 'UGC Video Reel'}
                         </div>
+                        {/* This records the agreed terms and opens the handoff to the creator.
+                            It does not open a payment page: no Razorpay order is created and no
+                            money moves, so the label must not promise one. */}
                         <GlowButton variant="glow" onClick={() => handlePayRazorpay(parsedContent.amount)} style={{ width: '100%', padding: '14px', fontSize: '14px', fontWeight: 800 }}>
-                          💳 Proceed to Secure Payment Page (Razorpay Escrow)
+                          ✅ Confirm Deal &amp; Contact Creator
                         </GlowButton>
+                        <div style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.55)', marginTop: '8px', lineHeight: 1.5 }}>
+                          Confirming records the agreed amount and deliverables. No payment is taken at this step.
+                        </div>
                       </div>
                     </div>
                   );
@@ -1444,8 +1617,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                     <div key={i} style={{ alignSelf: 'center', margin: '16px 0', width: '100%', maxWidth: '500px' }}>
                       <div style={{ background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', padding: '20px', borderRadius: '16px', textAlign: 'center', color: '#ffd700' }}>
                         <DollarSign size={28} style={{ marginBottom: '6px' }} />
-                        <div style={{ fontWeight: 800, fontSize: '18px' }}>Payment Complete & Vault Funded!</div>
-                        <div style={{ fontSize: '13px', marginTop: '4px', color: '#fff' }}>₹{parsedContent.amount.toLocaleString()} locked safely in Escrow. Confirmation email sent!</div>
+                        <div style={{ fontWeight: 800, fontSize: '18px' }}>Deal confirmed</div>
+                        <div style={{ fontSize: '13px', marginTop: '4px', color: '#fff' }}>₹{parsedContent.amount.toLocaleString()} agreed. Nothing has been charged yet — payment is arranged separately.</div>
                       </div>
                     </div>
                   );
@@ -1561,7 +1734,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             <div style={{ background: 'rgba(0, 230, 118, 0.08)', border: '1px solid rgba(0, 230, 118, 0.3)', borderRadius: '12px', padding: '12px 16px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <CheckCircle2 size={20} color="#00E676" style={{ flexShrink: 0 }} />
               <div style={{ fontSize: '12px', color: '#00E676', lineHeight: 1.4 }}>
-                <b>Raftra Escrow Guarantee</b>: Always negotiate & hire through Raftra Web Chat. Funds remain safe in Escrow until you review & approve final video deliverables. Off-platform deals waive all transparency & refund guarantees.
+                <b>Keep it on Raftra</b>: always negotiate &amp; hire through Raftra Web Chat, so the agreed amount and deliverables are recorded for both sides and payout is only confirmed after you review and approve the final deliverables. Off-platform deals waive all transparency &amp; refund guarantees.
               </div>
             </div>
 
@@ -1670,10 +1843,10 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               </div>
               <div>
                 <h3 style={{ fontSize: '20px', margin: '0 0 4px 0', color: '#fff', fontFamily: 'var(--font-heading)' }}>
-                  Deal Funded & Confirmation Email Sent! ✉️
+                  Deal confirmed
                 </h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                  Escrow payment of <b>₹{paidDealInfo.amount.toLocaleString()}</b> is securely locked in Raftra Vault.
+                  <b>₹{paidDealInfo.amount.toLocaleString()}</b> agreed with {paidDealInfo.creator.name}. No payment has been taken yet.
                 </p>
               </div>
             </div>
@@ -1681,7 +1854,8 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
             {/* Email Banner Notification */}
             <div style={{ background: 'rgba(0, 196, 204, 0.1)', border: '1px solid rgba(0, 196, 204, 0.3)', borderRadius: '12px', padding: '14px 18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ fontSize: '12px', color: '#00C4CC', lineHeight: 1.4 }}>
-                📬 <b>Official Receipt Sent</b>: Full contract deliverables & influencer contact details have been emailed to your registered brand address.
+                📋 <b>Keep a copy</b>: the agreed deliverables and the creator's contact details are below. No email is sent
+                automatically yet, so save them before closing this window.
               </div>
             </div>
 
@@ -1693,7 +1867,9 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
                 <div><span style={{ color: 'var(--text-muted)' }}>Creator:</span> <b style={{ color: '#fff' }}>{paidDealInfo.creator.name} ({paidDealInfo.creator.handle})</b></div>
                 <div><span style={{ color: 'var(--text-muted)' }}>Deliverables:</span> <b style={{ color: '#00E676' }}>UGC Video Reel + Story</b></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Vault Transaction ID:</span> <b style={{ color: '#5A52FF', fontFamily: 'var(--font-mono)' }}>RAFTRA-ESCROW-{Date.now().toString().slice(-6)}</b></div>
+                {/* A generated "RAFTRA-ESCROW-nnnnnn" string used to sit here. It referenced no
+                    transaction anywhere, which made an unpaid deal look settled. */}
+                <div><span style={{ color: 'var(--text-muted)' }}>Payment status:</span> <b style={{ color: '#FFB300' }}>Not yet paid</b></div>
                 <div><span style={{ color: 'var(--text-muted)' }}>WhatsApp Contact:</span> <b style={{ color: '#25D366' }}>{paidDealInfo.creator.phone || '+91 9892936665'}</b></div>
               </div>
             </div>
@@ -1724,7 +1900,7 @@ export const WorkspaceInfluencer: React.FC<{workspaceId: number}> = ({workspaceI
                 </button>
                 {paidDealInfo.creator.phone && (
                   <a
-                    href={`https://wa.me/${paidDealInfo.creator.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${paidDealInfo.creator.name}! Deal funded in Raftra Vault. Once deliverables are complete & approved, we will send your official verification token here for Team Raftra payout release!`)}`}
+                    href={`https://wa.me/${paidDealInfo.creator.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${paidDealInfo.creator.name}! We have confirmed the deal on Raftra — ₹${paidDealInfo.amount.toLocaleString()} for the agreed deliverables. Once the work is delivered and approved we will send your verification token here for payout.`)}`}
                     target="_blank"
                     rel="noreferrer"
                     style={{ background: 'rgba(37, 211, 102, 0.2)', border: '1px solid #25D366', color: '#25D366', padding: '10px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}

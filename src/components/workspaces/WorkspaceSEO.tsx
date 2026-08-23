@@ -139,7 +139,9 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
   return (
     <div className="glow-card">
       <h3 style={{ fontSize: '16px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Month-over-Month Change ({pipeline})
+        {/* Not month-over-month: the endpoint compares the two most recent runs, whatever the
+            gap between them. Two audits a day apart were being presented as a monthly trend. */}
+        <TrendingUp size={16} style={{ color: '#00ff9d' }} /> Change Since Last Run ({pipeline})
       </h3>
       {loading && <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>}
       {!loading && (!data || data.runs_available === 0) && (
@@ -156,7 +158,22 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
         <>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
             {new Date(data.previous_run.date).toLocaleDateString()} → {new Date(data.current_run.date).toLocaleDateString()}
+            {(() => {
+              // State the actual gap. Two runs an hour apart and two a quarter apart were
+              // rendering identically, which is what made "month-over-month" misleading.
+              const days = Math.round(
+                (new Date(data.current_run.date).getTime() - new Date(data.previous_run.date).getTime())
+                / 86400000);
+              if (days >= 1) return `  (${days} day${days === 1 ? '' : 's'} apart)`;
+              return '  (same day)';
+            })()}
             {'  ·  Score '}{data.previous_run.score} → <b style={{ color: '#fff' }}>{data.current_run.score}</b>
+            {(data.current_run.demo || data.previous_run.demo) && (
+              <span style={{ marginLeft: '8px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--warning)', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '5px', padding: '2px 6px' }}>
+                {data.current_run.demo && data.previous_run.demo ? 'BOTH RUNS DEMO'
+                  : data.current_run.demo ? 'LATEST RUN IS DEMO' : 'EARLIER RUN WAS DEMO'}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {data.changes.map((c: any) => {

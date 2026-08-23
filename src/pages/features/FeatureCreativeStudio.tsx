@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Sparkles, Bot, CheckCircle2, Loader2, ArrowRight, Upload, Play, Image as ImageIcon, 
-  Layers, Camera, Film, Sliders, Search, ShieldCheck, Wand2, ArrowUpRight, Cpu, 
-  BarChart2, Zap, Check, Eye, Lock, ChevronRight
+  Sparkles, CheckCircle2, Loader2, ArrowRight, Image as ImageIcon, 
+  Layers, Camera, Film, Search, ShieldCheck, Wand2, Zap, Check
 } from 'lucide-react';
 import { GlowButton } from '../../components/GlowButton';
 import { FeatureExplainerVideo } from '../../components/FeatureExplainerVideo';

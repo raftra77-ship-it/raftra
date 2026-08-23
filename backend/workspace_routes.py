@@ -931,13 +931,153 @@ def toggle_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(d
     return {"status": "success", "new_status": camp.status}
 
 # Creative Assets
+# ---------------------------------------------------------------------------------------
+# Generated ad images are stored in ad_assets.image_url. Providers that answer with bytes
+# (Hugging Face, any OpenAI-compatible b64_json response) get encoded as a data: URI and
+# saved verbatim, so a single row can hold well over a megabyte of base64. Returning those
+# inline made GET /creatives a multi-megabyte response that the dashboard re-downloaded on
+# every load and the browser could never cache.
+#
+# The list endpoint now hands back a URL pointing at the image instead. <img src> cannot
+# carry the Authorization header the rest of the API uses, so the URL is signed: the (already
+# authenticated) list call mints an HMAC over workspace, asset and a digest of the bytes.
+# That keeps sequential asset ids from being enumerable, and the digest makes the URL change
+# whenever the image does, so caching it forever is safe.
+_IMAGE_URL_TTL = "public, max-age=31536000, immutable"
+
+
+def _image_digest(data_uri: str) -> str:
+    """md5 of the stored text. Not a security property - the HMAC below is - but md5 is what
+    Postgres can compute in-database, which lets the list query hash the image without
+    selecting it."""
+    import hashlib
+    return hashlib.md5(data_uri.encode()).hexdigest()
+
+
+def _sign_image(workspace_id: int, asset_id: int, digest: str) -> str:
+    import hmac, hashlib
+    return hmac.new(auth.SECRET_KEY.encode(), f"{workspace_id}:{asset_id}:{digest}".encode(),
+                    hashlib.sha256).hexdigest()[:32]
+
+
+def _signed_image_url(workspace_id: int, asset_id: int, digest: str) -> str:
+    sig = _sign_image(workspace_id, asset_id, digest)
+    return f"/api/workspaces/{workspace_id}/creatives/{asset_id}/image?v={digest}&k={sig}"
+
+
+def _public_image_url(asset) -> Optional[str]:
+    """A data: URI becomes a signed URL; anything already a plain URL is passed through.
+    For a single already-loaded asset (save/detail responses); the list endpoint uses the
+    column-level query below so the blob never leaves the database."""
+    url = asset.image_url or ""
+    if not url.startswith("data:"):
+        return asset.image_url
+    return _signed_image_url(asset.workspace_id, asset.id, _image_digest(url))
+
+
+from pydantic import BaseModel as _CompetitorBase
+
+
+class CompetitorBody(_CompetitorBase):
+    competitor: str
+
+
+@router.post("/{workspace_id}/competitors/analyze")
+async def analyze_competitor_route(workspace_id: int, body: CompetitorBody,
+                                   db: Session = Depends(database.get_db),
+                                   current_user: models.User = Depends(auth.get_current_user)):
+    """Live competitor research from public sources - the competitor's own site plus search.
+
+    Deliberately NOT an ad library: Meta's Ad Library API only returns political and
+    social-issue ads outside the EU and Google has no Transparency Center API, so there is no
+    lawful feed of a rival's commercial creatives to read. This reports what the public web
+    actually shows, and returns its sources so every claim can be checked.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    name = (body.competitor or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Enter a competitor name or website.")
+
+    from core.competitors import analyze_competitor
+    try:
+        return await analyze_competitor(name)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Competitor research failed: {e}")
+
+
+@router.get("/{workspace_id}/creatives/{asset_id}/image")
+def get_creative_image(workspace_id: int, asset_id: int, v: str, k: str,
+                       db: Session = Depends(database.get_db)):
+    """Serve one generated image's bytes. Authorised by the signature in the query string
+    rather than a bearer token, because this URL is loaded by <img src>."""
+    import base64, hmac as _hmac
+    from fastapi import Response
+
+    asset = db.query(models.AdAsset).filter(models.AdAsset.id == asset_id,
+                                            models.AdAsset.workspace_id == workspace_id).first()
+    if not asset or not (asset.image_url or "").startswith("data:"):
+        raise HTTPException(status_code=404, detail="No stored image for this asset")
+
+    digest = _image_digest(asset.image_url)
+    # compare_digest on both halves: `v` must match the current bytes (so a stale URL for a
+    # replaced image 404s instead of serving the wrong picture) and `k` must be our signature.
+    if not (_hmac.compare_digest(v, digest)
+            and _hmac.compare_digest(k, _sign_image(workspace_id, asset_id, digest))):
+        raise HTTPException(status_code=404, detail="No stored image for this asset")
+
+    header, _, payload = asset.image_url.partition(",")
+    media_type = header[5:].split(";")[0] or "image/png"   # strip the leading "data:"
+    try:
+        content = base64.b64decode(payload)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Stored image is not valid base64")
+    return Response(content=content, media_type=media_type,
+                    headers={"Cache-Control": _IMAGE_URL_TTL})
+
+
 @router.get("/{workspace_id}/creatives", response_model=List[schemas.AdAssetResponse])
 def get_creatives(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
-    assets = db.query(models.AdAsset).filter(models.AdAsset.workspace_id == workspace_id).order_by(models.AdAsset.id.desc()).all()
-    return assets
+    # Deliberately column-level rather than db.query(AdAsset): selecting the whole row pulls
+    # every base64 image_url out of the database, which for this table is ~9MB of traffic per
+    # call even though none of it reaches the response. Postgres hashes the blob in place and
+    # only the hash comes back.
+    from sqlalchemy import case, func
+    is_data = models.AdAsset.image_url.like("data:%")
+    rows = (
+        db.query(
+            models.AdAsset.id,
+            models.AdAsset.headline,
+            models.AdAsset.body_text,
+            models.AdAsset.cta,
+            models.AdAsset.type,
+            models.AdAsset.video_url,
+            models.AdAsset.status,
+            case((is_data, None), else_=models.AdAsset.image_url).label("plain_url"),
+            case((is_data, func.md5(models.AdAsset.image_url)), else_=None).label("digest"),
+        )
+        .filter(models.AdAsset.workspace_id == workspace_id)
+        .order_by(models.AdAsset.id.desc())
+        .all()
+    )
+
+    return [
+        schemas.AdAssetResponse(
+            id=r.id,
+            headline=r.headline,
+            body_text=r.body_text,
+            cta=r.cta,
+            type=r.type,
+            video_url=r.video_url,
+            status=r.status,
+            image_url=(_signed_image_url(workspace_id, r.id, r.digest) if r.digest else r.plain_url),
+        )
+        for r in rows
+    ]
 
 @router.post("/{workspace_id}/creatives/save", response_model=schemas.AdAssetResponse)
 def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -1124,8 +1264,13 @@ def seo_comparison(workspace_id: int, pipeline: str = "SEO",
         "pipeline": pipeline,
         "target_url": (current.keywords_data or {}).get("target_url"),
         "runs_available": len(runs),
-        "current_run": {"date": current.created_at, "score": current.score},
-        "previous_run": {"date": previous.created_at, "score": previous.score} if previous else None,
+        # Some early runs were recorded in demo mode. Pass the flag through so the UI can mark
+        # them: a demo score sitting unlabelled next to real crawls reads as a real result.
+        "current_run": {"date": current.created_at, "score": current.score,
+                        "demo": bool((current.keywords_data or {}).get("demo"))},
+        "previous_run": ({"date": previous.created_at, "score": previous.score,
+                          "demo": bool((previous.keywords_data or {}).get("demo"))}
+                         if previous else None),
         "changes": changes,
         "ai_visibility": ai_visibility,
         "note": None if previous else "Only one run so far — the comparison fills in on the next run.",
@@ -1587,6 +1732,101 @@ def get_influencers(workspace_id: int, db: Session = Depends(database.get_db), c
     influencers = db.query(models.Influencer).all()
     return influencers
 
+# Creators reach the marketplace UI from three places: this table, a bundled JSON file, and a
+# Google Sheet sync. Only rows in this table have the numeric id that chat messages and deals
+# are keyed on, so anyone arriving from the sheet or the file could be browsed but never
+# transacted with. This imports them, matched on handle, so the rest of the marketplace can
+# reference them.
+class ImportCreator(_CompetitorBase):
+    name: str
+    handle: str
+    platform: Optional[str] = "instagram"
+    niche: Optional[str] = None
+    base_rate: Optional[float] = 0.0
+    fit_score: Optional[int] = None
+    success_rate: Optional[int] = None
+
+
+class ImportCreatorsBody(_CompetitorBase):
+    creators: List[ImportCreator]
+
+
+def _normalise_handle(value: str) -> str:
+    return (value or "").strip().lstrip("@").lower()
+
+
+@router.post("/{workspace_id}/influencers/import")
+def import_influencers(workspace_id: int, body: ImportCreatorsBody,
+                       db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Upsert marketplace creators by handle. Idempotent: re-importing the same sheet updates
+    the catalogue fields rather than creating duplicates."""
+    _require_workspace(workspace_id, db, current_user)
+
+    incoming = body.creators or []
+    if not incoming:
+        return {"created": 0, "updated": 0, "skipped": 0, "ids": {}}
+    if len(incoming) > 200:
+        raise HTTPException(status_code=413, detail="Import at most 200 creators per request.")
+
+    # One pass over existing rows keyed by normalised handle. Rows with a blank handle (a
+    # creator who signed up but never set one) must not match anything.
+    existing = {}
+    for row in db.query(models.Influencer).all():
+        key = _normalise_handle(row.handle)
+        if key:
+            existing.setdefault(key, row)
+
+    created = updated = skipped = 0
+    ids = {}
+
+    for item in incoming:
+        handle = _normalise_handle(item.handle)
+        if not handle or not (item.name or "").strip():
+            skipped += 1
+            continue
+
+        row = existing.get(handle)
+        if row:
+            # Catalogue fields follow the source; user_id and status belong to the creator's
+            # own account and lifecycle, so they are never overwritten by an import.
+            row.name = item.name or row.name
+            row.platform = item.platform or row.platform
+            row.niche = item.niche or row.niche
+            if item.base_rate:
+                row.base_rate = item.base_rate
+            if item.fit_score is not None:
+                row.fit_score = item.fit_score
+            if item.success_rate is not None:
+                row.success_rate = item.success_rate
+            updated += 1
+        else:
+            row = models.Influencer(
+                name=item.name.strip(),
+                handle=handle,
+                platform=item.platform or "instagram",
+                niche=item.niche,
+                base_rate=item.base_rate or 0.0,
+                fit_score=item.fit_score,
+                success_rate=item.success_rate,
+                status="available",
+                # Left global rather than owned by the importing workspace: the marketplace
+                # listing returns every influencer so any brand can discover them.
+                workspace_id=None,
+            )
+            db.add(row)
+            existing[handle] = row
+            created += 1
+
+    db.commit()
+
+    for handle, row in existing.items():
+        if row.id:
+            ids[handle] = row.id
+
+    return {"created": created, "updated": updated, "skipped": skipped, "ids": ids}
+
+
 @router.get("/{workspace_id}/influencers/{influencer_id}/chat")
 def get_chat_history(workspace_id: int, influencer_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
@@ -1626,18 +1866,26 @@ async def verify_creator_profile(req: VerifyCreatorRequest, db: Session = Depend
     from agents.influencers import verify_instagram_profile
     result = await verify_instagram_profile(req.username, req.niche)
     
-    if result.get("verification_status") == "verified":
-        inf.handle = req.username
-        inf.niche = req.niche
-        inf.base_rate = req.base_rate
-        inf.recent_collabs = result.get("recent_collabs", [])
-        inf.recent_posts = result.get("recent_posts", [])
-        inf.recent_reviews = result.get("recent_reviews", [])
-        db.commit()
-        db.refresh(inf)
+    # The details the creator typed are theirs and are saved either way. Collaborations, posts
+    # and reviews are only stored when they were genuinely read from the profile: writing a
+    # simulated result here is what put invented brand endorsements on a real creator's card.
+    inf.handle = req.username
+    inf.niche = req.niche
+    inf.base_rate = req.base_rate
+    if result.get("verification_status") == "verified" and not result.get("simulated"):
+        inf.recent_collabs = result.get("recent_collabs", []) or []
+        inf.recent_posts = result.get("recent_posts", []) or []
+        inf.recent_reviews = result.get("recent_reviews", []) or []
+    db.commit()
+    db.refresh(inf)
         
     return {
         "status": "success",
+        # Passed through so the portal can say what actually happened rather than showing a
+        # verified badge for a check that never ran.
+        "verification_status": result.get("verification_status", "unverified"),
+        "simulated": bool(result.get("simulated")),
+        "reason": result.get("reason"),
         "data": result,
         "influencer": {
             "id": inf.id,
@@ -1773,38 +2021,48 @@ async def send_my_chat(workspace_id: int, msg: ChatMessageCreate, db: Session = 
     return new_msg
 
 # Metrics endpoint
+# Campaign statuses that mean the campaign was actually launched somewhere, and the subset
+# of those that are running right now. models.Campaign stores these uppercase, but rows
+# written by older code and by platform syncs are inconsistent, so comparisons upper() first.
+_LIVE_CAMPAIGN_STATUSES = {"ACTIVE", "PUBLISHED", "PUBLISHED_DEMO"}
+_LAUNCHED_CAMPAIGN_STATUSES = _LIVE_CAMPAIGN_STATUSES | {"PAUSED"}
+
+
 @router.get("/{workspace_id}/metrics")
 def get_workspace_metrics(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
-    
+
     campaigns = db.query(models.Campaign).filter(models.Campaign.workspace_id == workspace_id).all()
     seo_audits = db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id).all()
-    
-    if not campaigns:
-        return {
-            "revenue": 0,
-            "roas": 0.0,
-            "seoVisibility": 0,
-            "aiVisibility": 0,
-            "campaignHealth": 0,
-            "growthScore": 0
-        }
-    
-    total_budget = sum(c.budget for c in campaigns)
-    avg_roas = sum(c.roas for c in campaigns) / len(campaigns) if campaigns else 0.0
-    avg_seo = sum(a.score for a in seo_audits) / len(seo_audits) if seo_audits else 0
-    active_count = sum(1 for c in campaigns if c.status == 'active')
-    health = int((active_count / len(campaigns)) * 100) if campaigns else 0
-    
+
+    total_budget = sum(c.budget or 0 for c in campaigns)
+    avg_roas = (sum(c.roas or 0 for c in campaigns) / len(campaigns)) if campaigns else 0.0
+    # SEO/GEO scores are independent of campaigns. This used to sit behind an early return
+    # for workspaces with no campaigns, which reported 0% SEO visibility to any workspace
+    # that had run audits but never built a campaign.
+    avg_seo = (sum(a.score or 0 for a in seo_audits) / len(seo_audits)) if seo_audits else 0
+
+    # Campaign health = share of launched campaigns that are currently running. The previous
+    # version counted `c.status == 'active'` - a lowercase literal no row ever holds - so
+    # this tile read 0% in every workspace regardless of what was actually running.
+    statuses = [(c.status or "").upper() for c in campaigns]
+    launched = [s for s in statuses if s in _LAUNCHED_CAMPAIGN_STATUSES]
+    live = [s for s in launched if s in _LIVE_CAMPAIGN_STATUSES]
+    health = int(round(len(live) / len(launched) * 100)) if launched else 0
+
     return {
         "revenue": int(total_budget * avg_roas),
         "roas": round(avg_roas, 1),
-        "seoVisibility": int(avg_seo) if avg_seo else 0,
-        "aiVisibility": int(avg_seo * 0.85) if avg_seo else 0,
+        "seoVisibility": int(avg_seo),
+        "aiVisibility": int(avg_seo * 0.85),
         "campaignHealth": health,
-        "growthScore": min(100, int((health + int(avg_seo) + int(avg_roas * 10)) / 3)) if campaigns else 0
+        # Counts behind the health percentage, so the dashboard can say what it is a share
+        # of instead of captioning the tile "Optimal".
+        "campaignsLive": len(live),
+        "campaignsLaunched": len(launched),
+        "growthScore": min(100, int((health + int(avg_seo) + int(avg_roas * 10)) / 3)),
     }
 
 from pydantic import BaseModel

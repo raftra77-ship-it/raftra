@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Sparkles, Check, CheckCircle2, Clock, AlertTriangle, Plus,
-  FileText, Send, ShieldCheck, DollarSign, MessageCircle, Eye,
-  X, ChevronRight, Award, Upload, CheckCircle, RefreshCw, Filter, Bell
+  Check, Plus,
+  MessageCircle, Eye,
+  X, ChevronRight
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -821,7 +821,7 @@ export const BrandPostedDealsView: React.FC<{
                     "{app.proposal_text}"
                   </p>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Status: <b style={{ color: '#ffae00' }}>{app.status}</b></span>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <GlowButton variant="secondary" onClick={() => onViewCreatorProfile && onViewCreatorProfile(app.creator_handle)} style={{ fontSize: '11.5px', padding: '5px 10px' }}>

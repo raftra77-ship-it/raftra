@@ -211,10 +211,16 @@ def _run_light_migrations():
 
 _run_light_migrations()
 
+import influencer_deal_routes
+import posted_deal_routes
+import payout_routes
 app.include_router(auth.router)
 app.include_router(payments.router)
 app.include_router(agent_routes.router)
 app.include_router(workspace_routes.router)
+app.include_router(influencer_deal_routes.router)
+app.include_router(posted_deal_routes.router)
+app.include_router(payout_routes.router)
 app.include_router(connector_routes.router)
 app.include_router(publishing_routes.router)
 app.include_router(creative_routes.router)

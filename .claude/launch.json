@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "raftra-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite"],
+      "port": 5173
+    },
+    {
+      "name": "raftra-api",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd '/Users/apple/Downloads/raftra-feature-Campaign 3/backend' && exec ./venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8005"],
+      "port": 8005
+    }
+  ]
+}

@@ -95,7 +95,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         top: '16px',
         display: 'flex',
         alignItems: 'center',
-        justify: isCollapsed ? 'center' : 'space-between',
+        justifyContent: isCollapsed ? 'center' : 'space-between',
         background: 'rgba(14, 14, 26, 0.88)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
@@ -122,7 +122,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           alignItems: 'center',
           gap: '6px',
           flex: isCollapsed ? '0 0 auto' : '1 1 0%',
-          justify: isCollapsed ? 'center' : 'flex-start'
+          justifyContent: isCollapsed ? 'center' : 'flex-start'
         }}
         onClick={(e) => {
           e.stopPropagation();

@@ -59,7 +59,7 @@ export const FeatureExplainerVideo: React.FC<FeatureExplainerVideoProps> = ({
   const [carouselSlide, setCarouselSlide] = useState(0);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (isPlaying) {
       interval = setInterval(() => {
         setProgress((prev) => {
@@ -297,7 +297,7 @@ export const FeatureExplainerVideo: React.FC<FeatureExplainerVideoProps> = ({
                     overflow: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
-                    justify: 'space-between',
+                    justifyContent: 'space-between',
                     padding: '10px',
                     border: '1px solid rgba(255,255,255,0.2)'
                   }}>
@@ -441,7 +441,7 @@ export const FeatureExplainerVideo: React.FC<FeatureExplainerVideoProps> = ({
                   padding: '20px',
                   boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
                   display: 'flex',
-                  justify: 'space-between',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
                   flexWrap: 'wrap',
                   gap: '12px'

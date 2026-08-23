@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, MessageCircle, DollarSign, Settings, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, ExternalLink, BadgeCheck, Camera, Check, Activity, LogOut, Bell, FileText } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, DollarSign, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, BadgeCheck, Activity, LogOut, FileText } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import parsedCreatorsData from '../data/influencers_parsed.json';
 import { CreatorBrandOpportunitiesView, CreatorApplicationsView } from './workspaces/PostedDealsWorkflow';
@@ -92,6 +92,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const [verifyForm, setVerifyForm] = useState({ username: '', niche: '', base_rate: 0 });
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState<'unverified'|'pending'|'verified'|'rejected'>('unverified');
+  // Why the check ended where it did. Instagram serves a login wall to scrapers, so
+  // "unverified" is the normal outcome and the creator deserves to know that rather than
+  // being shown a silent failure - or, as before, a verified badge for a check that never ran.
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
 
   const [allBrands, setAllBrands] = useState<{id: number, name: string}[]>([]);
   const [showDiscover, setShowDiscover] = useState(false);
@@ -515,22 +519,36 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(verifyForm)
       });
-      const data = await res.json();
-      if (data.status === 'success' && data.data.verification_status === 'verified') {
-        setVerificationStatus('verified');
-        setProfileForm({
-          avatar: data.influencer.avatar || '',
-          recent_posts: data.influencer.recent_posts || [],
-          recent_collabs: data.influencer.recent_collabs || [],
-          recent_reviews: data.influencer.recent_reviews || []
-        });
-      } else {
-        setVerificationStatus('rejected');
-        alert("Verification failed: Fake followers detected or account private.");
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        throw new Error((data && data.detail) || `server returned ${res.status}`);
       }
-    } catch (e) {
+
+      const status = data.verification_status || 'unverified';
+      setProfileForm({
+        avatar: data.influencer?.avatar || '',
+        recent_posts: data.influencer?.recent_posts || [],
+        recent_collabs: data.influencer?.recent_collabs || [],
+        recent_reviews: data.influencer?.recent_reviews || []
+      });
+
+      if (status === 'verified') {
+        setVerificationStatus('verified');
+        setVerifyMessage('Your profile was read and matched. Details saved.');
+      } else if (status === 'rejected_fake_followers') {
+        setVerificationStatus('rejected');
+        setVerifyMessage('The profile showed fake-follower signals, so it was not verified. Your details were still saved.');
+      } else {
+        // Not a failure of the save - only of the check.
+        setVerificationStatus('unverified');
+        setVerifyMessage(
+          (data.reason || 'The profile could not be read automatically.')
+          + ' Your details are saved and live on your card; the verified badge stays off until a check succeeds.');
+      }
+    } catch (e: any) {
       console.error(e);
-      setVerificationStatus('rejected');
+      setVerificationStatus('unverified');
+      setVerifyMessage(`Could not reach verification: ${e?.message || 'server unreachable'}`);
     } finally {
       setIsVerifying(false);
     }
@@ -1039,6 +1057,70 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               </p>
             </div>
 
+            {/* ---------------------------------------------------------------- verification
+                The handler and the endpoint for this both existed already; there was simply no
+                screen that called them, so no creator could ever be checked. */}
+            <div className="glow-card" style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                <h3 style={{ fontSize: '17px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>
+                  Verify your profile
+                </h3>
+                <span style={{
+                  fontSize: '10px', fontWeight: 800, letterSpacing: '0.05em', padding: '3px 9px', borderRadius: '20px',
+                  color: verificationStatus === 'verified' ? '#00E676' : verificationStatus === 'rejected' ? '#ff5252' : 'var(--text-muted)',
+                  background: verificationStatus === 'verified' ? 'rgba(0,230,118,0.12)' : verificationStatus === 'rejected' ? 'rgba(255,82,82,0.12)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${verificationStatus === 'verified' ? 'rgba(0,230,118,0.35)' : verificationStatus === 'rejected' ? 'rgba(255,82,82,0.35)' : 'var(--border-color)'}`,
+                }}>
+                  {verificationStatus === 'verified' ? 'VERIFIED' : verificationStatus === 'rejected' ? 'NOT VERIFIED' : 'UNVERIFIED'}
+                </span>
+              </div>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 18px 0', lineHeight: 1.6 }}>
+                Saves your handle, niche and rate to your marketplace card, and tries to read your public
+                Instagram profile to confirm it. Instagram often blocks automated reads, so the badge may stay
+                off — your details are saved either way.
+              </p>
+
+              <form onSubmit={handleVerifyProfile} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', alignItems: 'end' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>INSTAGRAM HANDLE</label>
+                  <input
+                    type="text" value={verifyForm.username} required
+                    onChange={e => setVerifyForm({ ...verifyForm, username: e.target.value.replace(/^@/, '') })}
+                    placeholder="yourhandle"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 14px', background: 'rgba(0,0,0,0.45)', border: '1px solid var(--border-color)', borderRadius: '9px', color: '#fff', fontSize: '13.5px', outline: 'none' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>NICHE</label>
+                  <input
+                    type="text" value={verifyForm.niche} required
+                    onChange={e => setVerifyForm({ ...verifyForm, niche: e.target.value })}
+                    placeholder="Fashion, Tech, Fitness…"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 14px', background: 'rgba(0,0,0,0.45)', border: '1px solid var(--border-color)', borderRadius: '9px', color: '#fff', fontSize: '13.5px', outline: 'none' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>RATE PER POST (₹)</label>
+                  <input
+                    type="number" min="0" value={verifyForm.base_rate || ''} required
+                    onChange={e => setVerifyForm({ ...verifyForm, base_rate: Number(e.target.value) })}
+                    placeholder="5000"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 14px', background: 'rgba(0,0,0,0.45)', border: '1px solid var(--border-color)', borderRadius: '9px', color: '#fff', fontSize: '13.5px', outline: 'none' }}
+                  />
+                </div>
+                <GlowButton variant="glow" type="submit" disabled={isVerifying} style={{ padding: '12px 20px', fontSize: '13.5px' }}>
+                  {isVerifying ? 'Checking…' : 'Save & Verify'}
+                </GlowButton>
+              </form>
+
+              {verifyMessage && (
+                <p style={{
+                  fontSize: '12.5px', lineHeight: 1.6, margin: '16px 0 0 0',
+                  color: verificationStatus === 'verified' ? '#00E676' : verificationStatus === 'rejected' ? '#ff8095' : 'var(--warning)',
+                }}>{verifyMessage}</p>
+              )}
+            </div>
+
             {/* LIVE MARKETPLACE CARD PREVIEW - EXACT USER MARKETPLACE CARD */}
             <div className="glow-card" style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(20,20,35,0.95), rgba(10,10,20,0.98))', border: '1.5px solid #00E676' }}>
               <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1109,7 +1191,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   <div style={{ marginTop: '8px' }}>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>AVAILABLE FOR:</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {(cardCustomizer.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post']).map(d => (
+                      {(cardCustomizer.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post']).map((d: string) => (
                         <span
                           key={d}
                           style={{
@@ -1315,7 +1397,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   
                   const token = localStorage.getItem('token');
                   try {
-                    await fetch('/api/workspaces/influencer/me/profile', {
+                    const res = await fetch('/api/workspaces/influencer/me/profile', {
                       method: 'POST',
                       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -1325,16 +1407,30 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                         category: cardCustomizer.category,
                         followers: cardCustomizer.followers,
                         expectedPrice: cardCustomizer.expectedPrice,
-                        base_rate: parseFloat((cardCustomizer.expectedPrice || '').replace(/[^0-9.]/g, '')) || 0,
+                        // Rates are entered as ranges ("₹2,000 - ₹5,000"). Stripping every
+                        // non-digit ran the two ends together into 20005000 and wrote that as
+                        // the rate; take the first number, the price a brand starts from.
+                        base_rate: (() => {
+                          const m = String(cardCustomizer.expectedPrice || '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+                          return m ? Number(m[0]) : 0;
+                        })(),
                         recent_posts: profileForm.recent_posts,
                         recent_collabs: profileForm.recent_collabs,
                         recent_reviews: profileForm.recent_reviews
                       })
                     });
-                  } catch (e) {
-                    console.warn("Backend profile sync optional warning:", e);
+                    // A 4xx comes back as a response, not a throw, so without this check a
+                    // rejected save still reported success.
+                    if (!res.ok) {
+                      const d = await res.json().catch(() => null);
+                      throw new Error((d && d.detail) || `server returned ${res.status}`);
+                    }
+                    alert("✅ Profile card updated and synced with the Raftra marketplace.");
+                  } catch (e: any) {
+                    console.warn("Profile sync failed:", e);
+                    alert("Saved on this device, but the marketplace copy could not be updated: "
+                      + (e?.message || 'server unreachable') + "\n\nOther brands will still see your previous details.");
                   }
-                  alert("✅ Profile card updated & synced live with Raftra Marketplace!");
                 }} style={{ padding: '12px 28px' }}>
                   💾 Save & Sync Card with Marketplace
                 </GlowButton>

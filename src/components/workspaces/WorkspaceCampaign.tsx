@@ -77,6 +77,7 @@ const Pill: React.FC<{ status: string; label?: string }> = ({ status, label }) =
     DEMO: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     REAL: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
     SAMPLE: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
+    LIVE: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
   };
   const s = map[status] || map.Pending;
   return <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.4px', color: s.c, background: s.b, border: `1px solid ${s.c}33`, borderRadius: '20px', padding: '3px 10px', whiteSpace: 'nowrap' }}>{label ?? status}</span>;
@@ -736,6 +737,49 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const canPublish = approved && platformsReady && confirmed && !published;
 
   // ── sample performance feed (mock data, kept at top) ──
+  // Real optimisation feed. The backend has computed this all along - Meta insights run
+  // through campaign_optimizer.analyze(), which decides what to scale, rotate or kill from
+  // actual spend, ROAS, CTR and frequency, and says "not enough data yet" rather than
+  // guessing. The endpoint was simply never called, so the panel below showed sample rows.
+  const [liveFeed, setLiveFeed] = useState<any[] | null>(null);
+  const [feedSummary, setFeedSummary] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!workspaceId || !metaAccount.connected) { setLiveFeed(null); return; }
+    let cancelled = false;
+    fetch(`/api/connectors/meta/${workspaceId}/recommendations?date_preset=last_7d`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled || !d) return;
+        setLiveFeed(Array.isArray(d.recommendations) ? d.recommendations : []);
+        setFeedSummary(d.summary || null);
+      })
+      .catch(() => { /* the sample feed below stays, clearly labelled */ });
+    return () => { cancelled = true; };
+  }, [workspaceId, metaAccount.connected]);
+
+  // Optimiser signal -> how the card reads. Colours match the sample rows so the panel looks
+  // the same whether it is showing real decisions or the example format.
+  const SIGNAL_STYLE: Record<string, { tag: string; color: string; bg: string; bd: string; icon: any }> = {
+    scaling: { tag: 'Scale (high performance)', color: '#00e676', bg: 'rgba(0,230,118,0.08)', bd: 'rgba(0,230,118,0.3)', icon: CheckCircle2 },
+    working: { tag: 'Working', color: '#00e676', bg: 'rgba(0,230,118,0.08)', bd: 'rgba(0,230,118,0.3)', icon: CheckCircle2 },
+    underperforming: { tag: 'Underperforming', color: '#ffb74d', bg: 'rgba(255,183,77,0.08)', bd: 'rgba(255,183,77,0.3)', icon: AlertTriangle },
+    wasting: { tag: 'Wasting spend', color: '#ff5252', bg: 'rgba(255,82,82,0.08)', bd: 'rgba(255,82,82,0.3)', icon: OctagonX },
+    learning: { tag: 'Still learning', color: '#9c7bff', bg: 'rgba(156,123,255,0.08)', bd: 'rgba(156,123,255,0.3)', icon: RefreshCw },
+  };
+
+  const formatEvidence = (evidence: any): string => {
+    if (!evidence || typeof evidence !== 'object') return '';
+    const bits: string[] = [];
+    if (evidence.spend != null) bits.push(`Spend ${money(evidence.spend)}`);
+    if (evidence.roas != null) bits.push(`ROAS ${Number(evidence.roas).toFixed(2)}×`);
+    if (evidence.ctr != null) bits.push(`CTR ${Number(evidence.ctr).toFixed(2)}%`);
+    if (evidence.frequency != null) bits.push(`Freq ${Number(evidence.frequency).toFixed(1)}×`);
+    if (evidence.cpa != null) bits.push(`CPA ${money(evidence.cpa)}`);
+    if (evidence.purchases != null) bits.push(`${evidence.purchases} conv`);
+    return bits.join('  |  ');
+  };
+
   const sampleFeed = [
     { id: 'f1', tag: 'Scale (high performance)', icon: CheckCircle2, color: '#00e676', bg: 'rgba(0,230,118,0.08)', bd: 'rgba(0,230,118,0.3)', name: 'Diwali Festive Sale (Meta)', metrics: 'ROAS 4.2×  |  CPA ₹900  |  Spend ₹35,000', rec: 'Running 38% above ROAS target. Scale daily budget +25%.', act: 'Scale Budget +25%' },
     { id: 'f2', tag: 'Rotate creative (fatigue)', icon: AlertTriangle, color: '#ffb74d', bg: 'rgba(255,183,77,0.08)', bd: 'rgba(255,183,77,0.3)', name: 'Summer Apparel Retargeting', metrics: 'Frequency 4.1×  |  CTR 0.8%  |  Skip 74%', rec: 'Frequency hit 4.1× with a high skip rate. Rotate the creative.', act: 'Rotate Creative' },
@@ -922,11 +966,48 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           <h3 style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: '9px', marginBottom: 0 }}>
             <Activity size={17} color="var(--primary)" /> Daily Performance &amp; AI Action Feed
           </h3>
-          <Pill status="SAMPLE" />
+          <Pill status={liveFeed && liveFeed.length > 0 ? 'LIVE' : 'SAMPLE'} />
         </div>
         <p style={{ ...sectionHint, marginBottom: '14px' }}>
-          Once campaigns are live this shows what to scale, rotate or kill from real numbers. These are example rows so you can see the format.
+          {liveFeed && liveFeed.length > 0
+            ? `From your Meta delivery over the last 7 days${feedSummary ? ` — ${feedSummary.campaigns_analyzed} campaign${feedSummary.campaigns_analyzed === 1 ? '' : 's'}, ${money(feedSummary.total_spend)} spent, blended ROAS ${Number(feedSummary.blended_roas || 0).toFixed(2)}× against a ${Number(feedSummary.target_roas || 0).toFixed(1)}× target` : ''}.`
+            : metaAccount.connected
+              ? 'Meta is connected but has no delivery data for the last 7 days yet, so these are example rows showing the format. Real decisions appear here once campaigns start spending.'
+              : 'Once campaigns are live this shows what to scale, rotate or kill from real numbers. These are example rows so you can see the format.'}
         </p>
+
+        {liveFeed && liveFeed.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+            {liveFeed.map((r: any, i: number) => {
+              const st = SIGNAL_STYLE[r.signal] || SIGNAL_STYLE.learning;
+              const Icon = st.icon;
+              const metrics = formatEvidence(r.evidence);
+              return (
+                <div key={r.campaign_id || i} style={{ padding: '15px', background: st.bg, border: `1px solid ${st.bd}`, borderRadius: '11px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: st.color, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '7px' }}>
+                      <Icon size={14} color={st.color} /> {r.title || st.tag}
+                    </div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '4px' }}>{r.campaign_name}</div>
+                    {metrics && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>{metrics}</div>
+                    )}
+                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{r.detail}</div>
+                    {r.expected && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.5 }}>{r.expected}</div>
+                    )}
+                  </div>
+                  {/* Applying a recommendation changes budget or pauses delivery on a live ad
+                      account. The endpoints exist, but spending real money from a click needs
+                      a deliberate decision, so this reads out rather than acts for now. */}
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', borderTop: `1px solid ${st.bd}`, paddingTop: '9px' }}>
+                    Apply this in Meta Ads Manager — one-click actions are not wired up yet.
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
           {sampleFeed.map(f => {
             const done = executed.includes(f.id);
@@ -950,6 +1031,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             );
           })}
         </div>
+        )}
       </div>
 
       {/* ── 2. the progress bar ── */}
