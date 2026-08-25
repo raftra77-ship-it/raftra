@@ -1,4 +1,5 @@
-﻿import { motion } from 'framer-motion';
+import React from 'react';
+import { motion } from 'framer-motion';
 import { Users2, Target, Cpu, CheckCircle2, ArrowRight, Building2, Zap, LayoutDashboard, Search, BarChart3, Share2, Users } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -13,7 +14,7 @@ export const AboutUs = () => {
         <div style={{ position: 'absolute', top: '10%', right: '10%', width: '600px', height: '600px', background: 'var(--accent)', filter: 'blur(300px)', opacity: 0.1, borderRadius: '50%' }}></div>
         <div style={{ position: 'absolute', bottom: '10%', left: '10%', width: '500px', height: '500px', background: 'var(--primary)', filter: 'blur(250px)', opacity: 0.05, borderRadius: '50%' }}></div>
         
-        <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px', position: 'relative', zIndex: 1 }}>
+        <div style={{ maxWidth: '1680px', margin: '0 auto', padding: '40px 60px', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '80px' }}>
             <motion.div 
               initial={{ opacity: 0, scale: 0.8 }}
@@ -21,17 +22,17 @@ export const AboutUs = () => {
               style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: 'rgba(255,82,150,0.1)', borderRadius: '100px', border: '1px solid rgba(255,82,150,0.2)', marginBottom: '24px' }}
             >
               <Users2 size={16} color="var(--accent)" />
-              <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>About Us</span>
+              <span style={{ fontSize: '15px', fontWeight: '600', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>About Us</span>
             </motion.div>
             <motion.h1 
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-              style={{ fontSize: '56px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
+              style={{ fontSize: '64px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
             >
               Raftra AI
             </motion.h1>
             <motion.p 
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-              style={{ color: 'var(--text-secondary)', fontSize: '20px', maxWidth: '800px', margin: '0 auto', lineHeight: 1.6 }}
+              style={{ color: 'var(--text-secondary)', fontSize: '22px', maxWidth: '1150px', margin: '0 auto', lineHeight: 1.6 }}
             >
               An AI Growth Operating System built to help businesses create, launch, optimize, and scale their marketing from one unified platform.
             </motion.p>
@@ -49,8 +50,62 @@ export const AboutUs = () => {
                 </p>
               </div>
             </div>
-            <div style={{ width: '120px', height: '120px', background: 'linear-gradient(135deg, rgba(90,82,255,0.2) 0%, rgba(255,82,150,0.2) 100%)', borderRadius: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <Target size={56} color="var(--primary)" />
+            <div style={{ 
+              width: '140px', 
+              height: '140px', 
+              background: 'linear-gradient(135deg, rgba(90, 82, 255, 0.25) 0%, rgba(0, 255, 157, 0.15) 100%)', 
+              borderRadius: '28px', 
+              display: 'flex', 
+              flexDirection: 'column',
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '2px',
+              border: '1px solid rgba(90, 82, 255, 0.45)',
+              boxShadow: '0 12px 40px -10px rgba(90, 82, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Cpu size={32} color="var(--accent)" />
+                <span style={{ fontSize: '38px', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#ffffff', letterSpacing: '-0.03em' }}>R</span>
+              </div>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--success)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>RAFTRA AI</span>
+            </div>
+          </motion.div>
+
+          {/* OUR FOUNDING VISION & CREDIBILITY RESEARCH */}
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px' }}>
+            <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '16px', textAlign: 'center' }}>Backed by Global Industry Data & Visionary Leadership</h2>
+            <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '40px', fontSize: '17px', maxWidth: '800px', margin: '0 auto 40px auto' }}>
+              Why the world's fastest-growing brands are switching to Agentic AI and Open-Web Search Engine Optimization.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+              {/* Taboola Study Card */}
+              <div style={{ padding: '32px', background: 'rgba(90,82,255,0.06)', borderRadius: '24px', border: '1px solid rgba(90,82,255,0.25)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', marginBottom: '12px' }}>TABOOLA RESEARCH STUDY (2026)</div>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#fff', marginBottom: '12px', lineHeight: 1.2 }}>76% Benefit from Agentic AI</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: 0 }}>
+                  A groundbreaking Taboola study reveals that <strong>76% of digital advertisers benefit from Agentic AI</strong>, with <strong>86% willing to shift advertising budgets to the Open Web & Answer Engines</strong> to escape walled gardens.
+                </p>
+              </div>
+
+              {/* Founder Story Card */}
+              <div style={{ padding: '32px', background: 'rgba(0,230,118,0.06)', borderRadius: '24px', border: '1px solid rgba(0,230,118,0.25)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#00E676', letterSpacing: '0.08em', marginBottom: '12px' }}>GEN-Z INNOVATION + ENTERPRISE TRUST</div>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#fff', marginBottom: '12px', lineHeight: 1.2 }}>Building Next-Gen Growth OS</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: 0 }}>
+                  Co-founded by ambitious <strong>Gen-Z engineers & product creators</strong> who understand AI search, viral social algorithms, and modern automation — built in collaboration with <strong>veteran enterprise social media managers and security directors</strong>.
+                </p>
+              </div>
+
+              {/* Brand Safety & Escrow Card */}
+              <div style={{ padding: '32px', background: 'rgba(255,189,46,0.06)', borderRadius: '24px', border: '1px solid rgba(255,189,46,0.25)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#FFBD2E', letterSpacing: '0.08em', marginBottom: '12px' }}>100% BRAND SAFETY & CREATOR ESCROW</div>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#fff', marginBottom: '12px', lineHeight: 1.2 }}>Guaranteed Safety Standards</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: 1.6, margin: 0 }}>
+                  100% brand safety guaranteed with automated content moderation gates, verified follower authenticity checks, and direct <strong>escrow deal protection</strong> for both brands and creators.
+                </p>
+              </div>
             </div>
           </motion.div>
 
@@ -128,7 +183,7 @@ export const AboutUs = () => {
               </p>
               <div style={{ padding: '16px', background: 'rgba(255,82,150,0.05)', borderRadius: '12px', border: '1px solid rgba(255,82,150,0.1)' }}>
                 <p style={{ color: '#ccc', margin: 0, fontSize: '13px', lineHeight: 1.6 }}>
-                  <strong>What â€œWorkingâ€ Means:</strong> The information shown is intended to reflect the actual capabilities of the platform. If a feature appears here, it is connected to a functional backend workflow rather than a placeholder.
+                  <strong>What “Working” Means:</strong> The information shown is intended to reflect the actual capabilities of the platform. If a feature appears here, it is connected to a functional backend workflow rather than a placeholder.
                 </p>
               </div>
             </div>

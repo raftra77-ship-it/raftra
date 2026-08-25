@@ -33,7 +33,11 @@ DEVELOPER_TOKEN = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
 LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
 REDIRECT_URI = f"{BACKEND_URL}/api/connectors/google-ads/callback"
-SCOPE = "https://www.googleapis.com/auth/adwords"
+# `adwords` alone is enough to run the Ads API, but fetch_user_email() below reads
+# oauth2/v3/userinfo, which is gated on openid+email. Without them that call 401s and
+# returns "", so a fully connected account rendered as "Google Ads connected ·" with a
+# dangling separator and no address — indistinguishable from a half-finished connection.
+SCOPE = "https://www.googleapis.com/auth/adwords openid email"
 
 # Conservative bidding defaults that work without a conversion-tracking setup. Conversions-style
 # objectives still use Maximize Clicks until the caller confirms conversion tracking exists -

@@ -41,3 +41,6 @@ activity_log.csv
 
 # Runtime output from the creative pipeline - regenerated per video, not source
 backend/generated_media/
+
+# Local safety copy taken before the finaldashboard merge — not part of the project
+.backup-before-pull-*/

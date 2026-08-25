@@ -1,0 +1,115 @@
+# Render blueprint for the Raftra API.
+#
+# Deploys the FastAPI backend only — the frontend stays on Vercel, which proxies
+# /api/* here (see vercel.json).
+#
+# Uses requirements-deploy.txt rather than requirements.txt: the full file pulls
+# sentence-transformers, which drags in torch (490MB), scipy, transformers, sklearn
+# and sympy — roughly 800MB of the 1.4GB install, for the Qdrant-backed knowledge
+# base only. That feature already needs a Qdrant instance that isn't deployed, so
+# shipping the model stack now costs build time and memory for nothing. Add
+# sentence-transformers back (and drop SKIP_EMBEDDING_PRELOAD) when Qdrant exists.
+services:
+  - type: web
+    name: raftra-api
+    runtime: python
+    rootDir: backend
+    plan: starter          # 512MB free tier is tight once Google/Meta clients load
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /docs
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9      # matches backend/.python-version
+
+      # Skips the embedding model warmup at startup. Without this the preload
+      # thread logs a caught ImportError on every boot.
+      - key: SKIP_EMBEDDING_PRELOAD
+        value: "1"
+
+      # ── Set these in the Render dashboard, not here. Never commit secrets. ──
+      # Copy the values from backend/.env, EXCEPT the three URLs below, which
+      # must point at production rather than localhost.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: FAL_KEY
+        sync: false
+      - key: VIDEO_PROVIDER
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_FROM_NAME
+        sync: false
+      - key: SMTP_REPLY_TO
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ADS_CLIENT_ID
+        sync: false
+      - key: GOOGLE_ADS_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: GOOGLE_ADS_LOGIN_CUSTOMER_ID
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_APP_SLUG
+        sync: false
+      - key: GITHUB_APP_CLIENT_ID
+        sync: false
+      - key: GITHUB_APP_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_APP_PRIVATE_KEY
+        sync: false
+      - key: SHOPIFY_CLIENT_ID
+        sync: false
+      - key: SHOPIFY_CLIENT_SECRET
+        sync: false
+      - key: WPCOM_CLIENT_ID
+        sync: false
+      - key: WPCOM_CLIENT_SECRET
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+
+      # ── These three MUST change from the localhost values in backend/.env ──
+      # BACKEND_URL drives every OAuth redirect URI, so it has to be the public
+      # Render URL or callbacks will point at localhost and fail.
+      #   BACKEND_URL   = https://raftra-api.onrender.com   (this service's URL)
+      #   FRONTEND_URL  = https://raftra.vercel.app
+      #   CORS_ORIGINS  = https://raftra.vercel.app
+      - key: BACKEND_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

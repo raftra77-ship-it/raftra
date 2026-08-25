@@ -25,6 +25,12 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ de
 const Terms = lazy(() => import('./pages/Terms').then(m => ({ default: m.Terms })));
 const DataDeletion = lazy(() => import('./pages/DataDeletion').then(m => ({ default: m.DataDeletion })));
 
+// Public content pages pulled in from the finaldashboard branch. Lazy like the rest so
+// they stay out of the landing-page bundle.
+const BlogPage = lazy(() => import('./pages/BlogPage').then(m => ({ default: m.BlogPage })));
+const CareersPage = lazy(() => import('./pages/CareersPage').then(m => ({ default: m.CareersPage })));
+const UserManualsPage = lazy(() => import('./pages/UserManualsPage').then(m => ({ default: m.UserManualsPage })));
+
 // Deferred so the WebGL shader library never blocks first paint. It's a background at
 // z-index -10, so arriving a moment after the content is not noticeable.
 const FlowyBackground = lazy(() => import('./components/FlowyBackground').then(m => ({ default: m.FlowyBackground })));
@@ -137,6 +143,14 @@ export default function App() {
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/data-deletion" element={<DataDeletion />} />
+
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blogs" element={<BlogPage />} />
+          <Route path="/careers" element={<CareersPage />} />
+          <Route path="/jobs" element={<CareersPage />} />
+          <Route path="/docs" element={<UserManualsPage />} />
+          <Route path="/manuals" element={<UserManualsPage />} />
+          <Route path="/documentation" element={<UserManualsPage />} />
 
           <Route path="/login" element={
             <AuthScreen onLoginComplete={handleLoginComplete} />

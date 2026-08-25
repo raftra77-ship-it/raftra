@@ -1262,3 +1262,114 @@ nav [style*="font-size: '14px'"] {
 h2[style], h3[style] {
   letter-spacing: -0.025em;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   SEO + GEO workspace
+   The pipeline used to render as a flex-wrap row of pills joined by "→"
+   characters, which left arrows dangling at the end of every wrapped line and
+   gave no sense of progress. It is now a responsive grid of stage cells whose
+   state (done / active / todo) is carried by data-state, plus a progress rail.
+   Hover, keyframes and :focus-visible live here because inline styles cannot
+   express them.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.seo-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--pipe-accent);
+  background: color-mix(in srgb, var(--pipe-accent) 12%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition-fast);
+}
+.seo-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--pipe-accent) 22%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--pipe-accent) 25%, transparent);
+}
+.seo-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.seo-action--ghost {
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.04);
+}
+.seo-action--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+/* Audit-target field: the bare input collided with the buttons beside it. */
+.seo-url-field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 0 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  transition: var(--transition-fast);
+}
+.seo-url-field:focus-within {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+}
+.seo-url-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.seo-url-field input::placeholder { color: var(--text-muted); font-family: var(--font-sans); }
+
+/* Delta rows in the "Change Since Last Run" cards. */
+.seo-delta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-fast);
+}
+.seo-delta-row:hover { background: rgba(255, 255, 255, 0.03); }
+
+.seo-delta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 76px;
+  justify-content: flex-end;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Campaign Manager: the brief / generated-strategy split was a hardcoded two-track grid
+   (minmax(0,1fr) minmax(0,1.25fr)) with no breakpoint, so on a narrow viewport it kept
+   forcing two columns and squeezed both cards. Keeps the asymmetric ratio on wide
+   screens, stacks below 900px. */
+.camp-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 22px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .camp-split { grid-template-columns: minmax(0, 1fr); }
+}

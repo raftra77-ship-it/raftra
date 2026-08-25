@@ -35,34 +35,124 @@ const ago = (ts: number) => {
 };
 
 // ── shared styles ────────────────────────────────────────────────────────────
+// Type scale for this workspace.
+//
+// This screen had drifted to 14 distinct font sizes across 154 declarations — 8.5, 9.5,
+// 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 17, 18, 22. Eight of them sat within 4px of
+// each other, which reads as noise rather than hierarchy: nothing looked deliberately
+// larger than anything else, so the eye had no order to follow. Collapsed to seven steps
+// with real gaps between them. Use these rather than a raw px value.
+const T = {
+  micro: '10px',   // dense numeric annotations
+  badge: '11px',   // uppercase pills and status labels
+  body: '12px',    // default in-card text
+  read: '13px',    // longer prose, descriptions, values worth reading
+  lead: '14px',    // emphasis inside a card
+  title: '17px',   // section headings
+  page: '22px',    // the workspace title (one per screen)
+} as const;
+
 // Shared tokens for this workspace. Aligned with the SEO/GEO + Creative Studio treatment:
 // slightly brighter borders, larger radii, and a readable type scale.
 const card: React.CSSProperties = {
   background: 'var(--surface, rgba(255,255,255,0.03))',
   border: '1px solid rgba(255,255,255,0.10)',
-  borderRadius: '16px', padding: '22px',
+  borderRadius: '16px', padding: '26px',
 };
-const sectionTitle: React.CSSProperties = { fontSize: '17px', fontWeight: 700, color: '#fff', marginBottom: '4px', lineHeight: 1.25 };
-const sectionHint: React.CSSProperties = { fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 };
-const label: React.CSSProperties = { fontSize: '12.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '7px', fontWeight: 500 };
+// Anchored dropdown panel.
+//
+// These pickers used to be `position: absolute` inside the header. That makes them
+// descendants of <main class="dashboard-main">, which is `overflow: auto` — and an
+// overflow ancestor clips absolutely positioned descendants. The Meta panel is ~341px
+// tall and opens ~230px down the viewport, so its bottom was being cut off.
+//
+// Fixed positioning is resolved against the viewport rather than the scroll container,
+// so it escapes that clip (no ancestor here establishes a fixed containing block via
+// transform/filter/will-change). On top of that we clamp to the viewport, flip above the
+// trigger when there isn't room below, and give the panel its own scrollbar so it can
+// never be cut off no matter how long the account list is.
+const AnchoredPanel: React.FC<{
+  anchorRef: React.RefObject<HTMLElement | null>;
+  onClose: () => void;
+  width?: number;
+  children: React.ReactNode;
+}> = ({ anchorRef, onClose, width = 320, children }) => {
+  const MARGIN = 12;
+  const [pos, setPos] = useState<{ left: number; top: number; maxH: number } | null>(null);
+
+  React.useLayoutEffect(() => {
+    const place = () => {
+      const el = anchorRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom - MARGIN - 8;
+      const above = r.top - MARGIN - 8;
+      // Only flip up when below is genuinely cramped and above is roomier.
+      const openUp = below < 240 && above > below;
+      const maxH = Math.max(160, openUp ? above : below);
+      const w = Math.min(width, window.innerWidth - MARGIN * 2);
+      // Right-align to the trigger, then keep it inside the viewport horizontally.
+      const left = Math.min(Math.max(MARGIN, r.right - w), window.innerWidth - w - MARGIN);
+      const top = openUp ? Math.max(MARGIN, r.top - 8 - maxH) : r.bottom + 8;
+      setPos({ left, top, maxH });
+    };
+    place();
+    window.addEventListener('resize', place);
+    // capture:true so it also tracks scrolling of .dashboard-main, not just the window.
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [anchorRef, width]);
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+      <div style={{
+        position: 'fixed',
+        left: pos ? `${pos.left}px` : '-9999px',
+        top: pos ? `${pos.top}px` : '-9999px',
+        width: `${Math.min(width, typeof window !== 'undefined' ? window.innerWidth - MARGIN * 2 : width)}px`,
+        maxHeight: pos ? `${pos.maxH}px` : undefined,
+        overflowY: 'auto',
+        overscrollBehavior: 'contain',
+        zIndex: 50,
+        background: '#14161e',
+        border: '1px solid var(--border, var(--border-color))',
+        borderRadius: '10px',
+        padding: '14px',
+        boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
+        // Hidden for the first paint only, so it never flashes at the fallback offset.
+        visibility: pos ? 'visible' : 'hidden',
+      }}>
+        {children}
+      </div>
+    </>
+  );
+};
+
+const sectionTitle: React.CSSProperties = { fontSize: T.title, fontWeight: 700, color: '#fff', marginBottom: '6px', lineHeight: 1.25 };
+const sectionHint: React.CSSProperties = { fontSize: T.read, color: 'var(--text-secondary)', lineHeight: 1.55 };
+const label: React.CSSProperties = { fontSize: T.read, color: 'var(--text-secondary)', display: 'block', marginBottom: '7px', fontWeight: 500 };
 const input: React.CSSProperties = {
   width: '100%', padding: '11px 14px', background: 'rgba(0,0,0,0.25)',
   border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px',
-  color: '#fff', fontSize: '13.5px', outline: 'none',
+  color: '#fff', fontSize: T.lead, outline: 'none',
   fontFamily: 'inherit', transition: 'border-color 0.2s ease',
 };
 // Layout only. The brushed-metal face and its hover light-sweep come from
 // `.btn.btn-primary` in index.css — inline styles cannot express :hover, and every button
 // using this also carries that className.
 const btnPrimary: React.CSSProperties = {
-  padding: '12px', borderRadius: '10px', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer',
+  padding: '12px', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
 };
 // How many creatives the gallery shows before "Show all" is offered.
 const GALLERY_PREVIEW_COUNT = 8;
 const btnGhost: React.CSSProperties = {
   background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border, var(--border-color))', color: '#fff',
-  padding: '10px 14px', borderRadius: '9px', fontSize: '12.5px', cursor: 'pointer',
+  padding: '10px 14px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
 };
 
@@ -97,12 +187,12 @@ const Row: React.FC<{ k: string; v: React.ReactNode; stack?: boolean }> = ({ k, 
   // similar weight and size, so a long strategy read as an undifferentiated wall.
   stack ? (
     <div style={{ padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-      <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '6px' }}>{k}</div>
-      <div style={{ fontSize: '13.5px', color: '#fff', lineHeight: 1.6, wordBreak: 'break-word' }}>{v}</div>
+      <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '6px' }}>{k}</div>
+      <div style={{ fontSize: '14px', color: '#fff', lineHeight: 1.6, wordBreak: 'break-word' }}>{v}</div>
     </div>
   ) : (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px', padding: '11px 0', borderBottom: '1px solid rgba(255,255,255,0.07)', fontSize: '13.5px' }}>
-      <span style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', flexShrink: 0, whiteSpace: 'nowrap' }}>{k}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px', padding: '11px 0', borderBottom: '1px solid rgba(255,255,255,0.07)', fontSize: '14px' }}>
+      <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', flexShrink: 0, whiteSpace: 'nowrap' }}>{k}</span>
       <span style={{ color: '#fff', fontWeight: 500, textAlign: 'right', lineHeight: 1.5, minWidth: 0, wordBreak: 'break-word' }}>{v}</span>
     </div>
   )
@@ -116,8 +206,8 @@ const Gated: React.FC<{ children: React.ReactNode; locked: boolean; why: string 
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
         <div style={{ background: 'rgba(16,18,26,0.95)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '10px', padding: '14px 18px', textAlign: 'center', maxWidth: '90%' }}>
           <AlertTriangle size={16} color="#ffae00" style={{ marginBottom: '6px' }} />
-          <div style={{ fontSize: '12.5px', color: '#fff', fontWeight: 600, marginBottom: '2px' }}>Locked</div>
-          <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{why}</div>
+          <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600, marginBottom: '2px' }}>Locked</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{why}</div>
         </div>
       </div>
     )}
@@ -166,6 +256,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   });
   const [isCopied, setIsCopied] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
+  // Triggers the account pickers anchor to (see AnchoredPanel).
+  const metaAnchorRef = useRef<HTMLDivElement>(null);
+  const googleAnchorRef = useRef<HTMLDivElement>(null);
   const scrollToTop = () => {
     let node: HTMLElement | null = topRef.current;
     while (node) {
@@ -316,16 +409,30 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [googleAdAccounts, setGoogleAdAccounts] = useState<{ customer_id: string; name: string }[] | null>(null);
   const [googlePickerOpen, setGooglePickerOpen] = useState(false);
   const [googlePickerBusy, setGooglePickerBusy] = useState(false);
+  const [googleAccountsError, setGoogleAccountsError] = useState<string | null>(null);
 
   const loadGoogleAdAccounts = useCallback(async () => {
     if (!workspaceId) return;
     setGooglePickerBusy(true);
+    setGoogleAccountsError(null);
     try {
       const r = await fetch(`/api/connectors/google-ads/${workspaceId}/accounts`, { headers: authHeaders() });
       const d = await r.json().catch(() => ({}));
       if (r.ok) setGoogleAdAccounts(d.accounts || []);
-      else flash(d.detail || 'Could not load Google Ads accounts.', false);
-    } catch { flash('Could not reach Google Ads to load accounts.', false); }
+      else {
+        // Kept in the panel as well as flashed. The useful failures here
+        // (DEVELOPER_TOKEN_NOT_APPROVED, USER_PERMISSION_DENIED, CUSTOMER_NOT_ENABLED) are
+        // already translated to plain English server-side in core/google_ads.py — losing
+        // them to a toast that disappears leaves the user staring at an empty dropdown.
+        const msg = d.detail || 'Could not load Google Ads accounts.';
+        setGoogleAccountsError(msg);
+        flash(msg, false);
+      }
+    } catch {
+      const msg = 'Could not reach Google Ads to load accounts.';
+      setGoogleAccountsError(msg);
+      flash(msg, false);
+    }
     setGooglePickerBusy(false);
   }, [workspaceId]);
 
@@ -378,6 +485,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const publishedForReal = String(status || '').toUpperCase() === 'PUBLISHED';
   const metaSetup = spec.meta_setup || {};
   const googleSetup = spec.google_setup || {};
+  // Mirrors exactly what the publish route requires before it will create a real Google
+  // campaign: workspace_routes.py checks `gads_conn.refresh_token and gads_conn.customer_id`,
+  // and the status endpoint reports `connected = bool(conn and conn.refresh_token)`. The
+  // review card previously hardcoded a MOCK pill, so a fully connected account still read
+  // as a simulation right up to the moment it published for real.
+  const googleReadyToPublish = !!(googleAccount.connected && googleAccount.customer_id);
   const split = spec.budget_split || {};
   const heroImage: string | null = spec.image_url || null;
   // Meta ad copy from the approved strategy — this is what actually gets sent
@@ -849,42 +962,56 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [executed, setExecuted] = useState<string[]>([]);
 
   return (
-    <div ref={topRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: '#fff' }}>
+    <div ref={topRef} style={{ display: 'flex', flexDirection: 'column', gap: '28px', color: '#fff' }}>
       {/* ── header ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
         {/* Header follows the Creative Studio / SEO pattern: tinted icon tile + uppercase
             title + muted subtitle, so every workspace reads as one family. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(255,189,46,0.15)', border: '1px solid rgba(255,189,46,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Rocket size={20} color="#FFBD2E" />
+        {/* Sized to match the SEO + GEO workspace header (44px tile / 22px title / 13.5px
+            sub). It was rendering at 36/16/12, which made this screen read denser and
+            visually out of family with the other workspaces. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255,189,46,0.15)', border: '1px solid rgba(255,189,46,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Rocket size={22} color="#FFBD2E" />
           </div>
           <div>
-            <div style={{ fontSize: '16px', color: '#fff', fontWeight: 800, letterSpacing: '0.04em', fontFamily: 'var(--font-heading)' }}>
+            <div style={{ fontSize: '22px', color: '#fff', fontWeight: 800, letterSpacing: '0.02em', fontFamily: 'var(--font-heading)', lineHeight: 1.2 }}>
               CAMPAIGN MANAGER
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '620px' }}>
+            <div style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '640px', marginTop: '2px', lineHeight: 1.5 }}>
               Describe your campaign once — AI writes the strategy and the ad image, you approve it, and that plan drives Meta, Google and publishing.
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center', position: 'relative' }}>
           {metaAccount.connected ? (
-            <div style={{ position: 'relative' }}>
-              <button onClick={openMetaPicker} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600, color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
-                <CheckCircle2 size={14} /> Meta connected{metaAccount.name ? ` · ${metaAccount.name}` : ''}
-                {metaAccount.ad_account_id ? ` · Account ${metaAccount.ad_account_id}` : ' · No ad account selected'}
+            <div ref={metaAnchorRef} style={{ position: 'relative' }}>
+              {/* The raw 16-digit ad-account id used to sit in this pill, making it the
+                  widest thing in the header for no read-value. It moves to the tooltip and
+                  is still shown in full in the picker this button opens. */}
+              <button onClick={openMetaPicker}
+                title={metaAccount.ad_account_id ? `Meta ad account ${metaAccount.ad_account_id}` : 'No ad account selected'}
+                style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600, color: 'var(--success)', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', maxWidth: '260px' }}>
+                <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Meta{metaAccount.name ? ` · ${metaAccount.name}` : ''}
+                </span>
+                {!metaAccount.ad_account_id && (
+                  <span style={{ flexShrink: 0, fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--warning)', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '5px', padding: '2px 6px' }}>
+                    NO ACCOUNT
+                  </span>
+                )}
               </button>
               {metaPickerOpen && (
                 <>
-                <div onClick={() => setMetaPickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 50, width: '320px', background: '#14161e', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '14px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)' }}>
+                <AnchoredPanel anchorRef={metaAnchorRef} onClose={() => setMetaPickerOpen(false)}>
                   <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>Meta ad account &amp; Page</div>
                   {metaPickerBusy ? (
                     <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>
                   ) : (
                     <>
                       <span style={label}>Ad account</span>
-                      <select style={{ ...input, padding: '8px 10px', fontSize: '12.5px', marginBottom: '12px' }}
+                      <select style={{ ...input, padding: '8px 10px', fontSize: '13px', marginBottom: '12px' }}
                         value={metaAccount.ad_account_id || ''} onChange={e => selectAdAccount(e.target.value)}>
                         <option value="" disabled>{metaAdAccounts && metaAdAccounts.length ? 'Choose an ad account' : 'No ad accounts found'}</option>
                         {(metaAdAccounts || []).map(a => (
@@ -892,7 +1019,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                         ))}
                       </select>
                       <span style={label}>Facebook Page</span>
-                      <select style={{ ...input, padding: '8px 10px', fontSize: '12.5px' }}
+                      <select style={{ ...input, padding: '8px 10px', fontSize: '13px' }}
                         disabled={metaPickerBusy}
                         value={metaAccount.page_id || selectedPage || ''}
                         onChange={e => selectPage(e.target.value)}>
@@ -909,27 +1036,27 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                           { ok: !!metaAccount.page_id, label: 'Facebook Page selected' },
                           { ok: !!metaAccount.ready_to_publish, label: 'Ready to publish' },
                         ].map(row => (
-                          <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: row.ok ? '#00e676' : 'var(--text-secondary)' }}>
+                          <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: row.ok ? '#00e676' : 'var(--text-secondary)' }}>
                             {row.ok ? <CheckCircle2 size={12} /> : <span style={{ width: '12px', textAlign: 'center' }}>○</span>}
                             {row.label}
                           </div>
                         ))}
                       </div>
-                      <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
+                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
                         {metaAccount.ready_to_publish
                           ? 'Real campaigns will be created in Meta, paused, for you to review and activate.'
                           : 'An ad account and a Facebook Page are both required before a real campaign can be created.'}
                       </p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                        <button onClick={loadMetaAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                        <button onClick={loadMetaAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
                         <button onClick={() => disconnectPlatform('meta')} disabled={metaPickerBusy}
-                          style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
+                          style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
                           Disconnect
                         </button>
                       </div>
                     </>
                   )}
-                </div>
+                </AnchoredPanel>
                 </>
               )}
             </div>
@@ -939,41 +1066,71 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             </button>
           )}
           {googleAccount.connected ? (
-            <div style={{ position: 'relative' }}>
+            <div ref={googleAnchorRef} style={{ position: 'relative' }}>
               <button onClick={openGooglePicker} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: 600, color: '#00e676', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
                 <CheckCircle2 size={14} /> Google Ads connected{googleAccount.email ? ` · ${googleAccount.email}` : ''}
                 {googleAccount.customer_id ? ` · Account ${googleAccount.customer_id}` : ' · No account selected'}
               </button>
               {googlePickerOpen && (
                 <>
-                <div onClick={() => setGooglePickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 50, width: '320px', background: '#14161e', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '14px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)' }}>
+                <AnchoredPanel anchorRef={googleAnchorRef} onClose={() => setGooglePickerOpen(false)}>
                   <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>Google Ads account</div>
                   {googlePickerBusy ? (
                     <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Loading…</p>
                   ) : (
                     <>
                       <span style={label}>Customer account</span>
-                      <select style={{ ...input, padding: '8px 10px', fontSize: '12.5px', marginBottom: '12px' }}
+                      <select style={{ ...input, padding: '8px 10px', fontSize: '13px', marginBottom: '12px' }}
                         value={googleAccount.customer_id || ''} onChange={e => selectGoogleAccount(e.target.value)}>
                         <option value="" disabled>{googleAdAccounts && googleAdAccounts.length ? 'Choose an account' : 'No accounts found'}</option>
                         {(googleAdAccounts || []).map(a => (
                           <option key={a.customer_id} value={a.customer_id}>{a.name} ({a.customer_id})</option>
                         ))}
                       </select>
-                      <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
-                        Required before a real (non-demo) campaign can be launched on Google Ads. Publishing below still runs in demo mode until that's wired up.
+                      {/* The API returns only accounts this Google user can already reach
+                          (customers:listAccessibleCustomers). An empty list means there is no
+                          Ads account to publish into — which the old "No accounts found"
+                          option stated without saying why or what to do about it. */}
+                      {googleAccountsError && (
+                        <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.3)', marginBottom: '10px' }}>
+                          <AlertTriangle size={13} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '2px' }} />
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{googleAccountsError}</span>
+                        </div>
+                      )}
+
+                      {!googleAccountsError && googleAdAccounts && googleAdAccounts.length === 0 && (
+                        <div style={{ padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)', marginBottom: '10px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--warning)', marginBottom: '6px' }}>NO ADS ACCOUNT REACHABLE</div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.55, display: 'block' }}>
+                            This Google login can't reach any Google Ads account. Create one at{' '}
+                            <a href="https://ads.google.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>ads.google.com</a>,
+                            then link it under the manager account this server is configured with
+                            (GOOGLE_ADS_LOGIN_CUSTOMER_ID) and hit Refresh. For testing without
+                            spending, use a Google Ads <b style={{ color: '#fff' }}>test account</b> under a test manager.
+                          </span>
+                        </div>
+                      )}
+
+                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
+                        {/* Was: "Publishing below still runs in demo mode until that's wired up."
+                            Real Google publishing landed (workspace_routes.py launches a full
+                            PAUSED Search campaign), so that line told the user a working
+                            feature did not exist. */}
+                        Required before a real (non-demo) campaign can be launched on Google Ads.
+                        Once an account is selected, publishing creates a real Search campaign —
+                        ad group, ad and keywords — <b style={{ color: '#fff' }}>paused</b>, so nothing
+                        spends until you activate it in Google Ads.
                       </p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                        <button onClick={loadGoogleAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px' }}><RefreshCw size={12} /> Refresh list</button>
+                        <button onClick={loadGoogleAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
                         <button onClick={() => disconnectPlatform('google')} disabled={metaPickerBusy}
-                          style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '11.5px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
+                          style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
                           Disconnect
                         </button>
                       </div>
                     </>
                   )}
-                </div>
+                </AnchoredPanel>
                 </>
               )}
             </div>
@@ -1005,12 +1162,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     label={`${p === 'meta' ? 'Meta' : 'Google'}: ${(spec.published_modes || {})[p] === 'real' ? 'REAL' : 'DEMO'}`} />
                 ))}
               </h3>
-              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 <span>Platforms: <b style={{ color: '#fff' }}>{(spec.published_platforms || []).map((p: string) => p === 'meta' ? 'Meta' : 'Google').join(' & ') || '—'}</b></span>
                 <span>Budget: <b style={{ color: '#fff' }}>{money(spec.total_budget || campaign.budget)}</b></span>
                 <span>Published: <b style={{ color: '#fff' }}>{spec.published_at ? new Date(spec.published_at).toLocaleString() : '—'}</b></span>
               </div>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '6px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
                 {Object.entries(spec.campaign_ids || {}).map(([p, id]) => (
                   <span key={p}>{p === 'meta' ? 'Meta' : 'Google'} ID: <code style={{ color: '#8B85FF' }}>{String(id)}</code></span>
                 ))}
@@ -1048,24 +1205,24 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         </p>
 
         {liveFeed && liveFeed.length > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '16px' }}>
             {liveFeed.map((r: any, i: number) => {
               const st = SIGNAL_STYLE[r.signal] || SIGNAL_STYLE.learning;
               const Icon = st.icon;
               const metrics = formatEvidence(r.evidence);
               return (
-                <div key={r.campaign_id || i} style={{ padding: '15px', background: st.bg, border: `1px solid ${st.bd}`, borderRadius: '11px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div key={r.campaign_id || i} style={{ padding: '18px', background: st.bg, border: `1px solid ${st.bd}`, borderRadius: '13px', display: 'flex', flexDirection: 'column', gap: '13px' }}>
                   <div>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: st.color, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '7px' }}>
                       <Icon size={14} color={st.color} /> {r.title || st.tag}
                     </div>
-                    <div style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '4px' }}>{r.campaign_name}</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>{r.campaign_name}</div>
                     {metrics && (
-                      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>{metrics}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>{metrics}</div>
                     )}
-                    <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{r.detail}</div>
+                    <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{r.detail}</div>
                     {r.expected && (
-                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.5 }}>{r.expected}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.5 }}>{r.expected}</div>
                     )}
                   </div>
                   {/* Applying a recommendation changes budget or pauses delivery on a live ad
@@ -1079,19 +1236,19 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             })}
           </div>
         ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '16px' }}>
           {sampleFeed.map(f => {
             const done = executed.includes(f.id);
             const Icon = f.icon;
             return (
-              <div key={f.id} style={{ padding: '15px', background: f.bg, border: `1px solid ${f.bd}`, borderRadius: '11px', display: 'flex', flexDirection: 'column', gap: '10px', opacity: done ? 0.55 : 1 }}>
+              <div key={f.id} style={{ padding: '18px', background: f.bg, border: `1px solid ${f.bd}`, borderRadius: '13px', display: 'flex', flexDirection: 'column', gap: '13px', opacity: done ? 0.55 : 1 }}>
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: 700, color: f.color, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '7px' }}>
                     <Icon size={14} color={f.color} /> {f.tag}
                   </div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '4px' }}>{f.name}</div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>{f.metrics}</div>
-                  <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{f.rec}</div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>{f.name}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>{f.metrics}</div>
+                  <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{f.rec}</div>
                 </div>
                 <button onClick={() => { setExecuted(e => [...e, f.id]); flash('Example action — connect a live ad account to apply this for real.', false); }}
                   disabled={done}
@@ -1109,37 +1266,44 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       </div>
 
       {/* ── 2. the progress bar ── */}
-      <div style={{ ...card, padding: '14px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-          {steps.map((st, i) => (
-            <React.Fragment key={st.n}>
-              {/* Tinted state treatment rather than solid fills: the active/completed
-                  colour lives in the numbered tile's tint + border and in the status
-                  label, so seven steps in a row read as a progress trail instead of
-                  seven coloured blocks. Locked steps stay near-invisible on purpose. */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '12px',
-                background: st.s === 'Locked' ? 'transparent' : `${stepColor(st.s)}12`,
-                border: `1px solid ${st.s === 'Locked' ? 'rgba(255,255,255,0.06)' : `${stepColor(st.s)}38`}`,
-                opacity: st.s === 'Locked' ? 0.55 : 1,
-                flex: '1 1 150px', minWidth: '150px', transition: 'all 0.2s ease',
+      <div style={{ ...card, padding: '18px 20px' }}>
+        {/* Grid, not wrapping flex. With `flex: 1 1 150px` plus interleaved "›" glyphs the
+            seventh step could not fit on the first row, wrapped alone, and then flex-grow
+            stretched it across the full width — with a chevron left pointing at nothing at
+            the end of the row above. Equal grid tracks wrap uniformly, and the numbered
+            tiles already carry the sequence, so the separators are no longer needed. */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(132px, 100%), 1fr))',
+          gap: '10px',
+          alignItems: 'stretch',
+        }}>
+          {steps.map((st) => (
+            /* Tinted state treatment rather than solid fills: the active/completed
+               colour lives in the numbered tile's tint + border and in the status
+               label, so seven steps in a row read as a progress trail instead of
+               seven coloured blocks. Locked steps stay near-invisible on purpose. */
+            <div key={st.n} style={{
+              display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '12px',
+              background: st.s === 'Locked' ? 'transparent' : `${stepColor(st.s)}12`,
+              border: `1px solid ${st.s === 'Locked' ? 'rgba(255,255,255,0.06)' : `${stepColor(st.s)}38`}`,
+              opacity: st.s === 'Locked' ? 0.55 : 1,
+              minWidth: 0, transition: 'all 0.2s ease',
+            }}>
+              <span style={{
+                width: '28px', height: '28px', borderRadius: '9px', flexShrink: 0,
+                background: st.s === 'Locked' ? 'rgba(255,255,255,0.05)' : `${stepColor(st.s)}22`,
+                border: `1px solid ${st.s === 'Locked' ? 'rgba(255,255,255,0.10)' : `${stepColor(st.s)}55`}`,
+                color: st.s === 'Locked' ? 'var(--text-secondary)' : stepColor(st.s),
+                fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <span style={{
-                  width: '28px', height: '28px', borderRadius: '9px', flexShrink: 0,
-                  background: st.s === 'Locked' ? 'rgba(255,255,255,0.05)' : `${stepColor(st.s)}22`,
-                  border: `1px solid ${st.s === 'Locked' ? 'rgba(255,255,255,0.10)' : `${stepColor(st.s)}55`}`,
-                  color: st.s === 'Locked' ? 'var(--text-secondary)' : stepColor(st.s),
-                  fontSize: '12.5px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {st.s === 'Completed' ? <Check size={14} /> : st.n}
-                </span>
-                <div style={{ lineHeight: 1.35, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{st.name}</div>
-                  <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.03em', color: stepColor(st.s) }}>{st.s}</div>
-                </div>
+                {st.s === 'Completed' ? <Check size={14} /> : st.n}
+              </span>
+              <div style={{ lineHeight: 1.35, minWidth: 0 }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{st.name}</div>
+                <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.03em', color: stepColor(st.s) }}>{st.s}</div>
               </div>
-              {i < steps.length - 1 && <span style={{ color: 'var(--text-muted)', flexShrink: 0, fontSize: '15px' }}>›</span>}
-            </React.Fragment>
+            </div>
           ))}
         </div>
       </div>
@@ -1147,7 +1311,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       {/* ── 3. brief + generated strategy (with its image) ── */}
       {/* alignItems:start so the shorter brief card keeps its natural height instead of
           stretching to match the long strategy output (which left a big empty gap). */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.25fr)', gap: '18px', alignItems: 'start' }}>
+      <div className="camp-split">
         {/* brief */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
@@ -1161,7 +1325,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           </div>
           <p style={{ ...sectionHint, marginBottom: '18px' }}>Start from a playbook or fill in your own brief. This is the only form you need.</p>
 
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.06em', color: '#FFBD2E', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', borderRadius: '100px', padding: '4px 12px', marginBottom: '10px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', color: '#FFBD2E', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', borderRadius: '100px', padding: '4px 12px', marginBottom: '10px' }}>
             <Sparkles size={11} /> QUICK-START PLAYBOOKS
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '18px' }}>
@@ -1176,7 +1340,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,189,46,0.06)'; e.currentTarget.style.borderColor = 'rgba(255,189,46,0.35)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.10)'; }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '13.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ width: '24px', height: '24px', borderRadius: '7px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,189,46,0.14)', border: '1px solid rgba(255,189,46,0.3)' }}>
                         <Icon size={13} color="#FFBD2E" />
                       </span>
@@ -1184,7 +1348,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     </span>
                     <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em', color: '#FFBD2E', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', padding: '3px 9px', borderRadius: '100px', whiteSpace: 'nowrap', flexShrink: 0 }}>{p.badge}</span>
                   </div>
-                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{p.desc}</p>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{p.desc}</p>
                 </button>
               );
             })}
@@ -1268,7 +1432,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     ) : <ImageIcon size={26} color="var(--text-muted)" />}
                   </div>
                   <div style={{ flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '9px' }}>
-                    <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                       {selectedImage ? 'This is the approved creative. Only this image is sent to the platform reviews below.' : 'Pick or upload the image you want to advertise.'}
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1296,12 +1460,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     {/* The library can run to dozens of assets. Showing them all turned this
                         into a wall of near-identical thumbnails, so it's capped until asked. */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', margin: '16px 0 9px' }}>
-                      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                         Choose the creative to advertise <span style={{ color: 'var(--text-muted)' }}>— click to approve</span>
                       </div>
                       {allImages.length > GALLERY_PREVIEW_COUNT && (
                         <button onClick={() => setGalleryExpanded(g => !g)}
-                          style={{ ...btnGhost, padding: '5px 12px', fontSize: '11.5px' }}>
+                          style={{ ...btnGhost, padding: '5px 12px', fontSize: '12px' }}>
                           {galleryExpanded ? 'Show fewer' : `Show all ${allImages.length}`}
                         </button>
                       )}
@@ -1325,7 +1489,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                             {/* Source is shown, not just a tooltip — with a mixed set of AI,
                                 uploaded and library assets they were indistinguishable. */}
                             {label !== 'Library' && (
-                              <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, fontSize: '8.5px', fontWeight: 700, letterSpacing: '0.03em', textAlign: 'center', padding: '2px 0',
+                              <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, fontSize: '10px', fontWeight: 700, letterSpacing: '0.03em', textAlign: 'center', padding: '2px 0',
                                 color: label === 'AI generated' ? '#FFBD2E' : '#00E676',
                                 background: 'rgba(0,0,0,0.72)' }}>
                                 {label === 'AI generated' ? 'AI' : 'UPLOAD'}
@@ -1345,7 +1509,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               </div>
 
               {/* the plan */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '18px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(210px, 100%), 1fr))', gap: '18px' }}>
                 <div>
                   <Row k="Objective" v={campaign.objective || spec.objective || '—'} />
                   {split.meta && <Row k="Meta share" v={`${split.meta.pct}% · ${money(split.meta.amount)}`} />}
@@ -1356,17 +1520,17 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                   )}
                 </div>
                 <div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Success targets</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Success targets</div>
                   {(spec.kpis || []).map((k: string) => (
-                    <div key={k} style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}><CheckCircle2 size={13} color="#00e676" /> {k}</div>
+                    <div key={k} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}><CheckCircle2 size={13} color="#00e676" /> {k}</div>
                   ))}
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '12px 0 7px' }}>Keywords it will target</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '12px 0 7px' }}>Keywords it will target</div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {keywords.slice(0, 8).map((k: string) => <span key={k} style={{ fontSize: '10.5px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{k}</span>)}
-                    {keywords.length === 0 && <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>—</span>}
+                    {keywords.slice(0, 8).map((k: string) => <span key={k} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{k}</span>)}
+                    {keywords.length === 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>—</span>}
                   </div>
                   {(headlines.length > 0 || descriptions.length > 0) && (
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '12px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '12px' }}>
                       Ad copy ready: <b style={{ color: '#fff' }}>{headlines.length}</b> headlines · <b style={{ color: '#fff' }}>{descriptions.length}</b> descriptions
                     </div>
                   )}
@@ -1375,8 +1539,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
               {/* Audience is the longest field — give it the full width so it reads as a sentence. */}
               <div style={{ marginTop: '14px', padding: '13px 15px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }}>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Who this campaign targets</div>
-                <div style={{ fontSize: '13.5px', color: '#fff', lineHeight: 1.6 }}>{spec.audience || form.audience}</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Who this campaign targets</div>
+                <div style={{ fontSize: '14px', color: '#fff', lineHeight: 1.6 }}>{spec.audience || form.audience}</div>
               </div>
 
               <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
@@ -1390,7 +1554,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                   <ShieldCheck size={16} /> {busy === 'approve' ? 'Approving…' : 'Approve & send to all steps'}
                 </button>
               ) : (
-                <div style={{ marginTop: '12px', padding: '11px 14px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', fontSize: '12.5px', color: '#00e676', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ marginTop: '12px', padding: '11px 14px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', fontSize: '13px', color: '#00e676', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <CheckCircle2 size={15} /> Approved — passed to Meta, Google and Review below.
                 </div>
               )}
@@ -1414,14 +1578,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 <input type="checkbox" checked={on} onChange={e => { const np = { ...platforms, [p.k]: e.target.checked }; setPlatforms(np); persistPlatforms(np); setConfirmed(false); }}
                   style={{ width: '17px', height: '17px', accentColor: '#00e676', cursor: 'pointer', flexShrink: 0 }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600 }}>{p.name}</span>
-                  <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)' }}>{p.sub}</span>
+                  <span style={{ display: 'block', fontSize: '14px', fontWeight: 600 }}>{p.name}</span>
+                  <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)' }}>{p.sub}</span>
                 </span>
                 {on && <CheckCircle2 size={17} color="#00e676" />}
               </label>
             );
           })}
-          <div style={{ flex: 1, minWidth: '215px', fontSize: '11.5px', color: 'var(--text-secondary)', background: 'rgba(90,82,255,0.06)', border: '1px solid rgba(90,82,255,0.2)', borderRadius: '10px', padding: '12px 14px', lineHeight: 1.55 }}>
+          <div style={{ flex: 1, minWidth: '215px', fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(90,82,255,0.06)', border: '1px solid rgba(90,82,255,0.2)', borderRadius: '10px', padding: '12px 14px', lineHeight: 1.55 }}>
             <b style={{ color: '#fff' }}>Edit each platform on its own.</b> Same approved strategy — different ads per platform.
           </div>
         </div>
@@ -1431,7 +1595,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       <Gated locked={!approved || published} why={published ? 'Published — read-only. Create a new version to edit the ads.' : 'Approve the strategy to review platform ads'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {/* Meta + Google sit side-by-side when both are selected, full-width when only one. */}
-          <div style={{ display: 'grid', gridTemplateColumns: (platforms.meta && platforms.google) ? 'repeat(auto-fit, minmax(330px, 1fr))' : '1fr', gap: '18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: (platforms.meta && platforms.google) ? 'repeat(auto-fit, minmax(min(330px, 100%), 1fr))' : '1fr', gap: '18px' }}>
 
           {/* META */}
           {platforms.meta && (
@@ -1457,12 +1621,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                   ))}
                 </span>} stack />
               <div style={{ marginTop: '12px' }}>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Creatives</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Creatives</div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {selectedImage ? (
                     <img src={selectedImage} alt="Approved creative" {...previewable(selectedImage, { width: '68px', height: '68px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border, var(--border-color))' })} />
                   ) : (
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>No creative selected — approve one above.</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No creative selected — approve one above.</span>
                   )}
                 </div>
               </div>
@@ -1484,20 +1648,36 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           {platforms.google && (
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status="MOCK" /></h3>
+                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status={googleReadyToPublish ? 'REAL' : 'MOCK'} /></h3>
                 <Pill status={googleSetup.launched ? 'Ready' : 'Pending'} />
               </div>
               <p style={{ ...sectionHint, marginTop: '-8px', marginBottom: '12px' }}>
-                What will run on Google. The ad account is connected in the header above.
+                {googleReadyToPublish
+                  ? 'What will run on Google. Publishing creates a real Search campaign — with its ad group, ad and keywords — created PAUSED so nothing spends until you activate it in Google Ads.'
+                  : 'What will run on Google. Connect a Google Ads account and select a customer in the header above to publish for real — until then this platform is simulated.'}
               </p>
+              {/* Says which of the two prerequisites is missing rather than leaving the MOCK
+                  pill unexplained. Both are exactly what the publish route checks. */}
+              {!googleReadyToPublish && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)' }}>
+                  {[
+                    { ok: !!googleAccount.connected, label: 'Google Ads account connected' },
+                    { ok: !!googleAccount.customer_id, label: 'Customer account selected' },
+                  ].map(row => (
+                    <span key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: row.ok ? 'var(--success)' : 'var(--warning)' }}>
+                      {row.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {row.label}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{ padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Campaign type</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Campaign type</div>
                 <select value={googleType} onChange={e => setGoogleTypeOverride(e.target.value)}
-                  style={{ ...input, padding: '8px 10px', fontSize: '12.5px', width: '100%' }}>
+                  style={{ ...input, padding: '8px 10px', fontSize: '13px', width: '100%' }}>
                   {GOOGLE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
                 {(rec.google_campaign_type && rec.google_campaign_type.reason) && (
-                  <div style={{ display: 'flex', gap: '7px', marginTop: '8px', fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                  <div style={{ display: 'flex', gap: '7px', marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
                     <Sparkles size={13} color="var(--primary)" style={{ flexShrink: 0, marginTop: '1px' }} />
                     <span>
                       {googleType === aiGoogleType
@@ -1516,7 +1696,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 headlines.length ? (
                   <span style={{ display: 'block' }}>
                     {headlines.slice(0, 3).map((h, i) => (
-                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '12.5px' }}>
+                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '13px' }}>
                         <span>{h}</span>
                         <span style={{ color: h.length > 30 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{h.length}/30</span>
                       </span>
@@ -1528,7 +1708,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 descriptions.length ? (
                   <span style={{ display: 'block' }}>
                     {descriptions.slice(0, 2).map((d, i) => (
-                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '12.5px' }}>
+                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '13px' }}>
                         <span>{d}</span>
                         <span style={{ color: d.length > 90 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{d.length}/90</span>
                       </span>
@@ -1540,7 +1720,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {selectedImage
                     ? <img src={selectedImage} alt="Approved creative" {...previewable(selectedImage, { width: '68px', height: '68px', objectFit: 'cover', borderRadius: '9px', border: '1px solid var(--border, var(--border-color))' })} />
-                    : <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>No creative selected — approve one above.</span>}
+                    : <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No creative selected — approve one above.</span>}
                   {(g.image_ideas || []).length ? chips(g.image_ideas) : null}
                 </span>} stack />}
               {gShow.videos && <Row k="Videos" v={chips((g.video_ideas || []).length ? g.video_ideas : ['Video placeholder (optional)'])} stack />}
@@ -1576,11 +1756,11 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             </div>
             {smart.killAds && (<>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Kill if CPA over (₹)</span>
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Kill if CPA over (₹)</span>
                 <input type="number" value={smart.cpaThreshold} onChange={e => setSmart(s => ({ ...s, cpaThreshold: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Kill if frequency over</span>
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Kill if frequency over</span>
                 <input type="number" step="0.1" value={smart.frequencyCap} onChange={e => setSmart(s => ({ ...s, frequencyCap: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
               </div>
             </>)}
@@ -1591,11 +1771,11 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             </div>
             {smart.autoRotate && (<>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Rotate if skip rate over (%)</span>
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Rotate if skip rate over (%)</span>
                 <input type="number" value={smart.skipRateThreshold} onChange={e => setSmart(s => ({ ...s, skipRateThreshold: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0' }}>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Refresh every (days)</span>
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Refresh every (days)</span>
                 <input type="number" value={smart.refreshIntervalDays} onChange={e => setSmart(s => ({ ...s, refreshIntervalDays: Number(e.target.value) }))} style={{ ...input, width: '104px', padding: '7px 10px', textAlign: 'right' }} />
               </div>
             </>)}
@@ -1616,7 +1796,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           </div>
           <p style={{ ...sectionHint, marginBottom: '16px' }}>Check everything below, then confirm. Open the full review to re-read the approved strategy in one place.</p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(165px, 100%), 1fr))', gap: '12px', marginBottom: '18px' }}>
             {[
               { n: 'Strategy', d: approved ? 'Approved' : 'Not approved', ok: approved },
               { n: 'Creative assets', d: selectedImage ? '1 image approved' : 'None selected', ok: !!selectedImage },
@@ -1627,14 +1807,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               <div key={s.n} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}>
                   {s.ok ? <CheckCircle2 size={14} color="#00e676" /> : <Clock size={14} color="var(--text-secondary)" />}
-                  <span style={{ fontSize: '12.5px', fontWeight: 600 }}>{s.n}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600 }}>{s.n}</span>
                 </div>
-                <div style={{ fontSize: '11.5px', color: s.ok ? '#00e676' : 'var(--text-secondary)' }}>{s.d}</div>
+                <div style={{ fontSize: '12px', color: s.ok ? '#00e676' : 'var(--text-secondary)' }}>{s.d}</div>
               </div>
             ))}
             <div style={{ background: 'rgba(90,82,255,0.08)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '10px', padding: '13px' }}>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total budget</div>
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>{money(spec.total_budget || form.budget)}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total budget</div>
+              <div style={{ fontSize: '17px', fontWeight: 700 }}>{money(spec.total_budget || form.budget)}</div>
             </div>
           </div>
 
@@ -1664,7 +1844,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             </button>
           </div>
 
-          <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '14px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.2)', borderRadius: '9px', padding: '10px' }}>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '14px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.2)', borderRadius: '9px', padding: '10px' }}>
             {published
               ? (publishedForReal
                   ? `Live on ${publishedList.map(p => (p === 'meta' ? 'Meta' : 'Google')).join(' & ')} — created paused. Activate it there to start spending.`
@@ -1678,17 +1858,22 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       {metaAccount?.ready_to_publish ? (
         <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(0,230,118,0.05)', border: '1px solid rgba(0,230,118,0.22)' }}>
           <Check size={16} color="#00e676" style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
             <b style={{ color: '#fff' }}>Meta is live.</b> Publishing creates a real ad on Facebook and Instagram
             as <b style={{ color: '#fff' }}>{metaAccount.page_name || 'your Page'}</b>, billed to ad account{' '}
             {metaAccount.ad_account_id}. It is created <b style={{ color: '#fff' }}>paused</b> — activate it in Meta
-            Ads Manager to start spending. Google Ads is still simulated.
+            Ads Manager to start spending.{' '}
+            {/* Google is only simulated while it lacks a connection — this line used to claim
+                it always was, which stopped being true the moment an account was linked. */}
+            {googleReadyToPublish
+              ? <><b style={{ color: '#fff' }}>Google Ads is live too</b> — a real Search campaign is created on customer {googleAccount.customer_id}, also paused.</>
+              : 'Google Ads is still simulated until an account is connected.'}
           </span>
         </div>
       ) : (
         <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.22)' }}>
           <AlertTriangle size={16} color="#ffae00" style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
             <b style={{ color: '#fff' }}>Publishing is simulated.</b>{' '}
             {!metaAccount?.connected
               ? 'Connect your Meta account above to publish real ads to Facebook and Instagram.'
@@ -1710,7 +1895,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' }}>
               Recent Activity
               {activity.length > 0 && (
-                <span style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.05em', color: '#00E676', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '100px', padding: '2px 9px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', color: '#00E676', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '100px', padding: '2px 9px' }}>
                   {activity.length}
                 </span>
               )}
@@ -1726,7 +1911,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             </span>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '10px' }}>
             {activity.map((a, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(0,230,118,0.04)', border: '1px solid rgba(0,230,118,0.18)', borderRadius: '12px', padding: '12px 14px' }}>
                 <span style={{ width: '26px', height: '26px', borderRadius: '8px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)' }}>
@@ -1755,7 +1940,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' }}>
                 Recently Published
-                <span style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.05em', color: '#FFBD2E', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', borderRadius: '100px', padding: '2px 9px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', color: '#FFBD2E', background: 'rgba(255,189,46,0.12)', border: '1px solid rgba(255,189,46,0.3)', borderRadius: '100px', padding: '2px 9px' }}>
                   {recentPublished.length}
                 </span>
               </h3>
@@ -1768,7 +1953,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             />
           </button>
           <div style={{ display: publishedOpen ? 'flex' : 'none', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-            {recentPublished.length === 0 && <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Nothing published yet.</p>}
+            {recentPublished.length === 0 && <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Nothing published yet.</p>}
             {recentPublished.map((c: any) => {
               const cm = c.metrics || {};
               const plats = (cm.published_platforms || []).map((p: string) => (p === 'meta' ? 'Meta' : 'Google')).join(' & ');
@@ -1778,15 +1963,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#fff' }}>
                       {c.name || 'Campaign'} <span style={{ fontSize: '10px', fontWeight: 600, color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '20px', padding: '1px 8px' }}>v{c.version || 1}</span>
                     </span>
-                    <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                    <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)' }}>
                       {c.objective || '—'} · {money(c.budget || 0)}{plats ? ` · ${plats}` : ''}{cm.published_at ? ` · ${new Date(cm.published_at).toLocaleDateString()}` : ''}
                     </span>
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '3px 9px', whiteSpace: 'nowrap' }}>PUBLISHED · DEMO</span>
-                    <button onClick={() => refresh(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '11.5px' }}>View</button>
-                    <button onClick={() => viewAnalytics(c.id)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '11.5px' }}><BarChart3 size={12} /> Analytics</button>
-                    <button onClick={() => duplicateCampaign(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '11.5px' }}><Copy size={12} /> Duplicate</button>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '3px 9px', whiteSpace: 'nowrap' }}>PUBLISHED · DEMO</span>
+                    <button onClick={() => refresh(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '12px' }}>View</button>
+                    <button onClick={() => viewAnalytics(c.id)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '12px' }}><BarChart3 size={12} /> Analytics</button>
+                    <button onClick={() => duplicateCampaign(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '12px' }}><Copy size={12} /> Duplicate</button>
                   </span>
                 </div>
               );
@@ -1833,7 +2018,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               {whyRows.map((r, i) => (
                 <div key={i} style={{ borderLeft: '2px solid rgba(90,82,255,0.4)', paddingLeft: '13px', paddingTop: '2px', paddingBottom: '2px' }}>
                   <div style={{ fontSize: '13px', color: '#fff' }}><b style={{ color: '#b3aaff' }}>{r.label}:</b> {r.value}</div>
-                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55, marginTop: '3px' }}>{r.reason}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55, marginTop: '3px' }}>{r.reason}</div>
                 </div>
               ))}
             </div>
@@ -1852,10 +2037,10 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               style={{ maxWidth: '100%', maxHeight: '78vh', objectFit: 'contain', borderRadius: '12px', border: '1px solid var(--border, var(--border-color))', background: '#000' }} />
             <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', justifyContent: 'center' }}>
               <button onClick={() => downloadCreative(previewImage)} disabled={busy === 'download'}
-                style={{ ...btnGhost, padding: '8px 14px', fontSize: '12.5px' }}>
+                style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px' }}>
                 <Download size={13} /> {busy === 'download' ? 'Downloading…' : 'Download'}
               </button>
-              <button onClick={() => setPreviewImage(null)} style={{ ...btnGhost, padding: '8px 14px', fontSize: '12.5px' }}>Close</button>
+              <button onClick={() => setPreviewImage(null)} style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px' }}>Close</button>
             </div>
           </div>
           {/* Fixed to the viewport, not the image, so it never lands on top of a tall creative. */}
@@ -1892,13 +2077,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 </div>
               </div>
               <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }}>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Who this campaign targets</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Who this campaign targets</div>
                 <div style={{ fontSize: '13px', lineHeight: 1.6 }}>{spec.audience || form.audience}</div>
               </div>
             </div>
 
             {/* budget split + KPIs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '18px', marginBottom: '18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))', gap: '18px', marginBottom: '18px' }}>
               <div>
                 <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>BUDGET SPLIT</div>
                 {split.meta && <Row k="Meta Ads" v={`${split.meta.pct}% · ${money(split.meta.amount)}`} />}
@@ -1908,7 +2093,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               <div>
                 <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>SUCCESS TARGETS</div>
                 {(spec.kpis || []).map((k: string) => (
-                  <div key={k} style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}><CheckCircle2 size={13} color="#00e676" /> {k}</div>
+                  <div key={k} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}><CheckCircle2 size={13} color="#00e676" /> {k}</div>
                 ))}
                 {!(spec.kpis || []).length && <p style={sectionHint}>None set.</p>}
               </div>
@@ -1920,7 +2105,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>AD COPY &amp; KEYWORDS</div>
                 {keywords.length > 0 && (
                   <div style={{ marginBottom: '10px' }}>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Keywords ({keywords.length})</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Keywords ({keywords.length})</div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {keywords.map(k => <span key={k} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{k}</span>)}
                     </div>
@@ -1928,9 +2113,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 )}
                 {headlines.length > 0 && (
                   <div style={{ marginBottom: '10px' }}>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Headlines ({headlines.length})</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Headlines ({headlines.length})</div>
                     {headlines.map((h, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12.5px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <span>{h}</span><span style={{ color: h.length > 30 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{h.length}/30</span>
                       </div>
                     ))}
@@ -1938,9 +2123,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 )}
                 {descriptions.length > 0 && (
                   <div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Descriptions ({descriptions.length})</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Descriptions ({descriptions.length})</div>
                     {descriptions.map((d, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12.5px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <span>{d}</span><span style={{ color: d.length > 90 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{d.length}/90</span>
                       </div>
                     ))}
@@ -1950,7 +2135,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             )}
 
             {/* where it goes + rules */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))', gap: '18px' }}>
               <div>
                 <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>PUBLISHING TO</div>
                 {chosen.length === 0 && <p style={sectionHint}>No platform selected.</p>}
@@ -2002,15 +2187,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 <button onClick={() => setAnalyticsView(null)} style={{ ...btnGhost, padding: '6px 12px', fontSize: '12px' }}>Close</button>
               </div>
               <p style={{ ...sectionHint, marginBottom: '16px' }}>v{a.version} · {(a.platforms || []).map((p: string) => p === 'meta' ? 'Meta' : 'Google').join(' & ')} · {a.status === 'PUBLISHED_DEMO' ? 'Published (demo)' : a.status}. Mock figures — real Meta/Google insights plug in later.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', marginBottom: '18px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(120px, 100%), 1fr))', gap: '10px', marginBottom: '18px' }}>
                 {tiles.map(x => (
                   <div key={x.k} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '12px' }}>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{x.k}</div>
-                    <div style={{ fontSize: '18px', fontWeight: 700, color: (x as any).hot ? '#00e676' : '#fff' }}>{x.v}</div>
+                    <div style={{ fontSize: '17px', fontWeight: 700, color: (x as any).hot ? '#00e676' : '#fff' }}>{x.v}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '14px', marginBottom: '18px' }}>
                 {a.meta_performance && (
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF', marginBottom: '8px' }}>Meta Performance</div>
@@ -2028,7 +2213,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 <div style={{ marginBottom: '18px' }}>
                   <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>TOP KEYWORDS</div>
                   {a.top_keywords.map((kw: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12.5px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <span>{kw.keyword}</span>
                       <span style={{ color: 'var(--text-secondary)' }}>{kw.clicks} clicks · {kw.ctr}% CTR · {kw.conversions} conv</span>
                     </div>
