@@ -4,6 +4,7 @@ import {
   Image as ImageIcon, ShieldCheck, RefreshCw, XCircle,
   OctagonX, ArrowRight, FileUp, Download, Copy, Database, Upload,
   TrendingUp, ShoppingCart, GitBranch, BarChart3, ChevronDown, X, Maximize2,
+  ExternalLink,
 } from 'lucide-react';
 import { CampaignService } from '../../services/campaigns';
 
@@ -197,6 +198,269 @@ const Row: React.FC<{ k: string; v: React.ReactNode; stack?: boolean }> = ({ k, 
     </div>
   )
 );
+
+// Budget split as a proportional bar rather than two "60% · ₹24,000" text rows.
+// The split is the one number a reader wants at a glance, and a bar answers it without
+// them having to compare two strings.
+const SplitBar: React.FC<{ meta?: { pct: number; amount: number }; google?: { pct: number; amount: number }; fmt: (n: any) => string }> = ({ meta, google, fmt }) => {
+  if (!meta && !google) return null;
+  const legs = [
+    meta && { key: 'Meta', pct: meta.pct, amount: meta.amount, color: 'var(--accent)', rgb: '90,82,255' },
+    google && { key: 'Google', pct: google.pct, amount: google.amount, color: 'var(--success)', rgb: '0,255,157' },
+  ].filter(Boolean) as { key: string; pct: number; amount: number; color: string; rgb: string }[];
+  return (
+    <div style={{ padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '9px' }}>
+        Budget split
+      </div>
+      <div style={{ display: 'flex', height: '8px', borderRadius: '99px', overflow: 'hidden', background: 'rgba(255,255,255,0.06)', marginBottom: '9px' }}>
+        {legs.map(l => <div key={l.key} style={{ width: `${l.pct}%`, background: l.color, transition: 'width .4s cubic-bezier(0.16,1,0.3,1)' }} />)}
+      </div>
+      <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
+        {legs.map(l => (
+          <span key={l.key} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '7px', fontSize: '13px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: l.color, alignSelf: 'center', flexShrink: 0 }} />
+            <span style={{ color: 'var(--text-secondary)' }}>{l.key}</span>
+            <b style={{ color: '#fff', fontFamily: 'var(--font-mono)' }}>{fmt(l.amount)}</b>
+            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{l.pct}%</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// A success target arrives as one string — "Cost Per Acquisition (CPA) < ₹500". Rendered
+// whole it is an unreadable run of words; split at the comparison operator the metric
+// becomes a label and the threshold becomes a value, so a column of them can be scanned.
+const KpiRow: React.FC<{ text: string }> = ({ text }) => {
+  const m = text.match(/^(.*?)\s*([<>=≤≥]+)\s*(.+)$/);
+  const name = m ? m[1].trim() : text;
+  const target = m ? `${m[2]} ${m[3]}`.trim() : null;
+  // "(CPA)" etc. is the useful short form — promote it and drop it from the long name.
+  const abbr = name.match(/\(([A-Z]{2,6})\)/);
+  const label = abbr ? name.replace(/\s*\([A-Z]{2,6}\)\s*/, ' ').trim() : name;
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '7px', minWidth: 0 }}>
+        <CheckCircle2 size={12} style={{ color: 'var(--success)', flexShrink: 0, alignSelf: 'center' }} />
+        {abbr && (
+          <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--success)', background: 'var(--success-glow)', border: '1px solid rgba(0,255,157,0.25)', borderRadius: '4px', padding: '1px 5px', flexShrink: 0, fontFamily: 'var(--font-mono)' }}>{abbr[1]}</span>
+        )}
+        <span style={{ fontSize: '13px', color: 'var(--text-secondary)', minWidth: 0 }}>{label}</span>
+      </span>
+      {/* Short numeric targets read best on one line; a long one ("> 2.0x (if purchase
+          value is tracked)") must be allowed to wrap or it overflows the row. */}
+      {target && (
+        <b style={{
+          fontSize: '13px', color: '#fff', fontFamily: 'var(--font-mono)', textAlign: 'right',
+          whiteSpace: target.length <= 12 ? 'nowrap' : 'normal',
+          flexShrink: target.length <= 12 ? 0 : 1,
+          lineHeight: 1.45,
+        }}>{target}</b>
+      )}
+    </div>
+  );
+};
+
+// Headline/description list with a working expander.
+//
+// "+2 more descriptions" used to be a plain <span> — it read as a control but had no
+// handler, so clicking it did nothing and the remaining copy was unreachable. It is now a
+// button that expands the full list.
+//
+// Over-limit copy is also called out properly: a description at 97/90 is rejected by the
+// platform at publish time, so it is counted in the header rather than only tinting one
+// number red halfway down a collapsed list.
+const CopyList: React.FC<{ items: string[]; limit: number; noun: string; preview: number }> = ({ items, limit, noun, preview }) => {
+  const [open, setOpen] = useState(false);
+  if (!items.length) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  const over = items.filter(t => t.length > limit).length;
+  const shown = open ? items : items.slice(0, preview);
+  return (
+    <span style={{ display: 'block' }}>
+      {over > 0 && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '7px', fontSize: '11px', fontWeight: 700, color: 'var(--warning)', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '6px', padding: '3px 9px' }}>
+          <AlertTriangle size={12} /> {over} over {limit} characters — will be rejected
+        </span>
+      )}
+      {shown.map((t, i) => {
+        const bad = t.length > limit;
+        return (
+          <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '13px' }}>
+            <span style={{ color: bad ? 'var(--danger)' : undefined }}>{t}</span>
+            <span style={{ color: bad ? 'var(--danger)' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0, fontFamily: 'var(--font-mono)', fontWeight: bad ? 700 : 400 }}>{t.length}/{limit}</span>
+          </span>
+        );
+      })}
+      {items.length > preview && (
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{ marginTop: '4px', fontSize: '11px', fontWeight: 600, color: 'var(--accent)', background: 'transparent', border: 'none', padding: '2px 0', cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          {open ? `Show fewer ${noun}` : `+${items.length - preview} more ${noun}`}
+        </button>
+      )}
+    </span>
+  );
+};
+
+// The audience is the longest field the AI produces — several sentences of targeting
+// prose. Rendered as a plain row it swamps whatever sits around it, so it gets its own
+// contained treatment: accent rule, secondary text, and a height cap with its own scroll
+// so one verbose paragraph can never dominate a card. Shared by the strategy panel and
+// both platform review cards so they read identically.
+const AudienceBlock: React.FC<{ text?: string; maxHeight?: number }> = ({ text, maxHeight = 132 }) => (
+  <div style={{
+    marginTop: '14px', padding: '14px 16px', background: 'rgba(255,255,255,0.03)',
+    borderRadius: '10px', border: '1px solid var(--border, var(--border-color))',
+    borderLeft: '2px solid var(--accent)',
+  }}>
+    <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
+      Who this campaign targets
+    </div>
+    <div style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.65, maxHeight: `${maxHeight}px`, overflowY: 'auto' }}>
+      {text || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+    </div>
+  </div>
+);
+
+// Chip list with a working expander. The previous inline helper capped at 6 and rendered
+// "+N more" as a plain <span> — the same dead control as the copy lists, so the remaining
+// keywords and extensions could not be seen at all.
+const ChipList: React.FC<{ items: any[]; preview?: number }> = ({ items, preview = 6 }) => {
+  const [open, setOpen] = useState(false);
+  if (!items || !items.length) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  const shown = open ? items : items.slice(0, preview);
+  return (
+    <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+      {shown.map((x: any, i: number) => (
+        <span key={i} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{String(x)}</span>
+      ))}
+      {items.length > preview && (
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent)', background: 'transparent', border: 'none', padding: '3px 2px', cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          {open ? 'Show fewer' : `+${items.length - preview} more`}
+        </button>
+      )}
+    </span>
+  );
+};
+
+// A single copy field with its platform character limit, styled to match CopyList so the
+// Meta and Google review cards read the same way. Meta's copy is a few single strings
+// (primary text / headline / CTA) rather than the arrays Google uses.
+const CopyField: React.FC<{ label: string; value?: string; limit?: number }> = ({ label, value, limit }) => {
+  const text = (value || '').trim();
+  const bad = !!(limit && text.length > limit);
+  return (
+    <div style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</span>
+        {limit && text && (
+          <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', flexShrink: 0, fontWeight: bad ? 700 : 400, color: bad ? 'var(--danger)' : 'var(--text-secondary)' }}>
+            {text.length}/{limit}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: '13px', lineHeight: 1.55, color: text ? (bad ? 'var(--danger)' : '#fff') : 'var(--text-muted)' }}>
+        {text || '—'}
+      </div>
+    </div>
+  );
+};
+
+// ── Ad previews ──────────────────────────────────────────────────────────────
+// A review screen should show what will actually run. Both cards previously listed the
+// copy as label/value rows, which tells you the strings but not the ad — you could not
+// tell whether a headline was truncated, whether the creative and copy worked together,
+// or what a searcher would see. These render the copy in the shape of the real placement.
+
+const MetaAdPreview: React.FC<{ image?: string; pageName?: string; primary?: string; headline?: string; cta?: string; url?: string }> = ({ image, pageName, primary, headline, cta, url }) => (
+  <div style={{ border: '1px solid var(--border-hover)', borderRadius: '12px', overflow: 'hidden', background: '#101014' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '11px 13px' }}>
+      <span style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg,#5a52ff,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+        {(pageName || 'R').charAt(0).toUpperCase()}
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pageName || 'Your Page'}</span>
+        <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-muted)' }}>Sponsored · <span style={{ opacity: 0.8 }}>◎</span></span>
+      </span>
+    </div>
+    {primary && (
+      <div style={{ padding: '0 13px 10px', fontSize: '12.5px', color: 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{primary}</div>
+    )}
+    {image
+      ? <img src={image} alt="" style={{ display: 'block', width: '100%', aspectRatio: '1.91 / 1', objectFit: 'cover' }} />
+      : <div style={{ width: '100%', aspectRatio: '1.91 / 1', background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>No creative selected</div>}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '11px 13px', background: 'rgba(255,255,255,0.03)' }}>
+      <span style={{ minWidth: 0 }}>
+        {/* Meta's link ads show the destination domain above the headline, same as the
+            real placement — it was missing here while Google's preview had one. */}
+        <span style={{ display: 'block', fontSize: '10.5px', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {displayHost(url)}
+        </span>
+        <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#fff', lineHeight: 1.35, marginTop: '2px' }}>{headline || 'Your headline'}</span>
+      </span>
+      <span style={{ flexShrink: 0, fontSize: '11.5px', fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.10)', border: '1px solid var(--border-hover)', borderRadius: '7px', padding: '7px 13px', whiteSpace: 'nowrap' }}>
+        {cta || 'Learn More'}
+      </span>
+    </div>
+  </div>
+);
+
+// A landing page must actually look like one. `form.tracking` holds a UTM string
+// ("utm_source=ai_agent"), and feeding that to new URL() yields it as the "hostname" —
+// which is how the preview came to display `Ad · utm_source=ai_agent`.
+const displayHost = (url?: string, fallback = 'yoursite.com') => {
+  const u = (url || '').trim();
+  if (!u || /[=&\s]/.test(u)) return fallback;          // query fragments are not URLs
+  if (!/^https?:\/\//i.test(u) && !/\.[a-z]{2,}/i.test(u)) return fallback;  // needs a TLD
+  try {
+    return new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '') || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const GoogleAdPreview: React.FC<{ url?: string; headlines: string[]; descriptions: string[] }> = ({ url, headlines, descriptions }) => {
+  const host = displayHost(url);
+  return (
+    <div style={{ border: '1px solid var(--border-hover)', borderRadius: '12px', padding: '14px 16px', background: '#101014' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
+        <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--text-primary)', border: '1px solid var(--border-hover)', borderRadius: '4px', padding: '0 5px' }}>Ad</span>
+        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>·</span>
+        <span style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{host}</span>
+      </div>
+      {/* Google joins up to three headlines with pipes — showing them separately hid how
+          long the rendered title actually is. */}
+      <div style={{ fontSize: '16px', lineHeight: 1.35, color: '#8ab4f8', marginBottom: '4px' }}>
+        {headlines.slice(0, 3).join(' | ') || 'Your headline'}
+      </div>
+      <div style={{ fontSize: '12.5px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+        {descriptions.slice(0, 2).join(' ') || 'Your description text appears here.'}
+      </div>
+    </div>
+  );
+};
+
+// "Switch it on in Meta Ads Manager" is only actionable if you know what that is and how
+// to get there. The backend already returns a deep link to the created campaign
+// (campaign_urls) and we know the ad account before publishing — so the instruction
+// becomes a link the user can just click.
+const ExtLink: React.FC<{ href: string; children: React.ReactNode }> = ({ href, children }) => (
+  <a href={href} target="_blank" rel="noreferrer"
+    style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+    {children} <ExternalLink size={11} style={{ display: 'inline', verticalAlign: '-1px' }} />
+  </a>
+);
+
+const metaAdsManagerUrl = (adAccountId?: string | null) =>
+  adAccountId
+    ? `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${String(adAccountId).replace(/^act_/, '')}`
+    : 'https://adsmanager.facebook.com/';
 
 // Wraps a step that must stay inert until the strategy is approved.
 const Gated: React.FC<{ children: React.ReactNode; locked: boolean; why: string }> = ({ children, locked, why }) => (
@@ -405,7 +669,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   };
 
   // Real Google Ads connection (mirrors the Meta picker above exactly) + its account picker.
-  const [googleAccount, setGoogleAccount] = useState<{ configured?: boolean; connected?: boolean; email?: string; customer_id?: string | null }>({});
+  const [googleAccount, setGoogleAccount] = useState<{ configured?: boolean; connected?: boolean; email?: string; customer_id?: string | null; login_customer_id?: string | null }>({});
   const [googleAdAccounts, setGoogleAdAccounts] = useState<{ customer_id: string; name: string }[] | null>(null);
   const [googlePickerOpen, setGooglePickerOpen] = useState(false);
   const [googlePickerBusy, setGooglePickerBusy] = useState(false);
@@ -491,6 +755,21 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   // review card previously hardcoded a MOCK pill, so a fully connected account still read
   // as a simulation right up to the moment it published for real.
   const googleReadyToPublish = !!(googleAccount.connected && googleAccount.customer_id);
+  // A connected account still cannot publish if the server's developer token is not
+  // approved for production accounts. We only learn that from the API — core/google_ads.py
+  // already translates the enum into plain English — so surface it verbatim rather than
+  // letting the UI promise a publish that Google will reject.
+  const googleTokenBlocked = googleAccountsError && /developer token|not approved|DEVELOPER_TOKEN/i.test(googleAccountsError)
+    ? googleAccountsError
+    : null;
+  // listAccessibleCustomers returns the manager account itself alongside the real ad
+  // accounts, so it is easy to select by mistake — and a manager account can never hold a
+  // campaign, so publishing to it always fails.
+  const googleIsManagerAccount = !!(
+    googleAccount.customer_id &&
+    googleAccount.login_customer_id &&
+    googleAccount.customer_id === googleAccount.login_customer_id
+  );
   const split = spec.budget_split || {};
   const heroImage: string | null = spec.image_url || null;
   // Meta ad copy from the approved strategy — this is what actually gets sent
@@ -524,12 +803,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     videos: gt.includes('performance') || gt.includes('video'),
     signals: gt.includes('performance') || gt.includes('demand'),
   };
-  const chips = (arr: any[]) => (arr && arr.length) ? (
-    <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-      {arr.slice(0, 6).map((x: any, i: number) => <span key={i} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{String(x)}</span>)}
-      {arr.length > 6 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', alignSelf: 'center' }}>+{arr.length - 6} more</span>}
-    </span>
-  ) : <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  const chips = (arr: any[]) => <ChipList items={arr} />;
   const libraryImages: string[] = (creativeAssets || []).map((a: any) => a.image_url || a.imageUrl).filter(Boolean);
   // Every creative the user can pick from: the AI-generated ad, their library, and uploads.
   const allImages: string[] = Array.from(new Set([heroImage, ...uploadedImages, ...libraryImages].filter(Boolean) as string[]));
@@ -592,8 +866,19 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   useEffect(() => {
     if (!workspaceId) return;
     fetch(`/api/connectors/google-ads/${workspaceId}/status`, { headers: authHeaders() })
-      .then(r => (r.ok ? r.json() : null)).then(d => d && setGoogleAccount(d)).catch(() => {});
-  }, [workspaceId]);
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d) return;
+        setGoogleAccount(d);
+        // `connected` only means a refresh token exists. Whether the server's developer
+        // token is approved for production accounts is a separate gate, and it is only
+        // discoverable by calling the API — so probe it once here rather than waiting for
+        // the user to open the account picker. Without this the publish banner defaults to
+        // the optimistic wording and promises a campaign Google will reject.
+        if (d.connected) loadGoogleAdAccounts();
+      })
+      .catch(() => {});
+  }, [workspaceId, loadGoogleAdAccounts]);
 
   // ── generate strategy (+ its ad image, together) ──
   const generate = async () => {
@@ -1094,7 +1379,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                       {googleAccountsError && (
                         <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.3)', marginBottom: '10px' }}>
                           <AlertTriangle size={13} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '2px' }} />
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{googleAccountsError}</span>
+                          {/* The token error is about Raftra's own Google API access, not
+                              anything this user can fix — so it is translated rather than
+                              shown raw. Other failures (account disabled, no permission) are
+                              genuinely theirs to act on and stay verbatim. */}
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                            {googleTokenBlocked
+                              ? "Google Ads isn't available yet — we're waiting on Google to approve Raftra's access. You can still publish to Meta in the meantime."
+                              : googleAccountsError}
+                          </span>
                         </div>
                       )}
 
@@ -1102,11 +1395,10 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                         <div style={{ padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)', marginBottom: '10px' }}>
                           <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--warning)', marginBottom: '6px' }}>NO ADS ACCOUNT REACHABLE</div>
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.55, display: 'block' }}>
-                            This Google login can't reach any Google Ads account. Create one at{' '}
+                            This Google login doesn't have access to any Google Ads account yet.
+                            Create one at{' '}
                             <a href="https://ads.google.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>ads.google.com</a>,
-                            then link it under the manager account this server is configured with
-                            (GOOGLE_ADS_LOGIN_CUSTOMER_ID) and hit Refresh. For testing without
-                            spending, use a Google Ads <b style={{ color: '#fff' }}>test account</b> under a test manager.
+                            then come back and press Refresh.
                           </span>
                         </div>
                       )}
@@ -1116,10 +1408,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                             Real Google publishing landed (workspace_routes.py launches a full
                             PAUSED Search campaign), so that line told the user a working
                             feature did not exist. */}
-                        Required before a real (non-demo) campaign can be launched on Google Ads.
-                        Once an account is selected, publishing creates a real Search campaign —
-                        ad group, ad and keywords — <b style={{ color: '#fff' }}>paused</b>, so nothing
-                        spends until you activate it in Google Ads.
+                        Choose the account this campaign should run in. Your ad is always created{' '}
+                        <b style={{ color: '#fff' }}>paused</b>, so nothing is charged until you switch it
+                        on in Google Ads.
                       </p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
                         <button onClick={loadGoogleAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
@@ -1512,36 +1803,35 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(210px, 100%), 1fr))', gap: '18px' }}>
                 <div>
                   <Row k="Objective" v={campaign.objective || spec.objective || '—'} />
-                  {split.meta && <Row k="Meta share" v={`${split.meta.pct}% · ${money(split.meta.amount)}`} />}
-                  {split.google && <Row k="Google share" v={`${split.google.pct}% · ${money(split.google.amount)}`} />}
+                  <SplitBar meta={split.meta} google={split.google} fmt={money} />
                   <Row k="Runs for" v={spec.duration_label || form.schedule} />
                   {spec.geo_targeting && (
                     <Row k="Targeting" v={`${spec.geo_targeting.level || 'Country-Level'}${(spec.geo_targeting.locations || []).length ? ` · ${spec.geo_targeting.locations.join(', ')}` : ''}`} />
                   )}
                 </div>
                 <div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '7px' }}>Success targets</div>
-                  {(spec.kpis || []).map((k: string) => (
-                    <div key={k} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}><CheckCircle2 size={13} color="#00e676" /> {k}</div>
-                  ))}
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '12px 0 7px' }}>Keywords it will target</div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {keywords.slice(0, 8).map((k: string) => <span key={k} style={{ fontSize: '11px', color: '#8B85FF', background: 'rgba(90,82,255,0.12)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '6px', padding: '3px 9px' }}>{k}</span>)}
-                    {keywords.length === 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>—</span>}
-                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>Success targets</div>
+                  {(spec.kpis || []).map((k: string) => <KpiRow key={k} text={k} />)}
+                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '14px 0 8px' }}>Keywords it will target</div>
+                  {/* Was a hard slice(0, 8) with no way to see the rest — the remaining
+                      keywords were simply unreachable. */}
+                  <ChipList items={keywords} preview={8} />
                   {(headlines.length > 0 || descriptions.length > 0) && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '12px' }}>
-                      Ad copy ready: <b style={{ color: '#fff' }}>{headlines.length}</b> headlines · <b style={{ color: '#fff' }}>{descriptions.length}</b> descriptions
+                    /* Two counts, so show them as counts — the sentence form buried the
+                       only two numbers a reader is looking for. */
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '14px', flexWrap: 'wrap' }}>
+                      {[{ n: headlines.length, l: 'headlines' }, { n: descriptions.length, l: 'descriptions' }].map(x => (
+                        <span key={x.l} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px', padding: '6px 11px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border, var(--border-color))' }}>
+                          <b style={{ fontSize: '15px', color: '#fff', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{x.n}</b>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{x.l}</span>
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Audience is the longest field — give it the full width so it reads as a sentence. */}
-              <div style={{ marginTop: '14px', padding: '13px 15px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }}>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Who this campaign targets</div>
-                <div style={{ fontSize: '14px', color: '#fff', lineHeight: 1.6 }}>{spec.audience || form.audience}</div>
-              </div>
+              <AudienceBlock text={spec.audience || form.audience} />
 
               <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
                 <button onClick={copyStrategy} style={{ ...btnGhost, padding: '8px 12px', fontSize: '12px' }}>
@@ -1609,11 +1899,37 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               <p style={{ ...sectionHint, marginTop: '-8px', marginBottom: '12px' }}>
                 What will run on Facebook and Instagram. The ad account is connected in the header above.
               </p>
+              <MetaAdPreview
+                image={selectedImage || undefined}
+                pageName={metaAccount.page_name || undefined}
+                primary={metaCopy.primary_text}
+                headline={metaCopy.headline}
+                cta={metaCopy.cta}
+                url={spec.landing_page || undefined}
+              />
+
+              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '16px 0 2px' }}>
+                Campaign setup
+              </div>
               <Row k="Campaign name" v={campaign?.name || '—'} />
               <Row k="Objective" v={campaign?.objective || '—'} />
               <Row k="Budget" v={split.meta ? money(split.meta.amount) : '—'} />
               <Row k="Ad format" v={`Image ads (${selectedImage ? 1 : 0})`} />
-              <Row k="Audience" v={spec.audience || form.audience} stack />
+
+              {/* The ad copy that is actually published to Meta. It was previously not shown
+                  anywhere: publish() sends metaCopy.primary_text / headline / cta, so the
+                  user was approving Meta copy sight-unseen while reviewing Google's in full.
+                  Limits are Meta's recommended maximums. */}
+              <div style={{ marginTop: '12px', marginBottom: '4px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                  Ad copy
+                </div>
+                <CopyField label="Primary text" value={metaCopy.primary_text} limit={125} />
+                <CopyField label="Headline" value={metaCopy.headline} limit={40} />
+                <CopyField label="Call to action" value={metaCopy.cta} />
+              </div>
+
+              <AudienceBlock text={spec.audience || form.audience} />
               <Row k="Placements" v={
                 <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {String(spec.placements || form.placement).split(',').map((pl, i) => (
@@ -1648,21 +1964,21 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           {platforms.google && (
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status={googleReadyToPublish ? 'REAL' : 'MOCK'} /></h3>
+                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status={googleReadyToPublish && !googleIsManagerAccount && !googleTokenBlocked ? 'REAL' : 'MOCK'} /></h3>
                 <Pill status={googleSetup.launched ? 'Ready' : 'Pending'} />
               </div>
               <p style={{ ...sectionHint, marginTop: '-8px', marginBottom: '12px' }}>
                 {googleReadyToPublish
-                  ? 'What will run on Google. Publishing creates a real Search campaign — with its ad group, ad and keywords — created PAUSED so nothing spends until you activate it in Google Ads.'
-                  : 'What will run on Google. Connect a Google Ads account and select a customer in the header above to publish for real — until then this platform is simulated.'}
+                  ? 'How your ad will look on Google Search. It is created paused, so nothing is charged until you switch it on in Google Ads.'
+                  : 'How your ad would look on Google Search. Connect your Google Ads account above to actually run it — for now this is a preview only.'}
               </p>
               {/* Says which of the two prerequisites is missing rather than leaving the MOCK
                   pill unexplained. Both are exactly what the publish route checks. */}
-              {!googleReadyToPublish && (
+              {(!googleReadyToPublish || googleIsManagerAccount) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)' }}>
                   {[
                     { ok: !!googleAccount.connected, label: 'Google Ads account connected' },
-                    { ok: !!googleAccount.customer_id, label: 'Customer account selected' },
+                    { ok: !!googleAccount.customer_id && !googleIsManagerAccount, label: googleIsManagerAccount ? 'Pick an ad account — the one selected manages other accounts' : 'Ad account selected' },
                   ].map(row => (
                     <span key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: row.ok ? 'var(--success)' : 'var(--warning)' }}>
                       {row.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {row.label}
@@ -1688,34 +2004,26 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 )}
               </div>
               <Row k="Campaign name" v={campaign?.name || '—'} />
+              <GoogleAdPreview
+                url={spec.landing_page || undefined}
+                headlines={headlines}
+                descriptions={descriptions}
+              />
+
+              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '16px 0 2px' }}>
+                Campaign setup
+              </div>
               <Row k="Budget" v={split.google ? money(split.google.amount) : '—'} />
-              {gt.includes('search') && <Row k="Landing page" v={spec.landing_page || form.tracking || '—'} />}
+              {/* Was `spec.landing_page || form.tracking` — with no landing page set this
+                  showed the UTM string ("utm_source=ai_agent") as the landing page. */}
+              {gt.includes('search') && <Row k="Landing page" v={spec.landing_page || '—'} />}
+              <Row k="Tracking (UTM)" v={form.tracking || '—'} />
               {gShow.keywords && <Row k={`Keywords (${keywords.length})`} v={chips(keywords)} stack />}
               {gShow.extensions && <Row k="Extensions" v={chips(g.extensions || [])} stack />}
               <Row k={`Headlines (${headlines.length})`} v={
-                headlines.length ? (
-                  <span style={{ display: 'block' }}>
-                    {headlines.slice(0, 3).map((h, i) => (
-                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '13px' }}>
-                        <span>{h}</span>
-                        <span style={{ color: h.length > 30 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{h.length}/30</span>
-                      </span>
-                    ))}
-                    {headlines.length > 3 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{headlines.length - 3} more headlines</span>}
-                  </span>
-                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>} stack />
+                <CopyList items={headlines} limit={30} noun="headlines" preview={3} />} stack />
               <Row k={`Descriptions (${descriptions.length})`} v={
-                descriptions.length ? (
-                  <span style={{ display: 'block' }}>
-                    {descriptions.slice(0, 2).map((d, i) => (
-                      <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: '13px' }}>
-                        <span>{d}</span>
-                        <span style={{ color: d.length > 90 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{d.length}/90</span>
-                      </span>
-                    ))}
-                    {descriptions.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{descriptions.length - 2} more descriptions</span>}
-                  </span>
-                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>} stack />
+                <CopyList items={descriptions} limit={90} noun="descriptions" preview={2} />} stack />
               {gShow.images && <Row k="Images" v={
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {selectedImage
@@ -1845,11 +2153,33 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           </div>
 
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '14px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.2)', borderRadius: '9px', padding: '10px' }}>
-            {published
-              ? (publishedForReal
-                  ? `Live on ${publishedList.map(p => (p === 'meta' ? 'Meta' : 'Google')).join(' & ')} — created paused. Activate it there to start spending.`
-                  : `Published to ${publishedList.map(p => (p === 'meta' ? 'Meta' : 'Google')).join(' & ')} in demo mode — nothing was sent to a real ad account.`)
-              : 'Real publishing turns on for each platform once its ad account is connected.'}
+            {/* Reported per platform, not from camp.status. A mixed publish (Meta real,
+                Google simulated) is stored as PUBLISHED_DEMO, so keying off that status
+                told the user "nothing was sent to a real ad account" while a real,
+                billable Meta ad existed — the one message that must never be wrong. */}
+            {published ? (() => {
+              const modes = spec.published_modes || {};
+              const urls = spec.campaign_urls || {};
+              const name = (p: string) => (p === 'meta' ? 'Meta' : 'Google');
+              const real: string[] = publishedList.filter((p: string) => modes[p] === 'real');
+              const demo: string[] = publishedList.filter((p: string) => modes[p] !== 'real');
+              // The backend already returns a deep link straight to the created campaign
+              // (campaign_urls). Offering it turns "activate it there" from an instruction
+              // into a click — the user does not have to know where "there" is.
+              const links = real.map((pl: string) => {
+                const href = urls[pl] || (pl === 'meta' ? metaAdsManagerUrl(metaAccount.ad_account_id) : 'https://ads.google.com/aw/campaigns');
+                return <span key={pl}>{' '}<ExtLink href={href}>Open in {name(pl)}</ExtLink></span>;
+              });
+              if (real.length) return (
+                <>
+                  <b style={{ color: '#fff' }}>Your ad is created on {real.map(name).join(' & ')}</b>, and it is{' '}
+                  <b style={{ color: '#fff' }}>paused</b> — nothing is charged until you turn it on.
+                  {demo.length > 0 && <> {demo.map(name).join(' & ')} was a preview only.</>}
+                  {links}
+                </>
+              );
+              return <>This was a preview only — no ad was created and nothing was charged.</>;
+            })() : 'Connect an ad account for a platform to publish there for real.'}
           </p>
         </div>
       </Gated>
@@ -1859,28 +2189,42 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(0,230,118,0.05)', border: '1px solid rgba(0,230,118,0.22)' }}>
           <Check size={16} color="#00e676" style={{ flexShrink: 0 }} />
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-            <b style={{ color: '#fff' }}>Meta is live.</b> Publishing creates a real ad on Facebook and Instagram
-            as <b style={{ color: '#fff' }}>{metaAccount.page_name || 'your Page'}</b>, billed to ad account{' '}
-            {metaAccount.ad_account_id}. It is created <b style={{ color: '#fff' }}>paused</b> — activate it in Meta
-            Ads Manager to start spending.{' '}
-            {/* Google is only simulated while it lacks a connection — this line used to claim
-                it always was, which stopped being true the moment an account was linked. */}
-            {googleReadyToPublish
-              ? <><b style={{ color: '#fff' }}>Google Ads is live too</b> — a real Search campaign is created on customer {googleAccount.customer_id}, also paused.</>
-              : 'Google Ads is still simulated until an account is connected.'}
+            {/* Written for the person running the campaign, not the developer. The account
+                id, "developer token", "MCC" and "DEVELOPER_TOKEN_NOT_APPROVED" mean nothing
+                to them — what they need to know is: will this spend money, where does it
+                appear, and what do I do next. Ids move to a title tooltip. */}
+            {/* Short sentences, one idea each, ending in the action. The previous version
+                trailed an explanatory aside ("Facebook's own dashboard for running ads")
+                which reads as a footnote and buried the thing the user has to do. */}
+            <span title={metaAccount.ad_account_id ? `Meta ad account ${metaAccount.ad_account_id}` : undefined}>
+              <b style={{ color: '#fff' }}>Your ad will be created on Facebook and Instagram</b>, posting as{' '}
+              <b style={{ color: '#fff' }}>{metaAccount.page_name || 'your Page'}</b>.
+            </span>{' '}
+            It starts <b style={{ color: '#fff' }}>paused</b>, so <b style={{ color: '#fff' }}>you are not charged anything</b>.
+            {' '}You choose when to start it:{' '}
+            <ExtLink href={metaAdsManagerUrl(metaAccount.ad_account_id)}>Open Facebook Ads Manager</ExtLink>.{' '}
+            {googleIsManagerAccount
+              ? <><b style={{ color: 'var(--warning)' }}>Google Ads won't run yet.</b> The Google account you picked manages other accounts and can't hold ads itself — pick one of your ad accounts above.</>
+              : googleTokenBlocked
+                ? <><b style={{ color: 'var(--warning)' }}>Google Ads isn't available yet.</b> This campaign will run on Facebook and Instagram only.</>
+                : googleReadyToPublish
+                  ? <>It will also run on <b style={{ color: '#fff' }}>Google Search</b>, paused in the same way. <ExtLink href="https://ads.google.com/aw/campaigns">Open Google Ads</ExtLink>.</>
+                  : <>To run it on Google Search as well, connect your Google Ads account above.</>}
           </span>
         </div>
       ) : (
         <div style={{ ...card, padding: '13px 17px', display: 'flex', alignItems: 'center', gap: '11px', background: 'rgba(255,174,0,0.05)', border: '1px solid rgba(255,174,0,0.22)' }}>
           <AlertTriangle size={16} color="#ffae00" style={{ flexShrink: 0 }} />
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-            <b style={{ color: '#fff' }}>Publishing is simulated.</b>{' '}
+            {/* Same rewrite as the live banner: say what is missing and what to do, in the
+                words the person running the campaign would use. */}
+            <b style={{ color: '#fff' }}>This is a preview — your ad won't go live yet.</b>{' '}
             {!metaAccount?.connected
               ? 'Connect your Meta account above to publish real ads to Facebook and Instagram.'
               : !metaAccount?.ad_account_id
-                ? 'Meta is connected — now select the ad account to bill.'
-                : 'Meta is connected — now select the Facebook Page to publish as. Meta cannot create an ad without one.'}
-            {' '}Until then no ad account is touched and no money is spent.
+                ? 'Your Meta account is connected — now choose which ad account should pay for this campaign.'
+                : 'Your Meta account is connected — now choose the Facebook Page the ad should post as. Meta needs one before it can create an ad.'}
+            {' '}Nothing is charged and no ad is created until that's done.
           </span>
         </div>
       )}
@@ -2076,25 +2420,20 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                   <Row k="Total budget" v={money(spec.total_budget || form.budget)} />
                 </div>
               </div>
-              <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border, var(--border-color))' }}>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '5px' }}>Who this campaign targets</div>
-                <div style={{ fontSize: '13px', lineHeight: 1.6 }}>{spec.audience || form.audience}</div>
-              </div>
+              <AudienceBlock text={spec.audience || form.audience} maxHeight={120} />
             </div>
 
             {/* budget split + KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))', gap: '18px', marginBottom: '18px' }}>
               <div>
                 <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>BUDGET SPLIT</div>
-                {split.meta && <Row k="Meta Ads" v={`${split.meta.pct}% · ${money(split.meta.amount)}`} />}
-                {split.google && <Row k="Google Ads" v={`${split.google.pct}% · ${money(split.google.amount)}`} />}
-                {!split.meta && !split.google && <p style={sectionHint}>Not set.</p>}
+                {(split.meta || split.google)
+                  ? <SplitBar meta={split.meta} google={split.google} fmt={money} />
+                  : <p style={sectionHint}>Not set.</p>}
               </div>
               <div>
                 <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>SUCCESS TARGETS</div>
-                {(spec.kpis || []).map((k: string) => (
-                  <div key={k} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}><CheckCircle2 size={13} color="#00e676" /> {k}</div>
-                ))}
+                {(spec.kpis || []).map((k: string) => <KpiRow key={k} text={k} />)}
                 {!(spec.kpis || []).length && <p style={sectionHint}>None set.</p>}
               </div>
             </div>
@@ -2114,21 +2453,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 {headlines.length > 0 && (
                   <div style={{ marginBottom: '10px' }}>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Headlines ({headlines.length})</div>
-                    {headlines.map((h, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <span>{h}</span><span style={{ color: h.length > 30 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{h.length}/30</span>
-                      </div>
-                    ))}
+                    <CopyList items={headlines} limit={30} noun="headlines" preview={999} />
                   </div>
                 )}
                 {descriptions.length > 0 && (
                   <div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Descriptions ({descriptions.length})</div>
-                    {descriptions.map((d, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <span>{d}</span><span style={{ color: d.length > 90 ? '#ff5252' : 'var(--text-secondary)', fontSize: '11px', flexShrink: 0 }}>{d.length}/90</span>
-                      </div>
-                    ))}
+                    <CopyList items={descriptions} limit={90} noun="descriptions" preview={999} />
                   </div>
                 )}
               </div>

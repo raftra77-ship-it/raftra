@@ -1208,11 +1208,17 @@ class GoogleAdsCampaignBudgetBody(BaseModel):
 def gads_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _get_gads(workspace_id, db)
+    # login_customer_id is the manager (MCC) account every call is made through. It is
+    # surfaced so the UI can warn when the selected customer IS that manager: campaigns
+    # cannot be created inside a manager account, so such a selection always fails at
+    # publish time — and listAccessibleCustomers returns the manager alongside the real
+    # ad accounts, so it is an easy one to pick by mistake.
     return {
         "configured": gads.is_configured(),
         "connected": bool(conn and conn.refresh_token),
         "email": conn.connected_email if conn else None,
         "customer_id": conn.customer_id if conn else None,
+        "login_customer_id": (gads.LOGIN_CUSTOMER_ID or "").replace("-", "") or None,
     }
 
 

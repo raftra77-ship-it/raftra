@@ -1,0 +1,45 @@
+fastapi
+uvicorn
+sqlalchemy
+python-multipart
+passlib[bcrypt]
+razorpay
+python-dotenv
+celery
+redis
+langchain
+langchain-openai
+pydantic
+alembic
+pytest
+httpx
+psycopg2-binary
+pgvector
+composio-core
+composio-langchain
+pyjwt
+cryptography
+email-validator
+
+firecrawl-py
+
+# Vector DB, graph orchestration, storage & misc (imported in code, previously missing)
+qdrant-client
+langgraph
+supabase
+google-generativeai
+# Search Console + GA4 (core/search_console.py, core/ga4.py). These currently arrive as
+# transitive deps of google-generativeai; pinned here explicitly so a future change to that
+# package can't silently break the Google connectors at runtime.
+google-api-python-client
+google-auth
+google-auth-oauthlib
+requests
+websockets
+
+apscheduler>=3.10,<4
+
+# Ken Burns ad video (core/providers/kenburns_video.py). Ships a static ffmpeg binary, so
+# video rendering works from a plain pip install — no system package or admin rights needed.
+# A system ffmpeg on PATH (or FFMPEG_BINARY) still takes precedence if one exists.
+imageio-ffmpeg
