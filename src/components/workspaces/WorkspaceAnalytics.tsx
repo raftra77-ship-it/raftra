@@ -1,7 +1,9 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Send, Search, BarChart3, TrendingUp, Globe, Users, Award, Zap, Activity, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+
+import { GrowthAnalysisSection } from './GrowthAnalysisSection';
 
 export interface ChatMessage {
   id: string;
@@ -14,11 +16,13 @@ export interface ChatMessage {
 interface WorkspaceAnalyticsProps {
   chatHistory: ChatMessage[];
   onSendMessage: (msg: string) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   chatHistory,
   onSendMessage,
+  onNavigateTab,
 }) => {
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -342,84 +346,11 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
 
       <div style={{ height: '1px', background: 'var(--border)', margin: '10px 0' }} />
 
-      {/* 3. BOTTOM SECTION: Growth & Influencer */}
-      <div>
-        <h3 style={{ fontSize: '18px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
-          <BarChart3 size={20} color="var(--accent)" /> Financial Growth & Influencer Tracking
-        </h3>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          {/* Revenue Area Chart */}
-          <div className="glow-card" style={{ padding: '24px' }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', fontFamily: 'var(--font-mono)', display: 'flex', justifyContent: 'space-between' }}>
-              REVENUE VS SPEND TRAJECTORY
-              <span style={{ color: 'var(--success)', fontWeight: 700 }}>$42,000 MRR</span>
-            </h4>
-            <div style={{ width: '100%', height: '200px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={growthData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8884d8" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorMeta" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.1} />
-                      <stop offset="95%" stopColor="#82ca9d" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: '#0a0a0c', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} />
-                  <Area type="monotone" dataKey="Revenue" stroke="#8884d8" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="MetaSpend" stroke="#82ca9d" fillOpacity={1} fill="url(#colorMeta)" strokeWidth={1} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '11px', marginTop: '16px', justifyContent: 'center' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8884d8' }} /> Total Revenue
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#82ca9d' }} /> Ad Spend
-              </span>
-            </div>
-          </div>
-
-          {/* Influencer Leaderboard */}
-          <div className="glow-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', fontFamily: 'var(--font-mono)' }}>TOP PERFORMING CREATORS</h4>
-            
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {[
-                { name: '@techguru_sam', platform: 'YouTube', roas: '5.2x', sales: '$12,400' },
-                { name: '@ai_daily', platform: 'TikTok', roas: '3.8x', sales: '$8,100' },
-                { name: '@marv_reviews', platform: 'Instagram', roas: '2.9x', sales: '$4,200' },
-              ].map((creator, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Users size={16} color="var(--text-secondary)" />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{creator.name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{creator.platform}</div>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--success)' }}>{creator.roas} ROAS</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{creator.sales} driven</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <GlowButton variant="glow" style={{ marginTop: '20px', padding: '12px', width: '100%', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <Award size={14} /> Open Influencer CRM
-            </GlowButton>
-          </div>
-        </div>
-      </div>
+      {/* 3. BOTTOM SECTION: Upgraded Growth Analysis & Intelligence Engine */}
+      <GrowthAnalysisSection 
+        onNavigateTab={onNavigateTab}
+        onSendMessage={onSendMessage}
+      />
 
     </div>
   );

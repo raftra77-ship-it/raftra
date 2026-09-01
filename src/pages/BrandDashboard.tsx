@@ -1716,6 +1716,7 @@ export function BrandDashboard({ defaultTab }: { defaultTab?: NavigationTab }) {
               <WorkspaceAnalytics
                 chatHistory={chatHistory}
                 onSendMessage={handleSendClaudeMessage}
+                onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
               />
             </div>
           )}
