@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { PreviewBadge, PreviewNote } from './PreviewMark';
+import { MarketTrendsCompetitorModal } from '../MarketTrendsCompetitorModal';
 
 // One card in the Recent Projects / Ad Library grids. `real` marks a row that came from
 // this workspace's own generated assets rather than the seeded demo entries, because the two
@@ -51,6 +52,8 @@ interface WorkspaceCreativeProps {
   onAssetSaved?: (asset: CreativeAsset) => void;
   workspaceId?: number;
   onNavigateTab?: (tab: string) => void;
+  /** An asset handed over from the Media vault, used as the reference image. */
+  incomingReferenceImage?: string | null;
 }
 
 export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
@@ -60,11 +63,16 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onGenerate,
   onAssetSaved,
   workspaceId,
-  onNavigateTab
+  onNavigateTab,
+  incomingReferenceImage = null
 }) => {
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc' | 'editor' | 'carousel' | 'video_editor' | 'ad_library'>('create');
   
+  // Market Intelligence — this workspace's competitor ad vault and search/creator radar,
+  // both filled by the scheduled syncs in backend/core/intel_sync.py.
+  const [showMarketIntel, setShowMarketIntel] = useState(false);
+
   // Hero Quick Goal Selector
   const [quickGoal, setQuickGoal] = useState<'image' | 'video' | 'carousel' | 'ai_ugc' | 'hire_ugc'>('image');
 
@@ -350,6 +358,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [productPrompt, setProductPrompt] = useState('');
   const [aiProductVisualRender, setAiProductVisualRender] = useState<string | null>(null);
+
+  // "Use in Creative Studio" in the Media vault lands here: the asset becomes the reference
+  // image the generator is given, which is what that button always claimed to do.
+  useEffect(() => {
+    if (incomingReferenceImage) setAiProductVisualRender(incomingReferenceImage);
+  }, [incomingReferenceImage]);
 
   // Step 3 Ad Type & Settings
   const [selectedAdType, setSelectedAdType] = useState<'Image' | 'Video' | 'Carousel'>('Image');
@@ -1759,6 +1773,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 Analyze top scaling competitor ads, psychological hooks, and high-converting CTAs tracked across active market campaigns.
               </p>
             </div>
+
+            <GlowButton
+              variant="glow"
+              onClick={() => setShowMarketIntel(true)}
+              style={{ padding: '12px 22px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <TrendingUp size={15} />
+              Market Intelligence
+            </GlowButton>
           </div>
 
           {/* ---------------------------------------------------------------- live research */}
@@ -1768,8 +1791,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </h3>
             <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
               Reads the brand's own site and what search returns about them, then extracts positioning, offers, hooks and
-              CTAs — every source listed so you can check it. It cannot show a rival's paid ads: no public API exposes
-              commercial ad creatives.
+              CTAs — every source listed so you can check it. Competitors saved here are also the ones the fortnightly
+              ad sync tracks; open <strong>Market Intelligence</strong> above to see their currently active Meta ads.
             </p>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -4160,6 +4183,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ position: 'fixed', bottom: '40px', right: '40px', background: '#7C75FF', color: '#fff', padding: '14px 22px', borderRadius: '12px', boxShadow: '0 8px 32px rgba(124,117,255,0.4)', zIndex: 300, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 600, fontSize: '14px' }}>
           <CheckCircle2 size={18} /> {copyToast}
         </div>
+      )}
+
+      {showMarketIntel && (
+        <MarketTrendsCompetitorModal
+          isOpen={showMarketIntel}
+          onClose={() => setShowMarketIntel(false)}
+          workspaceId={workspaceId ?? null}
+          onNavigateTab={onNavigateTab}
+        />
       )}
 
     </div>

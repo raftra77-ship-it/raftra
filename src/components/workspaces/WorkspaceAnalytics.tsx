@@ -3,6 +3,7 @@ import { Send, Search, BarChart3, Globe, Users, Award, Zap, MessageSquare, Uploa
 import { GlowButton } from '../GlowButton';
 import { PreviewNote, NotConnected } from './PreviewMark';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { GrowthAnalysisSection } from './GrowthAnalysisSection';
 
 export interface ChatMessage {
   id: string;
@@ -415,6 +416,26 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
           </div>
         </div>
       </div>
+
+      <div style={{ height: '1px', background: 'var(--border)', margin: '10px 0' }} />
+
+      {/* Growth Analysis & Intelligence Engine.
+          Added to THIS component rather than swapping in the redesigned WorkspaceAnalytics:
+          that version dropped the workspaceId prop and reintroduced nine months of
+          hardcoded Meta/Google spend and revenue, which is the data this file's own header
+          comment records as having been removed for contradicting the dashboard's $0 tiles.
+          Mounted here, the new section renders against the same live workspace the rest of
+          the screen already reads. */}
+      <GrowthAnalysisSection
+        workspaceId={workspaceId}
+        onSendMessage={onSendMessage}
+        connectedSources={{
+          meta: !!sources?.['Meta Insights API']?.connected,
+          google: !!sources?.['Google Ads API']?.connected,
+          ga4: !!sources?.['GA4 Analytics']?.connected,
+          gsc: !!sources?.['Search Console']?.connected,
+        }}
+      />
 
     </div>
   );

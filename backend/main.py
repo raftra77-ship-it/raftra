@@ -90,12 +90,14 @@ async def reconcile_stale_agent_tasks():
 
 @app.on_event("startup")
 async def start_monthly_scheduler():
-    """Start the in-process monthly SEO/GEO audit scheduler (no Redis needed)."""
+    """Start the in-process background schedulers (no Redis needed): the monthly SEO/GEO
+    audit run, and the fortnightly competitor-ad / four-weekly market-trend syncs. Each is
+    independently opt-in - see core/scheduler.py."""
     try:
         from core.scheduler import start_scheduler
         start_scheduler()
     except Exception as e:
-        print(f"Failed to start monthly scheduler: {e}")
+        print(f"Failed to start background schedulers: {e}")
 
 # WebSocket streaming endpoint
 from core.websocket import manager
@@ -181,6 +183,7 @@ async def chat_socket(websocket: WebSocket, room: str):
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
 import auth, models, database, payments, agent_routes, workspace_routes, connector_routes, publishing_routes, creative_routes
+import schedule_routes
 
 # Create tables in db (in production, use alembic for migrations)
 models.Base.metadata.create_all(bind=database.engine)
@@ -237,6 +240,8 @@ def _run_light_migrations():
         "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS auto_apply BOOLEAN DEFAULT FALSE",
         "ALTER TABLE wordpress_connections ADD COLUMN IF NOT EXISTS seo_plugin VARCHAR",
         "UPDATE wordpress_connections SET auth_type = 'app_password' WHERE auth_type IS NULL",
+        # Brand guidelines beyond the four scraped fields (BrandProfile.guidelines).
+        "ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS guidelines JSON",
     ]
     try:
         with database.engine.begin() as conn:
@@ -261,6 +266,23 @@ app.include_router(payout_routes.router)
 app.include_router(connector_routes.router)
 app.include_router(publishing_routes.router)
 app.include_router(creative_routes.router)
+app.include_router(schedule_routes.router)
+# notification_routes was written, complete with a model and three endpoints, but never
+# included here - so the bell in the dashboard had no API to call and fell back to
+# session-local state that vanished on refresh.
+import notification_routes
+app.include_router(notification_routes.router)
+# Same problem: media_routes was written and never mounted, so the creator portal's
+# payout-proof upload 404'd and silently submitted an unusable blob: URL instead.
+import media_routes
+app.include_router(media_routes.router)
+# Brand kit, competitor ad vault, market-trend radar and the hybrid RAG query over all
+# three. Mounted under the same /api/workspaces prefix, so every route in it goes through
+# the workspace ownership check before reading a row.
+import analytics_routes
+app.include_router(analytics_routes.router)
+import intelligence_routes
+app.include_router(intelligence_routes.router)
 
 # Locally-rendered media (Ken Burns ad videos from core/providers/kenburns_video.py).
 # Mounted under /api so the Vite dev proxy forwards it and the same relative URL keeps

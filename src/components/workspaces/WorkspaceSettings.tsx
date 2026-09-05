@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User,
@@ -52,7 +52,12 @@ interface WorkspaceSettingsProps {
   onAddBrand?: (brand: { name: string; url: string; industry: string; color: string }) => void;
   onDeleteBrand?: (brandId: string) => void;
   creditsBalance?: number;
+  /** Opens the real Razorpay top-up in the dashboard. */
   onTopUpCredits?: (amount: number) => void;
+  /** Sends the user to the real plan checkout. */
+  onChoosePlan?: () => void;
+  /** Scopes the creator-deal vault below. */
+  workspaceId?: number | null;
 }
 
 export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
@@ -63,12 +68,43 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   onAddBrand,
   onDeleteBrand,
   creditsBalance: externalCreditsBalance,
-  onTopUpCredits
+  onTopUpCredits,
+  onChoosePlan,
+  workspaceId = null
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<string>('profile');
   
-  // Profile settings state
-  const [email, setEmail] = useState('aryan070606@gmail.com');
+  // Profile settings state. The email was hardcoded to a real person's address, shown to
+  // whoever was signed in.
+  const [email, setEmail] = useState('');
+  const [accountRole, setAccountRole] = useState('');
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const authHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  useEffect(() => {
+    fetch('/api/auth/me', { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) { setEmail(d.email || ''); setAccountRole(d.role || ''); } })
+      .catch(() => {});
+  }, []);
+
+  // Real payment history for the invoices table below.
+  const [transactions, setTransactions] = useState<{
+    id: number; amount: number; currency: string; purpose: string;
+    status: string; payment_id: string | null; created_at: string | null;
+  }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/payments/transactions', { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => setTransactions(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
   const [emailTipsEnabled, setEmailTipsEnabled] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -114,71 +150,30 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   // Escrow Vault State
-  const [vaultEscrowList, setVaultEscrowList] = useState([
-    {
-      id: 'esc-1',
-      creatorName: 'Navya Monga',
-      handle: '@navvyyaaaaa',
-      deliverable: '1 UGC Reel + 2 Stories',
-      amount: 3000,
-      status: 'Held in Escrow',
-      statusDetail: 'Draft in Quality Review',
-      badgeColor: '#FFB300',
-      date: 'Aug 18, 2026'
-    },
-    {
-      id: 'esc-2',
-      creatorName: 'Preethi Sharma',
-      handle: '@_preethi.sharma_',
-      deliverable: '1 UGC Video + 1 Story',
-      amount: 2500,
-      status: 'Released to Creator ✓',
-      statusDetail: 'Delivered & Posted',
-      badgeColor: '#00E676',
-      date: 'Aug 16, 2026'
-    },
-    {
-      id: 'esc-3',
-      creatorName: 'Damia Arya',
-      handle: '@damiaaryaa',
-      deliverable: '2 UGC Reels + 3 Stories',
-      amount: 12000,
-      status: 'Held in Escrow',
-      statusDetail: 'Content Production / Shooting',
-      badgeColor: '#7C75FF',
-      date: 'Aug 15, 2026'
-    },
-    {
-      id: 'esc-4',
-      creatorName: 'Arush Chaudhary',
-      handle: '@arushxflexx',
-      deliverable: '1 Integrated Reel',
-      amount: 8000,
-      status: 'Held in Escrow',
-      statusDetail: 'Contract Signed & Sample Dispatched',
-      badgeColor: '#00D2FF',
-      date: 'Aug 14, 2026'
-    },
-    {
-      id: 'esc-5',
-      creatorName: 'Payal',
-      handle: '@payallll_2',
-      deliverable: '1 UGC Reel',
-      amount: 3500,
-      status: 'Held in Escrow',
-      statusDetail: 'Sample Shipped',
-      badgeColor: '#FF6B00',
-      date: 'Aug 12, 2026'
-    }
-  ]);
+  // Real brand-creator deals. Was five invented creators with invented amounts, totalled
+  // into an escrow figure the brand was told was being held for them.
+  const [vaultEscrowList, setVaultEscrowList] = useState<{
+    id: number; influencer_name: string; influencer_handle: string;
+    deliverables: string; amount: number; status: string; created_at?: string | null;
+  }[]>([]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch(`/api/deals/brand/${workspaceId}`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => setVaultEscrowList(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [workspaceId]);
+
+  // "paid" is money already with the creator; everything before that is still held.
+  const isHeld = (s: string) => ['pending', 'active', 'delivered'].includes((s || '').toLowerCase());
 
   const totalVaultLocked = vaultEscrowList
-    .filter(item => item.status.includes('Held'))
-    .reduce((acc, item) => acc + item.amount, 0);
-
+    .filter(v => isHeld(v.status))
+    .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
   const totalVaultReleased = vaultEscrowList
-    .filter(item => item.status.includes('Released'))
-    .reduce((acc, item) => acc + item.amount, 0);
+    .filter(v => (v.status || '').toLowerCase() === 'paid')
+    .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
 
   // INR Pricing Plans Synced with PricingScreen
   const INR_PLANS = [
@@ -232,31 +227,20 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     }
   ];
 
+  // Opens Razorpay through the dashboard. It used to add the credits to a local number and
+  // announce "Successfully added" before any payment had happened.
   const handleTopUp = (amount: number) => {
-    if (onTopUpCredits) {
-      onTopUpCredits(amount);
-    } else {
-      setInternalCredits(prev => prev + amount);
+    if (!onTopUpCredits) {
+      setNotice({ ok: false, text: 'Top-up is unavailable on this screen.' });
+      return;
     }
-    alert(`✓ Successfully added ₹${amount.toLocaleString('en-IN')} execution credits!`);
+    onTopUpCredits(amount);
   };
 
-  const handleReleaseEscrow = (id: string, name: string, amount: number) => {
-    if (confirm(`Approve deliverables and release ₹${amount.toLocaleString('en-IN')} from Vault to ${name}?`)) {
-      setVaultEscrowList(prev => prev.map(item => {
-        if (item.id === id) {
-          return {
-            ...item,
-            status: 'Released to Creator ✓',
-            statusDetail: 'Approved & Transferred',
-            badgeColor: '#00E676'
-          };
-        }
-        return item;
-      }));
-      alert(`✓ Released ₹${amount.toLocaleString('en-IN')} to ${name}!`);
-    }
-  };
+  // handleReleaseEscrow lived here. It flipped a row in a local array to "Released to
+  // Creator" and announced the transfer; no money moved and no endpoint was called. Paying
+  // a creator runs through payout_routes and an approval step, which this screen has no
+  // part in, so the button is gone rather than reimplemented badly.
 
   const handleSelectBrand = (id: string) => {
     if (onSwitchBrand) {
@@ -266,7 +250,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     }
   };
 
-  const handleCreateBrand = (e: React.FormEvent) => {
+  const handleCreateBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandName.trim()) return;
 
@@ -278,66 +262,134 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
       color: newBrandColor
     };
 
-    if (onAddBrand) {
-      onAddBrand(newBrand);
-    } else {
-      setInternalBrands(prev => [...prev, newBrand]);
-      setInternalActiveId(newBrand.id);
+    // Creates the workspace server-side; the parent refreshes its list from the response.
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          name: newBrand.name,
+          company_url: newBrand.url,
+          brand_color: newBrand.color,
+          brand_voice: '',
+          brand_logo: null,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'Could not create that brand.');
+      onAddBrand?.({ name: d.name, url: d.company_url || '', industry: newBrand.industry, color: d.brand_color || newBrand.color });
+      setShowAddBrandModal(false);
+      setNewBrandName('');
+      setNewBrandUrl('');
+      setNotice({ ok: true, text: `Created ${d.name}.` });
+    } catch (e: any) {
+      setNotice({ ok: false, text: e.message || 'Could not reach the server.' });
     }
-
-    setShowAddBrandModal(false);
-    setNewBrandName('');
-    setNewBrandUrl('');
-    alert(`✓ Successfully created brand profile for "${newBrand.name}"!`);
+    setBusy(false);
   };
 
-  const handleDeleteBrandItem = (id: string, name: string) => {
+  // Deletes the workspace and everything under it. This used to splice a local array, so
+  // the brand reappeared on the next refresh.
+  const handleDeleteBrandItem = async (id: string, name: string) => {
     if (currentBrands.length <= 1) {
-      alert('You must have at least one brand profile in your workspace.');
+      setNotice({ ok: false, text: 'You need at least one brand, so this one cannot be deleted.' });
       return;
     }
-    if (confirm(`Are you sure you want to delete brand profile "${name}"?`)) {
-      if (onDeleteBrand) {
-        onDeleteBrand(id);
-      } else {
-        setInternalBrands(prev => prev.filter(b => b.id !== id));
-        if (currentActiveId === id) {
-          const remaining = currentBrands.filter(b => b.id !== id);
-          if (remaining.length > 0) setInternalActiveId(remaining[0].id);
-        }
-      }
+    if (!confirm(`Delete "${name}" and everything in it? This cannot be undone.`)) return;
+
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await fetch(`/api/workspaces/${id}`, { method: 'DELETE', headers: authHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'Could not delete that brand.');
+      onDeleteBrand?.(id);
+      setNotice({ ok: true, text: `Deleted ${name}.` });
+    } catch (e: any) {
+      setNotice({ ok: false, text: e.message || 'Could not reach the server.' });
     }
+    setBusy(false);
   };
 
-  const handleSavePassword = (e: React.FormEvent) => {
+  // Real change-password. The current password is required by the endpoint: a token left
+  // behind on a shared machine should not be enough to lock the owner out.
+  const [currentPassword, setCurrentPassword] = useState('');
+
+  const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPassword) return;
-    alert('Password updated successfully!');
-    setShowPasswordModal(false);
-    setNewPassword('');
-  };
-
-  const handleDeleteAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (deleteConfirmText !== 'DELETE') {
-      alert('Please type DELETE to confirm.');
-      return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'Could not change the password.');
+      setShowPasswordModal(false);
+      setNewPassword('');
+      setCurrentPassword('');
+      setNotice({ ok: true, text: 'Password updated.' });
+    } catch (e: any) {
+      setNotice({ ok: false, text: e.message || 'Could not reach the server.' });
     }
-    alert('Account deletion request initiated.');
-    setShowDeleteModal(false);
+    setBusy(false);
   };
 
+  // Really deletes the account. "Account deletion request initiated." left everything
+  // exactly where it was, which is a data-protection problem rather than a cosmetic one.
+  const [deletePassword, setDeletePassword] = useState('');
+
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await fetch('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ confirm: deleteConfirmText, password: deletePassword }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || 'Could not delete the account.');
+      localStorage.removeItem('token');
+      window.location.href = '/';
+    } catch (e: any) {
+      setNotice({ ok: false, text: e.message || 'Could not reach the server.' });
+      setBusy(false);
+    }
+  };
+
+  // There is no team model, no invite table and no mail for this - the old handler pushed
+  // a row into local state and said "Invitation sent", so the invitee never heard anything
+  // and the row vanished on refresh. Says so instead of pretending.
   const handleInviteMember = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMemberEmail) return;
-    setMembers(prev => [...prev, { name: newMemberEmail.split('@')[0], email: newMemberEmail, role: 'Editor', status: 'Invited' }]);
-    setNewMemberEmail('');
     setShowInviteModal(false);
-    alert(`Invitation sent to ${newMemberEmail}!`);
+    setNotice({ ok: false, text: 'Team invites are not available yet - there is no way to send one, so nothing was sent.' });
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+      {/* Outcomes are reported here rather than through alert(), so a failure is as visible
+          as a success and neither can be claimed without the server saying so. */}
+      {notice && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '12px 16px',
+          borderRadius: '10px', fontSize: '13px', lineHeight: 1.55,
+          background: notice.ok ? 'rgba(0,230,118,0.08)' : 'rgba(255,71,87,0.08)',
+          border: `1px solid ${notice.ok ? 'rgba(0,230,118,0.3)' : 'rgba(255,71,87,0.3)'}`,
+          color: notice.ok ? '#00E676' : '#ff6b7a',
+        }}>
+          <span style={{ flex: 1 }}>{notice.text}</span>
+          <button onClick={() => setNotice(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>✕</button>
+        </div>
+      )}
       
       {/* ── HIGH-VISIBILITY CATEGORY SUB-NAVIGATION (NO NOTIFICATIONS / NO PERMISSIONS) ── */}
       <div
@@ -762,7 +814,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <span style={{ fontSize: '11px', background: 'rgba(255, 179, 0, 0.2)', color: '#FFB300', border: '1px solid rgba(255, 179, 0, 0.4)', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
                     🔒 RAFTRA CREATOR VAULT
                   </span>
-                  <span style={{ fontSize: '11.5px', color: '#FFB300', fontWeight: 700 }}>{vaultEscrowList.filter(v => v.status.includes('Held')).length} In Escrow</span>
+                  <span style={{ fontSize: '11.5px', color: '#FFB300', fontWeight: 700 }}>{vaultEscrowList.filter(v => isHeld(v.status)).length} in escrow</span>
                 </div>
 
                 <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontWeight: 800 }}>
@@ -805,7 +857,16 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
 
             {/* Escrow Items List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {vaultEscrowList.map((item) => (
+              {!vaultEscrowList.length && (
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                  No creator deals on this workspace yet. Deals agreed in the Creator
+                  Marketplace appear here with what is still held and what has been paid out.
+                </p>
+              )}
+
+              {vaultEscrowList.map((item) => {
+                const held = isHeld(item.status);
+                return (
                 <div
                   key={item.id}
                   style={{
@@ -822,19 +883,20 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#fff', fontSize: '14px' }}>
-                      {item.creatorName.charAt(0)}
+                      {(item.influencer_name || '?').charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <h4 style={{ fontSize: '14.5px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                          {item.creatorName}
+                          {item.influencer_name}
                         </h4>
                         <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                          {item.handle}
+                          @{item.influencer_handle}
                         </span>
                       </div>
                       <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                        {item.deliverable} • {item.date}
+                        {item.deliverables}
+                        {item.created_at ? ` • ${new Date(item.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
                       </span>
                     </div>
                   </div>
@@ -842,37 +904,35 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '15px', color: '#fff', fontWeight: 800 }}>
-                        ₹{item.amount.toLocaleString('en-IN')}
+                        ₹{Number(item.amount || 0).toLocaleString('en-IN')}
                       </div>
-                      <span style={{ fontSize: '11px', color: item.badgeColor, fontWeight: 700 }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'capitalize',
+                                     color: held ? '#FFB300' : '#00E676' }}>
                         ● {item.status}
                       </span>
                     </div>
 
-                    {item.status.includes('Held') ? (
-                      <button
-                        onClick={() => handleReleaseEscrow(item.id, item.creatorName, item.amount)}
-                        style={{
-                          background: 'rgba(0, 230, 118, 0.15)',
-                          border: '1px solid rgba(0, 230, 118, 0.3)',
-                          color: '#00E676',
-                          padding: '6px 14px',
-                          borderRadius: '100px',
-                          fontSize: '11.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Approve & Release
-                      </button>
-                    ) : (
-                      <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 700 }}>
-                        Settled ✓
-                      </span>
-                    )}
+                    {/* Releasing a deal's payment runs through the marketplace, which owns
+                        the approval step and the payout - not this settings screen. */}
+                    <button
+                      onClick={() => onNavigateTab?.('influencer')}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        color: '#fff',
+                        padding: '6px 14px',
+                        borderRadius: '100px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Open deal
+                    </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1006,13 +1066,14 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
 
                     <button
                       onClick={() => {
-                        if (isSelected) {
-                          alert('You are already subscribed to this tier.');
-                        } else {
-                          setCurrentPlanId(plan.id);
-                          alert(`Switched plan to ${plan.name}!`);
-                        }
+                        // Changing plan means taking a payment. This used to set a local id
+                        // and say "Switched plan to ..." - no charge, no subscription, and
+                        // the old plan was still the one in force.
+                        if (isSelected) return;
+                        if (onChoosePlan) onChoosePlan();
+                        else setNotice({ ok: false, text: 'Plan changes are handled on the pricing page.' });
                       }}
+                      disabled={isSelected}
                       style={{
                         background: isSelected ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255, 255, 255, 0.05)',
                         border: isSelected ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255, 255, 255, 0.12)',
@@ -1034,38 +1095,42 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             </div>
           </div>
 
-          {/* Invoices & GST Invoicing Strip */}
+          {/* Real payment history. This was two fixed invoice rows - INV-2026-0811 and
+              INV-2026-0711, both "Paid", both for the same amount - with a Download button
+              that alerted rather than downloading anything. */}
           <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '18px', padding: '24px', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Receipt size={17} color="#7C75FF" />
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                  Recent GST Invoices (₹ INR)
-                </h4>
-              </div>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>GSTIN: 07AAACR1234F1Z8</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <Receipt size={17} color="#7C75FF" />
+              <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700 }}>
+                Payment history
+              </h4>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[
-                { inv: 'INV-2026-0811', date: 'Aug 1, 2026', amount: '₹8,999 + ₹1,620 GST', status: 'Paid ✓' },
-                { inv: 'INV-2026-0711', date: 'Jul 1, 2026', amount: '₹8,999 + ₹1,620 GST', status: 'Paid ✓' }
-              ].map((inv, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '12px 16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>{inv.inv}</span>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{inv.date}</span>
-                    <span style={{ fontSize: '12px', color: '#00E676' }}>{inv.status}</span>
+            {transactions.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {transactions.map((t) => (
+                  <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '13px', color: '#fff', fontWeight: 600, textTransform: 'capitalize' }}>{t.purpose}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        {t.created_at ? new Date(t.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                      </span>
+                      <span style={{ fontSize: '12px', color: t.status === 'paid' ? '#00E676' : 'var(--text-muted)', textTransform: 'capitalize' }}>
+                        {t.status}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '13px', color: '#fff', fontWeight: 700 }}>
+                      {t.currency === 'INR' ? '₹' : ''}{Number(t.amount || 0).toLocaleString('en-IN')}
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <span style={{ fontSize: '13px', color: '#fff', fontWeight: 700 }}>{inv.amount}</span>
-                    <button onClick={() => alert(`Downloading invoice ${inv.inv}...`)} style={{ background: 'none', border: 'none', color: '#7C75FF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 600 }}>
-                      <Download size={13} /> PDF
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                No payments on this account yet. Top-ups and plan purchases appear here once
+                they clear.
+              </p>
+            )}
           </div>
 
         </div>
@@ -1396,7 +1461,8 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
               />
             </div>
 
-            <GlowButton variant="glow" onClick={() => alert('Team settings saved!')} style={{ alignSelf: 'flex-start', fontSize: '13px', padding: '9px 22px' }}>
+            {/* No team model exists behind this form, so there is nowhere to save it to. */}
+            <GlowButton variant="glow" disabled onClick={() => setNotice({ ok: false, text: 'Team settings cannot be saved yet.' })} style={{ alignSelf: 'flex-start', fontSize: '13px', padding: '9px 22px', opacity: 0.55 }}>
               Save Changes
             </GlowButton>
           </div>

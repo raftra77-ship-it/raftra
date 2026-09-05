@@ -35,6 +35,20 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
 
+# Where Google sends the user back to. Google requires an absolute, pre-registered URL, so
+# pointing it at the API host meant the browser visibly left the product mid-sign-in and
+# landed on raftra-api.onrender.com — and stayed there whenever the callback failed.
+#
+# Both the Vercel deployment and the Vite dev server already proxy /api/* to this backend,
+# so the callback runs exactly the same through the app's own origin while the user never
+# leaves it. Google's consent screen names this host too, so it reads as the product rather
+# than as a hosting provider.
+#
+# Defaults to BACKEND_URL, which is the old behaviour — set OAUTH_REDIRECT_BASE to the app
+# origin (and register that callback URL in Google Cloud) to move the round trip onto it.
+OAUTH_REDIRECT_BASE = (os.getenv("OAUTH_REDIRECT_BASE") or BACKEND_URL).rstrip("/")
+GOOGLE_REDIRECT_URI = f"{OAUTH_REDIRECT_BASE}/api/auth/oauth/google/callback"
+
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 
@@ -121,6 +135,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+
+    # Bind the rest of this transaction to this user so Postgres RLS filters every query
+    # that follows. Done here rather than in get_db because this is the first point at
+    # which an identity exists - get_db also serves the unauthenticated routes (login,
+    # register, password reset), which must still be able to read `users`.
+    database.enter_tenant_scope(db, user.id)
     return user
 
 @router.post("/register")
@@ -210,6 +230,102 @@ def unlock_node(request: UnlockNodeRequest, db: Session = Depends(database.get_d
 def get_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+def change_password(req: ChangePasswordRequest, request: Request,
+                    db: Session = Depends(database.get_db),
+                    current_user: models.User = Depends(get_current_user)):
+    """Change the signed-in user's password.
+
+    The current password is required even though the caller already holds a valid token:
+    a token can be left behind on a shared machine, and re-authenticating here is what
+    stops that becoming a permanent account takeover.
+    """
+    pw = req.new_password or ""
+    if len(pw) < 8:
+        raise HTTPException(status_code=400, detail="Please use a password with at least 8 characters.")
+    if len(pw) > 64:
+        raise HTTPException(status_code=400, detail="Please use a password no longer than 64 characters.")
+
+    # Google-only accounts have no password to verify or replace.
+    if not current_user.hashed_password:
+        raise HTTPException(
+            status_code=400,
+            detail="This account signs in with Google, so it has no password to change. "
+                   "Manage it from your Google account instead.")
+
+    if not verify_password(req.current_password or "", current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Your current password is not correct.")
+
+    current_user.hashed_password = get_password_hash(pw)
+    # Any outstanding reset link is void once the password changes by another route.
+    current_user.reset_token_hash = None
+    current_user.reset_token_expires = None
+    db.commit()
+    _log_auth_event(db, "password_changed", user=current_user, request=request)
+    return {"message": "Password updated."}
+
+
+class DeleteAccountRequest(BaseModel):
+    confirm: str
+    password: str = ""
+
+
+@router.post("/delete-account")
+def delete_account(req: DeleteAccountRequest, request: Request,
+                   db: Session = Depends(database.get_db),
+                   current_user: models.User = Depends(get_current_user)):
+    """Delete the account and everything owned by it. Irreversible.
+
+    Two gates, because this cannot be undone: the literal word DELETE, and - for accounts
+    that have a password - that password. Google-only accounts cannot be asked for a
+    password, so the typed confirmation is the whole gate there.
+    """
+    if (req.confirm or "").strip().upper() != "DELETE":
+        raise HTTPException(status_code=400, detail='Type DELETE to confirm.')
+
+    if current_user.hashed_password and not verify_password(req.password or "", current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="That password is not correct.")
+
+    _log_auth_event(db, "account_deleted", user=current_user, request=request)
+
+    # Child rows have to go before their parents or the foreign keys block the delete.
+    # Walked from the mapper registry rather than a hand-written list: this schema has 30-odd
+    # tables pointing at workspaces.id, and a list would silently fall behind the next one
+    # added - leaving delete-account broken for whoever tried it next.
+    ws_ids = [w.id for w in db.query(models.Workspace)
+                                .filter(models.Workspace.user_id == current_user.id).all()]
+
+    mapped = [m.class_ for m in models.Base.registry.mappers]
+
+    if ws_ids:
+        for model in mapped:
+            col = getattr(model, "workspace_id", None)
+            if col is not None and model is not models.Workspace:
+                db.query(model).filter(col.in_(ws_ids)).delete(synchronize_session=False)
+        db.query(models.Workspace).filter(models.Workspace.id.in_(ws_ids)).delete(synchronize_session=False)
+
+    # Rows hanging off the user rather than a workspace.
+    for model in mapped:
+        if model is models.User or model is models.AuthEvent:
+            continue
+        col = getattr(model, "user_id", None)
+        if col is not None:
+            db.query(model).filter(col == current_user.id).delete(synchronize_session=False)
+
+    # The audit log is kept - it records the deletion itself - so its user_id is released
+    # instead. The email column on those rows keeps them readable afterwards.
+    db.query(models.AuthEvent).filter(models.AuthEvent.user_id == current_user.id)      .update({models.AuthEvent.user_id: None}, synchronize_session=False)
+
+    db.delete(current_user)
+    db.commit()
+    return {"message": "Account deleted."}
+
 # ---------------------------------------------------------------------------
 # Social login (Google) — server-side authorization-code flow.
 # Works for both roles: the chosen role ('brand' or 'creator') is carried in a
@@ -221,18 +337,28 @@ def _create_oauth_state(role: str) -> str:
         "purpose": "oauth_state",
         "role": role if role in ("brand", "creator") else "brand",
         "nonce": secrets.token_urlsafe(8),
-        "exp": datetime.utcnow() + timedelta(minutes=10),
+        # 10 minutes was tight: waking a sleeping instance plus choosing an account
+        # and consenting can outlast it, and the user only finds out at the callback.
+        "exp": datetime.utcnow() + timedelta(minutes=30),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-def _decode_oauth_state(state: str) -> str:
+def _decode_oauth_state(state: str):
+    """Role from a signed OAuth state, or None if it is missing, tampered or expired.
+
+    Returns rather than raises: this is only ever reached through a browser redirect
+    from Google, so raising rendered a raw JSON 400 on the API's own domain and left
+    the user stranded there with no way back into the app. The state lives 10 minutes,
+    which a slow sign-in or a cold start on a sleeping instance can outlast, so this
+    is a routine outcome and not an exceptional one.
+    """
     try:
         payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("purpose") != "oauth_state":
-            raise ValueError("wrong purpose")
+            return None
         return payload.get("role", "brand")
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+        return None
 
 def _login_redirect_error(message: str) -> RedirectResponse:
     return RedirectResponse(f"{FRONTEND_URL}/login?error={quote(message)}")
@@ -280,7 +406,7 @@ def google_authorize(role: str = "brand"):
         raise HTTPException(status_code=503, detail="Google login is not configured (GOOGLE_CLIENT_ID missing)")
     params = urlencode({
         "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": f"{BACKEND_URL}/api/auth/oauth/google/callback",
+        "redirect_uri": GOOGLE_REDIRECT_URI,
         "response_type": "code",
         "scope": "openid email profile",
         "state": _create_oauth_state(role),
@@ -293,13 +419,15 @@ async def google_callback(state: str, request: Request, code: str = None, error:
     if error or not code:
         return _login_redirect_error(error or "Google login was cancelled")
     role = _decode_oauth_state(state)
+    if role is None:
+        return _login_redirect_error("That sign-in link expired. Please try again.")
 
     async with httpx.AsyncClient() as client:
         token_res = await client.post("https://oauth2.googleapis.com/token", data={
             "code": code,
             "client_id": GOOGLE_CLIENT_ID,
             "client_secret": GOOGLE_CLIENT_SECRET,
-            "redirect_uri": f"{BACKEND_URL}/api/auth/oauth/google/callback",
+            "redirect_uri": GOOGLE_REDIRECT_URI,
             "grant_type": "authorization_code",
         })
         if token_res.status_code != 200:

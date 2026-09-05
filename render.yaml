@@ -14,7 +14,12 @@ services:
     name: raftra-api
     runtime: python
     rootDir: backend
-    plan: starter          # 512MB free tier is tight once Google/Meta clients load
+    # Free tier: 512MB RAM, and the service sleeps after ~15 minutes idle so the first
+    # request afterwards takes 30-60s to wake. That is fine for testing and for the OAuth
+    # callbacks. Dropping sentence-transformers (see requirements-deploy.txt) is what keeps
+    # this within 512MB. Move to `starter` before real traffic, or before a Meta/Google
+    # reviewer tests the app — a cold-start timeout reads as a broken product.
+    plan: free
     buildCommand: pip install -r requirements-deploy.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /docs
@@ -33,6 +38,11 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET_KEY
+        sync: false
+      # Encrypts connector credentials at rest. Must match backend/.env exactly — if this
+      # differs from the key a row was written with, that connection cannot be decrypted
+      # and the customer has to reconnect.
+      - key: TOKEN_ENCRYPTION_KEY
         sync: false
       - key: GEMINI_API_KEY
         sync: false
@@ -108,6 +118,12 @@ services:
       #   FRONTEND_URL  = https://raftra.vercel.app
       #   CORS_ORIGINS  = https://raftra.vercel.app
       - key: BACKEND_URL
+        sync: false
+      # Where Google returns the user after sign-in. Set to the app's own origin
+      # (https://raftra-wmlp.vercel.app) so the round trip never shows this API host —
+      # Vercel proxies /api/* here, so the callback still reaches this service. The same
+      # URL must be registered in Google Cloud.
+      - key: OAUTH_REDIRECT_BASE
         sync: false
       - key: FRONTEND_URL
         sync: false

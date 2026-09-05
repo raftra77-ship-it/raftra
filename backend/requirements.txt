@@ -44,3 +44,24 @@ apscheduler>=3.10,<4
 # video rendering works from a plain pip install — no system package or admin rights needed.
 # A system ffmpeg on PATH (or FFMPEG_BINARY) still takes precedence if one exists.
 imageio-ffmpeg
+
+# Google Trends, free and unofficial - the fallback search-interest source when SERPAPI_KEY
+# is not set (core/market_trends.py). Optional at runtime: the module checks whether it
+# imports and skips that source cleanly if it is missing.
+pytrends
+
+# Headless browser for computed styles + screenshots (core/browser_render.py).
+# OPTIONAL: every entry point checks is_available() and falls back to the Firecrawl/httpx
+# path, so onboarding behaves exactly as before when this (or its ~150MB Chromium, fetched
+# separately with `python -m playwright install chromium`) is absent.
+playwright
+
+# HTML parsing for the SEO/GEO audit (core/seo_scoring.py, core/seo_jsonld.py).
+# NOT optional despite the try/except around the import: without it BeautifulSoup is None,
+# _soup() returns None for every page, and Metadata / Accessibility / Internal Linking /
+# Structured Data all score from nothing. The audit still completes and still reports a
+# number, which is why the absence went unnoticed - it just silently scores half the
+# rubric as zero. lxml is the parser bs4 uses when present (faster, more tolerant of the
+# malformed markup real sites ship).
+beautifulsoup4
+lxml

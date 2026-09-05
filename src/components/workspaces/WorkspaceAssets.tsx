@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload,
@@ -23,6 +23,20 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
+import {
+  isDriveConfigured,
+  hasValidToken,
+  getAccessToken,
+  disconnectDrive,
+  listFolders,
+  listImageFiles,
+  fetchFileObjectUrl,
+  formatBytes,
+  mimeToFormat,
+  DriveError,
+  type DriveFolder,
+  type DriveFile
+} from '../../lib/googleDrive';
 
 interface AssetItem {
   id: string;
@@ -32,170 +46,86 @@ interface AssetItem {
   dimensions: string;
   format: 'PNG' | 'JPG' | 'WEBP' | 'SVG';
   size: string;
-  source: 'scraped' | 'gdrive' | 'device';
+  source: 'generated' | 'scraped' | 'gdrive' | 'device';
   sourceUrl?: string;
   tag: string;
 }
 
-export const WorkspaceAssets: React.FC = () => {
+interface WorkspaceAssetsProps {
+  /** Real generated creatives for this workspace, from GET /workspaces/{id}/creatives. */
+  creatives?: { id: string; headline: string; type: string; imageUrl?: string }[];
+  /** Opens Creative Studio with this asset as the reference image. */
+  onUseAsset?: (url: string, title: string) => void;
+  /** Required to read or write the persisted vault. */
+  workspaceId?: number | null;
+}
+
+export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = [], onUseAsset, workspaceId = null }) => {
+  const [uploadNote, setUploadNote] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
   const [showDriveModal, setShowDriveModal] = useState<boolean>(false);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
-  const [isScraping, setIsScraping] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Real Google Drive state ──────────────────────────────────────────────
+  const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'loading' | 'ready' | 'error'>('idle');
+  const [driveError, setDriveError] = useState<string>('');
+  const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
+  const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string | undefined>(undefined);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+
+  // A token survives a reload, so restore the real connection state.
+  useEffect(() => {
+    if (!isDriveConfigured() || !hasValidToken()) return;
+    setIsDriveConnected(true);
+    setDriveStatus('loading');
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const [folders, files] = await Promise.all([listFolders(token), listImageFiles(token)]);
+        setDriveFolders(folders);
+        setDriveFiles(files);
+        setDriveStatus('ready');
+      } catch {
+        // Token was revoked server-side — fall back to disconnected.
+        setIsDriveConnected(false);
+        setDriveStatus('idle');
+      }
+    })();
+  }, []);
+
   // Scraped brand images and cloud assets
-  const [assets, setAssets] = useState<AssetItem[]>([
-    {
-      id: 'asset-1',
-      title: 'NanoCharge_10000mAh_MatteBlack',
-      category: 'product',
-      url: 'https://images.unsplash.com/photo-1609592424368-e69d7249b2ad?auto=format&fit=crop&w=800&q=80',
-      dimensions: '2048 × 2048',
-      format: 'PNG',
-      size: '2.4 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/products/nanocharge-10k',
-      tag: 'Product Hero'
-    },
-    {
-      id: 'asset-2',
-      title: 'AeroSync_MagSafe_Wireless_Snap',
-      category: 'lifestyle',
-      url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?auto=format&fit=crop&w=800&q=80',
-      dimensions: '1920 × 1080',
-      format: 'WEBP',
-      size: '1.9 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/collections/wireless',
-      tag: 'Lifestyle Model'
-    },
-    {
-      id: 'asset-3',
-      title: 'GaN_100W_MultiPort_FastCharger',
-      category: 'product',
-      url: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80',
-      dimensions: '2400 × 2400',
-      format: 'PNG',
-      size: '3.1 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/products/gan-100w-pro',
-      tag: 'Catalog Shot'
-    },
-    {
-      id: 'asset-4',
-      title: 'Primary_Logo_Orange_Transparent',
-      category: 'logo',
-      url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
-      dimensions: 'Vector Scalable',
-      format: 'SVG',
-      size: '420 KB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/assets/logo.svg',
-      tag: 'Brand Identity'
-    },
-    {
-      id: 'asset-5',
-      title: 'PowerStation_40k_MacBook_Charging',
-      category: 'lifestyle',
-      url: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80',
-      dimensions: '3840 × 2160',
-      format: 'JPG',
-      size: '4.8 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/products/powerstation-40k',
-      tag: 'Desk Setup'
-    },
-    {
-      id: 'asset-6',
-      title: 'Diwali_Flash_Sale_Banner_Creative',
-      category: 'banner',
-      url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80',
-      dimensions: '1200 × 628',
-      format: 'PNG',
-      size: '2.1 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/promotions',
-      tag: 'Ad Banner'
-    },
-    {
-      id: 'asset-7',
-      title: 'TWS_Pro_Earbuds_Titanium_Grey',
-      category: 'product',
-      url: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80',
-      dimensions: '2048 × 2048',
-      format: 'PNG',
-      size: '2.6 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/products/tws-pro-audio',
-      tag: 'Product Cutout'
-    },
-    {
-      id: 'asset-8',
-      title: 'AeroSync_3in1_Charging_Station',
-      category: 'product',
-      url: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=800&q=80',
-      dimensions: '2000 × 2000',
-      format: 'WEBP',
-      size: '1.7 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/products/aerosync-3in1',
-      tag: 'Product Studio'
-    },
-    {
-      id: 'asset-9',
-      title: 'Commuter_Pocket_NanoCharge_InHand',
-      category: 'lifestyle',
-      url: 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=800&q=80',
-      dimensions: '1080 × 1350',
-      format: 'JPG',
-      size: '2.2 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/lifestyle',
-      tag: 'Social UGC'
-    },
-    {
-      id: 'asset-10',
-      title: 'Secondary_Monogram_Dark_Mode',
-      category: 'logo',
-      url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=800&q=80',
-      dimensions: 'Vector Scalable',
-      format: 'SVG',
-      size: '310 KB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/assets/monogram.svg',
-      tag: 'Brand Icon'
-    },
-    {
-      id: 'asset-11',
-      title: 'Summer_Travel_Tech_Collection_Hero',
-      category: 'banner',
-      url: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=800&q=80',
-      dimensions: '1920 × 800',
-      format: 'WEBP',
-      size: '3.4 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/hero-banners',
-      tag: 'Header Hero'
-    },
-    {
-      id: 'asset-12',
-      title: 'Braided_TypeC_100W_Cable_Closeup',
-      category: 'product',
-      url: 'https://images.unsplash.com/photo-1541689592655-f5f52825a3b8?auto=format&fit=crop&w=800&q=80',
-      dimensions: '2048 × 2048',
-      format: 'PNG',
-      size: '2.8 MB',
-      source: 'scraped',
-      sourceUrl: 'https://demobrand.com/products/cables',
-      tag: 'Macro Detail'
-    }
-  ]);
+  // Starts empty and is filled from the creatives prop below. It was seeded with twelve
+  // Unsplash stock photos carrying invented filenames and file sizes, presented as this
+  // brand's own scraped product shots - so the vault looked full even for a workspace that
+  // had generated nothing.
+  const [assets, setAssets] = useState<AssetItem[]>([]);
+
+  // Dimensions and byte size are not stored for generated creatives, so they read "-"
+  // rather than inventing plausible-looking numbers. Drive and device imports keep theirs.
+  useEffect(() => {
+    const mapped: AssetItem[] = (creatives || [])
+      .filter((cr) => !!cr.imageUrl)
+      .map((cr) => ({
+        id: `creative-${cr.id}`,
+        title: cr.headline || `Creative ${cr.id}`,
+        category: 'product' as const,
+        url: cr.imageUrl as string,
+        dimensions: '\u2014',
+        format: 'JPG' as const,
+        size: '\u2014',
+        source: 'generated' as const,
+        tag: cr.type || 'Generated creative',
+      }));
+    setAssets((prev) => [...mapped, ...prev.filter((a) => a.source !== 'generated')]);
+  }, [creatives]);
 
   const handleCopyLink = (asset: AssetItem) => {
     navigator.clipboard.writeText(asset.url);
@@ -203,12 +133,69 @@ export const WorkspaceAssets: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleReScrape = () => {
-    setIsScraping(true);
-    setTimeout(() => {
-      setIsScraping(false);
-      alert('Website assets scraped successfully! 12 new high-res brand media items ingested from demobrand.com.');
-    }, 1500);
+  // The vault's persisted assets: everything scraped from the brand's own site, plus
+  // anything imported from Drive or uploaded. Previously nothing populated `source:
+  // 'scraped'` at all, so a brand's own product photography never appeared here.
+  const [harvesting, setHarvesting] = useState(false);
+  const [vaultNote, setVaultNote] = useState<string>('');
+
+  const authHeaders = (): Record<string, string> => {
+    const t = localStorage.getItem('token');
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  };
+
+  /** Maps a stored MediaAsset onto the shape this component renders. */
+  const toAssetItem = (a: any): AssetItem => ({
+    id: `vault-${a.id}`,
+    title: (a.alt_text || a.filename || 'Asset').replace(/\.[^/.]+$/, ''),
+    category: a.category === 'product_shots' ? 'product'
+      : a.category === 'banners' ? 'banner'
+      : a.category === 'logos' ? 'logo' : 'lifestyle',
+    url: a.url,
+    dimensions: a.dimensions || '—',
+    format: (a.format === 'JPEG' ? 'JPG' : (a.format || 'PNG')) as AssetItem['format'],
+    size: a.size_kb ? `${(a.size_kb / 1024).toFixed(2)} MB` : '—',
+    source: a.source === 'scraped' ? 'scraped' : a.source === 'gdrive' ? 'gdrive' : 'device',
+    sourceUrl: a.source_url || undefined,
+    tag: a.source === 'scraped' ? 'From your website' : 'Imported',
+  });
+
+  const loadVault = React.useCallback(() => {
+    if (!workspaceId) return;
+    fetch(`/api/workspaces/${workspaceId}/assets`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        const rows: AssetItem[] = Array.isArray(d?.assets) ? d.assets.map(toAssetItem) : [];
+        // Generated creatives come from the `creatives` prop, so only the persisted rows
+        // are replaced here - otherwise the two sources would keep clearing each other.
+        setAssets(prev => [...prev.filter(a => a.source === 'generated'), ...rows]);
+      })
+      .catch(() => {})
+  }, [workspaceId]);
+
+  useEffect(() => { loadVault(); }, [loadVault]);
+
+  /** Pulls every usable image off the brand's own website into the vault.
+   *  This button used to sleep 1.5s and claim "12 new high-res brand media items ingested
+   *  from demobrand.com" - a count and a domain both invented, with nothing added. It now
+   *  calls the harvest endpoint and reports what was actually stored. */
+  const handleScrapeSite = async () => {
+    if (!workspaceId) return;
+    setHarvesting(true);
+    setVaultNote('');
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/assets/harvest?max_images=24`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Harvest failed (${r.status})`);
+      setVaultNote(d.note || `Imported ${d.imported} asset${d.imported === 1 ? '' : 's'} from your website${d.replaced ? ` (replaced ${d.replaced} previously scraped)` : ''}.`);
+      loadVault();
+    } catch (e) {
+      setVaultNote(e instanceof Error ? e.message : 'Could not read your website.');
+    } finally {
+      setHarvesting(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -229,53 +216,131 @@ export const WorkspaceAssets: React.FC = () => {
 
     setAssets(prev => [...newUploaded, ...prev]);
     setShowUploadModal(false);
-    alert(`Successfully imported ${files.length} image(s) from your device!`);
+    // These are object URLs held in this tab, not uploads: nothing is sent anywhere, and
+    // they are gone on refresh. Saying "Successfully imported" implied a library that
+    // persisted them. Server-side storage needs SUPABASE_URL / SUPABASE_KEY set and
+    // media_routes mounted - neither is true yet.
+    setUploadNote(`${files.length} file${files.length > 1 ? 's' : ''} added for this session. They are not uploaded, so they will be gone if you refresh.`);
   };
 
-  const handleConnectDrive = () => {
-    setIsDriveConnected(true);
-    setShowDriveModal(false);
+  /** Real OAuth + Drive listing. Opens Google's consent screen. */
+  const handleAuthorizeDrive = async () => {
+    setDriveError('');
+    setDriveStatus('connecting');
+    try {
+      const token = await getAccessToken();
+      setDriveStatus('loading');
+      const [folders, files] = await Promise.all([listFolders(token), listImageFiles(token)]);
+      setDriveFolders(folders);
+      setDriveFiles(files);
+      setIsDriveConnected(true);
+      setDriveStatus('ready');
+    } catch (err) {
+      setDriveError(err instanceof DriveError ? err.message : 'Could not connect to Google Drive.');
+      setDriveStatus('error');
+      setIsDriveConnected(false);
+    }
+  };
 
-    // Add mock Google Drive assets
-    const gDriveAssets: AssetItem[] = [
-      {
-        id: `gdrive-1`,
-        title: 'GDrive_Studio_Shoot_Raw_Master',
-        category: 'lifestyle',
-        url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
-        dimensions: '4096 × 4096',
-        format: 'PNG',
-        size: '14.2 MB',
-        source: 'gdrive',
-        tag: 'Google Drive Sync'
-      },
-      {
-        id: `gdrive-2`,
-        title: 'GDrive_Brand_Packaging_Dielines',
-        category: 'product',
-        url: 'https://images.unsplash.com/photo-1546868871-7041f2a55e12?auto=format&fit=crop&w=800&q=80',
-        dimensions: 'Vector PDF / SVG',
-        format: 'SVG',
-        size: '8.4 MB',
-        source: 'gdrive',
-        tag: 'Packaging Master'
+  /** Re-lists files when a real folder is chosen. */
+  const handleSelectFolder = async (folderId?: string) => {
+    setActiveFolderId(folderId);
+    setDriveError('');
+    setDriveStatus('loading');
+    try {
+      const token = await getAccessToken();
+      setDriveFiles(await listImageFiles(token, folderId));
+      setDriveStatus('ready');
+    } catch (err) {
+      setDriveError(err instanceof DriveError ? err.message : 'Could not list files.');
+      setDriveStatus('error');
+    }
+  };
+
+  const toggleFileSelection = (id: string) => {
+    setSelectedFileIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  };
+
+  /** Downloads the chosen Drive files and adds them as real assets. */
+  const handleImportSelected = async () => {
+    if (selectedFileIds.length === 0) return;
+    setIsImporting(true);
+    setDriveError('');
+    try {
+      const token = await getAccessToken();
+      const chosen = driveFiles.filter(f => selectedFileIds.includes(f.id));
+
+      const imported: AssetItem[] = await Promise.all(
+        chosen.map(async file => ({
+          id: `gdrive-${file.id}`,
+          title: file.name.replace(/\.[^.]+$/, ''),
+          category: 'product' as const,
+          url: await fetchFileObjectUrl(file.id, token),
+          dimensions: file.width && file.height ? `${file.width} × ${file.height}` : 'Unknown',
+          format: mimeToFormat(file.mimeType),
+          size: formatBytes(file.sizeBytes),
+          source: 'gdrive' as const,
+          sourceUrl: file.webViewLink,
+          tag: 'Google Drive Sync'
+        }))
+      );
+
+      // Persist them. Drive imports previously only ever reached React state, so they were
+      // gone on refresh - which is why imported assets "did not appear correctly" in the
+      // vault. The webViewLink is stored rather than the blob: URL, because an object URL
+      // is meaningless outside the tab that created it.
+      if (workspaceId) {
+        try {
+          await fetch(`/api/workspaces/${workspaceId}/assets/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify(chosen.map(f => ({
+              filename: f.name,
+              url: f.webViewLink,
+              category: 'lifestyle',
+              source: 'gdrive',
+              mime_type: f.mimeType,
+              file_format: mimeToFormat(f.mimeType),
+              size_kb: f.sizeBytes ? Math.round(f.sizeBytes / 1024) : null,
+            }))),
+          });
+          loadVault();
+        } catch { /* the session copy below still shows them */ }
       }
-    ];
 
-    setAssets(prev => [...gDriveAssets, ...prev]);
-    alert('Google Drive connected! Synced 2 master asset folders from "Brand Guidelines 2026".');
+      // Replace any re-imported file rather than duplicating it.
+      setAssets(prev => [...imported, ...prev.filter(a => !imported.some(i => i.id === a.id))]);
+      setSelectedFileIds([]);
+      setShowDriveModal(false);
+    } catch (err) {
+      setDriveError(err instanceof DriveError ? err.message : 'Import failed.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleDisconnectDrive = () => {
+    disconnectDrive();
+    setIsDriveConnected(false);
+    setDriveStatus('idle');
+    setDriveFolders([]);
+    setDriveFiles([]);
+    setSelectedFileIds([]);
+    setActiveFolderId(undefined);
+    setAssets(prev => prev.filter(a => a.source !== 'gdrive'));
   };
 
   const categories = [
+    // Filtered by source rather than by product/lifestyle/banner/logo: that categorisation
+    // is not stored for any asset, so three of those four buckets always read (0).
     { id: 'all', label: `All Assets (${assets.length})` },
-    { id: 'product', label: `Product Shots (${assets.filter(a => a.category === 'product').length})` },
-    { id: 'lifestyle', label: `Lifestyle & Shoots (${assets.filter(a => a.category === 'lifestyle').length})` },
-    { id: 'banner', label: `Banners & Ads (${assets.filter(a => a.category === 'banner').length})` },
-    { id: 'logo', label: `Logos & Badges (${assets.filter(a => a.category === 'logo').length})` }
+    { id: 'generated', label: `Generated (${assets.filter(a => a.source === 'generated').length})` },
+    { id: 'gdrive', label: `Google Drive (${assets.filter(a => a.source === 'gdrive').length})` },
+    { id: 'device', label: `Uploaded (${assets.filter(a => a.source === 'device').length})` }
   ];
 
   const filteredAssets = assets.filter(item => {
-    const matchesCategory = activeCategory === 'all' || item.category === activeCategory;
+    const matchesCategory = activeCategory === 'all' || item.source === activeCategory;
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.tag.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
@@ -283,52 +348,81 @@ export const WorkspaceAssets: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-      
+
+      {vaultNote && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '12px 16px',
+          borderRadius: '10px', fontSize: '13px', lineHeight: 1.55,
+          background: 'rgba(90,82,255,0.08)', border: '1px solid rgba(90,82,255,0.32)', color: '#b7b2ff',
+        }}>
+          <span style={{ flex: 1 }}>{vaultNote}</span>
+          <button
+            onClick={() => setVaultNote('')}
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {uploadNote && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '12px 16px',
+          borderRadius: '10px', fontSize: '13px', lineHeight: 1.55,
+          background: 'rgba(255,193,7,0.07)', border: '1px solid rgba(255,193,7,0.28)', color: '#ffc107',
+        }}>
+          <span style={{ flex: 1 }}>{uploadNote}</span>
+          <button onClick={() => setUploadNote('')}
+                  style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ── TOP HEADER & ACTIONS ───────────────────────────────────── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
         <div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(0, 230, 118, 0.12)', borderRadius: '100px', border: '1px solid rgba(0, 230, 118, 0.3)', marginBottom: '10px' }}>
             <ImageIcon size={14} color="#00E676" />
             <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              SCRAPED ASSET VAULT
+              CREATIVE LIBRARY
             </span>
           </div>
           <h2 style={{ fontSize: '28px', color: '#fff', margin: '0 0 6px 0', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
             Brand Assets & Media Library
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0, maxWidth: '750px', lineHeight: 1.5 }}>
-            Scraped media assets from <strong style={{ color: '#FF6B00' }}>demobrand.com</strong>, product renders, lifestyle photography, and cloud libraries.
+            Every creative generated for this workspace, plus anything you import from Drive or your device.
           </p>
         </div>
 
         {/* TOP RIGHT ACTION BUTTONS */}
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           
-          {/* Re-Scrape Site button */}
+          {/* Import from the brand's own website. Restored now that a real harvest endpoint
+              exists - it reports the count the server actually stored. */}
           <button
-            onClick={handleReScrape}
-            disabled={isScraping}
+            onClick={handleScrapeSite}
+            disabled={harvesting || !workspaceId}
+            title={workspaceId ? 'Read every usable image off your website into the vault'
+                               : 'Open a workspace first'}
             style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              color: '#fff',
-              padding: '9px 16px',
-              borderRadius: '100px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: isScraping ? 'wait' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
+              background: 'rgba(90, 82, 255, 0.14)',
+              border: '1px solid rgba(90, 82, 255, 0.42)',
+              color: '#fff', padding: '9px 18px', borderRadius: '100px',
+              fontSize: '13px', fontWeight: 700,
+              cursor: harvesting || !workspaceId ? 'default' : 'pointer',
+              opacity: harvesting || !workspaceId ? 0.6 : 1,
+              display: 'flex', alignItems: 'center', gap: '6px',
             }}
           >
-            <RefreshCw size={14} className={isScraping ? 'spin-icon' : ''} />
-            <span>{isScraping ? 'Scraping Site...' : 'Re-scrape Site'}</span>
+            <RefreshCw size={14} className={harvesting ? 'spin-animation' : undefined} />
+            {harvesting ? 'Reading your site…' : 'Import from Website'}
           </button>
 
           {/* Connect / Connected Google Drive */}
           <button
-            onClick={() => setShowDriveModal(true)}
+            onClick={() => { setDriveError(''); setShowDriveModal(true); }}
             style={{
               background: isDriveConnected ? 'rgba(52, 168, 83, 0.15)' : 'rgba(255, 255, 255, 0.04)',
               border: isDriveConnected ? '1px solid rgba(52, 168, 83, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
@@ -505,11 +599,11 @@ export const WorkspaceAssets: React.FC = () => {
                     fontWeight: 700,
                     padding: '3px 8px',
                     borderRadius: '100px',
-                    background: asset.source === 'gdrive' ? 'rgba(52,168,83,0.85)' : asset.source === 'device' ? 'rgba(124,117,255,0.85)' : 'rgba(255,107,0,0.85)',
+                    background: asset.source === 'gdrive' ? 'rgba(52,168,83,0.85)' : asset.source === 'device' ? 'rgba(124,117,255,0.85)' : 'rgba(90,82,255,0.85)',
                     color: '#fff',
                     backdropFilter: 'blur(4px)'
                   }}>
-                    {asset.source === 'gdrive' ? 'Google Drive' : asset.source === 'device' ? 'Device' : 'Scraped'}
+                    {asset.source === 'gdrive' ? 'Google Drive' : asset.source === 'device' ? 'Device' : 'Generated'}
                   </span>
                   <span style={{
                     fontSize: '10px',
@@ -728,8 +822,16 @@ export const WorkspaceAssets: React.FC = () => {
                   >
                     Copy Link
                   </button>
-                  <GlowButton variant="glow" onClick={() => { setSelectedAsset(null); alert(`Asset "${selectedAsset.title}" attached to Creative Studio generator!`); }} style={{ padding: '9px 24px', fontSize: '13px' }}>
-                    Use in Creative Studio 🚀
+                  {/* Hands the asset to Creative Studio as a reference image, which its
+                      generate endpoint already accepts. It used to alert "attached to
+                      Creative Studio generator!" and attach nothing. */}
+                  <GlowButton
+                    variant="glow"
+                    onClick={() => { onUseAsset?.(selectedAsset.url, selectedAsset.title); setSelectedAsset(null); }}
+                    disabled={!onUseAsset}
+                    style={{ padding: '9px 24px', fontSize: '13px' }}
+                  >
+                    Use in Creative Studio
                   </GlowButton>
                 </div>
               </div>
@@ -794,22 +896,83 @@ export const WorkspaceAssets: React.FC = () => {
                 </button>
               </div>
 
-              <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                Connect your brand's Google Drive to automatically import RAW product photos, packaging vectors, video reels, and designer assets.
-              </p>
+              {!isDriveConfigured() ? (
+                <div style={{ background: 'rgba(255,193,7,0.08)', border: '1px solid rgba(255,193,7,0.35)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#FFC107' }}>Setup required</span>
+                  <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    Add a Google OAuth client ID to your <code style={{ color: '#fff' }}>.env</code> file as{' '}
+                    <code style={{ color: '#fff' }}>VITE_GOOGLE_CLIENT_ID</code>, then restart the dev server.
+                    Create one in the Google Cloud Console under APIs &amp; Services → Credentials, enable the
+                    Drive API, and add this app's origin to the authorized JavaScript origins.
+                  </span>
+                </div>
+              ) : (
+                <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                  Connect your brand's Google Drive to import real product photos, packaging vectors and
+                  designer assets straight from your folders.
+                </p>
+              )}
 
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Folders Available to Sync:</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#fff' }}>
-                  <FolderOpen size={14} color="#34A853" /> 📁 /Brand Guidelines 2026/Master_Renders
+              {driveError && (
+                <div style={{ background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.4)', borderRadius: '12px', padding: '12px 14px', fontSize: '12.5px', color: '#ff8a80' }}>
+                  {driveError}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#fff' }}>
-                  <FolderOpen size={14} color="#34A853" /> 📁 /Product Packaging Dielines/Vectors
+              )}
+
+              {isDriveConnected && (
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '150px', overflowY: 'auto' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Your Drive Folders
+                  </span>
+                  <button
+                    onClick={() => handleSelectFolder(undefined)}
+                    style={{ background: activeFolderId === undefined ? 'rgba(52,168,83,0.15)' : 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#fff', padding: '6px 8px', borderRadius: '8px' }}
+                  >
+                    <FolderOpen size={14} color="#34A853" /> All images
+                  </button>
+                  {driveFolders.map(folder => (
+                    <button
+                      key={folder.id}
+                      onClick={() => handleSelectFolder(folder.id)}
+                      style={{ background: activeFolderId === folder.id ? 'rgba(52,168,83,0.15)' : 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#fff', padding: '6px 8px', borderRadius: '8px' }}
+                    >
+                      <FolderOpen size={14} color="#34A853" /> {folder.path}
+                    </button>
+                  ))}
+                  {driveFolders.length === 0 && driveStatus === 'ready' && (
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No folders found.</span>
+                  )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#fff' }}>
-                  <FolderOpen size={14} color="#34A853" /> 📁 /Influencer UGC Raw Video Footage
+              )}
+
+              {isDriveConnected && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {driveStatus === 'loading' ? 'Loading files…' : `Select files to import (${selectedFileIds.length} chosen)`}
+                  </span>
+                  <div style={{ maxHeight: '190px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {driveFiles.map(file => {
+                      const checked = selectedFileIds.includes(file.id);
+                      return (
+                        <button
+                          key={file.id}
+                          onClick={() => toggleFileSelection(file.id)}
+                          style={{ background: checked ? 'rgba(52,168,83,0.15)' : 'rgba(255,255,255,0.03)', border: checked ? '1px solid rgba(52,168,83,0.5)' : '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '9px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left' }}
+                        >
+                          {checked ? <Check size={14} color="#34A853" /> : <ImageIcon size={14} color="var(--text-muted)" />}
+                          <span style={{ flex: 1, fontSize: '12.5px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {file.name}
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatBytes(file.sizeBytes)}</span>
+                        </button>
+                      );
+                    })}
+                    {driveFiles.length === 0 && driveStatus === 'ready' && (
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No images in this folder.</span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button
@@ -818,21 +981,47 @@ export const WorkspaceAssets: React.FC = () => {
                 >
                   Cancel
                 </button>
+                {isDriveConnected && (
+                  <button
+                    onClick={handleDisconnectDrive}
+                    style={{ background: 'transparent', border: '1px solid rgba(244,67,54,0.4)', color: '#ff8a80', padding: '9px 18px', borderRadius: '100px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    Disconnect
+                  </button>
+                )}
                 <button
-                  onClick={handleConnectDrive}
+                  onClick={isDriveConnected ? handleImportSelected : handleAuthorizeDrive}
+                  disabled={
+                    !isDriveConfigured() ||
+                    driveStatus === 'connecting' ||
+                    isImporting ||
+                    (isDriveConnected && selectedFileIds.length === 0)
+                  }
                   style={{
-                    background: 'linear-gradient(135deg, #34A853 0%, #2E7D32 100%)',
+                    background:
+                      !isDriveConfigured() || (isDriveConnected && selectedFileIds.length === 0) || isImporting
+                        ? 'rgba(255,255,255,0.12)'
+                        : 'linear-gradient(135deg, #34A853 0%, #2E7D32 100%)',
                     color: '#ffffff',
                     border: 'none',
                     borderRadius: '100px',
                     padding: '9px 24px',
                     fontSize: '13px',
                     fontWeight: 800,
-                    cursor: 'pointer',
+                    cursor:
+                      !isDriveConfigured() || (isDriveConnected && selectedFileIds.length === 0) || isImporting
+                        ? 'not-allowed'
+                        : 'pointer',
                     boxShadow: '0 4px 14px rgba(52,168,83,0.35)'
                   }}
                 >
-                  {isDriveConnected ? 'Sync Latest Files' : 'Authorize & Connect Google Drive'}
+                  {driveStatus === 'connecting'
+                    ? 'Waiting for Google…'
+                    : isImporting
+                      ? 'Importing…'
+                      : isDriveConnected
+                        ? `Import ${selectedFileIds.length || ''} file${selectedFileIds.length === 1 ? '' : 's'}`.replace('  ', ' ')
+                        : 'Authorize & Connect Google Drive'}
                 </button>
               </div>
             </motion.div>

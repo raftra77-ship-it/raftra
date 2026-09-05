@@ -48,3 +48,54 @@ qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 def get_qdrant_client():
     return qdrant_client
 
+
+
+# ─────────────────────────────────────────────────────────── Row Level Security
+#
+# Tenant isolation is enforced by Postgres policies (see the d47b2e8135ac migration), not
+# only by the workspace_id filters written into each query. This is the switch that makes
+# those policies apply.
+#
+# The subtlety worth knowing: RLS is bypassed for superusers, and this app connects to
+# Supabase as `postgres`. Policies alone would therefore enforce NOTHING while looking
+# correct in the schema. So a request transaction switches into the non-superuser
+# `raftra_app` role, at which point the policies bite.
+#
+# Background jobs (agents, schedulers, Celery) never call this, so they stay as `postgres`
+# and bypass RLS on purpose - they act across all workspaces, already scope their own
+# queries, and carry no end-user input.
+
+RLS_ROLE = os.getenv("RLS_APP_ROLE", "raftra_app")
+
+# Off by default so deploying this code cannot lock an environment out of its own data
+# before the migration has run. Turn on with ENABLE_RLS=true once d47b2e8135ac is applied.
+def rls_enabled() -> bool:
+    return os.getenv("ENABLE_RLS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+def enter_tenant_scope(db, user_id: int) -> None:
+    """Bind this transaction to one user, so RLS policies filter every subsequent query.
+
+    Uses SET LOCAL for both statements: they are scoped to the current transaction and
+    revert on commit or rollback, so a pooled connection can never carry one request's
+    identity into the next. A no-op unless ENABLE_RLS is set.
+
+    Never raises. If the role or policies are missing (migration not applied, or a
+    Postgres that does not have the role), the request continues under the existing
+    application-level workspace checks rather than 500ing - but it logs loudly, because
+    silently falling back to "no database enforcement" is exactly the failure this whole
+    mechanism exists to prevent.
+    """
+    if not rls_enabled():
+        return
+    from sqlalchemy import text
+    try:
+        # set_config(..., true) is the local form, and takes the value as a bind parameter,
+        # so a user id can never be interpolated into SQL text.
+        db.execute(text("SET LOCAL ROLE " + RLS_ROLE))
+        db.execute(text("SELECT set_config('app.user_id', :uid, true)"),
+                   {"uid": str(int(user_id))})
+    except Exception as e:
+        db.rollback()
+        print(f"[rls] could not enter tenant scope for user {user_id}: {e} "
+              f"- falling back to application-level checks for this request.")

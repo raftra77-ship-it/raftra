@@ -83,9 +83,35 @@ export const SearchConsolePanel: React.FC<{ workspaceId: number | null; onRunAud
     setStatus(s => (s ? { ...s, site_url: propertyDraft } : s));
     setChangingProperty(false);
   };
-  // TODO: replace with a real disconnect/revoke endpoint once one exists (Shopify/WordPress
-  // already have one — Search Console doesn't yet). For now this only resets local UI state.
-  const disconnect = () => { setForceDisconnected(true); setMsg('Disconnected.'); };
+  // Revokes the grant with Google and deletes the stored tokens server-side. This used to
+  // set local state only, so the connector looked disconnected until the next refresh and
+  // the refresh token stayed live at Google indefinitely.
+  const [disconnecting, setDisconnecting] = useState(false);
+  const disconnect = async () => {
+    if (!workspaceId) return;
+    if (!window.confirm(
+      'Disconnect Google Search Console?\n\nRaftra loses access to your search data and ' +
+      'the connection is revoked with Google. Google Analytics uses the same grant, so it ' +
+      'disconnects too. Nothing in your Search Console account changes. You can reconnect ' +
+      'at any time.')) return;
+    setDisconnecting(true);
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/connectors/search-console/${workspaceId}/disconnect`,
+        { method: 'POST', headers: authHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setForceDisconnected(true);
+        setStatus(s => (s ? { ...s, connected: false, email: null, site_url: null } : s));
+        setMsg('Disconnected. The grant has been revoked with Google.');
+      } else {
+        setMsg(d.detail || 'Could not disconnect. Please try again.');
+      }
+    } catch {
+      setMsg('Could not reach the server. Please try again.');
+    }
+    setDisconnecting(false);
+  };
 
   if (!status) return null;
 
@@ -162,7 +188,7 @@ export const SearchConsolePanel: React.FC<{ workspaceId: number | null; onRunAud
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button onClick={syncData} disabled={syncing} style={btn('rgba(255,255,255,0.06)', syncing)}>{syncing && <Spinner />}Sync Data</button>
               <button onClick={openChangeProperty} style={btn('rgba(255,255,255,0.06)')}>Change Property</button>
-              <button onClick={disconnect} style={btn('rgba(255,92,92,0.1)')}>Disconnect</button>
+              <button onClick={disconnect} disabled={disconnecting} style={btn('rgba(255,92,92,0.1)', disconnecting)}>{disconnecting && <Spinner />}{disconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
               {onRunAudit && <button onClick={onRunAudit} style={btn('linear-gradient(135deg, var(--primary) 0%, #3B33FF 100%)')}>Run SEO Audit</button>}
             </div>
           )}

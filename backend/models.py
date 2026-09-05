@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 import datetime
 from pgvector.sqlalchemy import Vector
 from database import Base
+from core.crypto import EncryptedString
 
 class AgentMemory(Base):
     __tablename__ = "agent_memories"
@@ -113,6 +114,19 @@ class BrandProfile(Base):
     color_palette = Column(JSON, nullable=True) # e.g., ["#FFFFFF", "#030303", "#5A52FF"]
     brand_guidelines_summary = Column(String, nullable=True) # Summarized context from Scraping
     target_audience = Column(String, nullable=True)
+    # The rest of the brand guidelines the vault shows - USPs, personality, slogan,
+    # competitive position, tone, product categories, geographies, key messages. Held as
+    # JSON rather than a column each: the set is editorial and grows, and none of it is
+    # queried on, only read back whole for the screen and the agents.
+    guidelines = Column(JSON, nullable=True)
+
+    # Design tokens, kept beside color_palette rather than replacing it. color_palette is a
+    # bare list of hexes that half the codebase already reads; color_tokens is the same
+    # colours with the name and role the site's own CSS variables gave them, which is what
+    # a brief needs ("use the CTA colour", not "use the second hex").
+    color_tokens = Column(JSON, nullable=True)   # [{name, hex, role, source}]
+    logos = Column(JSON, nullable=True)          # [{type, url, format, variant}]
+
     is_onboarded = Column(Boolean, default=False)
     
     workspace = relationship("Workspace", back_populates="brand_profile")
@@ -465,8 +479,8 @@ class SearchConsoleConnection(Base):
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
     connected_email = Column(String, nullable=True)
     site_url = Column(String, nullable=True)        # selected GSC property, e.g. https://site.com/
-    refresh_token = Column(String, nullable=True)   # long-lived; mints access tokens
-    access_token = Column(String, nullable=True)
+    refresh_token = Column(EncryptedString, nullable=True)   # long-lived; mints access tokens
+    access_token = Column(EncryptedString, nullable=True)
     token_expiry = Column(DateTime, nullable=True)
     scopes = Column(String, nullable=True)
     # The single "Connect Google" grant covers GA4 too (see core/search_console.py SCOPES),
@@ -480,13 +494,13 @@ class GitHubConnection(Base):
     """Per-workspace GitHub connection used to apply approved changes to the site's
     repo (commit content/SEO files as a pull request). One connection per workspace.
 
-    NOTE: the access token is stored as-is; in production encrypt it at rest.
+    The access token is encrypted at rest (see core/crypto.EncryptedString).
     """
     __tablename__ = "github_connections"
 
     id = Column(Integer, primary_key=True, index=True)
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
-    access_token = Column(String, nullable=True)
+    access_token = Column(EncryptedString, nullable=True)
     login = Column(String, nullable=True)            # GitHub username
     repo_full_name = Column(String, nullable=True)   # "owner/repo"
     default_branch = Column(String, nullable=True)
@@ -527,7 +541,7 @@ class MetaAdsConnection(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
-    access_token = Column(String, nullable=True)
+    access_token = Column(EncryptedString, nullable=True)
     token_expiry = Column(DateTime, nullable=True)
     connected_name = Column(String, nullable=True)   # connected Meta user
     ad_account_id = Column(String, nullable=True)    # selected act_ id (without prefix)
@@ -547,11 +561,19 @@ class GoogleAdsConnection(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
-    access_token = Column(String, nullable=True)
-    refresh_token = Column(String, nullable=True)
+    access_token = Column(EncryptedString, nullable=True)
+    refresh_token = Column(EncryptedString, nullable=True)
     token_expiry = Column(DateTime, nullable=True)
     connected_email = Column(String, nullable=True)   # connected Google account
     customer_id = Column(String, nullable=True)       # selected Google Ads customer id (digits only)
+    # Manager (MCC) id to act through, or NULL when the connected Google account can reach
+    # customer_id directly. NULL is the normal case for a customer connecting their own
+    # account: sending our manager id there would make Google reject the call unless they
+    # had first linked their account under our manager.
+    login_customer_id = Column(String, nullable=True)
+    # True when the SELECTED customer_id is itself a manager (MCC). Campaigns cannot be
+    # created inside one, so the UI has to warn before publish rather than after.
+    customer_is_manager = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -559,7 +581,7 @@ class ShopifyConnection(Base):
     """Per-workspace Shopify store connection used to publish approved content as a
     blog article. Articles are created UNPUBLISHED so a human still presses publish.
 
-    NOTE: the access token is stored as-is; in production encrypt it at rest.
+    The access token is encrypted at rest (see core/crypto.EncryptedString).
     """
     __tablename__ = "shopify_connections"
 
@@ -567,7 +589,7 @@ class ShopifyConnection(Base):
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
     shop_domain = Column(String, nullable=True)      # "my-store.myshopify.com"
     shop_name = Column(String, nullable=True)
-    access_token = Column(String, nullable=True)
+    access_token = Column(EncryptedString, nullable=True)
     blog_id = Column(Integer, nullable=True)         # selected blog to publish into
     last_synced_at = Column(DateTime, nullable=True)  # last time this connection's data (blogs/pages) was refreshed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -612,8 +634,7 @@ class WordPressConnection(Base):
     Both speak the same wp/v2 shape, so core/wordpress_connect.py drives them with one set
     of functions. Posts are created as DRAFTS so a human still presses publish.
 
-    NOTE: the application password / access token are stored as-is; in production encrypt
-    them at rest.
+    The application password / access token are encrypted at rest (see core/crypto).
     """
     __tablename__ = "wordpress_connections"
 
@@ -622,7 +643,7 @@ class WordPressConnection(Base):
     site_url = Column(String, nullable=True)         # "https://example.com"
     site_name = Column(String, nullable=True)
     username = Column(String, nullable=True)
-    app_password = Column(String, nullable=True)
+    app_password = Column(EncryptedString, nullable=True)
     display_name = Column(String, nullable=True)     # connected WP user
     last_synced_at = Column(DateTime, nullable=True)  # last time this connection's data (pages) was refreshed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -630,7 +651,7 @@ class WordPressConnection(Base):
     # --- how this connection authenticates. Defaults to app_password so every row that
     # existed before WordPress.com support keeps working untouched.
     auth_type = Column(String, nullable=False, default="app_password")
-    access_token = Column(String, nullable=True)      # wpcom_oauth only (no expiry, no refresh token)
+    access_token = Column(EncryptedString, nullable=True)      # wpcom_oauth only (no expiry, no refresh token)
     wpcom_site_id = Column(String, nullable=True)     # wpcom_oauth only — numeric blog id
     api_base = Column(String, nullable=True)          # wpcom_oauth only — pinned wp/v2 root
 
@@ -684,3 +705,226 @@ class PageMapping(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     workspace = relationship("Workspace")
+
+
+class ScheduledTask(Base):
+    """A recurring agent run, as configured in the Marketing Calendar.
+
+    The calendar used to keep schedules in React state, so they vanished on refresh and
+    nothing ever ran. Cadence is stored as plain fields rather than a cron string: the UI
+    only offers hourly/daily/weekly/monthly, and next_run_at is easier to trust when the
+    arithmetic behind it is readable.
+    """
+    __tablename__ = "scheduled_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+    name = Column(String, nullable=False)
+    agent = Column(String, nullable=False)          # creative | campaign | seo | geo | ...
+    cadence = Column(String, nullable=False, default="daily")
+    hour = Column(Integer, default=9)               # UTC
+    minute = Column(Integer, default=0)
+    weekday = Column(Integer, nullable=True)        # 0=Mon, weekly only
+    day_of_month = Column(Integer, nullable=True)   # monthly only
+    prompt = Column(Text, nullable=True)            # what the agent is asked to do
+    enabled = Column(Boolean, default=True)
+
+    # Outcome of the most recent run, shown in the calendar so a failing schedule is
+    # visible without digging through logs.
+    last_run_at = Column(DateTime, nullable=True)
+    last_status = Column(String, nullable=True)     # success | failed
+    last_message = Column(String, nullable=True)
+    next_run_at = Column(DateTime, nullable=True, index=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class CompetitorReport(Base):
+    """A saved competitor analysis, so Market Intelligence has something to show on load.
+
+    Without this the research endpoint answered once and the result died with the component's
+    state - the section would be empty again on every refresh, which is what made it look
+    like it had no data source. Keyed by workspace + competitor so re-running a competitor
+    refreshes its report instead of stacking duplicates.
+    """
+    __tablename__ = "competitor_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+
+    competitor = Column(String, nullable=False)     # as typed
+    site_url = Column(String, nullable=True)        # what was actually read
+
+    positioning = Column(Text, nullable=True)
+    audience = Column(Text, nullable=True)
+    tone = Column(String, nullable=True)
+    offers = Column(JSON, default=list)
+    hooks = Column(JSON, default=list)
+    ctas = Column(JSON, default=list)
+    notes = Column(Text, nullable=True)
+
+    # The pages the analysis was drawn from, kept so every claim above stays checkable.
+    sources = Column(JSON, default=list)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class BrandEvent(Base):
+    """A date the brand wants to plan campaigns around - a sale, a launch, a festival.
+
+    The Marketing Calendar let you add these and kept them in React state, so every custom
+    event disappeared on refresh. The built-in Indian retail dates stay in the frontend as a
+    fixed reference; this table holds what the user adds.
+    """
+    __tablename__ = "brand_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+    name = Column(String, nullable=False)
+    event_date = Column(DateTime, nullable=False)   # the day it happens
+    category = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class CompetitorAd(Base):
+    """One active ad of a competitor's, as read from the Meta Ad Library on the
+    fortnightly sync.
+
+    Separate from CompetitorReport, which analyses a rival's own website. That answers
+    "what do they say they are"; this answers "what are they paying to say right now",
+    and only the second one carries days_active - the fatigue signal that separates a
+    proven creative from one the rival already killed.
+
+    `source` is stored per row rather than assumed, because the official Meta API covers
+    commercial ads in EU/EEA countries only and everywhere else the rows come from a
+    third-party collector. The UI shows it, so nothing is ever passed off as first-party
+    Meta data when it is not.
+    """
+    __tablename__ = "competitor_ads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+
+    competitor_name = Column(String, nullable=False, index=True)
+    external_id = Column(String, nullable=True, index=True)   # the ad's id at the source
+    ad_title = Column(String, nullable=True)
+    ad_copy = Column(Text, nullable=True)
+    snapshot_url = Column(String, nullable=True)              # the ad in Meta's Ad Library
+    platforms = Column(JSON, default=list)                    # facebook | instagram | ...
+
+    offers = Column(JSON, default=dict)     # {"code","percent_off","flat_off","perks"}
+    started_at = Column(DateTime, nullable=True)
+    days_active = Column(Integer, nullable=True)
+
+    country = Column(String, default="IN")
+    source = Column(String, default="Meta Ad Library API")
+    synced_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+
+class CompetitorAdStrategy(Base):
+    """The strategy read over one competitor's ad set - one row per workspace+competitor,
+    replaced on each sync so the screen shows the current picture rather than a pile of
+    historical analyses."""
+    __tablename__ = "competitor_ad_strategies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+    competitor_name = Column(String, nullable=False, index=True)
+
+    summary = Column(Text, nullable=True)
+    offer_strategy = Column(Text, nullable=True)
+    evergreen_winners = Column(JSON, default=list)
+    fatiguing = Column(JSON, default=list)
+    blue_ocean = Column(JSON, default=dict)      # {"title","rationale","actions"}
+    red_ocean = Column(JSON, default=dict)
+    recommended_formats = Column(JSON, default=list)
+
+    ads_analysed = Column(Integer, default=0)
+    country = Column(String, default="IN")
+    synced_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class MarketTrendReport(Base):
+    """A four-weekly search + creator-video read on the brand's category.
+
+    Reports are kept rather than overwritten: the value of a radar is the comparison
+    between this month and last, so `period_end` orders them and old ones stay readable.
+    """
+    __tablename__ = "market_trend_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+
+    report_title = Column(String, nullable=False)
+    summary = Column(Text, nullable=True)
+    region = Column(String, default="IN")
+    period_start = Column(DateTime, nullable=True)
+    period_end = Column(DateTime, nullable=True, index=True)
+
+    strategic_keywords = Column(JSON, default=list)   # [{keyword, score, bucket, hook}]
+    winning_patterns = Column(JSON, default=list)
+    creative_formats = Column(JSON, default=list)
+    creator_video_refs = Column(JSON, default=list)   # [{title, channel, url, ...}]
+
+    # Which APIs actually answered. Shown in the UI so a thin report is legibly a thin
+    # report rather than a thin market.
+    sources = Column(JSON, default=list)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class SyncRun(Base):
+    """One execution of a scheduled external sync, successful or not.
+
+    Without this the fortnightly and four-weekly jobs are invisible: the UI cannot say
+    when data was last refreshed, and a job that has been failing for a month looks
+    identical to a market with no news.
+    """
+    __tablename__ = "sync_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+    kind = Column(String, nullable=False, index=True)   # competitor_ads | market_trends
+    status = Column(String, nullable=False)             # success | failed | skipped
+    message = Column(String, nullable=True)
+    items = Column(Integer, default=0)
+    started_at = Column(DateTime, default=datetime.datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+
+
+class MediaAsset(Base):
+    """One image belonging to a workspace's Asset Vault.
+
+    The vault's UI has always understood four sources - generated, scraped, gdrive, device -
+    but only `generated` had anywhere to live (ad_assets). A brand's own product photography
+    and banners, and anything imported from Drive, existed in React state and vanished on
+    refresh. This is where the other three persist.
+
+    Deliberately separate from ad_assets: that table is a generated creative with a prompt,
+    provider, review status and campaign lineage. These are source material, and giving them
+    the same row would leave two thirds of both tables permanently null.
+    """
+    __tablename__ = "media_assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+
+    category = Column(String, index=True)     # product_shots | lifestyle | banners | logos
+    source = Column(String, index=True)       # scraped | gdrive | device | generated
+    filename = Column(String, nullable=False)
+    # Where it lives now. For a scraped asset this is the brand's own CDN URL - we link
+    # rather than copy, so the vault never serves a stale duplicate of a product shot the
+    # brand has since replaced.
+    storage_url = Column(String, nullable=False)
+    source_url = Column(String, nullable=True)   # the page/file it came from
+    alt_text = Column(String, nullable=True)     # the site's own description, when it had one
+
+    mime_type = Column(String, nullable=True)
+    file_format = Column(String, nullable=True)  # PNG | JPG | WEBP | SVG
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    file_size_kb = Column(Float, nullable=True)
+
+    tags = Column(JSON, default=list)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)

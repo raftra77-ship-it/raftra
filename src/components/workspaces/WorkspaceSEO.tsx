@@ -14,6 +14,31 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 }
 
+// This tab mounts ~9 independent GETs at once (two run-status pollers, two comparison
+// cards, five connector-status rows) and several ask for the same URL — Search Console
+// status was being fetched twice, once here and once inside ConnectedPlatformsCard.
+// Concurrent callers for the same URL now share one request instead of racing.
+const inflight = new Map<string, Promise<any>>();
+function getJSON(url: string): Promise<any> {
+  const hit = inflight.get(url);
+  if (hit) return hit;
+  const req = fetch(url, { headers: authHeaders() })
+    .then(r => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .finally(() => { inflight.delete(url); });
+  inflight.set(url, req);
+  return req;
+}
+
+// Reserves the space a card's content will occupy so the section arrives as one block
+// instead of each card popping in and shoving the rest down as its fetch lands.
+const Skeleton: React.FC<{ h?: number; w?: string; mb?: number }> = ({ h = 14, w = '100%', mb = 0 }) => (
+  <div className="shimmer-loading" style={{
+    height: `${h}px`, width: w, marginBottom: `${mb}px`,
+    borderRadius: 'var(--radius-sm, 6px)', opacity: 0.55,
+  }} />
+);
+
 const IDLE_RUN: RunStatus = { status: 'idle', running: false, stages: [], stages_done: [], current_stage: null, started_at: null, target_url: null };
 
 // The two pipelines are themed off the design tokens rather than one-off hexes. The
@@ -231,11 +256,7 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
   useEffect(() => {
     if (!workspaceId) return;
     setLoading(true);
-    const token = localStorage.getItem('token');
-    fetch(`/api/workspaces/${workspaceId}/seo/comparison?pipeline=${pipeline}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    })
-      .then(r => (r.ok ? r.json() : null))
+    getJSON(`/api/workspaces/${workspaceId}/seo/comparison?pipeline=${pipeline}`)
       .then(d => setData(d))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
@@ -284,7 +305,13 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
         }
       />
 
-      {loading && <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>Loading…</p>}
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minHeight: '96px' }}>
+          <Skeleton h={30} w="42%" />
+          <Skeleton h={13} />
+          <Skeleton h={13} w="86%" />
+        </div>
+      )}
 
       {!loading && (!data || data.runs_available === 0) && (
         <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
@@ -452,18 +479,18 @@ const ExplainerCard: React.FC = () => {
 // full connector UI crowding the main SEO page.
 const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIntegrations?: () => void }> = ({ workspaceId, onManageIntegrations }) => {
   const [st, setSt] = useState<{ gh?: any; wp?: any; sh?: any; gsc?: any }>({});
+  // Without this the rows render "Disconnected" first and flip to connected a beat later,
+  // which reads as the card loading twice.
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (!workspaceId) return;
-    const token = localStorage.getItem('token');
-    const h: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-    const get = (url: string) => fetch(url, { headers: h }).then(r => (r.ok ? r.json() : null)).catch(() => null);
     Promise.all([
-      get(`/api/connectors/github/${workspaceId}/status`),
-      get(`/api/connectors/wordpress/${workspaceId}/status`),
-      get(`/api/connectors/shopify/${workspaceId}/status`),
-      get(`/api/connectors/search-console/${workspaceId}/status`),
-    ]).then(([gh, wp, sh, gsc]) => setSt({ gh, wp, sh, gsc }));
+      getJSON(`/api/connectors/github/${workspaceId}/status`),
+      getJSON(`/api/connectors/wordpress/${workspaceId}/status`),
+      getJSON(`/api/connectors/shopify/${workspaceId}/status`),
+      getJSON(`/api/connectors/search-console/${workspaceId}/status`),
+    ]).then(([gh, wp, sh, gsc]) => { setSt({ gh, wp, sh, gsc }); setReady(true); });
   }, [workspaceId]);
 
   const rows = [
@@ -489,7 +516,7 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
             background: liveCount ? 'var(--success-glow)' : 'rgba(255,255,255,0.04)',
             border: `1px solid ${liveCount ? 'rgba(0,255,157,0.3)' : 'var(--border-color)'}`,
             borderRadius: 'var(--radius-full)', padding: '3px 9px', fontFamily: 'var(--font-mono)',
-          }}>{liveCount}/{rows.length}</span>
+          }}>{ready ? `${liveCount}/${rows.length}` : `—/${rows.length}`}</span>
         }
       />
 
@@ -518,18 +545,24 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>{name}</span>
             </span>
-            {/* A dot carries the state as well as the word, so it survives at a glance. */}
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0,
-              fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', whiteSpace: 'nowrap',
-              color: connected ? 'var(--success)' : 'var(--text-muted)',
-            }}>
+            {/* A dot carries the state as well as the word, so it survives at a glance.
+                Until the statuses land, a placeholder holds the slot — otherwise every
+                row states NOT CONNECTED and then flips, which reads as a second load. */}
+            {!ready ? (
+              <Skeleton h={10} w="88px" />
+            ) : (
               <span style={{
-                width: '6px', height: '6px', borderRadius: '50%',
-                background: connected ? 'var(--success)' : 'var(--text-muted)',
-              }} />
-              {connected ? 'CONNECTED' : 'NOT CONNECTED'}
-            </span>
+                display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0,
+                fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', whiteSpace: 'nowrap',
+                color: connected ? 'var(--success)' : 'var(--text-muted)',
+              }}>
+                <span style={{
+                  width: '6px', height: '6px', borderRadius: '50%',
+                  background: connected ? 'var(--success)' : 'var(--text-muted)',
+                }} />
+                {connected ? 'CONNECTED' : 'NOT CONNECTED'}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -596,8 +629,8 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
   const [gscConnected, setGscConnected] = useState(false);
   useEffect(() => {
     if (!workspaceId) return;
-    fetch(`/api/connectors/search-console/${workspaceId}/status`, { headers: authHeaders() })
-      .then(r => (r.ok ? r.json() : null)).then(d => setGscConnected(!!d?.connected)).catch(() => {});
+    getJSON(`/api/connectors/search-console/${workspaceId}/status`)
+      .then(d => setGscConnected(!!d?.connected)).catch(() => {});
   }, [workspaceId]);
 
   // One live run-status per pipeline — the single source of truth for both the pipeline

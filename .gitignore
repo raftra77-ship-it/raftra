@@ -44,3 +44,21 @@ backend/generated_media/
 
 # Local safety copy taken before the finaldashboard merge — not part of the project
 .backup-before-pull-*/
+
+# Local editor config
+.claude/
+
+# Local copy-sheet of deployment secrets — never commit
+RENDER-ENV-VALUES.txt
+
+# Local .env backups — these hold real credentials and must never be committed.
+backend/.env.bak-*
+.env.bak-*
+
+# uv/modern virtualenvs. Only `backend/venv/` was listed, so `backend/.venv/` (what uv
+# creates) was tracked - that is ~2.5GB of torch and CUDA wheels.
+.venv/
+backend/.venv/
+
+# The nested clone of this same repo (used to fetch the branch).
+raftra/

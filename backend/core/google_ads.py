@@ -114,16 +114,33 @@ async def _ensure_access_token(conn) -> str:
     return conn.access_token
 
 
-def _headers(access_token: str) -> dict:
-    lcid = (LOGIN_CUSTOMER_ID or "").replace("-", "")
+def _headers(access_token: str, login_customer_id: str = None) -> dict:
+    """Headers for one Google Ads API call.
+
+    login-customer-id is ONLY sent when this connection reaches its account *through* a
+    manager. It tells Google "act as this manager", and Google then requires that manager
+    to have access to the target customer — so sending our own manager id for every tenant
+    made every customer's account unreachable unless they first linked it under us.
+
+    Customers returned by listAccessibleCustomers are reachable directly by the
+    authenticating user, so their connections store login_customer_id = None and the
+    header is omitted: the customer's own OAuth grant is what authorises the call, and
+    they can revoke it from their Google account at any time.
+    """
     h = {
         "Authorization": f"Bearer {access_token}",
         "developer-token": DEVELOPER_TOKEN,
         "Content-Type": "application/json",
     }
+    lcid = (login_customer_id or "").replace("-", "")
     if lcid:
         h["login-customer-id"] = lcid
     return h
+
+
+def _conn_lcid(conn) -> str:
+    """The manager id this connection must act through, or None for direct access."""
+    return getattr(conn, "login_customer_id", None) or None
 
 
 def _micros_to_major(v):
@@ -138,7 +155,7 @@ async def _search(conn, customer_id: str, query: str, token_override: str = None
     async with httpx.AsyncClient(timeout=40) as client:
         r = await client.post(
             f"{GOOGLE_ADS_HOST}/customers/{customer_id}/googleAds:search",
-            headers=_headers(token),
+            headers=_headers(token, _conn_lcid(conn)),
             json={"query": query},
         )
     if r.status_code != 200:
@@ -152,22 +169,28 @@ async def list_accessible_customers(conn) -> list:
     token = await _ensure_access_token(conn)
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(f"{GOOGLE_ADS_HOST}/customers:listAccessibleCustomers",
-                             headers=_headers(token))
+                             headers=_headers(token, _conn_lcid(conn)))
     if r.status_code != 200:
         raise RuntimeError(f"Could not list accessible customers: {r.status_code} {r.text[:300]}")
     customer_ids = [rn.split("/")[-1] for rn in r.json().get("resourceNames", [])]
     out = []
     for cid in customer_ids:
-        name = cid
+        name, is_manager = cid, False
         try:
+            # customer.manager is the only reliable way to tell a manager (MCC) apart from
+            # an ad account. Campaigns cannot exist inside a manager, so selecting one is
+            # always a mistake — and the picker lists both side by side.
             rows = await _search(conn, cid,
-                "SELECT customer.descriptive_name, customer.currency_code FROM customer LIMIT 1",
+                "SELECT customer.descriptive_name, customer.currency_code, customer.manager "
+                "FROM customer LIMIT 1",
                 token_override=token)
             if rows:
-                name = rows[0]["customer"].get("descriptiveName") or cid
+                cust = rows[0]["customer"]
+                name = cust.get("descriptiveName") or cid
+                is_manager = bool(cust.get("manager"))
         except Exception:
             pass  # a single account failing to resolve a display name isn't fatal
-        out.append({"customer_id": cid, "name": name})
+        out.append({"customer_id": cid, "name": name, "manager": is_manager})
     return out
 
 
@@ -205,7 +228,7 @@ async def publish_campaign(conn, name: str, objective: str, daily_budget_major: 
     async with httpx.AsyncClient(timeout=40) as client:
         budget_res = await client.post(
             f"{GOOGLE_ADS_HOST}/customers/{customer_id}/campaignBudgets:mutate",
-            headers=_headers(token),
+            headers=_headers(token, _conn_lcid(conn)),
             json={"operations": [{"create": {
                 "name": f"{name or 'Raftra Campaign'} - Budget - {int(datetime.datetime.utcnow().timestamp())}",
                 "amountMicros": str(micros),
@@ -233,7 +256,7 @@ async def publish_campaign(conn, name: str, objective: str, daily_budget_major: 
         }
         camp_res = await client.post(
             f"{GOOGLE_ADS_HOST}/customers/{customer_id}/campaigns:mutate",
-            headers=_headers(token),
+            headers=_headers(token, _conn_lcid(conn)),
             json={"operations": [{"create": campaign_body}]},
         )
     if camp_res.status_code not in (200, 201):
@@ -256,7 +279,7 @@ async def set_campaign_status(conn, campaign_id: str, status: str) -> dict:
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.post(
             f"{GOOGLE_ADS_HOST}/customers/{conn.customer_id}/campaigns:mutate",
-            headers=_headers(token),
+            headers=_headers(token, _conn_lcid(conn)),
             json={"operations": [{
                 "update": {"resourceName": resource_name, "status": status},
                 "updateMask": "status",
@@ -276,7 +299,7 @@ async def update_campaign_budget(conn, budget_resource_name: str, daily_budget_m
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.post(
             f"{GOOGLE_ADS_HOST}/customers/{conn.customer_id}/campaignBudgets:mutate",
-            headers=_headers(token),
+            headers=_headers(token, _conn_lcid(conn)),
             json={"operations": [{
                 "update": {"resourceName": budget_resource_name, "amountMicros": str(minor)},
                 "updateMask": "amount_micros",
@@ -619,11 +642,11 @@ def validate_search_payload(*, headlines, descriptions, keywords, final_url,
     }
 
 
-async def _mutate(client, token, customer_id: str, service: str, operations: list, action: str) -> list:
+async def _mutate(client, token, lcid, customer_id: str, service: str, operations: list, action: str) -> list:
     """One mutate against a Google Ads service. Raises a user-facing GoogleAdsApiError."""
     r = await client.post(
         f"{GOOGLE_ADS_HOST}/customers/{customer_id}/{service}:mutate",
-        headers=_headers(token),
+        headers=_headers(token, lcid),
         json={"operations": operations},
     )
     if r.status_code not in (200, 201):
@@ -631,19 +654,19 @@ async def _mutate(client, token, customer_id: str, service: str, operations: lis
     return r.json().get("results", [])
 
 
-async def _remove_quietly(client, token, customer_id: str, service: str, resource_names: list):
+async def _remove_quietly(client, token, lcid, customer_id: str, service: str, resource_names: list):
     """Best-effort cleanup so a failed launch leaves nothing behind. Never raises: the caller is
     already reporting the original failure, and a cleanup error would mask it."""
     for rn in [x for x in resource_names if x]:
         try:
             await client.post(
                 f"{GOOGLE_ADS_HOST}/customers/{customer_id}/{service}:mutate",
-                headers=_headers(token), json={"operations": [{"remove": rn}]})
+                headers=_headers(token, lcid), json={"operations": [{"remove": rn}]})
         except Exception:
             pass
 
 
-async def _resolve_geo_targets(client, token, customer_id: str, locations: list) -> tuple:
+async def _resolve_geo_targets(client, token, lcid, customer_id: str, locations: list) -> tuple:
     """Map plain location names ("Mumbai", "India") onto geo target constants.
 
     Best effort by design: geo targeting is a refinement, not a precondition for a valid
@@ -655,7 +678,7 @@ async def _resolve_geo_targets(client, token, customer_id: str, locations: list)
     try:
         r = await client.post(
             f"{GOOGLE_ADS_HOST}/geoTargetConstants:suggest",
-            headers=_headers(token),
+            headers=_headers(token, lcid),
             json={"locale": "en", "countryCode": "IN", "locationNames": {"names": names[:20]}},
         )
         if r.status_code != 200:
@@ -699,6 +722,9 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
     if not conn.customer_id:
         raise GoogleAdsApiError("No Google Ads customer account selected.")
 
+    # None for a directly-authorised account; a manager id only when we must act through one.
+    lcid = _conn_lcid(conn)
+
     warnings = []
     sitelinks = list(sitelinks or [])
     callouts = list(callouts or [])
@@ -734,7 +760,7 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
 
     budget_rn = campaign_rn = None
     async with httpx.AsyncClient(timeout=60) as client:
-        results = await _mutate(client, token, customer_id, "campaignBudgets", [{"create": {
+        results = await _mutate(client, token, lcid, customer_id, "campaignBudgets", [{"create": {
             "name": f"{campaign_name} - Budget - {stamp}",
             "amountMicros": str(micros),
             "deliveryMethod": "STANDARD",
@@ -768,17 +794,17 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
             if duration_days and int(duration_days) > 0:
                 campaign_body["endDate"] = (today + datetime.timedelta(days=int(duration_days))).strftime("%Y-%m-%d")
 
-            results = await _mutate(client, token, customer_id, "campaigns",
+            results = await _mutate(client, token, lcid, customer_id, "campaigns",
                                     [{"create": campaign_body}], "Creating the campaign")
             campaign_rn = results[0]["resourceName"]
             campaign_id = campaign_rn.split("/")[-1]
 
             # Geo targeting (best effort — never blocks the launch).
-            geo_rns, geo_warnings = await _resolve_geo_targets(client, token, customer_id, geo_locations)
+            geo_rns, geo_warnings = await _resolve_geo_targets(client, token, lcid, customer_id, geo_locations)
             warnings.extend(geo_warnings)
             if geo_rns:
                 try:
-                    await _mutate(client, token, customer_id, "campaignCriteria",
+                    await _mutate(client, token, lcid, customer_id, "campaignCriteria",
                                   [{"create": {"campaign": campaign_rn,
                                                "location": {"geoTargetConstant": rn}}} for rn in geo_rns],
                                   "Applying geo targeting")
@@ -786,7 +812,7 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
                     warnings.append(f"Geo targeting was not applied — {e.message}")
 
             cpc_bid = max(100_000, min(50_000_000, int(micros * 0.1)))
-            results = await _mutate(client, token, customer_id, "adGroups", [{"create": {
+            results = await _mutate(client, token, lcid, customer_id, "adGroups", [{"create": {
                 "name": f"{campaign_name} - Ad Group",
                 "campaign": campaign_rn,
                 "status": "ENABLED",           # the PAUSED campaign above is what stops delivery
@@ -798,7 +824,7 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
 
             keyword_resources = []
             if clean["keywords"]:
-                results = await _mutate(client, token, customer_id, "adGroupCriteria", [
+                results = await _mutate(client, token, lcid, customer_id, "adGroupCriteria", [
                     {"create": {"adGroup": ad_group_rn, "status": "ENABLED",
                                 "keyword": {"text": k["text"], "matchType": k["match_type"]}}}
                     for k in clean["keywords"]
@@ -808,7 +834,7 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
                     for r, k in zip(results, clean["keywords"])
                 ]
 
-            results = await _mutate(client, token, customer_id, "adGroupAds", [{"create": {
+            results = await _mutate(client, token, lcid, customer_id, "adGroupAds", [{"create": {
                 "adGroup": ad_group_rn,
                 "status": "ENABLED",
                 "ad": {
@@ -831,13 +857,13 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
                     # set together, and the strategy supplies a single description line, so
                     # sending it would fail the whole asset — the sitelink itself is what
                     # matters, and it is created correctly.
-                    results = await _mutate(client, token, customer_id, "assets", [
+                    results = await _mutate(client, token, lcid, customer_id, "assets", [
                         {"create": {"finalUrls": [sl["url"]],
                                     "sitelinkAsset": {"linkText": sl["text"]}}}
                         for sl in clean["sitelinks"]
                     ], "Creating sitelink assets")
                     asset_rns = [r["resourceName"] for r in results]
-                    await _mutate(client, token, customer_id, "campaignAssets", [
+                    await _mutate(client, token, lcid, customer_id, "campaignAssets", [
                         {"create": {"campaign": campaign_rn, "asset": rn, "fieldType": "SITELINK"}}
                         for rn in asset_rns
                     ], "Linking sitelinks to the campaign")
@@ -850,12 +876,12 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
 
             if clean["callouts"]:
                 try:
-                    results = await _mutate(client, token, customer_id, "assets", [
+                    results = await _mutate(client, token, lcid, customer_id, "assets", [
                         {"create": {"calloutAsset": {"calloutText": text}}}
                         for text in clean["callouts"]
                     ], "Creating callout assets")
                     asset_rns = [r["resourceName"] for r in results]
-                    await _mutate(client, token, customer_id, "campaignAssets", [
+                    await _mutate(client, token, lcid, customer_id, "campaignAssets", [
                         {"create": {"campaign": campaign_rn, "asset": rn, "fieldType": "CALLOUT"}}
                         for rn in asset_rns
                     ], "Linking callouts to the campaign")
@@ -869,8 +895,8 @@ async def launch(conn, *, name: str, objective: str = "", headlines, description
         except Exception:
             # Anything that got created before the failure is removed, so a retry starts clean
             # instead of piling half-built campaigns into the account.
-            await _remove_quietly(client, token, customer_id, "campaigns", [campaign_rn])
-            await _remove_quietly(client, token, customer_id, "campaignBudgets", [budget_rn])
+            await _remove_quietly(client, token, lcid, customer_id, "campaigns", [campaign_rn])
+            await _remove_quietly(client, token, lcid, customer_id, "campaignBudgets", [budget_rn])
             raise
 
     return {

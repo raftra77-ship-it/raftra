@@ -104,9 +104,34 @@ def _meta(soup, name=None, prop=None) -> str:
 
 # --------------------------------------------------------------------------- SEO
 
+def html_is_scorable(html: str) -> bool:
+    """True when the fetched HTML is complete enough to score metadata and markup from.
+
+    Three categories - Metadata, Accessibility, Internal Linking - are read entirely out of
+    the HTML. When a crawl returns an empty body, a cold-start placeholder or an
+    un-hydrated SPA shell, every one of those lookups misses and the page is scored as
+    though it genuinely has no title, no alt text and no links. Two audits of ONE site,
+    seven seconds apart with byte-identical content metrics, scored Metadata 10 then 0 and
+    Internal Linking 10 then 6 for exactly this reason.
+
+    A page that truly has no <head> is not something we can meaningfully audit either, so
+    treating both cases as "not verified" is correct as well as safer.
+    """
+    if not html or len(html) < 500:
+        return False
+    soup = _soup(html)
+    if soup is None:
+        return False
+    return soup.find("head") is not None or soup.find("title") is not None
+
+
 def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) -> dict:
     """metrics = output of analyze_markdown(); signals = https/robots/sitemap/status info."""
     soup = _soup(html)
+    # When the fetch came back empty or half-rendered, the HTML-derived categories report
+    # "not verified" and drop out of the total, instead of inventing a zero for markup we
+    # never actually saw.
+    markup_ok = html_is_scorable(html)
     host = (urlparse(url).netloc or "").lower().replace("www.", "")
     cats = []
 
@@ -188,18 +213,34 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
     else:
         ev.append("No Open Graph tags → 0/2.5")
         rec.append("Add Open Graph tags for social/AI preview accuracy.")
-    cats.append(_cat("Metadata", 15, pts, "Title, description, canonical and Open Graph checks",
-                     ev, rec, "High" if pts < 9 else "Medium"))
+    cats.append(_cat("Metadata", 15, pts,
+                     "Title, description, canonical and Open Graph checks" if markup_ok
+                     else "The page HTML came back empty or unrendered, so metadata could not be read",
+                     ev if markup_ok else ["Fetched HTML was not scorable - no <head> returned."],
+                     rec if markup_ok else ["Re-run the audit; if it persists, the page may be "
+                                            "JS-rendered or the origin may be cold-starting."],
+                     "High" if pts < 9 else "Medium",
+                     status="verified" if markup_ok else "not_verified"))
 
-    # ---- 3. Technical SEO (20)
-    ev, rec, pts = [], [], 0.0
+    # ---- 3. Technical SEO (20, less any sub-check we could not perform)
+    #
+    # `unavailable` holds points for checks that ERRORED rather than failed. Scoring those
+    # as 0 is what made repeat audits of one site disagree by 20 points: a robots.txt fetch
+    # that timed out was reported as "NOT found → 0/4" with a recommendation to add one,
+    # on sites that already had a perfectly good robots.txt. Excluding them from the max
+    # instead is the same rule this module already applies to Performance.
+    ev, rec, pts, unavailable = [], [], 0.0, 0.0
     if signals.get("https"):
         pts += 4; ev.append("Served over HTTPS → 4/4")
     else:
         ev.append("Not served over HTTPS → 0/4")
         rec.append("Serve the site over HTTPS.")
     r = signals.get("robots_txt") or {}
-    if r.get("found"):
+    if r.get("checked") is False:
+        unavailable += 4
+        ev.append(f"robots.txt could not be checked ({r.get('error') or 'request failed'}) "
+                  f"— excluded from scoring rather than counted as missing")
+    elif r.get("found"):
         pts += 4; ev.append(f"robots.txt found (HTTP {r.get('status')}) → 4/4")
         if r.get("disallow_all"):
             pts -= 2; ev.append("robots.txt contains 'Disallow: /' → -2 (blocks crawling)")
@@ -208,7 +249,11 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
         ev.append("robots.txt NOT found → 0/4")
         rec.append("Add a robots.txt that allows crawling and points to the sitemap.")
     s = signals.get("sitemap") or {}
-    if s.get("found"):
+    if s.get("checked") is False:
+        unavailable += 4
+        ev.append(f"Sitemap could not be checked ({s.get('error') or 'request failed'}) "
+                  f"— excluded from scoring rather than counted as missing")
+    elif s.get("found"):
         # Name the URL that was actually found: a site can serve /sitemap_index.xml rather
         # than /sitemap.xml, and reporting "sitemap.xml found" for that is misleading.
         pts += 4; ev.append(f"Sitemap found at {s.get('url') or 'sitemap.xml'} "
@@ -252,8 +297,15 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
         rec.append(f"Page returns HTTP {status}; it should return 200.")
     else:
         ev.append("HTTP status not captured → 0/4")
-    cats.append(_cat("Technical SEO", 20, max(pts, 0), "HTTPS, robots.txt, sitemap, indexability, status",
-                     ev, rec, "Critical" if pts < 10 else "Medium"))
+    # Max shrinks by whatever could not be checked, so an unreachable robots.txt lowers the
+    # denominator instead of the numerator - the score then reflects what was measured
+    # rather than what the network happened to allow.
+    _tech_max = 20 - unavailable
+    cats.append(_cat("Technical SEO", _tech_max, max(pts, 0),
+                     "HTTPS, robots.txt, sitemap, indexability, status"
+                     + (f" ({unavailable:.0f} pts excluded - not reachable)" if unavailable else ""),
+                     ev, rec, "Critical" if pts < (_tech_max / 2) else "Medium",
+                     status="verified" if _tech_max > 0 else "not_verified"))
 
     # ---- 4. Performance (15) — requires field/lab data we do not collect
     psi = signals.get("psi") or {}
@@ -312,7 +364,12 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
         ev.append(f"{len(inputs)} form inputs with no labels or aria-labels → 0/2")
         rec.append("Add <label> or aria-label to every form input.")
     ev.append("Colour contrast: Not Verified (needs rendered-page analysis)")
-    cats.append(_cat("Accessibility", 10, pts, "Alt text, semantic HTML, form labelling", ev, rec))
+    cats.append(_cat("Accessibility", 10, pts,
+                     "Alt text, semantic HTML, form labelling" if markup_ok
+                     else "The page HTML came back empty or unrendered, so markup could not be checked",
+                     ev if markup_ok else ["Fetched HTML was not scorable."],
+                     rec if markup_ok else [],
+                     status="verified" if markup_ok else "not_verified"))
 
     # ---- 6. Internal Linking (10)
     ev, rec, pts = [], [], 0.0
@@ -344,9 +401,12 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
         rec.append("Wrap primary navigation in a <nav> element.")
     ev.append("Orphan pages: Not Verified (needs a full-site crawl)")
     cats.append(_cat("Internal Linking", 10, pts,
-                     f"{il} internal / {el} external links in main content (nav/footer excluded), "
-                     f"anchor quality across the whole page",
-                     ev, rec))
+                     (f"{il} internal / {el} external links in main content (nav/footer excluded), "
+                      f"anchor quality across the whole page") if markup_ok
+                     else "The page HTML came back empty or unrendered, so links could not be checked",
+                     ev if markup_ok else ["Fetched HTML was not scorable."],
+                     rec if markup_ok else [],
+                     status="verified" if markup_ok else "not_verified"))
 
     # ---- 7. Structured Data (10)
     ev, rec, pts = [], [], 0.0

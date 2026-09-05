@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRazorpay } from 'react-razorpay';
 import type { LogLine } from '../components/TerminalFeed';
@@ -17,6 +17,12 @@ const WorkspaceSEO = lazy(() => import('../components/workspaces/WorkspaceSEO').
 const WorkspaceAnalytics = lazy(() => import('../components/workspaces/WorkspaceAnalytics').then(m => ({ default: m.WorkspaceAnalytics })));
 const WorkspaceSocial = lazy(() => import('../components/workspaces/WorkspaceSocial').then(m => ({ default: m.WorkspaceSocial })));
 const WorkspaceInfluencer = lazy(() => import('../components/workspaces/WorkspaceInfluencer').then(m => ({ default: m.WorkspaceInfluencer })));
+const ModernHomeOverview = lazy(() => import('../components/ModernHomeOverview').then(m => ({ default: m.ModernHomeOverview })));
+const WorkspaceSettings = lazy(() => import('../components/workspaces/WorkspaceSettings').then(m => ({ default: m.WorkspaceSettings })));
+const WorkspaceReports = lazy(() => import('../components/workspaces/WorkspaceReports').then(m => ({ default: m.WorkspaceReports })));
+const WorkspaceScheduler = lazy(() => import('../components/workspaces/WorkspaceScheduler').then(m => ({ default: m.WorkspaceScheduler })));
+const WorkspaceAssets = lazy(() => import('../components/workspaces/WorkspaceAssets').then(m => ({ default: m.WorkspaceAssets })));
+const BrandKnowledgeBase = lazy(() => import('../components/workspaces/BrandKnowledgeBase').then(m => ({ default: m.BrandKnowledgeBase })));
 
 // Type-only imports are erased at build time, so these create no runtime dependency and
 // do not pull the modules back into this chunk.
@@ -41,8 +47,12 @@ import {
   BarChart3,
   Share2,
   Users2,
-  CheckCircle,
-  Zap,
+  CheckCircle2,
+  Coins,
+  User,
+  CreditCard,
+  ShieldCheck,
+  X,
   Search,
   Bell,
   BookOpen,
@@ -51,7 +61,13 @@ import {
   ChevronDown,
   Sparkle,
   FileText,
-  LogOut
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Tag,
+  Layers,
+  Calendar,
+  ExternalLink,
 } from 'lucide-react';
 
 type NavigationTab =
@@ -63,7 +79,11 @@ type NavigationTab =
   | 'social'
   | 'influencer'
   | 'agents'
+  | 'reports'
+  | 'scheduler'
   | 'kb'
+  | 'kb_brands'
+  | 'kb_assets'
   | 'integrations'
   | 'settings';
 
@@ -162,9 +182,21 @@ const INTEGRATIONS: {
   connectTab: NavigationTab;
   connectLabel: string;
   unconfiguredHint: string;
+  // Present only where the connector can be started from here in one click. Shopify and
+  // WordPress need a shop domain / site details first, so they keep sending you to the
+  // tab that can ask for them.
+  authorizePath?: (ws: number) => string;
+  disconnectPath?: (ws: number) => string;
+  disconnectMethod?: 'POST' | 'DELETE';
+  // Shown in the confirm dialog so the consequence is stated before it happens.
+  disconnectWarning?: string;
 }[] = [
   {
     key: 'meta',
+    authorizePath: (ws) => `/api/connectors/meta/${ws}/authorize`,
+    disconnectPath: (ws) => `/api/connectors/meta/${ws}/disconnect`,
+    disconnectMethod: 'POST',
+    disconnectWarning: 'Raftra loses access to this ad account. Campaigns already created in Meta keep running.',
     name: 'Meta Ads',
     statusPath: (ws) => `/api/connectors/meta/${ws}/status`,
     read: (s) => ({
@@ -181,6 +213,10 @@ const INTEGRATIONS: {
   },
   {
     key: 'google-ads',
+    authorizePath: (ws) => `/api/connectors/google-ads/${ws}/authorize`,
+    disconnectPath: (ws) => `/api/connectors/google-ads/${ws}`,
+    disconnectMethod: 'DELETE',
+    disconnectWarning: 'Revokes the grant with Google. Campaigns already created keep running.',
     name: 'Google Ads',
     statusPath: (ws) => `/api/connectors/google-ads/${ws}/status`,
     read: (s) => ({
@@ -195,6 +231,10 @@ const INTEGRATIONS: {
   },
   {
     key: 'search-console',
+    authorizePath: (ws) => `/api/connectors/search-console/${ws}/authorize`,
+    disconnectPath: (ws) => `/api/connectors/search-console/${ws}/disconnect`,
+    disconnectMethod: 'POST',
+    disconnectWarning: 'Revokes the grant with Google. Google Analytics uses the same grant, so it disconnects too.',
     name: 'Google Search Console',
     statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
     read: (s) => ({
@@ -253,6 +293,10 @@ const INTEGRATIONS: {
   },
   {
     key: 'github',
+    authorizePath: (ws) => `/api/connectors/github/${ws}/authorize`,
+    disconnectPath: (ws) => `/api/connectors/github/${ws}`,
+    disconnectMethod: 'DELETE',
+    disconnectWarning: 'Raftra can no longer read or open pull requests on your repository.',
     name: 'GitHub',
     statusPath: (ws) => `/api/connectors/github/${ws}/status`,
     read: (s) => ({
@@ -272,6 +316,10 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
   // nothing, and guessing in either direction is what produced the old wrong badges.
   const [states, setStates] = useState<Record<string, IntegrationView | 'error'>>({});
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  // Bumping this re-runs the status effect, so a disconnect is reflected without a reload.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!workspaceId) { setStates({}); setLoading(false); return; }
@@ -290,13 +338,57 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, [workspaceId, reloadKey]);
+
+  const authHdrs = (): HeadersInit => {
+    const t = localStorage.getItem('token');
+    return t ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+             : { 'Content-Type': 'application/json' };
+  };
+
+  // The connector returns the provider's consent URL; we hand the browser over to it.
+  const startConnect = async (i: typeof INTEGRATIONS[number]) => {
+    if (!workspaceId || !i.authorizePath) return;
+    setBusy(i.key); setNote(null);
+    try {
+      const r = await fetch(i.authorizePath(workspaceId), { headers: authHdrs() });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.url) { window.location.href = d.url; return; }
+      setNote(d.detail || `Could not start the ${i.name} connection.`);
+    } catch {
+      setNote('Could not reach the server. Please try again.');
+    }
+    setBusy(null);
+  };
+
+  const doDisconnect = async (i: typeof INTEGRATIONS[number]) => {
+    if (!workspaceId || !i.disconnectPath) return;
+    if (!window.confirm(`Disconnect ${i.name}?\n\n${i.disconnectWarning || ''}\n\nYou can reconnect at any time.`)) return;
+    setBusy(i.key); setNote(null);
+    try {
+      const r = await fetch(i.disconnectPath(workspaceId), {
+        method: i.disconnectMethod || 'POST', headers: authHdrs(),
+      });
+      const d = await r.json().catch(() => ({}));
+      setNote(r.ok ? `${i.name} disconnected.` : (d.detail || `Could not disconnect ${i.name}.`));
+      if (r.ok) setReloadKey((k) => k + 1);
+    } catch {
+      setNote('Could not reach the server. Please try again.');
+    }
+    setBusy(null);
+  };
 
   if (!workspaceId) {
     return <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>No workspace loaded yet.</p>;
   }
 
   return (
+    <>
+      {note && (
+        <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '8px', fontSize: '12.5px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+          {note}
+        </div>
+      )}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
       {INTEGRATIONS.map((i) => {
         const st = states[i.key];
@@ -329,12 +421,34 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
                   {sub}
                 </span>
               )}
+              {/* One-click OAuth where the connector supports it; otherwise send the
+                  user to the tab that can collect the shop domain or site details. */}
               {view && view.configured && !view.connected && (
+                i.authorizePath ? (
+                  <button
+                    onClick={() => startConnect(i)}
+                    disabled={busy === i.key}
+                    style={{ marginTop: '8px', background: 'var(--accent-glow)', border: '1px solid var(--accent)', borderRadius: '6px', padding: '5px 12px', cursor: busy === i.key ? 'default' : 'pointer', fontSize: '11.5px', fontWeight: 600, color: 'var(--accent)', opacity: busy === i.key ? 0.6 : 1 }}
+                  >
+                    {busy === i.key ? 'Opening…' : `Connect ${i.name}`}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onConnect(i.connectTab)}
+                    style={{ marginTop: '6px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
+                  >
+                    Connect in {i.connectLabel} →
+                  </button>
+                )
+              )}
+
+              {view && view.connected && i.disconnectPath && (
                 <button
-                  onClick={() => onConnect(i.connectTab)}
-                  style={{ marginTop: '6px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
+                  onClick={() => doDisconnect(i)}
+                  disabled={busy === i.key}
+                  style={{ marginTop: '8px', background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.35)', borderRadius: '6px', padding: '4px 10px', cursor: busy === i.key ? 'default' : 'pointer', fontSize: '11px', fontWeight: 600, color: '#ff4757', opacity: busy === i.key ? 0.6 : 1 }}
                 >
-                  Connect in {i.connectLabel} →
+                  {busy === i.key ? 'Working…' : 'Disconnect'}
                 </button>
               )}
             </div>
@@ -345,6 +459,7 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -390,6 +505,8 @@ export function BrandDashboard() {
   const [userName, setUserName] = useState<string>('User');
 
   // UI Overlays
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isKbOpen, setIsKbOpen] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -409,24 +526,23 @@ export function BrandDashboard() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Read the account from the API rather than guessing at the token's claims. The token
+  // carries `sub` (the user id) and `role`, nothing else - so the old fallback that split
+  // `sub` on "@" and capitalised it greeted every user by their database id: "How are you
+  // doing, 5".
   useEffect(() => {
-    try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if (payload.first_name) {
-          const capitalized = payload.first_name.charAt(0).toUpperCase() + payload.first_name.slice(1);
-          setUserName(capitalized);
-        } else if (payload.sub) {
-          // Fallback if no first_name
-          const namePart = payload.sub.split('@')[0];
-          const capitalized = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-          setUserName(capitalized);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to parse token', e);
-    }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d) return;
+        const name = d.first_name || d.username || (d.email ? d.email.split('@')[0] : '');
+        if (name) setUserName(name.charAt(0).toUpperCase() + name.slice(1));
+        if (d.email) setUserEmail(d.email);
+        setAccount({ email: d.email, role: d.role });
+      })
+      .catch(() => { /* the greeting keeps its default */ });
   }, []);
 
   // Brand data submitted from onboarding. Empty until the real workspace loads - these
@@ -490,7 +606,59 @@ export function BrandDashboard() {
   ]);
 
   // AI Priorities List
-  const [priorities, setPriorities] = useState<{ id: string; title: string; description: string; type: string }[]>([]);
+  // Real notifications from GET /api/notifications. Kept under the name `priorities`
+  // because the rest of this page already reads it; the shape now matches the API.
+  const [priorities, setPriorities] = useState<{
+    id: number; title: string; message: string; type: string;
+    read: boolean; created_at: string; action_url?: string | null;
+  }[]>([]);
+
+  const loadNotifications = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      const r = await fetch('/api/notifications/', { headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) {
+        const data = await r.json();
+        // Only unread ones belong in the bell; the badge counts what still needs attention.
+        setPriorities(Array.isArray(data) ? data.filter((n: { read: boolean }) => !n.read) : []);
+      }
+    } catch { /* the empty state covers it */ }
+  }, []);
+
+  useEffect(() => {
+    loadNotifications();
+    // Scheduled runs finish while the tab sits open, so re-check periodically rather than
+    // only at mount.
+    const t = setInterval(loadNotifications, 60000);
+    return () => clearInterval(t);
+  }, [loadNotifications]);
+
+  const markAllNotificationsRead = async () => {
+    const token = localStorage.getItem('token');
+    const previous = priorities;
+    setPriorities([]);
+    try {
+      const r = await fetch('/api/notifications/read-all', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!r.ok) setPriorities(previous);   // it stays unread if the server said no
+    } catch {
+      setPriorities(previous);
+    }
+  };
+
+  const markNotificationRead = async (id: number) => {
+    const token = localStorage.getItem('token');
+    setPriorities(prev => prev.filter(n => n.id !== id));
+    try {
+      await fetch(`/api/notifications/read/${id}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+    } catch { /* it comes back on the next poll if this failed */ }
+  };
 
   // Metrics, Billing and node locks state.
   // null until /metrics answers - it used to start at all-zeros, which renders exactly like
@@ -500,7 +668,9 @@ export function BrandDashboard() {
     revenue: number; roas: number; seoVisibility: number; aiVisibility: number;
     campaignHealth: number; campaignsLive?: number; campaignsLaunched?: number; growthScore: number;
   };
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  // Read by the old hand-built Home, which ModernHomeOverview replaced. The fetch is
+  // kept because the endpoint is cheap and the summary is wanted again shortly.
+  const [, setMetrics] = useState<Metrics | null>(null);
   const [billingBalance, setBillingBalance] = useState<number>(0);
   const [unlockedNodes, setUnlockedNodes] = useState<string[]>([]);
 
@@ -508,6 +678,14 @@ export function BrandDashboard() {
   // Dynamic simulation log loops
   const [, setIsWsConnected] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
+  // The full list behind the header switcher. /api/workspaces already returned every
+  // workspace; the previous code kept data[0] and dropped the rest, which is why the
+  // switcher in the header had a chevron but nothing to open.
+  const [allWorkspaces, setAllWorkspaces] = useState<{ id: number; name: string; company_url?: string; brand_color?: string; brand_voice?: string }[]>([]);
+  const [isBrandDropdownOpen, setIsBrandDropdownOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string>('');
   const [isReindexing, setIsReindexing] = useState(false);
   // Outcome of the last re-index, shown in the Knowledge Base tab. Previously the only
   // report of success or failure went to console.log.
@@ -518,7 +696,7 @@ export function BrandDashboard() {
   // Which graph node each pipeline is currently executing, from the node_update stream.
   // Keyed by agent_type so it can be shown against that agent's real status.
   const [liveNodes, setLiveNodes] = useState<Record<string, string>>({});
-  const [recentActions, setRecentActions] = useState<any[]>([]);
+  const [, setRecentActions] = useState<any[]>([]);
   // Ref so the (mount-only) WebSocket handler can read the current workspace id.
   const workspaceIdRef = useRef<number | null>(null);
   useEffect(() => { workspaceIdRef.current = workspaceId; }, [workspaceId]);
@@ -665,6 +843,7 @@ export function BrandDashboard() {
       })
       .then(data => {
         if (data && data.length > 0) {
+          setAllWorkspaces(data);
           const ws = data[0];
           setWorkspaceId(ws.id);
           setBrandProfile({
@@ -1057,6 +1236,125 @@ export function BrandDashboard() {
     }
   };
 
+  // ── Account & workspace settings ──────────────────────────────────────────
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsNote, setSettingsNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [account, setAccount] = useState<{ email: string; role: string } | null>(null);
+
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState('');
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleSaveSettings = async () => {
+    if (!workspaceId) return;
+    setSavingSettings(true);
+    setSettingsNote(null);
+    try {
+      const token = localStorage.getItem('token');
+      const r = await fetch(`/api/workspaces/${workspaceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          name: brandProfile?.name || '',
+          company_url: brandProfile?.url || '',
+          brand_color: brandProfile?.colors || '',
+          brand_voice: brandProfile?.tone || '',
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        // Reflect the saved row, and keep the workspace switcher's copy in step.
+        setAllWorkspaces((prev: any[]) => prev.map(w => (w.id === d.id ? d : w)));
+        setSettingsNote({ kind: 'ok', text: 'Saved.' });
+      } else {
+        setSettingsNote({ kind: 'err', text: d.detail || `Could not save (${r.status}).` });
+      }
+    } catch {
+      setSettingsNote({ kind: 'err', text: 'Could not reach the server.' });
+    }
+    setSavingSettings(false);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwBusy(true);
+    setPwError('');
+    try {
+      const token = localStorage.getItem('token');
+      const r = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setShowPasswordModal(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setSettingsNote({ kind: 'ok', text: 'Password updated.' });
+      } else {
+        setPwError(d.detail || 'Could not change the password.');
+      }
+    } catch {
+      setPwError('Could not reach the server.');
+    }
+    setPwBusy(false);
+  };
+
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      const token = localStorage.getItem('token');
+      const r = await fetch('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ confirm: deleteConfirm, password: deletePassword }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        // The account is gone, so there is nothing to come back to.
+        localStorage.removeItem('token');
+        navigate('/');
+        return;
+      }
+      setDeleteError(d.detail || 'Could not delete the account.');
+    } catch {
+      setDeleteError('Could not reach the server.');
+    }
+    setDeleteBusy(false);
+  };
+
+  // Re-reads the workspace list after the billing screen adds or deletes a brand, so the
+  // switcher and the settings list stay in step with the server.
+  const refreshWorkspaces = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const r = await fetch('/api/workspaces', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      setAllWorkspaces(data);
+      // The active workspace may be the one just deleted.
+      if (data.length && !data.some((w: { id: number }) => w.id === workspaceId)) {
+        switchWorkspace(data[0].id);
+      }
+    } catch { /* the list stays as it was */ }
+  };
+
+  // Set by "Use in Creative Studio" in the Media vault, consumed by the Studio's generator.
+  const [studioReferenceImage, setStudioReferenceImage] = useState<string | null>(null);
+
   const handleTopUpShortcut = async (amountUSD: number) => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -1143,7 +1441,46 @@ export function BrandDashboard() {
     rzp.open();
   };
 
+  // Shipped unlocked for now. These are the workspaces people are being asked to evaluate,
+  // and a paywall in front of them reads as a broken product rather than an upsell — it
+  // also blocks Meta and Google reviewers, who must be able to reach the ad-publishing flow
+  // for App Review. Billing itself is untouched: top-ups, balance and the unlock endpoint
+  // all still work. Remove an entry here to put its paywall back.
+  const FREE_NODES = ['campaign', 'seo', 'analytics'];
+
+  // The dot beside a workspace name uses that workspace's brand colour, but a brand colour
+  // is chosen to sit on the brand's own site — this one is #030303, which is invisible on a
+  // near-black top bar. Fall back to the reference build's orange whenever the stored value
+  // is missing or too dark to read here, so the dot always reads as a dot.
+  const workspaceDot = (hex?: string | null) => {
+    const v = String(hex || '').trim();
+    const m = /^#?([0-9a-f]{6})$/i.exec(v);
+    if (!m) return '#FF6B00';
+    const n = parseInt(m[1], 16);
+    // Rec. 601 luma, the usual quick "is this readable" check.
+    const luma = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+    return luma < 0.18 ? '#FF6B00' : (v.startsWith('#') ? v : `#${v}`);
+  };
+
+  // Every data fetch in this page is keyed on workspaceId, so setting it is the whole
+  // switch — the tabs repopulate on their own.
+  const switchWorkspace = (id: number) => {
+    setIsBrandDropdownOpen(false);
+    if (id === workspaceId) return;
+    const ws = allWorkspaces.find(w => w.id === id);
+    if (!ws) return;
+    setWorkspaceId(ws.id);
+    setBrandProfile({
+      url: ws.company_url || '',
+      name: ws.name,
+      tone: ws.brand_voice || '',
+      colors: ws.brand_color || '',
+    });
+  };
+
   const renderLockOverlay = (nodeName: string, priceUSD: number) => {
+    if (FREE_NODES.includes(nodeName)) return null;
+
     // Paywall is bypassed in local development so the workspaces can be built and
     // reviewed without a billing balance. import.meta.env.DEV is false in any
     // production build, so the overlay still gates the deployed app.
@@ -1265,7 +1602,6 @@ export function BrandDashboard() {
             : asset
         )
       );
-      setPriorities((prev) => prev.filter((p) => !p.title.toLowerCase().includes('creative') && !p.title.toLowerCase().includes('fatigue')));
     } else if (id.startsWith('cp-')) {
       setCampaigns((prev) =>
         prev.map((camp) =>
@@ -1278,7 +1614,6 @@ export function BrandDashboard() {
             : camp
         )
       );
-      setPriorities((prev) => prev.filter((p) => !p.title.toLowerCase().includes('roas') && !p.title.toLowerCase().includes('budget')));
     } else if (id.startsWith('seo-')) {
       setSeoBlogs((prev) =>
         prev.map((blog) =>
@@ -1334,7 +1669,6 @@ export function BrandDashboard() {
             : post
         )
       );
-      setPriorities((prev) => prev.filter((p) => !p.title.toLowerCase().includes('blog') && !p.title.toLowerCase().includes('update')));
     }
 
     setIsReviewOpen(false);
@@ -1391,15 +1725,8 @@ export function BrandDashboard() {
     };
     setSocialPosts((prev) => [newPost, ...prev]);
 
-    setPriorities((prev) => [
-      {
-        id: newPost.id,
-        title: `Verify ${platform} Post draft`,
-        description: `Draft seed update: "${caption.substring(0, 40)}..."`,
-        type: 'warning',
-      },
-      ...prev,
-    ]);
+    // A local push here used to be the only thing that ever filled the bell. Notifications
+    // are written server-side now, so a draft created in this tab is not one.
 
     setActiveTab('control');
   };
@@ -1450,50 +1777,45 @@ export function BrandDashboard() {
     }
   };
 
-  const handleFixPriority = (title: string) => {
-    setPriorities((prev) => prev.filter((p) => p.title !== title));
-    const timeStr = new Date().toLocaleTimeString();
-    setLogs((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        time: timeStr,
-        agent: 'Optimization Agent',
-        message: `Auto-fix action parsed successfully for priority node: "${title}"`,
-      },
-    ]);
-  };
 
   // Dismiss a priority without acting on it. The Ignore button referenced this but it was
   // never defined, so clicking it threw a ReferenceError instead of dismissing the card.
-  const handleIgnorePriority = (title: string) => {
-    setPriorities((prev) => prev.filter((p) => p.title !== title));
-    setLogs((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        time: new Date().toLocaleTimeString(),
-        agent: 'Optimization Agent',
-        message: `Priority dismissed by user: "${title}"`,
-      },
-    ]);
-  };
 
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {/* Sidebar navigation */}
       <aside className="sidebar">
-        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Cpu className="logo-icon" size={20} />
-          <span style={{ fontWeight: 800, fontSize: '15px', fontFamily: 'var(--font-heading)' }}>
-            RAFTRA ENGINE
-          </span>
+        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Cpu className="logo-icon" size={20} />
+            <span className="sidebar-logo-text" style={{ fontWeight: 800, fontSize: '15px', fontFamily: 'var(--font-heading)' }}>
+              RAFTRA ENGINE
+            </span>
+          </div>
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-secondary)',
+              padding: '5px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s'
+            }}
+          >
+            {isSidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
         </div>
 
         <div className="sidebar-menu">
-          <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', marginBottom: '8px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-            CORE CHASSIS
+          <span className="sidebar-menu-category" style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', paddingLeft: '14px', marginBottom: '8px', display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            GROWTH PLATFORM
           </span>
 
           <button
@@ -1505,15 +1827,21 @@ export function BrandDashboard() {
               <LayoutDashboard size={15} />
               <span>Home</span>
             </div>
-            {priorities.length > 0 && (
-              <span className="hero-pill-badge" style={{ background: 'var(--warning-glow)', color: 'var(--warning)', fontSize: '9px' }}>
-                {priorities.length}
-              </span>
-            )}
           </button>
 
-          <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-            WORKSPACES
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`sidebar-item ${activeTab === 'reports' ? 'active' : ''}`}
+            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
+          >
+            <div className="sidebar-item-left">
+              <FileText size={15} />
+              <span>Market Intelligence</span>
+            </div>
+          </button>
+
+          <span className="sidebar-menu-category" style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', paddingLeft: '14px', margin: '14px 0 6px', display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            EXECUTION SUITE
           </span>
 
           <button
@@ -1545,7 +1873,7 @@ export function BrandDashboard() {
           >
             <div className="sidebar-item-left">
               <Globe2 size={15} />
-              <span>SEO + GEO</span>
+              <span>Search & AEO Engine</span>
             </div>
           </button>
 
@@ -1556,7 +1884,7 @@ export function BrandDashboard() {
           >
             <div className="sidebar-item-left">
               <BarChart3 size={15} />
-              <span>Analytics</span>
+              <span>Growth Analytics</span>
             </div>
           </button>
 
@@ -1572,41 +1900,109 @@ export function BrandDashboard() {
           </button>
 
           <button
-            onClick={() => setActiveTab('influencer')}
+            onClick={() => window.open('/influencer-marketplace', '_blank')}
             className={`sidebar-item ${activeTab === 'influencer' ? 'active' : ''}`}
             style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
           >
-            <div className="sidebar-item-left">
-              <Users2 size={15} />
-              <span>Influencer Marketplace</span>
+            <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users2 size={15} />
+                <span>Creator Marketplace</span>
+              </div>
+              <ExternalLink size={12} style={{ color: 'var(--primary, #5A52FF)', opacity: 0.8 }} />
             </div>
           </button>
 
-          <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', paddingLeft: '14px', margin: '12px 0 6px', display: 'block', fontFamily: 'var(--font-mono)' }}>
-            AI NETWORK
+          <span className="sidebar-menu-category" style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', paddingLeft: '14px', margin: '14px 0 6px', display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            OPERATIONS & DATA
           </span>
 
           <button
-            onClick={() => setActiveTab('agents')}
-            className={`sidebar-item ${activeTab === 'agents' ? 'active' : ''}`}
+            onClick={() => setActiveTab('scheduler')}
+            className={`sidebar-item ${activeTab === 'scheduler' ? 'active' : ''}`}
             style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
           >
             <div className="sidebar-item-left">
-              <Cpu size={15} />
-              <span>AI Agents</span>
+              <Calendar size={15} />
+              <span>Marketing Calendar</span>
             </div>
           </button>
 
-          <button
-            onClick={() => setActiveTab('kb')}
-            className={`sidebar-item ${activeTab === 'kb' ? 'active' : ''}`}
-            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
-          >
-            <div className="sidebar-item-left">
-              <BookOpen size={15} />
-              <span>Knowledge Base</span>
-            </div>
-          </button>
+          <div>
+            <button
+              onClick={() => {
+                setIsKbOpen(!isKbOpen);
+                if (activeTab !== 'kb_brands' && activeTab !== 'kb_assets') {
+                  setActiveTab('kb_brands');
+                }
+              }}
+              className={`sidebar-item ${activeTab === 'kb' || activeTab === 'kb_brands' || activeTab === 'kb_assets' ? 'active' : ''}`}
+              style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              title="Brand Knowledge Vault"
+            >
+              <div className="sidebar-item-left">
+                <BookOpen size={15} />
+                <span>Brand Knowledge Vault</span>
+              </div>
+              {!isSidebarCollapsed && (
+                <ChevronDown size={13} style={{ transform: isKbOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', opacity: 0.7 }} />
+              )}
+            </button>
+
+            {isKbOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: isSidebarCollapsed ? '0px' : '22px', gap: '3px', marginTop: '3px' }}>
+                <button
+                  onClick={() => setActiveTab('kb_brands')}
+                  className={`sidebar-item ${activeTab === 'kb_brands' || activeTab === 'kb' ? 'active' : ''}`}
+                  style={{
+                    background: activeTab === 'kb_brands' || activeTab === 'kb' ? 'rgba(0, 230, 118, 0.12)' : 'none',
+                    border: 'none',
+                    width: '100%',
+                    textAlign: 'left',
+                    fontSize: '12.5px',
+                    padding: isSidebarCollapsed ? '6px 0' : '6px 12px',
+                    justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+                    color: activeTab === 'kb_brands' || activeTab === 'kb' ? '#00E676' : 'var(--text-secondary)',
+                    fontWeight: activeTab === 'kb_brands' || activeTab === 'kb' ? 700 : 500
+                  }}
+                  title="Brand Guidelines (BG)"
+                >
+                  <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Tag size={13} style={{ flexShrink: 0 }} />
+                    <span>Brand Guidelines</span>
+                  </div>
+                  {isSidebarCollapsed && (
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#00E676', background: 'rgba(0,230,118,0.15)', padding: '1px 4px', borderRadius: '4px' }}>BG</span>
+                  )}
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab('kb_assets')}
+                  className={`sidebar-item ${activeTab === 'kb_assets' ? 'active' : ''}`}
+                  style={{
+                    background: activeTab === 'kb_assets' ? 'rgba(0, 230, 118, 0.12)' : 'none',
+                    border: 'none',
+                    width: '100%',
+                    textAlign: 'left',
+                    fontSize: '12.5px',
+                    padding: isSidebarCollapsed ? '6px 0' : '6px 12px',
+                    justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+                    color: activeTab === 'kb_assets' ? '#00E676' : 'var(--text-secondary)',
+                    fontWeight: activeTab === 'kb_assets' ? 700 : 500
+                  }}
+                  title="Media Asset Vault (AV)"
+                >
+                  <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Layers size={13} style={{ flexShrink: 0 }} />
+                    <span>Media Asset Vault</span>
+                  </div>
+                  {isSidebarCollapsed && (
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#00E676', background: 'rgba(0,230,118,0.15)', padding: '1px 4px', borderRadius: '4px' }}>AV</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => setActiveTab('integrations')}
@@ -1615,7 +2011,7 @@ export function BrandDashboard() {
           >
             <div className="sidebar-item-left">
               <ToyBrick size={15} />
-              <span>Integrations</span>
+              <span>Integrations & Connectors</span>
             </div>
           </button>
 
@@ -1626,31 +2022,61 @@ export function BrandDashboard() {
           >
             <div className="sidebar-item-left">
               <Settings size={15} />
-              <span>Settings</span>
+              <span>Workspace & Billing</span>
             </div>
           </button>
         </div>
 
-        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 8px' }}>
-            <div className="user-avatar">{(brandProfile?.name || 'B').charAt(0)}</div>
-            <div>
-              {/* Not a heading — it's the current workspace label in the sidebar footer.
-                  As an <h4> it rendered before the page's <h1>, which is what Lighthouse
-                  flags as "heading elements are not in a sequentially-descending order". */}
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{brandProfile?.name || 'Brand Workspace'}</div>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{brandProfile?.url || (workspaceId ? 'No site URL set' : 'loading...')}</p>
+        {/* Sidebar Footer: Active Brand Profile & Sign Out */}
+        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px', padding: '12px 10px 10px', background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.06)', borderRadius: '0 0 16px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '4px 6px' }}>
+            <div className="user-avatar" style={{ flexShrink: 0, width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '13px' }}>
+              {(brandProfile?.name || 'D').charAt(0)}
+            </div>
+            <div className="sidebar-footer-info" style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {brandProfile?.name || 'Demo Brand'}
+                </h4>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00E676', flexShrink: 0 }} title="Online Workspace" />
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '1px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {brandProfile?.url || 'https://demobrand.com/'}
+              </p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
             className="sidebar-item"
-            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '10px' }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              width: '100%',
+              textAlign: 'left',
+              padding: '7px 10px',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#ff4757';
+              e.currentTarget.style.borderColor = 'rgba(255, 71, 87, 0.3)';
+              e.currentTarget.style.background = 'rgba(255, 71, 87, 0.08)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+            }}
             title="Log Out"
           >
-            <div className="sidebar-item-left">
-              <LogOut size={15} />
-              <span>Sign Out</span>
+            <div className="sidebar-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <LogOut size={14} />
+              <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Sign Out</span>
             </div>
           </button>
         </div>
@@ -1660,17 +2086,126 @@ export function BrandDashboard() {
       <main className="dashboard-main">
         {/* Header/Top Bar */}
         <header className="dashboard-header">
-          {/* Workspace Switcher */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
-              {brandProfile?.name || (userName ? `${userName}'s Workspace` : 'My Workspace')}
-            </span>
-            <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
+          {/* Workspace switcher. Was a chevron with no handler — it looked interactive
+              and did nothing. Now it opens the real list from /api/workspaces. */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setIsBrandDropdownOpen(!isBrandDropdownOpen)}
+              aria-expanded={isBrandDropdownOpen}
+              aria-haspopup="menu"
+              title="Switch workspace"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                color: '#fff',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: workspaceDot(brandProfile?.colors) }} />
+              <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                {brandProfile?.name || (userName ? `${userName}'s Workspace` : 'My Workspace')}
+              </span>
+              <ChevronDown size={13} style={{ color: 'var(--text-secondary)', transform: isBrandDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+            </button>
+
+            {isBrandDropdownOpen && (
+              <>
+                {/* Click-away layer, so the menu closes like every other menu here. */}
+                <div onClick={() => setIsBrandDropdownOpen(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 499 }} />
+                <div
+                  role="menu"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    left: 0,
+                    width: '260px',
+                    background: '#0a0a12',
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    borderRadius: '14px',
+                    padding: '8px',
+                    boxShadow: '0 12px 36px rgba(0,0,0,0.85)',
+                    zIndex: 500,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                >
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800, padding: '6px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Switch Brand Workspace
+                  </div>
+
+                  {allWorkspaces.length === 0 && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '6px 10px' }}>
+                      Loading your workspaces…
+                    </div>
+                  )}
+
+                  {allWorkspaces.map(w => (
+                    <button
+                      key={w.id}
+                      role="menuitem"
+                      onClick={() => switchWorkspace(w.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        background: w.id === workspaceId ? 'rgba(0, 230, 118, 0.12)' : 'transparent',
+                        border: 'none',
+                        color: w.id === workspaceId ? '#00E676' : '#fff',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        width: '100%',
+                        fontSize: '13px',
+                        fontWeight: w.id === workspaceId ? 700 : 500
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, background: workspaceDot(w.brand_color) }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.name}</span>
+                      </span>
+                      {w.id === workspaceId && <CheckCircle2 size={13} color="#00E676" />}
+                    </button>
+                  ))}
+
+                  <div style={{ width: '100%', height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
+
+                  <button
+                    role="menuitem"
+                    onClick={() => { setIsBrandDropdownOpen(false); setActiveTab('settings'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 600
+                    }}
+                  >
+                    <Sparkles size={12} color="#7C75FF" />
+                    <span>Manage Brands in Settings</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="header-actions-group" style={{ position: 'relative' }}>
+          <div className="header-actions-group" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '10px' }}>
             {/* Search / Command Palette */}
-            <div className="topbar-search-trigger" onClick={() => setIsSearchOpen(true)}>
+            <div className="topbar-search-trigger" onClick={() => setIsSearchOpen(true)} title="Press ⌘K or Ctrl+K to open palette">
               <Search size={13} />
               <span>Search / Command palette...</span>
               <span style={{ fontSize: '9px', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
@@ -1682,25 +2217,63 @@ export function BrandDashboard() {
             <button
               className="topbar-icon-button"
               aria-label={priorities.length > 0 ? `Notifications, ${priorities.length} pending` : 'Notifications'}
-              title="Notifications"
+              title="View alerts & notifications"
               onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
             >
               <Bell size={16} />
               {priorities.length > 0 && <span className="notification-badge-dot" />}
             </button>
 
-            {/* AI Assistant button */}
+            {/* Live Credit Tracker Widget. The reference build renders a hardcoded
+                12,000; this shows the real balance from GET /api/auth/billing, converted
+                at the same $1 = Rs.83 rate used everywhere else on this page. */}
             <button
-              onClick={() => setActiveTab('analytics')}
-              className="topbar-icon-button"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--accent)', background: 'var(--accent-glow)', padding: '4px 10px', borderRadius: 'var(--radius-md)' }}
+              onClick={() => setIsCreditsModalOpen(true)}
+              title="Click to recharge & view execution credits"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#00E676',
+                background: 'rgba(0, 230, 118, 0.12)',
+                border: '1px solid rgba(0, 230, 118, 0.3)',
+                padding: '5px 12px',
+                borderRadius: '100px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 0 12px rgba(0, 230, 118, 0.12)'
+              }}
             >
-              <Sparkle size={12} />
-              <span>AI Assistant</span>
+              <Coins size={13} color="#00E676" />
+              <span>{'\u20B9'}{Math.round(billingBalance * 83).toLocaleString('en-IN')} Credits</span>
+              <span style={{ fontSize: '10px', background: 'rgba(0, 230, 118, 0.25)', border: '1px solid rgba(0, 230, 118, 0.5)', color: '#00E676', padding: '1px 6px', borderRadius: '100px', fontWeight: 800 }}>
+                + Add
+              </span>
             </button>
 
-            {/* Profile Avatar */}
-            <div className="user-avatar" style={{ width: '28px', height: '28px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Profile Avatar Trigger */}
+            <div
+              className="user-avatar"
+              onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+              title={userEmail ? `${userName} (${userEmail})` : userName}
+              style={{
+                width: '30px',
+                height: '30px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)',
+                color: '#fff',
+                fontWeight: 800,
+                borderRadius: '8px',
+                border: isProfileMenuOpen ? '2px solid #00E676' : '1px solid rgba(255,255,255,0.2)',
+                transition: 'all 0.15s ease'
+              }}
+            >
               {userName.charAt(0)}
             </div>
           </div>
@@ -1712,202 +2285,28 @@ export function BrandDashboard() {
           <Suspense fallback={<TabFallback />}>
           {activeTab === 'control' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '35px' }}>
-              {/* Home Greeting Title */}
-              <div>
-                <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                  Good Morning {userName} 👋
-                </h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                  Your marketing agents are working background operations. Here is today's summary context.
-                </p>
-              </div>
-              
+              {/* A brand-new account has no workspace yet, so the overview below would have
+                  nothing to show and no way to fix that. Kept above it rather than inside,
+                  because it is the one screen state ModernHomeOverview cannot resolve. */}
               {!workspaceId && (
                 <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', padding: '20px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start' }}>
-                  <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#fff' }}>No Workspace Setup Detected</h3>
-                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
-                    You need to initialize your brand's AI knowledge graph before the agents can operate.
+                  <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#fff' }}>No workspace yet</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
+                    Add your website to create your first workspace — the agents need it before they can do anything.
                   </p>
-                  <GlowButton variant="glow" onClick={() => navigate('/onboarding')}>
-                    Run Quick Setup Wizard
+                  <GlowButton variant="glow" onClick={() => setActiveTab('settings')}>
+                    Set up workspace
                   </GlowButton>
                 </div>
               )}
 
-              {/* Growth Summary metrics grid (6 cards!) */}
-              <div>
-                <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  TODAY'S GROWTH SUMMARY
-                </h3>
-                <div className="metrics-row">
-                  {/* No trend figures: /metrics returns a single snapshot with no previous
-                      period to compare against, and the numbers that used to sit here
-                      ('+14.2%', '+3.1%', '+12.8%') were literals that never changed. */}
-                  <div className="metric-widget" onClick={() => setActiveTab('analytics')}>
-                    <span className="metric-title">REVENUE</span>
-                    <span className="metric-value">{metrics ? `$${metrics.revenue.toLocaleString()}` : '—'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
-                    <span className="metric-title">ROAS</span>
-                    <span className="metric-value">{metrics ? `${metrics.roas}x` : '—'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('seo')}>
-                    <span className="metric-title">SEO VISIBILITY</span>
-                    <span className="metric-value">{metrics ? `${metrics.seoVisibility}%` : '—'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('seo')}>
-                    <span className="metric-title">AI VISIBILITY</span>
-                    <span className="metric-value">{metrics ? `${metrics.aiVisibility}%` : '—'}</span>
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('campaign')}>
-                    <span className="metric-title">CAMPAIGN HEALTH</span>
-                    <span className="metric-value">{metrics ? `${metrics.campaignHealth}%` : '—'}</span>
-                    {metrics && typeof metrics.campaignsLaunched === 'number' && (
-                      <span className="metric-trend up" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
-                        {metrics.campaignsLaunched > 0
-                          ? `${metrics.campaignsLive} of ${metrics.campaignsLaunched} live`
-                          : 'No campaigns launched yet'}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="metric-widget" onClick={() => setActiveTab('control')}>
-                    <span className="metric-title">GROWTH SCORE</span>
-                    <span className="metric-value">{metrics ? `${metrics.growthScore}/100` : '—'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* AI Agents Working Now (Agent status cards) */}
-              <div>
-                <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  AI AGENTS WORKING NOW
-                </h3>
-                <div className="agent-cards-grid">
-                  {displayAgents.length === 0 && (
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px' }}>
-                      No agent activity yet — run a workflow (generate an ad, run an SEO audit, etc.) and it will appear here.
-                    </div>
-                  )}
-                  {displayAgents.map((agent) => (
-                    <div key={agent.name} className="agent-status-card">
-                      <div className="agent-status-card-header">
-                        <div className="agent-name-row">
-                          <span className={`agent-icon-bulb ${agentStatus(agent.status).live ? 'working' : 'idle'}`} />
-                          <span className="agent-card-title">{agent.name}</span>
-                        </div>
-                      </div>
-
-                      <div className="agent-metric-detail-row">
-                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Current Task:</span>
-                          <span style={{ fontWeight: 500, color: '#fff', textAlign: 'right' }}>{agent.task}</span>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Status:</span>
-                          <span style={{ color: agentStatus(agent.status).color, fontWeight: 600 }}>{agentStatus(agent.status).label}</span>
-                        </div>
-
-                        {agent.updated && (
-                          <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--text-secondary)' }}>Last activity:</span>
-                            <span style={{ color: 'var(--text-muted)' }}>{agent.updated}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Priorities & Recent actions grid */}
-              <div className="dashboard-grid-top">
-                <div className="attention-center">
-                  <div className="attention-header">
-                    <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                      AI PRIORITIES
-                    </h3>
-                    {priorities.length > 0 && (
-                      <span className="attention-badge">{priorities.length} Tasks Queue</span>
-                    )}
-                  </div>
-
-                  <div className="attention-list">
-                    {priorities.length === 0 ? (
-                      <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
-                        <CheckCircle size={22} style={{ color: 'var(--success)', marginBottom: '8px' }} />
-                        <p style={{ fontSize: '12px' }}>AI Priorities resolved. Network optimized.</p>
-                      </div>
-                    ) : (
-                      priorities.map((item) => (
-                        <div key={item.id} className="attention-item">
-                          <div className="attention-item-left">
-                            <Zap size={15} className="attention-icon" style={{ color: item.type === 'critical' ? '#ff4757' : '#ffae00' }} />
-                            <div>
-                              <h4>{item.title}</h4>
-                              <p>{item.description}</p>
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => handleFixPriority(item.title)}
-                              className="btn btn-primary"
-                              style={{ padding: '6px 12px', fontSize: '11px', background: 'var(--success-glow)', border: '1px solid rgba(0, 255, 157, 0.2)', color: 'var(--success)', boxShadow: 'none' }}
-                            >
-                              Fix Automatically
-                            </button>
-                            <button
-                              onClick={() => handleOpenReview(item.title)}
-                              className="btn btn-secondary"
-                              style={{ padding: '6px 12px', fontSize: '11px' }}
-                            >
-                              Review
-                            </button>
-                            <button
-                              onClick={() => handleIgnorePriority(item.title)}
-                              className="btn btn-secondary"
-                              style={{ padding: '6px 10px', fontSize: '11px', color: 'var(--text-secondary)' }}
-                            >
-                              Ignore
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Recent AI Actions Timeline */}
-                <div className="glow-card" style={{ padding: '24px' }}>
-                  <h3 style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                    RECENT AI ACTIONS
-                  </h3>
-                  <div className="timeline-list">
-                    {recentActions.length === 0 && (
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px' }}>
-                        No actions yet. Generate an ad, run an SEO audit or a social post, and it will show up here.
-                      </div>
-                    )}
-                    {recentActions.map((action, idx) => (
-                      <div className="timeline-item" key={idx}>
-                        <span className="timeline-bullet" />
-                        <div className="timeline-item-body">
-                          <h4>{action.title}</h4>
-                          <span>{action.detail || ''}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Terminal feed removed as requested */}
+              {/* MODERN HOME OVERVIEW (Brand Kit Extraction, Action Needed, Top Creatives, Schedules) */}
+              <ModernHomeOverview
+                userName={userName}
+                brandName={brandProfile?.name || 'Your brand'}
+                workspaceId={workspaceId}
+                onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+              />
             </div>
           )}
 
@@ -1922,6 +2321,7 @@ export function BrandDashboard() {
                 onGenerate={handleGenerateCreative}
                 onAssetSaved={handleAssetSaved}
                 onNavigateTab={(tab: string) => setActiveTab(tab as NavigationTab)}
+                incomingReferenceImage={studioReferenceImage}
               />
             </div>
           )}
@@ -2110,6 +2510,37 @@ export function BrandDashboard() {
             </div>
           )}
 
+          {activeTab === 'reports' && (
+            <WorkspaceReports
+              onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+              brandName={brandProfile?.name || 'Demo Brand'}
+              workspaceId={workspaceId}
+            />
+          )}
+
+          {activeTab === 'scheduler' && (
+            <WorkspaceScheduler onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+                                workspaceId={workspaceId} />
+          )}
+
+          {activeTab === 'kb_brands' && (
+            <BrandKnowledgeBase
+              onSyncKnowledgeGraph={handleReindex}
+              syncing={isReindexing}
+              syncMessage={reindexMsg}
+              brand={brandProfile}
+              workspaceId={workspaceId}
+            />
+          )}
+
+          {activeTab === 'kb_assets' && (
+            <WorkspaceAssets
+              workspaceId={workspaceId}
+              creatives={creativeAssets}
+              onUseAsset={(url: string) => { setStudioReferenceImage(url); setActiveTab('studio'); }}
+            />
+          )}
+
           {activeTab === 'integrations' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
               <div>
@@ -2123,52 +2554,197 @@ export function BrandDashboard() {
           )}
 
           {activeTab === 'settings' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div>
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Settings & Billing Center</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Manage company settings, active plans, billing tokens, and brand settings.
-                </p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Brand Configuration</h3>
-                  <div className="form-group">
-                    <label>Brand Name</label>
-                    <input type="text" value={brandProfile?.name || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, name: e.target.value }))} />
-                  </div>
-                  <div className="form-group">
-                    <label>Brand Hue Color</label>
-                    <input type="text" value={brandProfile?.colors || ''} onChange={(e) => setBrandProfile((prev: any) => ({ ...prev, colors: e.target.value }))} />
-                  </div>
-                  <GlowButton variant="glow" onClick={() => alert('Settings saved successfully!')} style={{ width: '100%' }}>
-                    Save Settings
-                  </GlowButton>
-                </div>
-
-                <div className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 600 }}>SaaS Account Balance</h3>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    Your current account credits balance is used to instantly activate specialist agent workspaces.
-                  </div>
-                  <div style={{ background: '#0a0a0c', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>CURRENT CREDITS BALANCE</span>
-                    <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>
-                      ${billingBalance.toFixed(2)}
-                    </div>
-                  </div>
-                  <GlowButton variant="secondary" onClick={() => handleTopUpShortcut(100)} style={{ width: '100%' }}>
-                    Add $100 Credits
-                  </GlowButton>
-                </div>
-              </div>
-            </div>
+            /* The reference build's billing screen, wired to this branch's API: real
+               account, real workspaces, real Razorpay top-up, real payment history and the
+               real creator deals. */
+            <WorkspaceSettings
+              onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+              workspaceId={workspaceId}
+              brands={allWorkspaces.map(w => ({
+                id: String(w.id),
+                name: w.name,
+                url: w.company_url || '',
+                industry: '',
+                color: w.brand_color || '#5A52FF',
+              }))}
+              activeBrandId={workspaceId ? String(workspaceId) : undefined}
+              onSwitchBrand={(id: string) => switchWorkspace(Number(id))}
+              onAddBrand={() => refreshWorkspaces()}
+              onDeleteBrand={() => refreshWorkspaces()}
+              creditsBalance={Math.round(billingBalance * 83)}
+              onTopUpCredits={(amountINR: number) => handleTopUpShortcut(amountINR / 83)}
+              onChoosePlan={() => navigate('/pricing')}
+            />
           )}
           </Suspense>
         </div>
       </main>
 
+      {/* Change password */}
+      {showPasswordModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+             onClick={() => setShowPasswordModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', background: '#0a0a12', border: '1.5px solid rgba(255,255,255,0.14)', borderRadius: '20px', padding: '26px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 16px' }}>Change password</h3>
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
+              <div className="form-group">
+                <label>Current password</label>
+                <input type="password" required value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>New password (at least 8 characters)</label>
+                <input type="password" required minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+              </div>
+              {pwError && <div style={{ fontSize: '12.5px', color: '#ff6b7a' }}>{pwError}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+                <button type="button" onClick={() => setShowPasswordModal(false)}
+                        style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', padding: '9px 18px', borderRadius: '100px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}>
+                  Cancel
+                </button>
+                <GlowButton variant="glow" type="submit" disabled={pwBusy} style={{ padding: '9px 22px', fontSize: '13px' }}>
+                  {pwBusy ? 'Saving…' : 'Update password'}
+                </GlowButton>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete account. Deliberately two gates and no pre-filled confirmation. */}
+      {showDeleteModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+             onClick={() => setShowDeleteModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', background: '#0a0a12', border: '1.5px solid rgba(255,71,87,0.4)', borderRadius: '20px', padding: '26px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px', color: '#ff6b7a' }}>Delete account</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
+              This permanently removes your account and every workspace on it — campaigns,
+              creatives, competitor reports, schedules and connections. It cannot be undone.
+            </p>
+            <form onSubmit={handleDeleteAccount} style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
+              <div className="form-group">
+                <label>Type DELETE to confirm</label>
+                <input type="text" required value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder="DELETE" />
+              </div>
+              <div className="form-group">
+                <label>Your password (leave blank if you sign in with Google)</label>
+                <input type="password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} />
+              </div>
+              {deleteError && <div style={{ fontSize: '12.5px', color: '#ff6b7a' }}>{deleteError}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+                <button type="button" onClick={() => setShowDeleteModal(false)}
+                        style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', padding: '9px 18px', borderRadius: '100px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={deleteBusy}
+                        style={{ background: '#ff4757', border: 'none', color: '#fff', padding: '9px 22px', borderRadius: '100px', fontSize: '13px', cursor: deleteBusy ? 'wait' : 'pointer', fontWeight: 700 }}>
+                  {deleteBusy ? 'Deleting…' : 'Delete my account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Search Command Palette Overlay */}
+      {isProfileMenuOpen && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 900 }} onClick={() => setIsProfileMenuOpen(false)} />
+          <div style={{
+            position: 'fixed', top: '64px', right: '24px', width: '290px',
+            background: '#0a0a12', border: '1.5px solid rgba(255, 255, 255, 0.14)',
+            borderRadius: '18px', boxShadow: '0 20px 60px rgba(0,0,0,0.95), 0 0 25px rgba(90,82,255,0.25)',
+            zIndex: 901, overflow: 'hidden', padding: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 8px 12px 8px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '15px' }}>
+                {userName.charAt(0)}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userEmail || 'Signed in'}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '8px' }}>
+              <button onClick={() => { setIsProfileMenuOpen(false); setActiveTab('settings'); }} className="profile-menu-item">
+                <User size={14} color="#7C75FF" />
+                <span>Account &amp; profile settings</span>
+              </button>
+              <button onClick={() => { setIsProfileMenuOpen(false); setActiveTab('settings'); }} className="profile-menu-item">
+                <CreditCard size={14} color="#FFB300" />
+                <span>Plans &amp; invoices</span>
+              </button>
+              <button onClick={() => { setIsProfileMenuOpen(false); setIsCreditsModalOpen(true); }} className="profile-menu-item">
+                <Coins size={14} color="#00E676" />
+                <span>Execution credits (₹{Math.round(billingBalance * 83).toLocaleString('en-IN')})</span>
+              </button>
+              <button onClick={() => { setIsProfileMenuOpen(false); setActiveTab('integrations'); }} className="profile-menu-item">
+                <ShieldCheck size={14} color="#5A52FF" />
+                <span>Connected accounts</span>
+              </button>
+            </div>
+
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
+            <button onClick={handleLogout} className="profile-menu-item" style={{ color: '#ff4757' }}>
+              <LogOut size={14} color="#ff4757" />
+              <span>Sign out</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Execution credits top-up. The packs are the reference build's; the purchase runs
+          through this branch's real Razorpay flow rather than incrementing a local number. */}
+      {isCreditsModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+             onClick={() => setIsCreditsModalOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '480px', background: '#0a0a12', border: '1.5px solid rgba(0, 230, 118, 0.4)', borderRadius: '24px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px', boxShadow: '0 20px 60px rgba(0,0,0,0.9), 0 0 30px rgba(0,230,118,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Execution credits top-up</span>
+                <h3 style={{ fontSize: '20px', color: '#fff', margin: '4px 0 0 0', fontWeight: 800 }}>
+                  Current balance: ₹{Math.round(billingBalance * 83).toLocaleString('en-IN')}
+                </h3>
+              </div>
+              <button onClick={() => setIsCreditsModalOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {[
+                { inr: 2500, label: 'Starter booster', desc: 'Creative testing and around 50 AI image variants' },
+                { inr: 5000, label: 'Growth booster', desc: 'A month of video generation and multi-channel sync', popular: true },
+                { inr: 15000, label: 'Scale booster', desc: 'Heavy ad scaling and competitor scans' },
+              ].map(pack => (
+                <button
+                  key={pack.inr}
+                  onClick={() => { setIsCreditsModalOpen(false); handleTopUpShortcut(pack.inr / 83); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                    textAlign: 'left', width: '100%', padding: '14px 16px', borderRadius: '14px',
+                    background: pack.popular ? 'rgba(0,230,118,0.08)' : 'rgba(255,255,255,0.03)',
+                    border: pack.popular ? '1px solid rgba(0,230,118,0.35)' : '1px solid rgba(255,255,255,0.1)',
+                    color: '#fff', cursor: 'pointer'
+                  }}
+                >
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: '14px', fontWeight: 700 }}>{pack.label}</span>
+                    <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>{pack.desc}</span>
+                  </span>
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#00E676', whiteSpace: 'nowrap' }}>₹{pack.inr.toLocaleString('en-IN')}</span>
+                </button>
+              ))}
+            </div>
+
+            <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              Payments are processed by Razorpay. Your balance updates as soon as the payment is confirmed.
+            </p>
+          </div>
+        </div>
+      )}
+
       {isSearchOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', justifyContent: 'center', paddingTop: '10vh' }} onClick={() => setIsSearchOpen(false)}>
           <div style={{ width: '500px', background: '#0a0a0c', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', height: 'fit-content', maxHeight: '60vh' }} onClick={e => e.stopPropagation()}>
@@ -2213,9 +2789,25 @@ export function BrandDashboard() {
             <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
               {priorities.length > 0 ? (
                 priorities.map(priority => (
-                  <div key={priority.id} style={{ padding: '16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} onClick={() => setIsNotificationsOpen(false)}>
+                  <div
+                    key={priority.id}
+                    style={{ padding: '16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    onClick={() => {
+                      markNotificationRead(priority.id);
+                      setIsNotificationsOpen(false);
+                      // action_url is stored as /dashboard?tab=<tab>; the dashboard is one
+                      // page, so switch the tab rather than navigating away and remounting.
+                      const tab = priority.action_url && priority.action_url.split('tab=')[1];
+                      if (tab) setActiveTab(tab as NavigationTab);
+                    }}
+                  >
                     <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '4px', color: 'white' }}>{priority.title}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{priority.description}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{priority.message}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      {new Date(priority.created_at.endsWith('Z') || priority.created_at.includes('+') ? priority.created_at : `${priority.created_at}Z`).toLocaleString()}
+                    </div>
                   </div>
                 ))
               ) : (
@@ -2226,7 +2818,7 @@ export function BrandDashboard() {
               )}
             </div>
             {priorities.length > 0 && (
-              <div style={{ padding: '12px', background: 'var(--bg-tertiary)', textAlign: 'center', fontSize: '12px', color: 'var(--accent)', cursor: 'pointer', fontWeight: 500 }} onClick={() => setPriorities([])}>
+              <div style={{ padding: '12px', background: 'var(--bg-tertiary)', textAlign: 'center', fontSize: '12px', color: 'var(--accent)', cursor: 'pointer', fontWeight: 500 }} onClick={markAllNotificationsRead}>
                 Mark all as read
               </div>
             )}
@@ -2252,6 +2844,25 @@ export function BrandDashboard() {
         onApprove={handleApprove}
         onReject={handleReject}
       />
+    <style>{`
+        .profile-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 10px;
+          border-radius: 8px;
+          background: transparent;
+          border: none;
+          color: #ffffff;
+          cursor: pointer;
+          font-size: 12.5px;
+          font-weight: 500;
+          text-align: left;
+          width: 100%;
+          transition: all 0.15s ease;
+        }
+        .profile-menu-item:hover { background: rgba(255, 255, 255, 0.06); }
+      `}</style>
     </div>
   );
 }

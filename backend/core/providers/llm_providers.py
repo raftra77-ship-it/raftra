@@ -90,6 +90,61 @@ class GeminiProvider(LLMProvider):
                 raise LLMProviderError(f"Gemini call failed for model '{m}': {e}") from e
         raise LLMProviderError(f"All Gemini models exhausted (free-tier daily quota or no output). Last error: {last_err}")
 
+    async def generate_with_image(self, prompt: str, image_bytes: bytes,
+                                  mime_type: str = "image/jpeg",
+                                  system_prompt: Optional[str] = None,
+                                  model_name: str = "gemini-2.5-flash",
+                                  max_output_tokens: Optional[int] = None, **kwargs) -> str:
+        """Multimodal call: the same prompt plus one image.
+
+        Deliberately a separate method rather than an argument on generate_text. That
+        method is on the hot path for analytics, SEO, social and campaign generation, and
+        threading an optional image through it would put every one of those callers behind
+        a code path they never use.
+
+        Keeps generate_text's per-model fallback, because the free tier's daily cap is per
+        model and vision calls share it. Falls back to TEXT-ONLY on the last attempt: an
+        answer grounded in the page copy beats no answer at all when every vision-capable
+        model is exhausted.
+        """
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise LLMProviderError("GEMINI_API_KEY is not set")
+        if not image_bytes:
+            return await self.generate_text(prompt, system_prompt, model_name,
+                                            max_output_tokens, **kwargs)
+
+        genai.configure(api_key=api_key)
+        generation_config = (genai.GenerationConfig(max_output_tokens=max_output_tokens)
+                             if max_output_tokens else None)
+
+        image_part = {"mime_type": mime_type, "data": image_bytes}
+        models_to_try = [model_name] + [m for m in _GEMINI_FALLBACK_MODELS if m != model_name]
+        last_err = None
+        for m in models_to_try:
+            try:
+                model = genai.GenerativeModel(m, system_instruction=system_prompt,
+                                              generation_config=generation_config)
+                response = await model.generate_content_async([prompt, image_part])
+                text = _safe_response_text(response)
+                if text.strip():
+                    return text
+                last_err = RuntimeError(f"'{m}' returned no text")
+                continue
+            except Exception as e:
+                last_err = e
+                if _is_rate_limit(e):
+                    print(f"Gemini vision {m} rate-limited, trying next model...")
+                    continue
+                print(f"Gemini vision error ({m}): {e}")
+                # A model that cannot accept an image is a per-model fact, not a fatal one.
+                continue
+
+        print(f"Gemini vision unavailable ({last_err}); falling back to text-only.")
+        return await self.generate_text(prompt, system_prompt, model_name,
+                                        max_output_tokens, **kwargs)
+
+
 class OpenRouterProvider(LLMProvider):
     async def generate_text(self, prompt: str, system_prompt: Optional[str] = None, model_name: str = "meta-llama/llama-3.2-3b-instruct:free", max_output_tokens: Optional[int] = None, **kwargs) -> str:
         api_key = os.getenv("OPENROUTER_API_KEY")

@@ -50,6 +50,27 @@ def mark_all_read(db: Session = Depends(database.get_db), current_user: models.U
     db.commit()
     return {"status": "success"}
 
+def create_notification(db: Session, user_id: int, title: str, message: str,
+                        type: str, action_url: str = None):
+    """Write a notification. Synchronous, for callers that are not in an event loop.
+
+    The scheduler runs its jobs in a worker thread, so the async version below cannot be
+    awaited from there - and a scheduled run that failed overnight is precisely the thing
+    someone needs to be told about.
+    """
+    notif = models.Notification(
+        user_id=user_id,
+        title=title,
+        message=(message or "")[:500],
+        type=type,
+        action_url=action_url,
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(notif)
+    return notif
+
+
 async def create_and_dispatch_notification(db: Session, user_id: int, title: str, message: str, type: str, action_url: str = None):
     new_notif = models.Notification(
         user_id=user_id,

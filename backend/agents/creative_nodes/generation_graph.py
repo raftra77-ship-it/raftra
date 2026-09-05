@@ -141,11 +141,51 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
         await manager.broadcast_agent_log("System", f"Warning: DB fetch failed: {str(e)}", "running")
     
     # ---------------------------------------------------------
-    # REAL RAG PIPELINE: Fetching Context from Qdrant Knowledge Base
     # ---------------------------------------------------------
-    await manager.broadcast_agent_log("RAG Agent", "Retrieving historical ideas and brand context from Qdrant knowledge base...", "running")
-    
-    rag_context = ""
+    # Brand grounding.
+    #
+    # Postgres first: the onboarding pipeline stores the scraped brand summary, audience,
+    # palette and typography on brand_profiles, and that is available in every environment.
+    # Qdrant is then layered on when it happens to be reachable - it is not deployed, and
+    # its embedding model is excluded from the deploy image, so it must never be the only
+    # source or generation runs with no brand context at all.
+    # ---------------------------------------------------------
+    await manager.broadcast_agent_log("RAG Agent", "Loading brand context...", "running")
+
+    context_parts: list[str] = []
+    sources: list[str] = []
+
+    try:
+        from database import SessionLocal
+        from models import Workspace, BrandProfile
+
+        db = SessionLocal()
+        try:
+            ws_id = state.get("workspace_id")
+            ws = db.query(Workspace).filter(Workspace.id == ws_id).first()
+            bp = db.query(BrandProfile).filter(BrandProfile.workspace_id == ws_id).first()
+
+            if ws and ws.name:
+                context_parts.append(f"Brand: {ws.name}")
+            if ws and ws.company_url:
+                context_parts.append(f"Website: {ws.company_url}")
+            if bp and bp.brand_guidelines_summary:
+                context_parts.append(f"Brand guidelines:\n{bp.brand_guidelines_summary}")
+            if bp and bp.target_audience:
+                context_parts.append(f"Target audience: {bp.target_audience}")
+            if bp and bp.color_palette:
+                context_parts.append(f"Brand palette: {bp.color_palette}")
+            if bp and bp.typography:
+                context_parts.append(f"Typography: {bp.typography}")
+            if context_parts:
+                sources.append("brand profile")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Brand profile lookup failed: {e}")
+
+    # Optional enrichment. Any failure here is expected in the current deployment and must
+    # not discard the Postgres context gathered above.
     try:
         from database import qdrant_client
         from core.embeddings import embed_query, ensure_collection, COLLECTION_NAME
@@ -153,9 +193,6 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
 
         ensure_collection(qdrant_client)
         query_text = f"{state.get('prompt', '')} {state.get('strategy', '')}"
-
-        # query_points (not the removed .search) and filter by workspace server-side, so
-        # the limit applies to this workspace's points rather than the global top matches.
         response = qdrant_client.query_points(
             collection_name=COLLECTION_NAME,
             query=embed_query(query_text),
@@ -164,22 +201,29 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
             ]),
             limit=3,
         )
-        for idx, r in enumerate(response.points):
-            rag_context += f"\n[KNOWLEDGE {idx+1}] {r.payload.get('content', '')}"
-
-        if not rag_context:
-            rag_context = "No specific onboarding scraped knowledge found for this workspace in Qdrant."
+        hits = [r.payload.get("content", "") for r in response.points if r.payload.get("content")]
+        if hits:
+            for idx, h in enumerate(hits):
+                context_parts.append(f"[RELATED {idx + 1}] {h}")
+            sources.append(f"{len(hits)} vector match(es)")
     except Exception as e:
-        # Never put the error text into rag_context: it gets pasted into the LLM prompt
-        # as if it were brand knowledge. Log it and continue with no context instead.
-        print(f"Qdrant retrieval failed: {e}")
-        await manager.broadcast_agent_log("RAG Agent", f"Knowledge base unavailable, continuing without brand context: {e}", "failed")
-        rag_context = "No brand knowledge available (retrieval failed)."
-        
-    
-    # Append the massive RAG context to the brand voice for the LLM's system prompt
-    brand_voice = f"Tone: {brand_voice}\n\nQDRANT KNOWLEDGE BASE CONTEXT:\n{rag_context}"
-    await manager.broadcast_agent_log("RAG Agent", "Knowledge base context retrieved from Qdrant.", "completed")
+        # Logged, never surfaced into the prompt: an error string pasted in there reads to
+        # the model as a fact about the brand.
+        print(f"Qdrant enrichment unavailable: {e}")
+
+    if context_parts:
+        # Only attach the section when there is something in it. The old code always
+        # appended a heading, so the model received "KNOWLEDGE BASE CONTEXT:" followed by
+        # a sentence explaining that retrieval had failed.
+        brand_voice = f"Tone: {brand_voice}\n\nBRAND CONTEXT:\n" + "\n\n".join(context_parts)
+        await manager.broadcast_agent_log(
+            "RAG Agent", f"Brand context loaded from {' + '.join(sources)}.", "completed")
+    else:
+        brand_voice = f"Tone: {brand_voice}"
+        await manager.broadcast_agent_log(
+            "RAG Agent",
+            "No brand context found - run onboarding for this workspace to ground creative in the brand.",
+            "completed")
     
     state["cached_typography"] = typography
     state["cached_colors"] = colors

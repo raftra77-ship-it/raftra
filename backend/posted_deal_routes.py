@@ -246,6 +246,60 @@ def get_brand_posted_deals(workspace_id: int, db: Session = Depends(database.get
     return [_deal_summary(d, db) for d in deals]
 
 
+@router.get("/brand/{workspace_id}/collaborations")
+def get_brand_collaborations(workspace_id: int, db: Session = Depends(database.get_db),
+                             current_user: models.User = Depends(auth.get_current_user)):
+    """Every finalized collaboration across this workspace's briefs.
+
+    The "My Collaborations" screen rendered a hardcoded array - one invented creator on an
+    invented campaign, with an Unsplash headshot - because no endpoint answered this
+    question. A brand could open a collab workspace for a deal that did not exist.
+
+    Only applications the brand has actually agreed to are returned: SHORTLISTED and
+    SUBMITTED are still decisions in progress and belong on the applicants list, not here.
+    """
+    _owned_workspace(workspace_id, db, current_user)
+
+    deal_ids = [d.id for d in db.query(models.PostedDeal.id)
+                  .filter(models.PostedDeal.workspace_id == workspace_id).all()]
+    if not deal_ids:
+        return []
+
+    apps = (db.query(models.DealApplication)
+              .filter(models.DealApplication.deal_id.in_(deal_ids),
+                      models.DealApplication.status.in_(("ACCEPTED", "CONFIRMED", "COMPLETED")))
+              .order_by(models.DealApplication.created_at.desc())
+              .all())
+
+    deals = {d.id: d for d in db.query(models.PostedDeal)
+                                .filter(models.PostedDeal.id.in_(deal_ids)).all()}
+    out = []
+    for a in apps:
+        deal = deals.get(a.deal_id)
+        out.append({
+            "id": a.id,
+            "deal_id": a.deal_id,
+            "campaign_name": (deal.campaign_name if deal else "") or "",
+            "brand_name": (deal.brand_name if deal else "") or "",
+            "creator_handle": a.creator_handle,
+            "creator_name": a.creator_name,
+            "creator_avatar": a.creator_avatar,
+            "creator_followers": a.creator_followers,
+            "creator_engagement": a.creator_engagement,
+            "creator_location": a.creator_location,
+            "status": a.status,
+            "final_price": a.final_price if a.final_price is not None else a.proposed_price,
+            "final_deliverables": a.final_deliverables,
+            "final_delivery_days": a.final_delivery_days,
+            "usage_rights": a.usage_rights,
+            "revisions_allowed": a.revisions_allowed,
+            "cashout_requested": bool(a.cashout_requested),
+            "cashout_status": a.cashout_status,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        })
+    return out
+
+
 # ---------------------------------------------------------------------------- creator: browse
 @router.get("/discover")
 def discover_brand_deals(niche: Optional[str] = None, db: Session = Depends(database.get_db),

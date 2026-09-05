@@ -190,83 +190,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     <div className="app-wrapper">
       <Navbar onOpenCreatorPortal={() => setShowCreatorPortal(true)} />
 
-      {/* Creator Marketplace — the last item in the top row, sitting immediately after
-          the navbar rather than inside it.
-          Anchored to the bar's right edge, not the viewport: the bar is 1024 wide with
-          its centre at 50% - 105px (Navbar.tsx), so it ends at 50% + 407px. Adding the
-          12px gap puts this at 50% + 419px, which keeps bar + pill reading as one
-          centred row. Pinning to `right: 24px` is what previously dropped it on top of
-          the Login button. */}
-      <div
-        style={{
-          position: 'fixed',
-          top: '16px',
-          left: 'calc(50% + 419px)',
-          zIndex: 1100,
-          display: 'flex',
-          alignItems: 'center',
-          height: '52px',
-        }}
-      >
-        <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
-          onClick={() => window.open('/influencer-marketplace', '_blank')}
-          style={{
-            background: 'linear-gradient(135deg, #8e0b00ff 0%, #290605ff 45%, #410c06ff 100%)',
-            border: '1px solid rgba(124, 0, 0, 0.6)',
-            color: '#ffffffff',
-            borderRadius: '100px',
-            padding: '9px 20px',
-            fontSize: '13px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            whiteSpace: 'nowrap',
-            boxShadow: '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            letterSpacing: '0.02em',
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'all 0.25s ease',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = '0 6px 30px rgba(220, 53, 69, 0.75), 0 0 0 1px rgba(255,107,107,0.5), inset 0 1px 0 rgba(255,255,255,0.4)';
-            e.currentTarget.style.transform = 'translateY(-1px)';
-            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #410c06ff 45%, #290605ff 100%)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)';
-            e.currentTarget.style.transform = 'translateY(0px)';
-            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #5f100dff 45%, #290605ff 100%)';
-          }}
-        >
-          {/* Shimmer overlay */}
-          <span style={{
-            position: 'absolute',
-            top: 0, left: '-60%',
-            width: '40%',
-            height: '100%',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
-            transform: 'skewX(-20deg)',
-            animation: 'shimmer-slide 2.4s ease-in-out infinite',
-            pointerEvents: 'none',
-          }} />
-          <span style={{ fontSize: '14px' }}>✦</span>
-          Creator Marketplace
-          <span style={{ opacity: 0.8, fontSize: '12px' }}>↗</span>
-        </motion.button>
-        <style>{`
-          @keyframes shimmer-slide {
-            0% { left: -60%; }
-            60%, 100% { left: 130%; }
-          }
-        `}</style>
-      </div>
+      {/* The Creator Marketplace pill now lives inside Navbar.tsx, as the last item in
+          the bar's right-hand action group. It was a fixed-position element anchored to
+          the old 1024px bar's geometry, which broke when the bar became 1240px wide. */}
+      <style>{`
+        @keyframes shimmer-slide {
+          0% { left: -60%; }
+          60%, 100% { left: 130%; }
+        }
+      `}</style>
 
       {/* Hero Section */}
       <section className="hero-section">

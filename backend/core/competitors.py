@@ -66,6 +66,47 @@ async def _resolve_site(client: httpx.AsyncClient, competitor: str) -> Optional[
     return None
 
 
+# Interstitials a bare request gets served instead of the site. Short, and they look like
+# real content to a length check, which is how an error page reached the model as source.
+_BLOCK_MARKERS = (
+    "there was a problem loading this website",
+    "enable javascript and cookies to continue",
+    "checking your browser",
+    "attention required",
+    "access denied",
+    "just a moment",
+)
+
+
+def _looks_blocked(text: str) -> bool:
+    t = (text or "").strip().lower()
+    return len(t) < 400 or any(m in t for m in _BLOCK_MARKERS)
+
+
+async def _firecrawl_page(client: httpx.AsyncClient, url: str) -> str:
+    """Read one page through Firecrawl, which renders JS and clears the interstitials.
+
+    Already configured for onboarding, so this needs no new key. Any failure returns "" and
+    the caller falls back to the direct fetch.
+    """
+    key = os.getenv("FIRECRAWL_API_KEY")
+    if not key:
+        return ""
+    try:
+        r = await client.post(
+            "https://api.firecrawl.dev/v1/scrape",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"url": url, "formats": ["markdown"], "onlyMainContent": True},
+            timeout=60,
+        )
+        if r.status_code != 200:
+            return ""
+        return ((r.json().get("data") or {}).get("markdown") or "")[:20000]
+    except Exception as e:
+        print(f"Firecrawl scrape failed for {url}: {e}")
+        return ""
+
+
 async def _read_site(client: httpx.AsyncClient, url: str) -> str:
     """Firecrawl markdown when a key is set (renders JS, so SPA storefronts work), else a
     plain fetch of the HTML."""
@@ -136,20 +177,32 @@ async def analyze_competitor(competitor: str) -> dict:
     async with httpx.AsyncClient(follow_redirects=True, timeout=_TIMEOUT,
                                  headers={"User-Agent": _UA}) as client:
         site_url = await _resolve_site(client, competitor)
-        page_text = await _read_site(client, site_url) if site_url else ""
+        page_text = ""
+        if site_url:
+            # Firecrawl first: the direct fetch is routinely served an interstitial by
+            # Cloudflare-fronted storefronts, which is most of them.
+            page_text = await _firecrawl_page(client, site_url)
+            if _looks_blocked(page_text):
+                page_text = await _read_site(client, site_url)
+            if _looks_blocked(page_text):
+                page_text = ""
         results = await _search_context(client, competitor)
 
     search_text = "\n\n".join(
         f"[{r.get('url')}]\n{(r.get('content') or '')[:900]}" for r in results if r.get("content")
     )
     if not page_text and not search_text:
-        # Without TAVILY_API_KEY a bare brand name cannot be resolved to a site at all, so
-        # say which input actually works rather than leaving the user guessing.
-        hint = ("Enter the full website address (example.com) — "
-                "brand-name lookup needs TAVILY_API_KEY, which is not set."
-                if not os.getenv("TAVILY_API_KEY")
-                else "Try the full website address.")
-        raise ValueError(f"Nothing readable was found for '{competitor}'. {hint}")
+        # Two different failures, and the fix differs, so they get different messages.
+        # Neither names TAVILY_API_KEY: server configuration is not something the person
+        # typing a competitor's name can act on.
+        if site_url:
+            raise ValueError(
+                f"{site_url} could not be read. The site blocks automated readers, or its "
+                "content only appears after scripts run. Try a specific page on that site, "
+                "such as their products or about page.")
+        raise ValueError(
+            f"Could not work out which website '{competitor}' is. Enter the full address, "
+            "like example.com.")
 
     sources = []
     if site_url and page_text:
@@ -186,6 +239,15 @@ async def analyze_competitor(competitor: str) -> dict:
     def _list(key):
         value = data.get(key)
         return [str(v) for v in value][:5] if isinstance(value, list) else []
+
+    # A model handed thin or unreadable source text returns every field blank. Answering 200
+    # with that produces a confident, empty report, so say what happened instead.
+    if not any([str(data.get("positioning") or "").strip(),
+                _list("offers"), _list("hooks"), _list("ctas")]):
+        raise ValueError(
+            "Could not read enough from this competitor to analyse. The site may block "
+            "automated readers - try their full URL, or set TAVILY_API_KEY so search "
+            "results can be used as a second source.")
 
     return {
         "competitor": competitor,

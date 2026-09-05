@@ -120,29 +120,44 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   const proofFileInputRef = useRef<HTMLInputElement>(null);
 
+  // The server-side URL, kept apart from the local preview so only a real upload can be
+  // submitted as proof.
+  const [proofUploadedUrl, setProofUploadedUrl] = useState<string>('');
+  const [proofUploading, setProofUploading] = useState(false);
+  const [proofUploadError, setProofUploadError] = useState('');
+
   const handleProofFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Show temporary preview
-    const tempUrl = URL.createObjectURL(file);
-    setProofFileScreenshot(tempUrl);
+    // Preview immediately, but keep the stored URL separate: a blob: URL only resolves in
+    // this browser, and submitting one as payout proof gives the reviewer nothing to look at.
+    setProofFileScreenshot(URL.createObjectURL(file));
+    setProofUploadError('');
+    setProofUploading(true);
 
-    // Upload to backend media route (Cloudinary / Local static storage fallback)
     const formData = new FormData();
     formData.append('file', file);
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch('/api/media/upload', {
         method: 'POST',
-        body: formData
+        // The endpoint is authenticated - it files the upload under the caller's account.
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
       });
-      const data = await res.json();
-      if (data.url) {
-        setProofFileScreenshot(data.url);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        setProofUploadedUrl(data.url);
+      } else {
+        // Was a console.warn, so a failed upload looked identical to a successful one and
+        // the blob URL went to the payouts endpoint as if it were the screenshot.
+        setProofUploadError(data.detail || 'That file could not be uploaded. Please try again.');
       }
-    } catch (err) {
-      console.warn("Cloudinary/Media upload fallback to blob:", err);
+    } catch {
+      setProofUploadError('Could not reach the server, so the screenshot was not uploaded.');
     }
+    setProofUploading(false);
   };
 
   const handleSubmitProofToTeamRaftra = async (e: React.FormEvent) => {
@@ -152,17 +167,28 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       return;
     }
 
-    setProofVerificationStatus('under_review');
-    setProofSubmissionToast('📩 Proof submitted to Team Raftra Admin (raftra.77@gmail.com)! Human auditor is reviewing your screenshot & verification code (Est: 15-30 mins).');
+    // A screenshot that never uploaded cannot be reviewed, so do not submit as though it
+    // had been. Previously the local blob: URL was sent and the creator was told a human was
+    // looking at it.
+    if (proofFileScreenshot && !proofUploadedUrl) {
+      setProofUploadError(proofUploading
+        ? 'The screenshot is still uploading — give it a moment and submit again.'
+        : 'The screenshot was not uploaded, so it cannot be submitted as proof. Try attaching it again.');
+      return;
+    }
 
     try {
-      await fetch('/api/payouts/submit', {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/payouts/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           creator_handle: cardCustomizer.handle || myHandle,
           creator_name: cardCustomizer.name || 'Creator',
-          screenshot_url: proofFileScreenshot,
+          screenshot_url: proofUploadedUrl || null,
           token_submitted: proofTokenInput,
           bank_account_holder: bankDetails.accountHolder,
           bank_name: bankDetails.bankName,
@@ -171,8 +197,18 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           upi_id: bankDetails.upiId
         })
       });
-    } catch (err) {
-      console.error("Error submitting payout to backend:", err);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // The status and the toast used to be set before the request, so a rejected
+        // submission still read as "under review".
+        setProofUploadError(data.detail || 'Your proof could not be submitted. Please try again.');
+        return;
+      }
+      setProofVerificationStatus('under_review');
+      setProofSubmissionToast('📩 Proof submitted to Team Raftra. A reviewer will check your screenshot and verification code.');
+    } catch {
+      setProofUploadError('Could not reach the server, so your proof was not submitted.');
+      return;
     }
 
     setTimeout(() => setProofSubmissionToast(null), 6000);
@@ -1631,10 +1667,25 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                         onClick={() => proofFileInputRef.current?.click()}
                         style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '8px', color: proofFileScreenshot ? '#00E676' : 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                       >
-                        {proofFileScreenshot ? '📸 Screenshot Attached! Click to Change' : '📁 Click to Upload Screenshot Proof (.png / .jpg)'}
+                        {proofUploading
+                          ? 'Uploading…'
+                          : proofUploadedUrl
+                            ? '📸 Screenshot uploaded — click to change'
+                            : proofFileScreenshot
+                              ? '⚠ Not uploaded — click to try again'
+                              : '📁 Click to Upload Screenshot Proof (.png / .jpg)'}
                       </div>
                     </div>
                   </div>
+
+                  {/* A failed upload used to be a console warning only, so the creator had
+                      no way of knowing their proof never left the browser. */}
+                  {proofUploadError && (
+                    <div style={{ padding: '10px 14px', borderRadius: '8px', fontSize: '12.5px', lineHeight: 1.5,
+                                  background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.3)', color: '#ff6b7a' }}>
+                      {proofUploadError}
+                    </div>
+                  )}
 
                   <GlowButton variant="glow" type="submit" style={{ padding: '12px 24px', alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Send size={15} /> Submit Proof for Verification & Disbursal

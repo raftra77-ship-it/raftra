@@ -17,8 +17,11 @@ no-op and the results are still persisted.
 """
 import asyncio
 import os
+from datetime import datetime, timedelta
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -70,29 +73,148 @@ async def run_monthly_audits():
     print("[scheduler] Monthly audit run complete.")
 
 
+def intel_syncs_enabled() -> bool:
+    """The external intelligence syncs - competitor ads every 2 weeks, market trends every
+    4 - are opt-in for the same reason audits are: they spend third-party API quota
+    (Meta/Apify, SerpApi, YouTube) on every onboarded workspace, whether or not anyone is
+    looking. Both can always be run on demand from Market Intelligence."""
+    return os.getenv("ENABLE_INTEL_SYNCS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+# --------------------------------------------------------- user-created schedules
+
+def schedules_enabled() -> bool:
+    """ON by default, unlike the other jobs here.
+
+    The distinction that matters: the monthly audits and the intelligence syncs run against
+    EVERY workspace whether or not anyone asked, so they are opt-in. A ScheduledTask exists
+    only because a user went to the Marketing Calendar and created it - running it is the
+    entire point, and a schedule that silently never fires is worse than no feature.
+    """
+    return os.getenv("DISABLE_SCHEDULED_TASKS", "").strip().lower() not in ("1", "true", "yes", "on")
+
+
+async def run_due_schedules():
+    """Execute every ScheduledTask whose next_run_at has passed.
+
+    This is the same work POST /api/schedules/tick does, run in-process. That endpoint has
+    always existed and been correct, but it needs an external cron to call it and refuses
+    to run at all unless SCHEDULER_TICK_SECRET is set - neither of which was true, so every
+    schedule a user created sat in the table and never fired. The HTTP endpoint stays for
+    deployments that prefer driving this from a real cron.
+
+    next_run_at is advanced BEFORE the work starts, so a run that outlasts the interval
+    cannot be claimed twice by the following tick.
+    """
+    import datetime
+    from database import SessionLocal
+    import models
+    from schedule_routes import compute_next_run, run_schedule_now
+
+    now = datetime.datetime.utcnow()
+    with SessionLocal() as db:
+        due = (db.query(models.ScheduledTask)
+                 .filter(models.ScheduledTask.enabled.is_(True),
+                         models.ScheduledTask.next_run_at.isnot(None),
+                         models.ScheduledTask.next_run_at <= now)
+                 .all())
+        if not due:
+            return
+        claimed = []
+        for s in due:
+            s.next_run_at = compute_next_run(s, after=now)
+            claimed.append((s.id, s.name))
+        db.commit()
+
+    print("[scheduler] running %d due schedule(s): %s"
+          % (len(claimed), ", ".join(n for _, n in claimed)))
+    for sid, name in claimed:
+        try:
+            # run_schedule_now is synchronous and does its own DB session and status
+            # recording, so it goes to a thread rather than blocking the event loop.
+            await asyncio.to_thread(run_schedule_now, sid)
+        except Exception as e:
+            # One failing schedule must not stop the rest of the tick.
+            print("[scheduler] schedule %s (%s) failed: %s" % (sid, name, e))
+
+
 def start_scheduler():
-    """Start the monthly scheduler if it is explicitly enabled. Safe to call once at
-    app startup; a no-op (returning None) when unattended audits are off."""
+    """Start the background schedulers that are explicitly enabled. Safe to call once at
+    app startup; returns None when nothing is enabled."""
     global _scheduler
     if _scheduler is not None:
         return _scheduler
 
-    if not is_enabled():
+    audits, intel, schedules = is_enabled(), intel_syncs_enabled(), schedules_enabled()
+    if not audits:
         print("[scheduler] Monthly SEO/GEO audits are DISABLED (ENABLE_MONTHLY_AUDITS is not set). "
               "Audits run only when a user clicks Run SEO/GEO Pipeline.")
+    if not intel:
+        print("[scheduler] Competitor-ad and market-trend syncs are DISABLED "
+              "(ENABLE_INTEL_SYNCS is not set). They run only when a user clicks Sync now.")
+    if not schedules:
+        print("[scheduler] Marketing Calendar schedules are DISABLED "
+              "(DISABLE_SCHEDULED_TASKS is set) - nothing a user schedules will run.")
+    if not (audits or intel or schedules):
         return None
 
     _scheduler = AsyncIOScheduler(timezone="UTC")
-    # 06:00 UTC on the 1st of every month.
-    _scheduler.add_job(
-        run_monthly_audits,
-        CronTrigger(day=1, hour=6, minute=0),
-        id="monthly_seo_geo_audits",
-        replace_existing=True,
-        misfire_grace_time=3600,
-        coalesce=True,
-        max_instances=1,
-    )
+
+    if schedules:
+        # Every 5 minutes: fine-grained enough that an hourly schedule fires close to its
+        # minute, cheap enough that a quiet workspace costs one indexed query per tick.
+        _scheduler.add_job(
+            run_due_schedules,
+            IntervalTrigger(minutes=5),
+            id="user_scheduled_tasks",
+            replace_existing=True,
+            misfire_grace_time=600,
+            coalesce=True,
+            max_instances=1,
+        )
+        print("[scheduler] Marketing Calendar schedules are ACTIVE (checked every 5 minutes).")
+
+    if audits:
+        # 06:00 UTC on the 1st of every month.
+        _scheduler.add_job(
+            run_monthly_audits,
+            CronTrigger(day=1, hour=6, minute=0),
+            id="monthly_seo_geo_audits",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            coalesce=True,
+            max_instances=1,
+        )
+        print("[scheduler] Monthly SEO/GEO audit scheduler started (1st of month, 06:00 UTC).")
+
+    if intel:
+        from core.intel_sync import run_all_competitor_ad_syncs, run_all_market_trend_syncs
+
+        # Interval rather than cron: the cadences the spec asks for are "every 2 weeks" and
+        # "every 4 weeks", and a cron day-of-month rule drifts against that in every month
+        # that is not 28 days long. The first run is deferred by an hour so a redeploy does
+        # not fire both syncs for every workspace the moment the process boots.
+        first = datetime.utcnow() + timedelta(hours=1)
+        _scheduler.add_job(
+            run_all_competitor_ad_syncs,
+            IntervalTrigger(weeks=2, start_date=first),
+            id="biweekly_competitor_ad_sync",
+            replace_existing=True,
+            misfire_grace_time=6 * 3600,
+            coalesce=True,
+            max_instances=1,
+        )
+        _scheduler.add_job(
+            run_all_market_trend_syncs,
+            IntervalTrigger(weeks=4, start_date=first + timedelta(hours=2)),
+            id="four_weekly_market_trend_sync",
+            replace_existing=True,
+            misfire_grace_time=6 * 3600,
+            coalesce=True,
+            max_instances=1,
+        )
+        print("[scheduler] Intelligence syncs started (competitor ads every 2 weeks, "
+              "market trends every 4 weeks; first run ~1h from boot).")
+
     _scheduler.start()
-    print("[scheduler] Monthly SEO/GEO audit scheduler started (1st of month, 06:00 UTC).")
     return _scheduler

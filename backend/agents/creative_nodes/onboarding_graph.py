@@ -9,6 +9,7 @@ import os
 import httpx
 from core.providers.llm_providers import GeminiProvider
 from core.providers.base import LLMProviderError
+from core import browser_render
 
 # --- Schema Definitions ---
 
@@ -21,9 +22,12 @@ class OnboardingState(TypedDict):
     scraped_content: str
     scraped_pages: List[dict]   # up to 5 crawled pages: [{"url": str, "content": str}]
     vision_insights: dict
+    screenshot: Optional[bytes]   # headless-browser JPEG, fed to the vision pass
     # Final structured outputs for DB
     typography: dict
     color_palette: list
+    brand_kit: dict        # core.brand_kit.BrandKit as a dict - USPs, mission, personas...
+    brand_facts: dict      # founded year / published rating, when the site states them
     brand_guidelines_summary: str
     target_audience: str
     logs: List[str]
@@ -258,23 +262,358 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
     state["scraped_content"] = "\n\n".join(f"[{p['url']}]\n{p['content']}" for p in pages)[:8000]
     return state
 
+# Font stacks every site declares, which say nothing about the brand.
+_GENERIC_FONTS = {"inherit", "initial", "unset", "sans-serif", "serif", "monospace",
+                  "system-ui", "-apple-system", "blinkmacsystemfont", "segoe ui",
+                  "helvetica", "helvetica neue", "arial", "roboto", "ui-sans-serif",
+                  "ui-serif", "ui-monospace", "cursive", "fantasy", "emoji", "math"}
+
+
+def _is_brand_colour(hex_code: str) -> bool:
+    """True for colours with enough saturation to be a choice rather than a neutral.
+
+    Replaces a hand-written blocklist, which caught #ffffff and #cccccc but happily passed
+    #f2f2f2 and #7b7b7b through as brand colours.
+    """
+    import colorsys
+    try:
+        r, g, b = (int(hex_code[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    except ValueError:
+        return False
+    _, lightness, saturation = colorsys.rgb_to_hls(r, g, b)
+    # Near-grey, or so light/dark that the hue is invisible.
+    return saturation >= 0.2 and 0.08 <= lightness <= 0.92
+
+
+def _extract_palette(html: str, limit: int = 5) -> list:
+    """Brand colours from the page's own CSS, most-used first.
+
+    Deliberately not a vision model: the hex codes a site actually ships are a better source
+    than guessing at a screenshot, and this needs no extra API.
+    """
+    import re as _re
+    from collections import Counter
+
+    counts = Counter()
+    for h in _re.findall(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b", html or ""):
+        h = h.lower()
+        # Expand #abc to #aabbcc so the two spellings count as one colour.
+        if len(h) == 4:
+            h = "#" + "".join(ch * 2 for ch in h[1:])
+        if _is_brand_colour(h):
+            counts[h] += 1
+
+    # A colour used once is usually incidental - a stray icon fill or one inline style.
+    return [h for h, n in counts.most_common(limit) if n >= 2]
+
+
+def _extract_typography(html: str) -> dict:
+    """Heading and body fonts, from Google Fonts links first and font-family rules after."""
+    import re as _re
+
+    named = []
+    for href in _re.findall(r'href="([^"]*fonts\.googleapis\.com[^"]*)"', html or "", _re.I):
+        for fam in _re.findall(r"family=([^&:\"]+)", href):
+            named.append(fam.replace("+", " ").split(",")[0].strip())
+
+    for decl in _re.findall(r"font-family\s*:\s*([^;}\"']+)", html or "", _re.I):
+        for part in decl.split(","):
+            name = part.strip().strip("'\"")
+            if name and name.lower() not in _GENERIC_FONTS and len(name) < 40 \
+                    and not name.startswith("var(") and not name.startswith("--"):
+                named.append(name)
+                break
+
+    seen, ordered = set(), []
+    for n in named:
+        if n.lower() not in seen:
+            seen.add(n.lower())
+            ordered.append(n)
+
+    if not ordered:
+        return {}
+    out = {"heading": ordered[0]}
+    if len(ordered) > 1:
+        out["body"] = ordered[1]
+    return out
+
+
+def _extract_founded(text: str, html: str = "", brand_name: str = "") -> str:
+    """The year the brand says it started, or "" when the site does not say.
+
+    Deliberately strict. An earlier version accepted any "since YYYY" and picked up 2018
+    from a customer review on stuffcool.com - "has been my go-to place ... since 2018" -
+    which would have been stored as the company's founding year and shown in the header.
+    """
+    import re as _re
+    from datetime import datetime as _dt
+
+    this_year = _dt.utcnow().year
+    # Liquid/Handlebars blocks are template source, not statements the brand is making.
+    blob = _re.sub(r"\{\{.*?\}\}|\{%.*?%\}", " ", f"{text} {html}", flags=_re.S)
+
+    def _ok(year_str: str) -> bool:
+        try:
+            year = int(year_str)
+        except ValueError:
+            return False
+        return 1800 <= year <= this_year
+
+    # 1) An explicit claim about a company. Reviewers do not write these about themselves.
+    for m in _re.finditer(r"(?:established|founded|incorporated)(?:\s+in)?\s*[:\-]?\s*((?:19|20)\d{2})",
+                          blob, _re.I):
+        if _ok(m.group(1)):
+            return m.group(1)
+
+    # 2) "<Brand>, since YYYY" - the brand's own name immediately in front is what separates
+    #    a company claim from a customer's anecdote.
+    if brand_name:
+        near = _re.escape(brand_name.strip())
+        for pat in (rf"{near}[^.]{{0,30}}?\b(?:since|est\.?)\s*[:\-]?\s*((?:19|20)\d{{2}})",
+                    rf"\b(?:since|est\.?)\s*((?:19|20)\d{{2}})[^.]{{0,20}}?{near}"):
+            m = _re.search(pat, blob, _re.I)
+            if m and _ok(m.group(1)):
+                return m.group(1)
+
+    # 3) "(c) 2015-2026" - the first year of a range is the founding claim. A lone copyright
+    #    year is skipped: it tracks the current year and says nothing about when they began.
+    m = _re.search(r"(?:©|&copy;|copyright)\s*\D{0,20}((?:19|20)\d{2})\s*[-–—]\s*(?:19|20)\d{2}",
+                   blob, _re.I)
+    if m and _ok(m.group(1)):
+        return m.group(1)
+
+    return ""
+
+
+def _extract_rating(text: str, html: str = "") -> dict:
+    """A published customer rating: {"value", "count", "scale"}, or {} when absent."""
+    import json as _json
+    import re as _re
+
+    # 1) schema.org aggregateRating, in JSON-LD or microdata. This is the number the brand
+    #    publishes for search engines, so it is the one they stand behind.
+    for block in _re.findall(r"<script[^>]+application/ld\+json[^>]*>(.*?)</script>", html or "",
+                             _re.S | _re.I):
+        try:
+            data = _json.loads(block.strip())
+        except Exception:
+            continue
+
+        stack = [data]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, list):
+                stack.extend(node)
+                continue
+            if not isinstance(node, dict):
+                continue
+            agg = node.get("aggregateRating")
+            if isinstance(agg, dict) and agg.get("ratingValue"):
+                try:
+                    value = float(str(agg["ratingValue"]).replace(",", "."))
+                except (TypeError, ValueError):
+                    continue
+                best = float(str(agg.get("bestRating") or 5).replace(",", ".") or 5)
+                if 0 < value <= best:
+                    count = agg.get("ratingCount") or agg.get("reviewCount")
+                    return {"value": round(value, 1),
+                            "count": int(count) if str(count or "").isdigit() else None,
+                            "scale": int(best)}
+            stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+
+    # 2) A visible "4.8 out of 5" / "4.8/5" / "4.8 stars".
+    #
+    # Two traps, both found by running this against real storefronts:
+    #   * Shopify themes ship unrendered Liquid - "{{ ...all_reviews_rating | round: 1 }}
+    #     out of 5 stars" - and the 5 in "out of 5 stars" was read as the rating. Template
+    #     blocks are stripped before matching.
+    #   * A whole number is rejected. "5 stars" is a widget label or a filter option; a
+    #     published aggregate is 4.8, and requiring the decimal drops the false positives
+    #     without losing real ratings.
+    cleaned = _re.sub(r"\{\{.*?\}\}|\{%.*?%\}", " ", text or "", flags=_re.S)
+    m = _re.search(r"(?<!out of )(?<!/)\b([0-5][.,]\d)\s*(?:/\s*5|out of\s*5|stars?\b|★)",
+                   cleaned, _re.I)
+    if m:
+        try:
+            value = float(m.group(1).replace(",", "."))
+        except ValueError:
+            return {}
+        if 0 < value <= 5:
+            return {"value": round(value, 1), "count": None, "scale": 5}
+
+    return {}
+
+
+async def _style_source(client, url: str, max_sheets: int = 3):
+    """The homepage HTML, and that HTML plus its first few stylesheets concatenated.
+
+    Single-page apps - which most modern sites are - ship a homepage with no colours in it
+    at all; everything is in a linked bundle. Reading the HTML alone returned nothing for
+    two of the three sites this was tested against.
+
+    Returns (html, combined). The homepage is handed back separately because logos live in
+    the markup: searching the concatenated bundle for <img class="logo"> would trawl
+    megabytes of CSS for tags that can only be in the HTML.
+    """
+    import re as _re
+    from urllib.parse import urljoin
+
+    try:
+        r = await client.get(url)
+        if r.status_code != 200:
+            return "", ""
+        html = r.text
+    except Exception as e:
+        print(f"Style fetch failed for {url}: {e}")
+        return "", ""
+
+    parts = [html]
+    hrefs = _re.findall(r'<link[^>]+rel=["\']?stylesheet["\']?[^>]*>', html, _re.I)
+    sheets = []
+    for tag in hrefs:
+        m = _re.search(r'href=["\']([^"\']+)["\']', tag, _re.I)
+        if m:
+            sheets.append(urljoin(url, m.group(1)))
+
+    for href in sheets[:max_sheets]:
+        try:
+            sr = await client.get(href)
+            if sr.status_code == 200:
+                # Capped: bundles run to megabytes and the palette is near the top.
+                parts.append(sr.text[:400000])
+        except Exception:
+            continue
+
+    return html, "\n".join(parts)
+
+
 async def vision_analysis_node(state: OnboardingState) -> OnboardingState:
+    """Read the brand's colours and fonts out of its own homepage.
+
+    This announced "Initiating Vision Analysis on Brand Assets", slept a second, and
+    returned #030303 / #5A52FF / Outfit / Inter - the same four values for every brand,
+    with a TODO where the vision call was meant to be. Those constants were then written to
+    brand_profiles and read by the creative agents as though they were the brand's.
     """
-    Passes images/logo to Vision Models (Qwen2.5-VL / Florence-2).
-    """
-    msg = "Initiating Vision Analysis on Brand Assets..."
+    msg = "Reading brand colours, typography and logos from the site..."
     state["logs"].append(msg)
-    await manager.broadcast_agent_log("Vision Agent", msg, "running")
-    
-    # TODO: Implement Vision API/Local model call here to extract colors and layout
-    await asyncio.sleep(1.0)
-    
-    state["vision_insights"] = {
-        "primary_color": "#030303",
-        "secondary_color": "#5A52FF",
-        "font_family_heading": "Outfit",
-        "font_family_body": "Inter"
-    }
+    await manager.broadcast_agent_log("Brand Style", msg, "running")
+
+    url = state.get("brand_url") or state.get("company_url") or ""
+    palette, typography, colour_tokens, logos = [], {}, [], []
+    source = ""
+
+    if url:
+        try:
+            from core.brand_kit import (extract_color_tokens, extract_typography as _kit_type,
+                                        extract_logos, hero_color_tokens)
+            async with httpx.AsyncClient(follow_redirects=True, timeout=25,
+                                         headers={"User-Agent": _UA}) as client:
+                home_html, source = await _style_source(client, url)
+                if source:
+                    # Named CSS variables first, frequency second - see core/brand_kit.
+                    colour_tokens = extract_color_tokens(source)
+                    typography = _kit_type(source)
+                if home_html:
+                    logos = extract_logos(home_html, url)
+                    # Then the colours that exist only as pixels. A brand's most
+                    # recognisable colour is often the grade of its hero photograph or the
+                    # finish of a product render, and never appears as a hex in any
+                    # stylesheet - the CSS pass above is structurally unable to see those.
+                    # Declared tokens still rank first: they carry a stated role, while a
+                    # clustered colour is an average of a photograph.
+                    try:
+                        hero = await hero_color_tokens(client, home_html, url)
+                        known = {t["hex"] for t in colour_tokens}
+                        colour_tokens += [h for h in hero if h["hex"] not in known]
+                        if hero:
+                            await manager.broadcast_agent_log(
+                                "Brand Style",
+                                f"Clustered {len(hero)} colour(s) out of the hero imagery.",
+                                "thinking")
+                    except Exception as img_err:
+                        # Optional enrichment: a slow CDN must not cost us the CSS tokens.
+                        print(f"Hero image clustering failed for {url}: {img_err}")
+                palette = [t["hex"] for t in colour_tokens]
+        except Exception as e:
+            print(f"Style extraction failed for {url}: {e}")
+
+    # Headless render, LAST and entirely optional. Everything above already produced a
+    # usable kit from shipped CSS and imagery; this only adds what a browser knows and a
+    # text fetch cannot - which var() a theme actually resolved to, which of six shipped
+    # faces is really used, what the CTA is painted, and a screenshot for the vision pass.
+    #
+    # Ordered last and wrapped so that a missing Playwright, an uninstalled Chromium or a
+    # page that will not render changes nothing about the result. Computed values are
+    # PREPENDED when found: the browser's answer outranks a guess from source.
+    if url and browser_render.is_available():
+        try:
+            await manager.broadcast_agent_log(
+                "Brand Style", "Rendering the page in a headless browser for computed styles...",
+                "thinking")
+            rendered = await browser_render.render(url, screenshot=True)
+            if rendered.get("error"):
+                print(f"[onboarding] browser render note for {url}: {rendered['error']}")
+
+            computed = rendered.get("computed") or {}
+            if computed:
+                computed_tokens = browser_render.computed_color_tokens(computed)
+                if computed_tokens:
+                    known = {t["hex"] for t in computed_tokens}
+                    colour_tokens = computed_tokens + [t for t in colour_tokens
+                                                       if t["hex"] not in known]
+                    palette = [t["hex"] for t in colour_tokens]
+                computed_fonts = browser_render.computed_typography(computed)
+                if computed_fonts:
+                    typography = computed_fonts
+                await manager.broadcast_agent_log(
+                    "Brand Style",
+                    f"Browser reported {len(computed_tokens)} computed colour(s)"
+                    + (f" and {', '.join(computed_fonts.values())}" if computed_fonts else ""),
+                    "thinking")
+
+            # Held in state for the vision pass in synthesis; never persisted as-is.
+            if rendered.get("screenshot"):
+                state["screenshot"] = rendered["screenshot"]
+        except Exception as e:
+            print(f"[onboarding] headless render skipped for {url}: {e}")
+
+    # Both fall back to the original readers if the token pass found nothing, so a site
+    # that ships neither CSS variables nor a Google Fonts link is no worse off than before.
+    if not palette and source:
+        palette = _extract_palette(source)
+    if not typography and source:
+        typography = _extract_typography(source)
+
+    # The same fetched source yields two facts the brand publishes about itself.
+    founded, rating = "", {}
+    if source:
+        import re as _re2
+        plain = _re2.sub(r"\s+", " ", _re2.sub(r"(?s)<[^>]+>", " ", source))
+        founded = _extract_founded(plain, source, brand_name=state.get("brand_name") or "")
+        rating = _extract_rating(plain, source)
+
+    state["vision_insights"] = {"palette": palette, "typography": typography,
+                                "colour_tokens": colour_tokens, "logos": logos,
+                                "founded": founded, "rating": rating}
+
+    if palette or typography or logos:
+        found = []
+        if palette:
+            found.append(f"{len(palette)} colour(s)")
+        if typography:
+            found.append(", ".join(typography.values()))
+        if logos:
+            found.append(f"{len(logos)} logo asset(s)")
+        await manager.broadcast_agent_log("Brand Style", f"Found {' and '.join(found)}.", "completed")
+    else:
+        # Said plainly, because the Brand Knowledge vault will show these as missing and the
+        # user needs to know it is because nothing was detected, not because it broke.
+        await manager.broadcast_agent_log(
+            "Brand Style",
+            "No brand colours or fonts could be read from the site. You can set them by hand "
+            "in Brand Knowledge.", "completed")
+
     return state
 
 async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingState:
@@ -287,19 +626,72 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
     
     # Gemini: the only provider with a configured key (OPENROUTER_API_KEY is empty).
     llm = GeminiProvider()
-    prompt = f"Analyze the following scraped content and summarize the brand's tone, audience, and key value propositions in 3 sentences:\n\n{state['scraped_content']}"
+
+    # One structured pass over the crawl, validated against core.brand_kit.BrandKit, rather
+    # than the two loose fields this used to ask for. The Brand Knowledge screen has always
+    # had panels for USPs, mission, personality, positioning and tone; nothing filled them,
+    # so every brand's vault showed one paragraph and seven empty sections. The schema lets
+    # a field come back empty, which is what keeps a thin site from producing a fabricated
+    # mission statement just to fill the panel.
+    from core.brand_kit import (extract_brand_kit, extract_brand_kit_with_vision,
+                                kit_to_guidelines, BrandKit)
+
+    kit = BrandKit()
+    # When the headless render produced a screenshot, the extractor also LOOKS at the page.
+    # Personality, tone and whether the brand reads premium or value are visible in the
+    # design and absent from the markup; the prompt is explicit that facts still come from
+    # the copy, so the image informs judgement without being able to invent a warranty.
+    # extract_brand_kit_with_vision degrades to the text path on its own when there is no
+    # screenshot or the provider has no vision method.
+    shot = state.get("screenshot")
     try:
-        summary = await llm.generate_text(prompt, system_prompt="You are a brand strategist.")
+        if shot:
+            await manager.broadcast_agent_log(
+                "Brand Strategist", "Reading the page copy and its rendered design...", "thinking")
+            kit = await extract_brand_kit_with_vision(llm, state["scraped_content"], shot)
+        else:
+            kit = await extract_brand_kit(llm, state["scraped_content"])
     except LLMProviderError as e:
         # A fabricated brand summary would be embedded into the knowledge base and
         # silently poison every downstream agent, so fail instead.
         await manager.broadcast_agent_log("Brand Strategist", f"Brand analysis failed: {e}", "failed")
         raise
+    except ValueError as e:
+        # The model answered but not in the agreed shape. Degrade to the overview-only path
+        # instead of failing onboarding outright: colours, fonts, logos and the knowledge
+        # base are all still worth persisting.
+        await manager.broadcast_agent_log(
+            "Brand Strategist", f"Structured extraction did not validate ({e}); keeping the summary only.",
+            "thinking")
+        try:
+            raw = await llm.generate_text(
+                "In 3 sentences, describe this brand's tone, positioning and value "
+                "propositions, then a final sentence naming who it sells to.\n\n"
+                + state["scraped_content"],
+                system_prompt="You are a brand strategist.")
+            kit = BrandKit(overview=(raw or "").strip())
+        except LLMProviderError:
+            raise
 
-    state["typography"] = {"heading": state.get("vision_insights", {}).get("font_family_heading", "Inter")}
-    state["color_palette"] = [state.get("vision_insights", {}).get("primary_color", "#030303")]
+    summary = kit.overview or ""
+    audience = kit.audience_summary or ""
+    state["brand_kit"] = kit.model_dump()
+
+    insights = state.get("vision_insights", {}) or {}
+    # Stored under guidelines so the hero can show "Est. 2019" and a rating when the site
+    # publishes them, and show neither when it does not.
+    facts = {}
+    if insights.get("founded"):
+        facts["founded"] = insights["founded"]
+    if insights.get("rating"):
+        facts["rating"] = insights["rating"]
+    state["brand_facts"] = facts
+    # Empty rather than defaulted: Brand Knowledge shows these as missing and offers an edit,
+    # which is more useful than every workspace sharing one palette and one font.
+    state["typography"] = insights.get("typography") or {}
+    state["color_palette"] = insights.get("palette") or []
     state["brand_guidelines_summary"] = summary
-    state["target_audience"] = "Growth marketers, startup founders."
+    state["target_audience"] = audience
     state["status"] = "completed"
     
     # Save to PostgreSQL
@@ -311,12 +703,31 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
         ws = db.query(Workspace).filter(Workspace.id == state["workspace_id"]).first()
         if ws:
             ws.brand_voice = summary
+            # The workspace's own accent, used by headers and chips that never load the full
+            # brand profile. Only set when the crawl found one and the user has not chosen.
+            if not (ws.brand_color or "").strip() and state["color_palette"]:
+                ws.brand_color = state["color_palette"][0]
+            if not (ws.brand_logo or "").strip():
+                first_logo = next((l.get("url") for l in (insights.get("logos") or [])
+                                   if l.get("url")), None)
+                if first_logo:
+                    ws.brand_logo = first_logo
             bp = db.query(BrandProfile).filter(BrandProfile.workspace_id == state["workspace_id"]).first()
             if not bp:
                 bp = BrandProfile(workspace_id=state["workspace_id"])
                 db.add(bp)
             bp.typography = state["typography"]
             bp.color_palette = state["color_palette"]
+            bp.color_tokens = insights.get("colour_tokens") or []
+            bp.logos = insights.get("logos") or []
+            # Merged, not replaced: everything else under guidelines is user-written and a
+            # re-crawl must not wipe it. kit_to_guidelines omits its own empty fields, so a
+            # thinner second crawl cannot blank out what a richer first one found - or what
+            # a user typed by hand.
+            existing = dict(bp.guidelines or {})
+            existing.update(kit_to_guidelines(kit))
+            existing.update(state.get("brand_facts") or {})
+            bp.guidelines = existing
             bp.brand_guidelines_summary = summary
             bp.target_audience = state["target_audience"]
             bp.is_onboarded = True

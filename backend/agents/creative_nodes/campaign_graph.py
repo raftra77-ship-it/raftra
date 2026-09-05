@@ -34,6 +34,44 @@ async def fetch_campaign_context(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("System", "Brand context loaded into Campaign RAG.", "completed")
     return state
 
+def _fit(text: str, limit: int) -> str:
+    """Trim to `limit` characters on a word boundary, keeping it readable.
+
+    The prompt states these limits plainly, but the model still overshoots — and an ad
+    one character over is rejected by the platform exactly like one fifty over. Cutting
+    at the last space (and dropping trailing punctuation) beats both shipping copy the
+    platform will refuse and truncating mid-word.
+    """
+    t = " ".join(str(text or "").split())
+    if len(t) <= limit:
+        return t
+    cut = t[:limit]
+    if " " in cut[int(limit * 0.6):]:      # only back off to a space if one is near the end
+        cut = cut[:cut.rfind(" ")]
+    return cut.rstrip(" ,;:-")
+
+
+def _enforce_copy_limits(brief: dict) -> None:
+    """Bring generated ad copy inside the platform limits, in place.
+
+    Silent by design: it runs on every generation and the review screen shows the final
+    counts. The publish-time validators stay the backstop for anything still oversized.
+    """
+    meta = brief.get("meta")
+    if isinstance(meta, dict):
+        if meta.get("primary_text"):
+            meta["primary_text"] = _fit(meta["primary_text"], 125)
+        if meta.get("headline"):
+            meta["headline"] = _fit(meta["headline"], 40)
+
+    google = brief.get("google")
+    if isinstance(google, dict):
+        for key, limit in (("headlines", 30), ("descriptions", 90)):
+            items = google.get(key)
+            if isinstance(items, list):
+                google[key] = [f for f in (_fit(x, limit) for x in items) if f]
+
+
 async def generate_json(llm, prompt, system, model):
     response = await llm.generate_text(prompt, system_prompt=system, model_name=model)
     return response.replace('```json', '').replace('```', '').strip()
@@ -115,10 +153,10 @@ async def creative_brief_node(state: CampaignState) -> CampaignState:
         '    "cta": {"value": "Shop Now", "reason": "..."},\n'
         '    "optimization_goal": {"value": "...", "reason": "..."}\n'
         "  },\n"
-        '  "meta": {"primary_text": "... (1-2 sentences)", "headline": "... (max 40 chars)", "cta": "...", "placements": ["Instagram Reels","Facebook Feed"]},\n'
+        '  "meta": {"primary_text": "... (ONE sentence, HARD LIMIT 125 characters)", "headline": "... (HARD LIMIT 40 characters)", "cta": "...", "placements": ["Instagram Reels","Facebook Feed"]},\n'
         '  "google": {\n'
-        '    "headlines": ["... up to 15, max 30 chars each"],\n'
-        '    "descriptions": ["... up to 4, max 90 chars each"],\n'
+        '    "headlines": ["... 8-15 items, HARD LIMIT 30 characters each"],\n'
+        '    "descriptions": ["... 4 items, HARD LIMIT 90 characters each"],\n'
         '    "keywords": ["... 5-15 phrases; [] if type is Display/Video/Demand Gen"],\n'
         '    "extensions": ["Sitelink: ...","Callout: ..."; [] unless Search],\n'
         '    "image_ideas": ["short image descriptions; [] unless Display/Performance Max/Demand Gen"],\n'
@@ -132,6 +170,16 @@ async def creative_brief_node(state: CampaignState) -> CampaignState:
         '  "duration_days": 15,\n'
         '  "total_budget": <total budget number from the request>\n'
         "}\n"
+        "\n"
+        "CHARACTER LIMITS ARE HARD PLATFORM RULES, NOT STYLE ADVICE. Google and Meta\n"
+        "reject any ad whose copy exceeds them, so a campaign that breaks even one of\n"
+        "these cannot be published at all:\n"
+        "  - google.headlines    : 30 characters MAX, each\n"
+        "  - google.descriptions : 90 characters MAX, each\n"
+        "  - meta.headline       : 40 characters MAX\n"
+        "  - meta.primary_text   : 125 characters MAX\n"
+        "Count the characters of each one before answering, spaces and punctuation\n"
+        "included, and rewrite anything over. Shorter is always fine; over is never.\n"
     )
     resp = await generate_json(llm, prompt, system, state["model"])
 
@@ -140,6 +188,8 @@ async def creative_brief_node(state: CampaignState) -> CampaignState:
         brief = json.loads(resp) or {}
     except Exception:
         brief = {}
+
+    _enforce_copy_limits(brief)
 
     rec = brief.get("recommendations") or {}
     google = brief.get("google") or {}

@@ -171,6 +171,7 @@ const Pill: React.FC<{ status: string; label?: string }> = ({ status, label }) =
     'Needs approval': { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     Locked: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)' },
     Pending: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)' },
+    Blocked: { c: '#ff4757', b: 'rgba(255,71,87,0.14)' },
     MOCK: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     DEMO: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     REAL: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
@@ -551,6 +552,20 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     ad_account_id?: string | null; page_id?: string | null; page_name?: string | null;
     default_link_url?: string | null; ready_to_publish?: boolean;
   }>({});
+  // The workspace's site URL. Both publish routes fall back to it for the ad's
+  // destination, so the pre-flight checks below must know about it too — otherwise they
+  // report "no destination" for a campaign the server would have published fine.
+  const [siteUrl, setSiteUrl] = useState<string>('');
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch('/api/workspaces', { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : []))
+      .then((list: any[]) => {
+        const ws = (list || []).find((w: any) => w.id === workspaceId);
+        setSiteUrl((ws && ws.company_url) || '');
+      })
+      .catch(() => {});
+  }, [workspaceId]);
   const [publishPopup, setPublishPopup] = useState(false);
   const [recentPublished, setRecentPublished] = useState<any[]>([]);
   const [analyticsView, setAnalyticsView] = useState<any | null>(null);   // opened analytics modal payload
@@ -669,8 +684,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   };
 
   // Real Google Ads connection (mirrors the Meta picker above exactly) + its account picker.
-  const [googleAccount, setGoogleAccount] = useState<{ configured?: boolean; connected?: boolean; email?: string; customer_id?: string | null; login_customer_id?: string | null }>({});
-  const [googleAdAccounts, setGoogleAdAccounts] = useState<{ customer_id: string; name: string }[] | null>(null);
+  const [googleAccount, setGoogleAccount] = useState<{ configured?: boolean; connected?: boolean; email?: string; customer_id?: string | null; login_customer_id?: string | null; is_manager_account?: boolean }>({});
+  const [googleAdAccounts, setGoogleAdAccounts] = useState<{ customer_id: string; name: string; manager?: boolean }[] | null>(null);
   const [googlePickerOpen, setGooglePickerOpen] = useState(false);
   const [googlePickerBusy, setGooglePickerBusy] = useState(false);
   const [googleAccountsError, setGoogleAccountsError] = useState<string | null>(null);
@@ -765,11 +780,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   // listAccessibleCustomers returns the manager account itself alongside the real ad
   // accounts, so it is easy to select by mistake — and a manager account can never hold a
   // campaign, so publishing to it always fails.
-  const googleIsManagerAccount = !!(
-    googleAccount.customer_id &&
-    googleAccount.login_customer_id &&
-    googleAccount.customer_id === googleAccount.login_customer_id
-  );
+  //
+  // This reads customer.manager straight from Google, recorded when the account was
+  // picked. It used to infer "manager" by comparing customer_id against login_customer_id,
+  // which silently stopped detecting anything once login_customer_id became NULL for
+  // directly-authorised accounts — the normal case for every customer.
+  const googleIsManagerAccount = !!googleAccount.is_manager_account;
   const split = spec.budget_split || {};
   const heroImage: string | null = spec.image_url || null;
   // Meta ad copy from the approved strategy — this is what actually gets sent
@@ -803,6 +819,86 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     videos: gt.includes('performance') || gt.includes('video'),
     signals: gt.includes('performance') || gt.includes('demand'),
   };
+  // Where a Meta ad click lands. The backend falls back the same way (request →
+  // connection default → workspace site), but resolving it here lets the UI say what is
+  // missing BEFORE the publish call, instead of surfacing a server error afterwards.
+  const metaDestination: string = spec.landing_page || metaAccount.default_link_url || siteUrl || '';
+
+  // Meta rejects an ad that has no image, no Page to publish as, or nowhere to click.
+  // Google needs none of these, so a mixed publish can half-succeed — which is exactly
+  // the confusing outcome this pre-flight exists to prevent.
+  const metaBlockers: { label: string; fix: string }[] = [
+    !selectedImage && {
+      label: 'No creative image selected',
+      fix: 'Pick one below, upload your own, or generate a new one — Meta ads cannot be text-only.',
+    },
+    // Meta truncates or rejects copy past these limits — the same class of failure the
+    // Google checks catch, and the preview already counts characters against them.
+    String(metaCopy.primary_text || '').length > 125 && {
+      label: `Primary text is ${String(metaCopy.primary_text || '').length}/125 characters`,
+      fix: 'Shorten it to 125 characters or fewer — Meta cuts off anything longer.',
+    },
+    String(metaCopy.headline || '').length > 40 && {
+      label: `Headline is ${String(metaCopy.headline || '').length}/40 characters`,
+      fix: 'Shorten it to 40 characters or fewer.',
+    },
+    !metaAccount.page_id && {
+      label: 'No Facebook Page selected',
+      fix: 'Choose the Page the ad publishes as in the Meta setup step.',
+    },
+    !metaDestination && {
+      label: 'No destination URL',
+      fix: 'Add your website to the workspace, or set a link on the Meta connection — an ad needs somewhere to click.',
+    },
+  ].filter(Boolean) as { label: string; fix: string }[];
+
+  // ── Google's own pre-flight ──────────────────────────────────────────────────
+  // Mirrors backend validate_search_payload(): a responsive search ad is rejected outright
+  // for too few usable headlines/descriptions, an invalid landing page, or a zero budget.
+  // Those are the four failures the server raises, so they are the four checked here.
+  const RSA = { headlineMax: 30, descriptionMax: 90, minHeadlines: 3, minDescriptions: 2 };
+  const fittingHeadlines = headlines.filter(h => String(h || '').trim() && String(h).trim().length <= RSA.headlineMax);
+  const fittingDescriptions = descriptions.filter(d => String(d || '').trim() && String(d).trim().length <= RSA.descriptionMax);
+  const googleDestination: string = spec.landing_page || siteUrl || '';
+  const isHttpUrl = (u: string) => /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(String(u || '').trim());
+  const googleBudget = Number(spec.total_budget || campaign?.budget || 0);
+
+  const googleBlockers: { label: string; fix: string }[] = [
+    !googleAccount.customer_id && {
+      label: 'No Google Ads account selected',
+      fix: 'Connect Google Ads and choose the account to publish into.',
+    },
+    googleIsManagerAccount && {
+      label: 'A manager account is selected',
+      fix: 'Manager (MCC) accounts cannot hold campaigns — pick a client account underneath it.',
+    },
+    !!googleTokenBlocked && {
+      label: 'Developer token not approved',
+      fix: googleTokenBlocked || 'Apply for Basic Access in the Google Ads API Center.',
+    },
+    fittingHeadlines.length < RSA.minHeadlines && {
+      label: `Only ${fittingHeadlines.length} of ${headlines.length} headlines fit`,
+      fix: `Google needs at least ${RSA.minHeadlines} headlines of ${RSA.headlineMax} characters or fewer. Shorten the long ones above.`,
+    },
+    fittingDescriptions.length < RSA.minDescriptions && {
+      label: `Only ${fittingDescriptions.length} of ${descriptions.length} descriptions fit`,
+      fix: `Google needs at least ${RSA.minDescriptions} descriptions of ${RSA.descriptionMax} characters or fewer.`,
+    },
+    !isHttpUrl(googleDestination) && {
+      label: 'No valid landing page',
+      fix: 'Set a full http(s) landing page on the strategy, or add your website to the workspace.',
+    },
+    !(googleBudget > 0) && {
+      label: 'Budget is zero',
+      fix: 'Set a campaign budget above zero before publishing.',
+    },
+  ].filter(Boolean) as { label: string; fix: string }[];
+
+  const googlePublishBlocked = !!googleAccount.connected && googleBlockers.length > 0;
+
+  // Only blocks a REAL publish. Demo mode has no such requirements.
+  const metaPublishBlocked = !!metaAccount.connected && metaBlockers.length > 0;
+
   const chips = (arr: any[]) => <ChipList items={arr} />;
   const libraryImages: string[] = (creativeAssets || []).map((a: any) => a.image_url || a.imageUrl).filter(Boolean);
   // Every creative the user can pick from: the AI-generated ad, their library, and uploads.
@@ -962,12 +1058,28 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
   const publish = async (targets: ('meta' | 'google')[]) => {
     if (!campaign || targets.length === 0) return;
+    // Stop a publish the platform will certainly reject, and name the missing piece.
+    // Checked per platform and BEFORE any request goes out: the two have different
+    // requirements, so a "both" publish could otherwise put a live campaign on one
+    // platform and nothing on the other, with only an error message to explain it.
+    const blocked: string[] = [];
+    if (targets.includes('meta') && metaPublishBlocked) {
+      blocked.push(`Meta — ${metaBlockers.map(b => b.label.toLowerCase()).join('; ')}`);
+    }
+    if (targets.includes('google') && googlePublishBlocked) {
+      blocked.push(`Google — ${googleBlockers.map(b => b.label.toLowerCase()).join('; ')}`);
+    }
+    if (blocked.length) {
+      flash(`Cannot publish yet. ${blocked.join('. ')}.`, false);
+      return;
+    }
     setBusy(`publish-${targets.join('-')}`);
     try {
       // Send the approved creative so the backend can build a real ad. Without
       // it Meta only gets a campaign shell, which can never deliver.
       const metaCreative = targets.includes('meta') ? {
         image_url: selectedImage || undefined,
+        link_url: metaDestination || undefined,
         headline: metaCopy.headline || undefined,
         primary_text: metaCopy.primary_text || undefined,
         cta: metaCopy.cta || undefined,
@@ -1320,6 +1432,10 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                           { ok: !!metaAccount.ad_account_id, label: 'Ad account selected' },
                           { ok: !!metaAccount.page_id, label: 'Facebook Page selected' },
                           { ok: !!metaAccount.ready_to_publish, label: 'Ready to publish' },
+                          // The two Meta needs that Google does not, checked against the
+                          // approved strategy rather than the connection.
+                          { ok: !!selectedImage, label: 'Creative image selected' },
+                          { ok: !!metaDestination, label: 'Destination URL set' },
                         ].map(row => (
                           <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: row.ok ? '#00e676' : 'var(--text-secondary)' }}>
                             {row.ok ? <CheckCircle2 size={12} /> : <span style={{ width: '12px', textAlign: 'center' }}>○</span>}
@@ -1327,11 +1443,36 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                           </div>
                         ))}
                       </div>
-                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
-                        {metaAccount.ready_to_publish
-                          ? 'Real campaigns will be created in Meta, paused, for you to review and activate.'
-                          : 'An ad account and a Facebook Page are both required before a real campaign can be created.'}
-                      </p>
+                      {/* Say precisely what is missing and how to fix it. Meta rejects an ad
+                          with no image or no destination, while Google accepts the same
+                          strategy happily — so without this a mixed publish half-succeeds
+                          and the error only appears after Google has already gone live. */}
+                      {metaBlockers.length > 0 ? (
+                        <div style={{
+                          marginTop: '10px', padding: '10px 12px', borderRadius: 'var(--radius-md, 10px)',
+                          background: 'rgba(255,183,0,0.07)', border: '1px solid rgba(255,183,0,0.28)',
+                        }}>
+                          <div style={{ fontSize: T.badge, fontWeight: 700, color: 'var(--warning, #FFB300)', marginBottom: '6px' }}>
+                            Meta cannot publish yet
+                          </div>
+                          {metaBlockers.map(b => (
+                            <div key={b.label} style={{ fontSize: T.body, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '4px' }}>
+                              <b style={{ color: 'var(--text-primary)' }}>{b.label}.</b> {b.fix}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
+                          {metaAccount.ready_to_publish
+                            ? 'Real campaigns will be created in Meta, paused, for you to review and activate.'
+                            : 'An ad account and a Facebook Page are both required before a real campaign can be created.'}
+                        </p>
+                      )}
+                      {metaDestination && (
+                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>
+                          Ad clicks go to <b style={{ color: 'var(--text-primary)' }}>{displayHost(metaDestination) || metaDestination}</b>.
+                        </p>
+                      )}
                       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
                         <button onClick={loadMetaAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
                         <button onClick={() => disconnectPlatform('meta')} disabled={metaPickerBusy}
@@ -1368,8 +1509,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                       <select style={{ ...input, padding: '8px 10px', fontSize: '13px', marginBottom: '12px' }}
                         value={googleAccount.customer_id || ''} onChange={e => selectGoogleAccount(e.target.value)}>
                         <option value="" disabled>{googleAdAccounts && googleAdAccounts.length ? 'Choose an account' : 'No accounts found'}</option>
+                        {/* Managers are labelled because Google returns them in the same
+                            list as real ad accounts, and picking one fails only at publish. */}
                         {(googleAdAccounts || []).map(a => (
-                          <option key={a.customer_id} value={a.customer_id}>{a.name} ({a.customer_id})</option>
+                          <option key={a.customer_id} value={a.customer_id}>
+                            {a.name} ({a.customer_id}){a.manager ? ' — manager, cannot run ads' : ''}
+                          </option>
                         ))}
                       </select>
                       {/* The API returns only accounts this Google user can already reach
@@ -1892,13 +2037,25 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
                 <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  Meta Ads Review <Pill status={metaAccount.ready_to_publish ? 'REAL' : 'MOCK'} />
+                  Meta Ads Review <Pill status={metaAccount.ready_to_publish && !metaBlockers.length ? 'REAL' : 'MOCK'} />
                 </h3>
-                <Pill status={metaSetup.launched ? 'Ready' : 'Pending'} />
+                <Pill status={metaBlockers.length ? 'Blocked' : metaSetup.launched ? 'Ready' : 'Pending'} />
               </div>
               <p style={{ ...sectionHint, marginTop: '-8px', marginBottom: '12px' }}>
                 What will run on Facebook and Instagram. The ad account is connected in the header above.
               </p>
+              {/* Same panel Google's card shows. It used to live only in the Meta connection
+                  section further down, so this card said "Blocked" without saying why. */}
+              {metaBlockers.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)' }}>
+                  {metaBlockers.map(b => (
+                    <span key={b.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', fontSize: '12px', color: 'var(--warning)', lineHeight: 1.5 }}>
+                      <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><b>{b.label}.</b> <span style={{ color: 'var(--text-secondary)' }}>{b.fix}</span></span>
+                    </span>
+                  ))}
+                </div>
+              )}
               <MetaAdPreview
                 image={selectedImage || undefined}
                 pageName={metaAccount.page_name || undefined}
@@ -1964,8 +2121,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           {platforms.google && (
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status={googleReadyToPublish && !googleIsManagerAccount && !googleTokenBlocked ? 'REAL' : 'MOCK'} /></h3>
-                <Pill status={googleSetup.launched ? 'Ready' : 'Pending'} />
+                <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status={googleReadyToPublish && !googleBlockers.length ? 'REAL' : 'MOCK'} /></h3>
+                <Pill status={googleBlockers.length ? 'Blocked' : googleSetup.launched ? 'Ready' : 'Pending'} />
               </div>
               <p style={{ ...sectionHint, marginTop: '-8px', marginBottom: '12px' }}>
                 {googleReadyToPublish
@@ -1974,16 +2131,25 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               </p>
               {/* Says which of the two prerequisites is missing rather than leaving the MOCK
                   pill unexplained. Both are exactly what the publish route checks. */}
-              {(!googleReadyToPublish || googleIsManagerAccount) && (
+              {(!googleReadyToPublish || googleBlockers.length > 0) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)' }}>
-                  {[
-                    { ok: !!googleAccount.connected, label: 'Google Ads account connected' },
-                    { ok: !!googleAccount.customer_id && !googleIsManagerAccount, label: googleIsManagerAccount ? 'Pick an ad account — the one selected manages other accounts' : 'Ad account selected' },
-                  ].map(row => (
-                    <span key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: row.ok ? 'var(--success)' : 'var(--warning)' }}>
-                      {row.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {row.label}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: googleAccount.connected ? 'var(--success)' : 'var(--warning)' }}>
+                    {googleAccount.connected ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} Google Ads account connected
+                  </span>
+                  {/* Everything the publish route validates, checked here instead of after
+                      the request: too-long copy, a missing landing page and a zero budget
+                      are all hard rejections, not warnings. */}
+                  {googleBlockers.map(b => (
+                    <span key={b.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', fontSize: '12px', color: 'var(--warning)', lineHeight: 1.5 }}>
+                      <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span><b>{b.label}.</b> <span style={{ color: 'var(--text-secondary)' }}>{b.fix}</span></span>
                     </span>
                   ))}
+                  {googleAccount.connected && googleBlockers.length === 0 && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'var(--success)' }}>
+                      <CheckCircle2 size={13} /> Ready to publish
+                    </span>
+                  )}
                 </div>
               )}
               <div style={{ padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>

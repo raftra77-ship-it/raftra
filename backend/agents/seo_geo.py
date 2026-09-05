@@ -204,14 +204,25 @@ async def _fetch_site_signals(target_url: str) -> dict:
                      "status": r.status_code}
             if robots_body:
                 entry["disallow_all"] = bool(_re.search(r"(?mi)^\s*Disallow:\s*/\s*$", robots_body))
+            entry["checked"] = True
             signals["robots_txt"] = entry
         except Exception as e:
-            signals["robots_txt"] = {"found": False, "status": None, "error": str(e)[:80]}
+            # `checked: False` rather than `found: False`. These are different facts and
+            # scoring them the same is what made audits of one site swing by 20 points:
+            # a timed-out fetch was reported as "robots.txt NOT found → 0/4" with a
+            # recommendation to add one, on sites that already had a valid robots.txt.
+            # Origins that sleep (Render/Heroku free tiers) fail this way constantly.
+            signals["robots_txt"] = {"found": False, "checked": False,
+                                     "status": None, "error": str(e)[:80]}
 
         try:
-            signals["sitemap"] = await _discover_sitemap(client, origin, robots_body)
+            sm = await _discover_sitemap(client, origin, robots_body)
+            if isinstance(sm, dict):
+                sm.setdefault("checked", True)
+            signals["sitemap"] = sm
         except Exception as e:
-            signals["sitemap"] = {"found": False, "status": None, "error": str(e)[:80]}
+            signals["sitemap"] = {"found": False, "checked": False,
+                                  "status": None, "error": str(e)[:80]}
 
         # The audit previously credited "no redirect chain issues" without ever observing the
         # chain, and read only <meta name="robots"> — so an X-Robots-Tag: noindex served in

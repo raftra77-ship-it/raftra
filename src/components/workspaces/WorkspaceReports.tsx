@@ -1,800 +1,496 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FileText,
-  TrendingUp,
-  ShieldCheck,
-  Calendar,
-  Clock,
-  ExternalLink,
+  Search,
   Sparkles,
   Copy,
   Check,
-  Download,
-  Flame,
-  Search,
-  Filter,
   RefreshCw,
-  Layers,
-  Zap,
+  ExternalLink,
+  Trash2,
   Target,
-  ArrowRight,
-  Eye,
-  CheckCircle2,
+  Megaphone,
+  Users,
+  MessageSquareQuote,
   AlertCircle,
-  BarChart3,
-  Bookmark,
-  Share2,
-  Tag,
-  Lock,
-  CheckCircle
+  Globe,
+  ArrowRight
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
+
+/**
+ * Market Intelligence.
+ *
+ * This screen used to be 800 lines of fixtures: forty invented "Meta ads" for two power-bank
+ * brands, a hardcoded India search-trend report, and two buttons that waited on a setTimeout
+ * before announcing "Synced 40 active Meta competitor ads!" and locking themselves for two
+ * weeks. Nothing was ever fetched.
+ *
+ * It now runs real research against /api/workspaces/{id}/competitors, which reads the
+ * competitor's own public pages and extracts positioning, offers, hooks and CTAs from that
+ * text. Reports are saved, so the section has something to show on load.
+ *
+ * The ad-library framing is gone rather than rebuilt. Meta's Ad Library API returns only
+ * political and social-issue ads outside the EU, and Google's Ads Transparency Center has no
+ * API, so a feed of a rival's commercial creatives is not something anyone can lawfully
+ * offer. Promising one was the dishonest part.
+ */
+
+interface CompetitorSource {
+  url: string;
+  kind?: string;
+  title?: string;
+}
+
+interface CompetitorReport {
+  id: number;
+  competitor: string;
+  site_url?: string | null;
+  positioning?: string;
+  audience?: string;
+  tone?: string;
+  offers?: string[];
+  hooks?: string[];
+  ctas?: string[];
+  notes?: string;
+  sources?: CompetitorSource[];
+  researched_at?: string | null;
+}
 
 interface WorkspaceReportsProps {
   onNavigateTab?: (tab: string) => void;
   brandName?: string;
+  /** Required: the research endpoint is scoped to a workspace. */
+  workspaceId?: number | null;
 }
+
+const authHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const formatWhen = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : `${iso}Z`);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
 
 export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
   onNavigateTab,
-  brandName = 'Demo Brand'
+  brandName = 'your brand',
+  workspaceId = null,
 }) => {
-  const [activeTab, setActiveTab] = useState<'competitor_ads' | 'market_research'>('competitor_ads');
-  const [selectedCompetitor, setSelectedCompetitor] = useState<'all' | 'portronics' | 'stuffcool'>('all');
-  const [adFilterType, setAdFilterType] = useState<string>('all');
-  const [copiedHook, setCopiedHook] = useState<string | null>(null);
+  const [reports, setReports] = useState<CompetitorReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // Sync & Cooldown States
-  const [isSyncingAds, setIsSyncingAds] = useState(false);
-  const [isGeneratingMonthly, setIsGeneratingMonthly] = useState(false);
-  const [adsLockedUntil, setAdsLockedUntil] = useState<string | null>(null); // 14 days
-  const [monthlyLockedUntil, setMonthlyLockedUntil] = useState<string | null>(null); // 30 days
+  const [input, setInput] = useState('');
+  const [researching, setResearching] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const handleCopy = (text: string) => {
+  const loadReports = useCallback(async () => {
+    if (!workspaceId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/competitors`, { headers: authHeaders() });
+      if (r.ok) {
+        const data: CompetitorReport[] = await r.json();
+        setReports(data);
+        setSelectedId((prev) => (prev && data.some((d) => d.id === prev) ? prev : data[0]?.id ?? null));
+      }
+    } catch {
+      /* the empty state below covers this; an error banner here would fire on every
+         page load with the API down, which is noisier than it is useful. */
+    }
+    setLoading(false);
+  }, [workspaceId]);
+
+  useEffect(() => { loadReports(); }, [loadReports]);
+
+  const runResearch = async (e?: React.FormEvent, override?: string) => {
+    if (e) e.preventDefault();
+    const target = (override ?? input).trim();
+    if (!target || !workspaceId || researching) return;
+
+    setResearching(true);
+    setError('');
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/competitors/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ competitor: target }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        // Replace in place when this competitor has been researched before - the backend
+        // upserts, so the list must not gain a second copy of the same row.
+        setReports((prev) => [d, ...prev.filter((p) => p.id !== d.id)]);
+        setSelectedId(d.id);
+        if (!override) setInput('');
+      } else {
+        setError(d.detail || `Research failed (${r.status}).`);
+      }
+    } catch {
+      setError('Could not reach the server. Please try again in a moment.');
+    }
+    setResearching(false);
+  };
+
+  const removeReport = async (id: number) => {
+    if (!workspaceId) return;
+    const previous = reports;
+    setReports((prev) => prev.filter((p) => p.id !== id));
+    if (selectedId === id) setSelectedId(previous.find((p) => p.id !== id)?.id ?? null);
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/competitors/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      if (!r.ok) setReports(previous);     // put it back rather than pretend it went
+    } catch {
+      setReports(previous);
+    }
+  };
+
+  const copy = (text: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedHook(text);
-    setTimeout(() => setCopiedHook(null), 2000);
+    setCopied(text);
+    setTimeout(() => setCopied((c) => (c === text ? null : c)), 2000);
   };
 
-  // 1. Sync 2 Weeks Competitor Ads Handler
-  const handleSyncCompetitorAds = () => {
-    if (adsLockedUntil) {
-      alert(`⚠️ Bi-weekly Competitor Ad scan already locked! Next scan unlocks on ${adsLockedUntil}.`);
-      return;
-    }
-    setIsSyncingAds(true);
-    setTimeout(() => {
-      setIsSyncingAds(false);
-      const nextDate = new Date();
-      nextDate.setDate(nextDate.getDate() + 14);
-      const dateStr = nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      setAdsLockedUntil(dateStr);
-      alert(`✓ Synced 40 active Meta competitor ads! This action is now locked for 14 days (Unlocks on ${dateStr}).`);
-    }, 1200);
-  };
+  const selected = reports.find((r) => r.id === selectedId) || null;
 
-  // 2. Generate Monthly Report Handler
-  const handleGenerateMonthlyReport = () => {
-    if (monthlyLockedUntil) {
-      alert(`⚠️ Monthly Market Research Report already generated! Next report unlocks on ${monthlyLockedUntil}.`);
-      return;
-    }
-    setIsGeneratingMonthly(true);
-    setTimeout(() => {
-      setIsGeneratingMonthly(false);
-      const nextDate = new Date();
-      nextDate.setDate(nextDate.getDate() + 30);
-      const dateStr = nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      setMonthlyLockedUntil(dateStr);
-      alert(`✓ Generated 30-Day India Market Research Report! This action is now locked for 30 days (Unlocks on ${dateStr}).`);
-    }, 1500);
-  };
-
-  // Strategic Keywords for Monthly Market Research
-  const strategicKeywords = [
-    {
-      keyword: 'power bank',
-      bucket: 'core',
-      avgInterest: 84,
-      adHook: '“One power bank. No dead-phone panic.” Open with a real low-battery moment, then prove the recovery.',
-      badgeColor: '#00E676'
-    },
-    {
-      keyword: 'charging cable',
-      bucket: 'core',
-      avgInterest: 78,
-      adHook: '“Your cable does more than charge.” Lead with the built-in/utility benefit and a fast visual test.',
-      badgeColor: '#00E676'
-    },
-    {
-      keyword: 'MagSafe power bank',
-      bucket: 'emerging',
-      avgInterest: 24,
-      adHook: '“Snap. Charge. Keep moving.” Use an iPhone-on-the-go scene rather than a feature list.',
-      badgeColor: '#7C75FF'
-    },
-    {
-      keyword: 'fast charger',
-      bucket: 'core',
-      avgInterest: 8,
-      adHook: '“The charger that keeps up with your day.” Show a timed fast-charge proof and multi-device use.',
-      badgeColor: '#00D2FF'
-    },
-    {
-      keyword: '100W charger',
-      bucket: 'lifestyle',
-      avgInterest: 8,
-      adHook: '“One desk charger for laptop, phone and travel.” Demonstrate ports, laptop compatibility and packability.',
-      badgeColor: '#FFB300'
-    }
-  ];
-
-  // 40 Meta Ads Data from Ad Library
-  const competitorAds = [
-    {
-      id: 'ad-1',
-      brand: 'Portronics',
-      title: 'Muffs M6 – Made for Music, Movies & More',
-      type: 'Static Banner',
-      hook: 'Cinema sound in your backpack. 50h playback with ultra-soft cushions.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '28 days active',
-      tag: 'Broad Merchandising',
-      category: 'Audio',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-2',
-      brand: 'Portronics',
-      title: 'Play Longer with Twins One',
-      type: 'Static Commerce',
-      hook: 'Switch effortlessly between work and play with dual device pairing.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '21 days active',
-      tag: 'Value Promotion',
-      category: 'Audio',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-3',
-      brand: 'Portronics',
-      title: 'Stylish, Silent & Smart – Meet Key11 Combo',
-      type: 'Static Banner',
-      hook: 'Smart tech, cute setup – now that’s a vibe.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '16 days active',
-      tag: 'Desk Setup',
-      category: 'Peripherals',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-4',
-      brand: 'Portronics',
-      title: 'Beem 560 - Smart LED Netflix Projector',
-      type: 'Video Ad',
-      hook: 'Turn your bedroom ceiling into a 150-inch private cinema.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '35 days active',
-      tag: 'Long Running Winner',
-      category: 'Entertainment',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-5',
-      brand: 'Portronics',
-      title: 'Adapto 65W GaN Fast Charger',
-      type: 'Static Ad',
-      hook: 'One compact adapter for iPhone, Android, and your Type-C laptop.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '14 days active',
-      tag: 'Feature Led',
-      category: 'Charging',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-6',
-      brand: 'Portronics',
-      title: 'Konnect CL Type-C to Lightning Cable',
-      type: 'Static Ad',
-      hook: 'Unbreakable nylon braided fast charging cable with 12-month warranty.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '42 days active',
-      tag: 'Utility Volume',
-      category: 'Cables',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-7',
-      brand: 'StuffCool',
-      title: 'Mega 20000mAh 65W Laptop Power Bank',
-      type: 'Video Reel',
-      hook: 'Charge your MacBook anywhere. Full 65W PD output in your backpack.',
-      offer: 'Free Fast Delivery + Cable Included',
-      cta: 'Shop now',
-      runningDays: '32 days active',
-      tag: 'High Wattage Winner',
-      category: 'Power Banks',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-8',
-      brand: 'StuffCool',
-      title: 'Neutron 33W Tiny GaN Fast Charger',
-      type: 'Static Ad',
-      hook: 'Smaller than an iPhone camera bump. Powers iPhones & Samsungs to 50% in 25 mins.',
-      offer: 'Standard Warranty Included',
-      cta: 'Shop now',
-      runningDays: '19 days active',
-      tag: 'Form Factor Hook',
-      category: 'Chargers',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-9',
-      brand: 'StuffCool',
-      title: 'Magnetic MagSafe Wireless Powerbank with Stand',
-      type: 'Video Reel',
-      hook: 'Snap. Stand. Binge watch while wireless charging your iPhone 15 & 16.',
-      offer: 'Special Bundle Pricing',
-      cta: 'Shop now',
-      runningDays: '27 days active',
-      tag: 'Lifestyle MagSafe',
-      category: 'Power Banks',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-10',
-      brand: 'StuffCool',
-      title: 'Centurion 100W 4-Port Fast Desktop Charger',
-      type: 'Static Ad',
-      hook: 'Replace 4 bulky adapters with one sleek GaN charging hub.',
-      offer: 'Free Worldwide Delivery',
-      cta: 'Shop now',
-      runningDays: '15 days active',
-      tag: 'Desk Heavy Duty',
-      category: 'Chargers',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-11',
-      brand: 'StuffCool',
-      title: 'Type-C 100W Braided Cable with LED Wattage Display',
-      type: 'Video Ad',
-      hook: 'See your real-time charging speed right on the cable screen.',
-      offer: 'Instant Dispatch',
-      cta: 'Shop now',
-      runningDays: '38 days active',
-      tag: 'Visual Proof Ad',
-      category: 'Cables',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-12',
-      brand: 'StuffCool',
-      title: 'PowerBolt 25000mAh 140W MacBook Pro Monster',
-      type: 'Video Reel',
-      hook: 'Fast charge a 16-inch M3 Max MacBook Pro at full throttle anywhere on Earth.',
-      offer: 'Premium Metal Finish',
-      cta: 'Shop now',
-      runningDays: '12 days active',
-      tag: 'Extreme Power Spec',
-      category: 'Power Banks',
-      color: '#00D2FF'
-    }
-  ];
-
-  const filteredAds = competitorAds.filter(ad => {
-    if (selectedCompetitor !== 'all' && ad.brand.toLowerCase() !== selectedCompetitor) return false;
-    if (adFilterType !== 'all' && ad.category.toLowerCase() !== adFilterType.toLowerCase()) return false;
-    return true;
-  });
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-      
-      {/* ── HEADER BANNER & TIMELINE CARDS ───────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(124, 117, 255, 0.12)', borderRadius: '100px', border: '1px solid rgba(124, 117, 255, 0.3)', marginBottom: '8px' }}>
-            <Sparkles size={13} color="#7C75FF" />
-            <span style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              AUTONOMOUS AD INTELLIGENCE ENGINE
-            </span>
-          </div>
-          <h1 style={{ fontSize: '32px', color: '#fff', margin: '0 0 6px 0', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
-            Intelligence & Strategic Reports
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', margin: 0 }}>
-            Bi-weekly Meta Ad Library competitor scans and monthly India search demand trend reports for {brandName}.
-          </p>
+  const listBlock = (
+    label: string,
+    items: string[] | undefined,
+    color: string,
+    Icon: typeof Target,
+    copyable = false,
+  ) => {
+    if (!items || !items.length) return null;
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '16px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Icon size={15} color={color} />
+          <span style={{ fontSize: '11px', fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {label}
+          </span>
         </div>
-
-        {/* ── TWO DEDICATED ACTION BUTTONS WITH COOLDOWN UNLOCK LOCKS ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          
-          {/* Button 1: Sync 2 Weeks Competitor Ads */}
-          <button
-            onClick={handleSyncCompetitorAds}
-            disabled={isSyncingAds || !!adsLockedUntil}
-            style={{
-              background: adsLockedUntil ? 'rgba(255, 255, 255, 0.04)' : 'rgba(124, 117, 255, 0.15)',
-              border: adsLockedUntil ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(124, 117, 255, 0.4)',
-              color: adsLockedUntil ? 'var(--text-muted)' : '#7C75FF',
-              padding: '9px 18px',
-              borderRadius: '100px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: adsLockedUntil ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.2s ease',
-              boxShadow: adsLockedUntil ? 'none' : '0 0 14px rgba(124, 117, 255, 0.15)'
-            }}
-          >
-            {adsLockedUntil ? (
-              <>
-                <Lock size={13} color="var(--text-muted)" />
-                <span>2-Wk Ads Synced (Next: {adsLockedUntil})</span>
-              </>
-            ) : isSyncingAds ? (
-              <>
-                <RefreshCw size={13} className="animate-spin" />
-                <span>Syncing Meta Ads...</span>
-              </>
-            ) : (
-              <>
-                <RefreshCw size={13} />
-                <span>Sync 2 Weeks Competitor Ads</span>
-              </>
-            )}
-          </button>
-
-          {/* Button 2: Generate Monthly Report */}
-          <button
-            onClick={handleGenerateMonthlyReport}
-            disabled={isGeneratingMonthly || !!monthlyLockedUntil}
-            style={{
-              background: monthlyLockedUntil ? 'rgba(255, 255, 255, 0.04)' : 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
-              border: monthlyLockedUntil ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-              color: monthlyLockedUntil ? 'var(--text-muted)' : '#000000',
-              padding: '9px 20px',
-              borderRadius: '100px',
-              fontSize: '13px',
-              fontWeight: 800,
-              cursor: monthlyLockedUntil ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.2s ease',
-              boxShadow: monthlyLockedUntil ? 'none' : '0 4px 18px rgba(0, 230, 118, 0.35)'
-            }}
-          >
-            {monthlyLockedUntil ? (
-              <>
-                <Lock size={13} color="var(--text-muted)" />
-                <span>Monthly Report Generated (Next: {monthlyLockedUntil})</span>
-              </>
-            ) : isGeneratingMonthly ? (
-              <>
-                <Sparkles size={13} className="animate-spin" />
-                <span>Generating Report...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles size={13} />
-                <span>Generate Monthly Report 🚀</span>
-              </>
-            )}
-          </button>
-
-        </div>
-      </div>
-
-      {/* ── 2 FREQUENCY STATUS CARDS ──────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-        
-        {/* Card 1: Bi-weekly Competitor Analysis */}
-        <div
-          onClick={() => setActiveTab('competitor_ads')}
-          className="glow-card"
-          style={{
-            background: activeTab === 'competitor_ads' ? 'linear-gradient(135deg, rgba(28, 24, 45, 0.9) 0%, rgba(12, 10, 22, 0.98) 100%)' : '#0a0a12',
-            border: activeTab === 'competitor_ads' ? '1.5px solid #7C75FF' : '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '20px',
-            padding: '22px 26px',
-            cursor: 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            boxShadow: activeTab === 'competitor_ads' ? '0 8px 30px rgba(124, 117, 255, 0.2)' : 'none',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(124, 117, 255, 0.15)', border: '1px solid rgba(124, 117, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ShieldCheck size={22} color="#7C75FF" />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                  Competitor Ad Analysis
-                </h3>
-                <span style={{ fontSize: '10.5px', background: 'rgba(124, 117, 255, 0.2)', color: '#7C75FF', border: '1px solid rgba(124, 117, 255, 0.4)', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
-                  BI-WEEKLY (14 DAYS)
-                </span>
-              </div>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                40 Active Meta Ads scanned • Next scan {adsLockedUntil ? `unlocked on ${adsLockedUntil}` : 'ready to sync'}
-              </p>
-            </div>
-          </div>
-          <ArrowRight size={18} color={activeTab === 'competitor_ads' ? '#7C75FF' : 'var(--text-muted)'} />
-        </div>
-
-        {/* Card 2: Monthly Market Research */}
-        <div
-          onClick={() => setActiveTab('market_research')}
-          className="glow-card"
-          style={{
-            background: activeTab === 'market_research' ? 'linear-gradient(135deg, rgba(20, 35, 25, 0.9) 0%, rgba(10, 18, 14, 0.98) 100%)' : '#0a0a12',
-            border: activeTab === 'market_research' ? '1.5px solid #00E676' : '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '20px',
-            padding: '22px 26px',
-            cursor: 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            boxShadow: activeTab === 'market_research' ? '0 8px 30px rgba(0, 230, 118, 0.2)' : 'none',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 230, 118, 0.15)', border: '1px solid rgba(0, 230, 118, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TrendingUp size={22} color="#00E676" />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                  India Market Trend Radar
-                </h3>
-                <span style={{ fontSize: '10.5px', background: 'rgba(0, 230, 118, 0.2)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.4)', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
-                  MONTHLY (30 DAYS)
-                </span>
-              </div>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                Festive Run-Up & Search Intent • Next issue {monthlyLockedUntil ? `unlocked on ${monthlyLockedUntil}` : 'ready to generate'}
-              </p>
-            </div>
-          </div>
-          <ArrowRight size={18} color={activeTab === 'market_research' ? '#00E676' : 'var(--text-muted)'} />
-        </div>
-
-      </div>
-
-      {/* ════════════════════════════════════════════════════════════ */}
-      {/* TAB 1: COMPETITOR AD LIBRARY (BI-WEEKLY SCANS)               */}
-      {/* ════════════════════════════════════════════════════════════ */}
-      {activeTab === 'competitor_ads' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          
-          {/* Executive Summary Card */}
-          <div className="glow-card" style={{ background: '#0a0a12', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
-              <span style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {brandName.toUpperCase()} COMPETITOR AD REPORT · IN · META ADS
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Observed on August 18, 2026</span>
-            </div>
-            <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: 0, lineHeight: 1.6 }}>
-              <strong>Portronics</strong> uses broad, feature-led electronics merchandising with a recurring 10% coupon, while <strong>StuffCool</strong> owns the sharper high-wattage, laptop-ready power narrative. The opening for <strong>{brandName}</strong> is to turn its charging range into scenario-led proof: pocket backup, cable-free iPhone charging, and dependable laptop power—without relying on spec density alone.
-            </p>
-          </div>
-
-          {/* Where We Win + Blue / Red Ocean Moves */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
-            
-            {/* Where We Win */}
-            <div className="glow-card" style={{ background: 'linear-gradient(135deg, rgba(0, 230, 118, 0.08) 0%, rgba(10, 20, 15, 0.9) 100%)', border: '1.5px solid rgba(0, 230, 118, 0.3)', borderRadius: '18px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles size={18} color="#00E676" />
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                  Where We Win ({brandName} Advantage)
-                </h4>
-              </div>
-              <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.85)', margin: 0, lineHeight: 1.5 }}>
-                {brandName} can own <strong>practical, proudly Indian charging confidence</strong>: modern power for the exact device and moment people depend on.
-              </p>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div>• Neither competitor consistently organizes the charging decision around everyday scenarios.</div>
-                <div>• Portronics lacks charging authority; StuffCool underplays approachable convenience.</div>
-                <div>• Both use universal <em>"Shop now"</em>, leaving room for decision-support creative.</div>
-              </div>
-            </div>
-
-            {/* Blue Ocean / Red Ocean Strategy */}
-            <div className="glow-card" style={{ background: 'linear-gradient(135deg, rgba(124, 117, 255, 0.08) 0%, rgba(15, 12, 25, 0.9) 100%)', border: '1.5px solid rgba(124, 117, 255, 0.3)', borderRadius: '18px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Target size={18} color="#7C75FF" />
-                <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                  Blue Ocean & Red Ocean Moves
-                </h4>
-              </div>
-              <div style={{ fontSize: '12.5px', color: 'rgba(255, 255, 255, 0.85)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div>🌊 <strong style={{ color: '#00D2FF' }}>Blue Ocean:</strong> Scenario-led charging confidence (Commute, campus, MacBook workday, iPhone desk).</div>
-                <div>🥊 <strong style={{ color: '#ff4757' }}>Red Ocean:</strong> Win high-power proof with transparent workday compatibility rather than generic superlatives.</div>
-              </div>
-              <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                Action: Produce a 4-part scenario Meta creative series & guided choice carousel.
-              </div>
-            </div>
-
-          </div>
-
-          {/* Ad Library Telemetry Explorer */}
-          <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div>
-                <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                  Active Meta Ads in India ({filteredAds.length} Displayed)
-                </h3>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                  Scraped and classified from Meta Ad Library • Updated bi-weekly
-                </span>
-              </div>
-
-              {/* Filters */}
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <select
-                  value={selectedCompetitor}
-                  onChange={e => setSelectedCompetitor(e.target.value as any)}
-                  style={{ background: '#141420', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12.5px' }}
-                >
-                  <option value="all">All Brands (Portronics + StuffCool)</option>
-                  <option value="portronics">Portronics Only (20 Ads)</option>
-                  <option value="stuffcool">StuffCool Only (20 Ads)</option>
-                </select>
-
-                <select
-                  value={adFilterType}
-                  onChange={e => setAdFilterType(e.target.value)}
-                  style={{ background: '#141420', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12.5px' }}
-                >
-                  <option value="all">All Categories</option>
-                  <option value="charging">Power & Charging</option>
-                  <option value="audio">Audio & TWS</option>
-                  <option value="cables">Cables</option>
-                  <option value="peripherals">Desk & Accessories</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Ad Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
-              {filteredAds.map((ad) => (
-                <div
-                  key={ad.id}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+          {items.map((item, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px',
+              fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5,
+            }}>
+              <span>{copyable ? `"${item}"` : item}</span>
+              {copyable && (
+                <button
+                  onClick={() => copy(item)}
+                  title="Copy"
                   style={{
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    border: '1px solid rgba(255, 255, 255, 0.07)',
-                    borderRadius: '16px',
-                    padding: '18px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: '12px'
+                    flexShrink: 0, background: copied === item ? 'rgba(0,230,118,0.18)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${copied === item ? '#00E676' : 'rgba(255,255,255,0.12)'}`,
+                    color: copied === item ? '#00E676' : '#fff', borderRadius: '100px',
+                    padding: '3px 9px', fontSize: '10.5px', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '4px',
                   }}
                 >
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '11px', background: `${ad.color}22`, color: ad.color, border: `1px solid ${ad.color}44`, padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
-                        {ad.brand}
-                      </span>
-                      <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{ad.runningDays}</span>
-                    </div>
-
-                    <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>
-                      {ad.title}
-                    </h4>
-
-                    <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)', margin: '0 0 10px 0', lineHeight: 1.45 }}>
-                      "{ad.hook}"
-                    </p>
-                  </div>
-
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '11.5px', color: '#00E676' }}>
-                      🏷️ {ad.offer}
-                    </div>
-                    <button
-                      onClick={() => handleCopy(ad.hook)}
-                      style={{
-                        background: copiedHook === ad.hook ? 'rgba(0, 230, 118, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid',
-                        borderColor: copiedHook === ad.hook ? '#00E676' : 'rgba(255, 255, 255, 0.1)',
-                        color: copiedHook === ad.hook ? '#00E676' : '#fff',
-                        padding: '4px 10px',
-                        borderRadius: '100px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      {copiedHook === ad.hook ? <Check size={11} /> : <Copy size={11} />}
-                      <span>{copiedHook === ad.hook ? 'Copied' : 'Copy Hook'}</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  {copied === item ? <Check size={10} /> : <Copy size={10} />}
+                  {copied === item ? 'Copied' : 'Copy'}
+                </button>
+              )}
             </div>
-          </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
-          {/* 3 Core Action Items */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#7C75FF', marginBottom: '4px' }}>01</div>
-              <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Build Scenario Series</h4>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                Scenario-first creative gives {brandName} a more ownable route than broad gadget merchandising.
-              </p>
-            </div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#00D2FF', marginBottom: '4px' }}>02</div>
-              <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Create Choice Carousel</h4>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                A guided product-selection carousel reduces choice friction left unresolved by universal Shop now buttons.
-              </p>
-            </div>
+      {/* ── HEADER ───────────────────────────────────────────────── */}
+      <div>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px',
+          background: 'rgba(124, 117, 255, 0.12)', borderRadius: '100px',
+          border: '1px solid rgba(124, 117, 255, 0.3)', marginBottom: '8px',
+        }}>
+          <Sparkles size={13} color="#7C75FF" />
+          <span style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Competitor Intelligence
+          </span>
+        </div>
+        <h1 style={{ fontSize: '32px', color: '#fff', margin: '0 0 6px 0', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+          Market Intelligence
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', margin: 0, maxWidth: '720px' }}>
+          Research any competitor of {brandName} from what is publicly on their site — how they
+          position themselves, who they speak to, the offers they lead with and the copy they run.
+          Every report links back to the pages it was read from.
+        </p>
+      </div>
 
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#00E676', marginBottom: '4px' }}>03</div>
-              <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Prove Laptop Power</h4>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                StuffCool dominates high-wattage claims; real workday demo with compatibility proof wins conversion.
-              </p>
-            </div>
-          </div>
+      {/* ── RESEARCH FORM ────────────────────────────────────────── */}
+      <form onSubmit={runResearch} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 320px', minWidth: 0 }}>
+          <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="competitor.com or a brand name"
+            aria-label="Competitor website or brand name"
+            disabled={!workspaceId}
+            style={{
+              width: '100%', background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.14)', borderRadius: '100px',
+              padding: '11px 18px 11px 38px', color: '#fff', fontSize: '13.5px', outline: 'none',
+            }}
+          />
+        </div>
+        <GlowButton
+          variant="glow"
+          disabled={researching || !input.trim() || !workspaceId}
+          style={{ fontSize: '13px', padding: '11px 22px', opacity: researching || !input.trim() ? 0.6 : 1 }}
+        >
+          {researching ? 'Researching…' : 'Research competitor'}
+        </GlowButton>
+      </form>
 
+      {!workspaceId && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '9px', padding: '12px 16px', borderRadius: '12px',
+          background: 'rgba(255,193,7,0.07)', border: '1px solid rgba(255,193,7,0.28)',
+          color: '#ffc107', fontSize: '13px',
+        }}>
+          <AlertCircle size={15} />
+          Select a workspace to run competitor research.
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════════ */}
-      {/* TAB 2: MARKET RESEARCH & TRENDS (MONTHLY EDITION)             */}
-      {/* ════════════════════════════════════════════════════════════ */}
-      {activeTab === 'market_research' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          
-          {/* Monthly Report Overview Banner */}
-          <div className="glow-card" style={{ background: '#0a0a12', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
-              <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                INDIA CHARGING TRENDS: {brandName.toUpperCase()}’S FESTIVE RUN-UP (MONTHLY EDITION)
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>August 17, 2025 – August 22, 2026 Review</span>
-            </div>
-            <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: 0, lineHeight: 1.6 }}>
-              India’s charging category is still led by broad utility searches: <strong>“power bank” (84)</strong> and <strong>“charging cable” (78)</strong>. Emerging lanes are high-intent: <strong>“MagSafe power bank” (24)</strong> and <strong>“fast charger”</strong> reaching annual highs in mid-August. Short video proof and Diwali festive bundles are the primary conversion levers for {brandName}.
-            </p>
-          </div>
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            style={{
+              display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '13px 16px', borderRadius: '12px',
+              background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.3)',
+              color: '#ff6b7a', fontSize: '13px', lineHeight: 1.5,
+            }}
+          >
+            <AlertCircle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <span>{error}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* Strategic Keywords & Copyable Hooks */}
-          <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <h3 style={{ fontSize: '18px', color: '#fff', margin: '0 0 16px 0', fontWeight: 800 }}>
-              Strategic Keywords & High-Converting Ad Hooks
-            </h3>
+      {/* ── EMPTY STATE ──────────────────────────────────────────── */}
+      {!loading && !reports.length && (
+        <div className="glow-card" style={{
+          background: '#0a0a12', border: '1px dashed rgba(255,255,255,0.14)', borderRadius: '20px',
+          padding: '38px 26px', textAlign: 'center',
+        }}>
+          <Globe size={30} color="#7C75FF" style={{ opacity: 0.8 }} />
+          <h3 style={{ fontSize: '17px', color: '#fff', margin: '12px 0 6px', fontWeight: 700 }}>
+            No competitors researched yet
+          </h3>
+          <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: '0 auto', maxWidth: '540px', lineHeight: 1.6 }}>
+            Enter a competitor above and their public pages will be read and broken down into
+            positioning, audience, offers, hooks and CTAs. Reports are saved here.
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '14px auto 0', maxWidth: '540px', lineHeight: 1.6 }}>
+            This does not scan competitors' paid ads: Meta's Ad Library API returns only
+            political and social-issue ads outside the EU, and Google's Ads Transparency Center
+            has no API, so no product can honestly offer that feed.
+          </p>
+        </div>
+      )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {strategicKeywords.map((item, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    border: '1px solid rgba(255, 255, 255, 0.06)',
-                    borderRadius: '14px',
-                    padding: '14px 18px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '12px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${item.badgeColor}22`, border: `1px solid ${item.badgeColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.badgeColor, fontWeight: 900, fontSize: '14px' }}>
-                      {item.avgInterest}
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <h4 style={{ fontSize: '15px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                          {item.keyword}
-                        </h4>
-                        <span style={{ fontSize: '10.5px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
-                          {item.bucket}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', margin: '4px 0 0 0' }}>
-                        {item.adHook}
-                      </p>
-                    </div>
-                  </div>
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {[0, 1].map((i) => (
+            <div key={i} className="skeleton" style={{ height: '72px', borderRadius: '16px', background: 'rgba(255,255,255,0.03)' }} />
+          ))}
+        </div>
+      )}
 
-                  <button
-                    onClick={() => handleCopy(item.adHook)}
-                    style={{
-                      background: copiedHook === item.adHook ? 'rgba(0, 230, 118, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid',
-                      borderColor: copiedHook === item.adHook ? '#00E676' : 'rgba(255, 255, 255, 0.12)',
-                      color: copiedHook === item.adHook ? '#00E676' : '#fff',
-                      padding: '6px 14px',
-                      borderRadius: '100px',
-                      fontSize: '11.5px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px'
-                    }}
+      {/* ── RESEARCHED COMPETITORS ───────────────────────────────── */}
+      {!!reports.length && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {reports.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setSelectedId(r.id)}
+              style={{
+                background: r.id === selectedId ? 'rgba(124,117,255,0.16)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${r.id === selectedId ? 'rgba(124,117,255,0.5)' : 'rgba(255,255,255,0.09)'}`,
+                color: r.id === selectedId ? '#fff' : 'var(--text-secondary)',
+                borderRadius: '100px', padding: '7px 16px', fontSize: '13px', fontWeight: 700,
+                cursor: 'pointer', transition: 'all 0.15s ease',
+              }}
+            >
+              {r.competitor}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── REPORT ───────────────────────────────────────────────── */}
+      {selected && (
+        <motion.div
+          key={selected.id}
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="glow-card"
+          style={{
+            background: '#0a0a12', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px',
+            padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px',
+          }}
+        >
+          {/* Title row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px', flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ fontSize: '21px', color: '#fff', margin: 0, fontWeight: 800 }}>{selected.competitor}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px', flexWrap: 'wrap' }}>
+                {/* Skipped when the URL only repeats the name that is already the heading -
+                    typing "acme.com" would otherwise print it twice, one line apart. */}
+                {selected.site_url && selected.site_url.replace(/^https?:\/\//, '').replace(/\/$/, '') !== selected.competitor.trim().toLowerCase() && (
+                  <a
+                    href={selected.site_url} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: '12.5px', color: '#7C75FF', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
-                    {copiedHook === item.adHook ? <Check size={12} /> : <Copy size={12} />}
-                    <span>{copiedHook === item.adHook ? 'Copied!' : 'Copy Hook'}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Winning Patterns & Creator References */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
-            <div className="glow-card" style={{ background: 'rgba(0, 230, 118, 0.04)', border: '1px solid rgba(0, 230, 118, 0.25)', borderRadius: '18px', padding: '22px' }}>
-              <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
-                Winning Patterns in India Content
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
-                <div>• <strong>Real Test Short Videos:</strong> Battery-vs-phone drain challenges outperforming static specs.</div>
-                <div>• <strong>Built-in Cable Visuals:</strong> Instantly understood in metro, college, and desk setups.</div>
-                <div>• <strong>Diwali Festive Bundles (Nov 2026):</strong> Transition from pure utility to gifting & travel upgrade sets starting September.</div>
+                    {selected.site_url.replace(/^https?:\/\//, '')}
+                    <ExternalLink size={11} />
+                  </a>
+                )}
+                {selected.researched_at && (
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Researched {formatWhen(selected.researched_at)}
+                  </span>
+                )}
               </div>
             </div>
 
-            <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '18px', padding: '22px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
-                Creator Video References
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {[
-                  { title: 'Thor Wala Powerbank ⚡ #shorts', url: 'https://www.youtube.com/watch?v=mpuqxOWKdZ8' },
-                  { title: 'New Fast PowerBank From Xiaomi - Test !', url: 'https://www.youtube.com/watch?v=plp4hkEEQ0c' },
-                  { title: 'Throw Away Your Charging Cables 🚨', url: 'https://www.youtube.com/watch?v=pNJlpb79oSA' }
-                ].map((v, i) => (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => runResearch(undefined, selected.competitor)}
+                disabled={researching}
+                style={{
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+                  color: '#fff', borderRadius: '100px', padding: '7px 15px', fontSize: '12px',
+                  fontWeight: 700, cursor: researching ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px', opacity: researching ? 0.6 : 1,
+                }}
+              >
+                <RefreshCw size={12} className={researching ? 'animate-spin' : undefined} />
+                Refresh
+              </button>
+              <button
+                onClick={() => removeReport(selected.id)}
+                title="Delete this report"
+                style={{
+                  background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.25)',
+                  color: '#ff6b7a', borderRadius: '100px', padding: '7px 12px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center',
+                }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+
+          {selected.positioning && (
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Positioning
+              </span>
+              <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.9)', margin: '6px 0 0', lineHeight: 1.6 }}>
+                {selected.positioning}
+              </p>
+            </div>
+          )}
+
+          {(selected.audience || selected.tone) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px,100%), 1fr))', gap: '14px' }}>
+              {selected.audience && (
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '15px 18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px' }}>
+                    <Users size={14} color="#00D2FF" />
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#00D2FF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audience</span>
+                  </div>
+                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.55 }}>{selected.audience}</p>
+                </div>
+              )}
+              {selected.tone && (
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '15px 18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px' }}>
+                    <MessageSquareQuote size={14} color="#00E676" />
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tone</span>
+                  </div>
+                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.55 }}>{selected.tone}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px,100%), 1fr))', gap: '14px' }}>
+            {listBlock('Offers', selected.offers, '#00E676', Target)}
+            {listBlock('Hooks they run', selected.hooks, '#7C75FF', Megaphone, true)}
+            {listBlock('Calls to action', selected.ctas, '#00D2FF', ArrowRight)}
+          </div>
+
+          {selected.notes && (
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              {selected.notes}
+            </p>
+          )}
+
+          {/* Sources: shown so every claim above can be checked against what was read. */}
+          {!!selected.sources?.length && (
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Read from {selected.sources.length} source{selected.sources.length > 1 ? 's' : ''}
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '8px' }}>
+                {selected.sources.map((s, i) => (
                   <a
-                    key={i}
-                    href={v.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 14px', textDecoration: 'none', color: '#fff', fontSize: '12.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                    style={{
+                      fontSize: '12.5px', color: '#7C75FF', display: 'flex', alignItems: 'center', gap: '6px',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}
                   >
-                    <span>{v.title}</span>
-                    <ExternalLink size={13} color="#7C75FF" />
+                    <ExternalLink size={11} style={{ flexShrink: 0 }} />
+                    {s.title || s.url}
                   </a>
                 ))}
               </div>
             </div>
-          </div>
+          )}
 
-        </div>
+          {!!selected.hooks?.length && onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('studio')}
+              style={{
+                alignSelf: 'flex-start', background: 'rgba(124,117,255,0.14)',
+                border: '1px solid rgba(124,117,255,0.4)', color: '#7C75FF', borderRadius: '100px',
+                padding: '9px 18px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '7px',
+              }}
+            >
+              <Sparkles size={13} />
+              Write against these angles in Creative Studio
+              <ArrowRight size={13} />
+            </button>
+          )}
+        </motion.div>
       )}
-
     </div>
   );
 };

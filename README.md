@@ -72,3 +72,72 @@ npm run build
 * **Accent Core**: `hsl(243, 100%, 66%)` (Glow Indigo Violet)
 * **Success Mint**: `hsl(157, 100%, 50%)` (AEO Citations Green)
 * **Glass Card Backdrop**: `rgba(255, 255, 255, 0.01)` with `backdrop-filter: blur(20px)`
+
+---
+
+## 🧠 Brand Intelligence Pipeline (multi-tenant RAG)
+
+Onboarding a brand URL now produces a real **brand kit**, and two scheduled syncs keep a
+**competitor ad vault** and a **market/search radar** fresh beside it. Everything is scoped
+to a workspace, which is the tenancy boundary.
+
+### 1. Ingestion & extraction — `backend/core/brand_kit.py`
+Deterministic first, LLM second, because the two answer different kinds of question:
+
+* **Design tokens** are parsed from the site's own CSS. Declared custom properties
+  (`--color-primary: #FF6B00`) win, because they carry a *name and a role*; frequency
+  counting is the fallback for sites that ship no variables.
+* **Typography** from Google Fonts links, `@font-face` and `font-family` declarations.
+* **Logos** from the markup, best evidence first: `<img class="logo">` → inline `<svg>` →
+  Open Graph image → favicon.
+* **Identity** (overview, mission, positioning, USPs, benefits, personality, tone of voice,
+  personas + ad hooks, business model) via one **Pydantic-validated** LLM pass. Every field
+  may come back empty — a thin site yields blanks, not a fabricated mission statement.
+
+### 2. Scheduled external syncs — `backend/core/intel_sync.py`
+| Sync | Cadence | Source | Table |
+|---|---|---|---|
+| Competitor ads | every **2 weeks** | Meta Ad Library API / Apify | `competitor_ads`, `competitor_ad_strategies` |
+| Market & search trends | every **4 weeks** | SerpApi or pytrends + YouTube Data API v3 | `market_trend_reports` |
+
+Both are **off by default** (`ENABLE_INTEL_SYNCS=false`) and can always be run on demand
+from Market Intelligence → *Sync now*. Every run writes a `sync_runs` row, so a job that has
+been failing for a month is visible rather than looking like a quiet market.
+
+> **⚠️ What the Meta Ad Library API can actually do.** `/ads_archive` returns *all* active
+> ads, commercial included, **only for EU/EEA countries** — the DSA requires it there. For
+> every other market, India included, the API is limited to
+> `ad_type=POLITICAL_AND_ISSUE_ADS`. The Ad Library *website* shows commercial ads
+> everywhere; the API does not. So EU competitors need only `META_AD_LIBRARY_TOKEN`, and
+> non-EU markets additionally need a third-party collector (`APIFY_TOKEN`). With neither
+> configured the vault stays empty **and says why** — it never invents ads.
+
+### 3. Multi-tenant storage
+* **PostgreSQL** — every new table carries an indexed `workspace_id`, and every route
+  resolves the workspace through an ownership check before reading a row.
+* **Qdrant** — one collection, partitioned by a mandatory `workspace_id` filter plus a
+  `type` filter (`onboarding_scrape` | `competitor_ad` | `market_trend`). The filter is
+  built inside `core/rag.py`, so no caller can forget it.
+
+### 4. Hybrid RAG router — `backend/core/rag.py`
+| Question | Store | Why |
+|---|---|---|
+| "What's our CTA hex?" | Postgres | Exact values must be literal. Nearest-neighbour search returns something *hex-shaped*, not the right hex. |
+| "What angle are rivals not running?" | Qdrant | There is no key to look this up by; the question is semantic. |
+
+`get_brand_context()` — which every agent already calls — now returns both, so campaign and
+creative briefs are grounded in live competitor tactics and rising search intent rather than
+the site crawl alone.
+
+### API
+```
+GET  /api/workspaces/{id}/brand-kit
+GET  /api/workspaces/{id}/competitor-ads          POST .../competitor-ads/sync
+GET  /api/workspaces/{id}/market-trends           POST .../market-trends/sync
+POST /api/workspaces/{id}/intelligence/query      GET  .../intelligence/status
+```
+
+### Migration
+```bash
+cd backend && alembic upgrade head
+```

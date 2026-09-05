@@ -316,23 +316,30 @@
   height: 100vh;
   position: sticky;
   top: 0;
+  /* The collapse button animates the width; without this it snapped. overflow:hidden keeps
+     the labels from spilling out mid-animation, and the stacking context keeps the sidebar
+     above the scrolled content. */
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease;
+  overflow: hidden;
+  z-index: 100;
 }
 
 .sidebar-header {
-  padding: 24px 20px;
+  padding: 20px 16px;
   border-bottom: 1px solid var(--border-color);
+  transition: padding 0.3s ease;
 }
 
 .sidebar-menu {
-  padding: 20px 12px;
+  padding: 16px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
-  /* min-height:0 is required for overflow-y to work on a flex item. Without it the
-     item keeps its default min-height:auto, refuses to shrink below its content,
-     and grows past the sidebar instead of scrolling - which silently clipped the
-     lower menu entries (Campaign Manager onward) with no scrollbar to reach them. */
+  /* min-height:0 is required for overflow-y to work on a flex item. Without it the item
+     keeps its default min-height:auto, refuses to shrink below its content, and grows past
+     the sidebar instead of scrolling - which silently clipped the lower menu entries
+     (Campaign Manager onward) with no scrollbar to reach them. */
   min-height: 0;
   overflow-y: auto;
 }
@@ -341,25 +348,28 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   text-decoration: none;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   transition: var(--transition-fast);
 }
 
 .sidebar-item:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.02);
+  background: linear-gradient(to right, #181824 0%, #2e2e3e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .sidebar-item.active {
-  color: var(--text-primary);
-  background: rgba(90, 82, 255, 0.08);
-  border: 1px solid rgba(90, 82, 255, 0.15);
+  color: #ffffff;
+  background-image: linear-gradient(to right, #12121c 0%, #3c3c4f 51%, #12121c 100%);
+  background-size: 200% auto;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .sidebar-item-left {
@@ -370,12 +380,12 @@
 
 .sidebar-footer {
   margin-top: auto;
-  padding-top: 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 20px;
+  padding: 16px;
   display: flex;
   align-items: center;
   gap: 12px;
+  transition: padding 0.3s ease;
 }
 
 @media (max-width: 1024px) {
@@ -528,8 +538,8 @@
 
 /* Dashboard View Areas */
 .dashboard-content {
-  padding: 40px;
-  max-width: 1400px;
+  padding: 36px 56px;
+  max-width: 1800px;
   width: 100%;
   margin: 0 auto;
   display: flex;
@@ -579,10 +589,6 @@
   flex-direction: column;
   gap: 16px;
   transition: var(--transition-smooth);
-  /* Grid items default to min-width:auto, so a long unbroken string (a target URL, or a
-     raw JSON error body from a failed crawl) forces the card wider than its track and
-     spills over the neighbouring card. */
-  min-width: 0;
 }
 
 .agent-status-card:hover {
@@ -633,7 +639,6 @@
   font-size: 12px;
   border-top: 1px solid var(--border-color);
   padding-top: 12px;
-  min-width: 0;
 }
 
 /* Each label/value row is a flex pair. Without these the value cannot shrink below its

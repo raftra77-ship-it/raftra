@@ -86,8 +86,36 @@ export const GA4Panel: React.FC<{ workspaceId: number | null }> = ({ workspaceId
   // TODO: this already calls the real POST /ga4/{id}/property under the hood via saveProperty.
   const openChangeProperty = () => { setPropertyDraft(status?.ga4_property_id || ''); setChangingProperty(true); };
   const confirmChangeProperty = () => { setPropInput(propertyDraft); setChangingProperty(false); saveProperty(); };
-  // TODO: replace with a real disconnect/revoke endpoint once one exists for GA4 specifically.
-  const disconnect = () => { setForceDisconnected(true); setMsg('Disconnected.'); };
+  // GA4 has no grant of its own — it rides the Search Console connection. So disconnecting
+  // here clears the selected property server-side rather than revoking Google access, which
+  // would silently take Search Console down with it. Use the Search Console panel for that.
+  const [disconnecting, setDisconnecting] = useState(false);
+  const disconnect = async () => {
+    if (!workspaceId) return;
+    if (!window.confirm(
+      'Disconnect Google Analytics?\n\nRaftra stops reading traffic data for this ' +
+      'property. Your Google account stays connected for Search Console. You can pick a ' +
+      'property again at any time.')) return;
+    setDisconnecting(true);
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/connectors/ga4/${workspaceId}/property`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ property_id: '' }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setForceDisconnected(true);
+        setStatus(s => (s ? { ...s, ga4_property_id: null } : s));
+        setPropInput('');
+        setMsg('Disconnected. Google Search Console is still connected.');
+      } else {
+        setMsg(d.detail || 'Could not disconnect. Please try again.');
+      }
+    } catch {
+      setMsg('Could not reach the server. Please try again.');
+    }
+    setDisconnecting(false);
+  };
 
   if (!status) return null;
 
@@ -184,7 +212,7 @@ export const GA4Panel: React.FC<{ workspaceId: number | null }> = ({ workspaceId
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button onClick={syncData} disabled={syncing || loading} style={btn('rgba(255,255,255,0.06)', syncing || loading)}>{(syncing || loading) && <Spinner />}Sync Data</button>
               <button onClick={openChangeProperty} style={btn('rgba(255,255,255,0.06)')}>Change Property</button>
-              <button onClick={disconnect} style={btn('rgba(255,92,92,0.1)')}>Disconnect</button>
+              <button onClick={disconnect} disabled={disconnecting} style={btn('rgba(255,92,92,0.1)', disconnecting)}>{disconnecting && <Spinner />}{disconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
             </div>
           )}
         </>

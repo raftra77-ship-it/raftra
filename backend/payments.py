@@ -184,3 +184,28 @@ async def razorpay_webhook(request: Request, db: Session = Depends(database.get_
             db.commit()
 
     return {"status": "success"}
+
+
+@router.get("/transactions")
+def list_transactions(db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    """This account's real payment history, newest first.
+
+    The billing screen listed four invoices as a fixture - fixed dates, fixed amounts,
+    fixed invoice numbers - with a Download button that alerted "Downloading invoice ...".
+    Transactions have been recorded here since Razorpay was wired up; nothing read them.
+    """
+    rows = (db.query(models.Transaction)
+              .filter(models.Transaction.owner_id == current_user.id)
+              .order_by(models.Transaction.created_at.desc())
+              .limit(50)
+              .all())
+    return [{
+        "id": t.id,
+        "amount": t.amount,
+        "currency": (t.currency or "inr").upper(),
+        "purpose": t.purpose,
+        "status": t.status,
+        "payment_id": t.razorpay_payment_id,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    } for t in rows]

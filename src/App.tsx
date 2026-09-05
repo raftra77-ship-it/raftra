@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { LandingPage } from './components/LandingPage';
 import './App.css';
@@ -60,6 +60,38 @@ function readToken(): { role?: string; exp?: number } | null {
 // Gate for every screen that shows account data. Previously only /dashboard was protected
 // (incidentally, inside a fetch effect) — /creator-dashboard and /onboarding rendered in
 // full for anonymous visitors, leaking a complete creator profile.
+/** Keeps a brand that has already onboarded out of the wizard.
+ *
+ *  Onboarding "kept appearing again and again" because nothing ever read the is_onboarded
+ *  flag the crawl writes - the wizard was reachable at /onboarding forever, and login
+ *  routed on whether a workspace row existed, which is true well before onboarding
+ *  finishes. This makes the completed state actually terminal.
+ *
+ *  Renders nothing until the check resolves rather than flashing the wizard first, and on
+ *  any error it lets the wizard through: being shown onboarding you did not need is
+ *  recoverable, being locked out of it when you do need it is not. */
+function RequireNotOnboarded({ children }: { children: React.ReactElement }) {
+  const navigate = useNavigate();
+  const [state, setState] = useState<'checking' | 'allow'>('checking');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) { setState('allow'); return; }
+    let cancelled = false;
+    fetch('/api/workspaces/onboarding-state', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled) return;
+        if (d && d.is_onboarded) navigate('/dashboard', { replace: true });
+        else setState('allow');
+      })
+      .catch(() => { if (!cancelled) setState('allow'); });
+    return () => { cancelled = true; };
+  }, [navigate]);
+
+  return state === 'allow' ? children : null;
+}
+
 function RequireAuth({ children, role }: { children: React.ReactElement; role?: 'brand' | 'creator' }) {
   const navigate = useNavigate();
   const payload = readToken();
@@ -175,7 +207,9 @@ export default function App() {
 
           <Route path="/onboarding" element={
             <RequireAuth>
-              <OnboardingWizard onComplete={handleOnboardingComplete} />
+              <RequireNotOnboarded>
+                <OnboardingWizard onComplete={handleOnboardingComplete} />
+              </RequireNotOnboarded>
             </RequireAuth>
           } />
 

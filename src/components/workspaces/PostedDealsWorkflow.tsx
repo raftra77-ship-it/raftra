@@ -137,49 +137,9 @@ export const BrandPostedDealsView: React.FC<{
     fetchBrandDeals();
   }, [workspaceId]);
 
-  // Load sample default deals if database is fresh
-  const sampleDeals: PostedDealItem[] = [
-    {
-      id: 101,
-      brand_name: 'Aura Premium',
-      campaign_name: 'Summer Festive UGC Campaign',
-      product_name: 'Aura Glow Serum',
-      description: 'Looking for lifestyle and beauty creators targeting young women aged 18-34 in India.',
-      platform: 'Instagram',
-      creator_category: 'Micro (10k - 100k)',
-      niche: 'Fashion & Beauty',
-      location: 'Delhi / Mumbai',
-      creators_required: 3,
-      total_budget: 50000,
-      budget_per_creator: 16667,
-      application_deadline: '20 Aug 2026',
-      status: 'ACTIVE',
-      applications_count: 8,
-      shortlisted_count: 3,
-      accepted_count: 1
-    },
-    {
-      id: 102,
-      brand_name: 'Aura Premium',
-      campaign_name: 'Product Launch & Unboxing Review',
-      product_name: 'Smart Earbuds Pro',
-      description: 'Tech and lifestyle creators needed for unboxing reels and honest review videos.',
-      platform: 'Instagram',
-      creator_category: 'Nano (1k - 10k)',
-      niche: 'Tech & Lifestyle',
-      location: 'India',
-      creators_required: 2,
-      total_budget: 30000,
-      budget_per_creator: 15000,
-      application_deadline: '25 Aug 2026',
-      status: 'REVIEWING',
-      applications_count: 3,
-      shortlisted_count: 1,
-      accepted_count: 0
-    }
-  ];
-
-  const displayDeals = deals.length > 0 ? deals : sampleDeals;
+  // Was `deals.length > 0 ? deals : sampleDeals`: a brand that had posted nothing saw
+  // two invented campaigns it could open, edit and review applicants for.
+  const displayDeals = deals;
 
   const handlePublishDeal = () => {
     fetch('/api/posted-deals/create', {
@@ -217,84 +177,30 @@ export const BrandPostedDealsView: React.FC<{
 
   const handleViewApplications = (deal: PostedDealItem) => {
     setSelectedDealForApps(deal);
-    const sampleApplicants: DealApplicationItem[] = [
-      {
-        id: 201,
-        deal_id: deal.id,
-        creator_handle: 'samairaa.r',
-        creator_name: 'Samaira Rao',
-        creator_avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-        creator_followers: '18.8k',
-        creator_engagement: '6.8%',
-        creator_location: 'Gurgaon, India',
-        match_score: 94,
-        proposal_text: 'Hey Aura team! I love your brand aesthetic and my audience actively engages with beauty & fashion UGC reels. Would love to create 1 high-converting Reel + 2 Stories!',
-        proposed_price: 15000,
-        availability_date: 'Immediate',
-        estimated_delivery_days: 5,
-        status: 'SUBMITTED'
-      },
-      {
-        id: 202,
-        deal_id: deal.id,
-        creator_handle: 'drishtiid06',
-        creator_name: 'Drishti Rawat',
-        creator_avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80',
-        creator_followers: '2.38k',
-        creator_engagement: '8.4%',
-        creator_location: 'Ghaziabad, India',
-        match_score: 88,
-        proposal_text: 'Excited for this opportunity! I can deliver high-quality aesthetic product photography and an engaging reel within 4 days.',
-        proposed_price: 5000,
-        availability_date: 'In 2 days',
-        estimated_delivery_days: 4,
-        status: 'SHORTLISTED'
-      },
-      {
-        id: 203,
-        deal_id: deal.id,
-        creator_handle: 'ankrena',
-        creator_name: 'Ankit kumar',
-        creator_avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-        creator_followers: '4.98k',
-        creator_engagement: '7.2%',
-        creator_location: 'Delhi, India',
-        match_score: 91,
-        proposal_text: 'I specialize in lifestyle UGC videos and tech product reviews with over 11M+ views reach. Can deliver 1 Reel + 1 Story in 3 days!',
-        proposed_price: 8000,
-        availability_date: 'Immediate',
-        estimated_delivery_days: 3,
-        status: 'ACCEPTED'
-      }
-    ];
-
+    // No fixture fallback. `sampleApplicants` used to fill this list whenever the API
+    // returned nothing OR failed, so a brand with zero applicants saw four invented
+    // creators - complete with names, rates and follower counts - and had no way to tell
+    // them from real ones. An empty deal must look empty.
     fetch(`/api/posted-deals/${deal.id}/applications`)
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setApplications(data);
-        } else {
-          setApplications(sampleApplicants);
-        }
-      })
-      .catch(() => {
-        setApplications(sampleApplicants);
-      });
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => setApplications(Array.isArray(data) ? data : []))
+      .catch(() => setApplications([]));
   };
 
   const handleUpdateAppStatus = (appId: number, status: string) => {
+    // Applying the status change in the catch made a failed request look identical to a
+    // successful one: the card moved to Shortlisted on screen while the server still had
+    // it as Applied, and the change vanished on refresh.
     fetch(`/api/posted-deals/applications/${appId}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
     })
-      .then(r => r.json())
-      .then(() => {
+      .then(async r => {
+        if (!r.ok) throw new Error(`Request failed (${r.status})`);
         setApplications(prev => prev.map(a => a.id === appId ? { ...a, status } : a));
       })
-      .catch(() => {
-        setApplications(prev => prev.map(a => a.id === appId ? { ...a, status } : a));
-      });
+      .catch(e => alert(`Could not update this application: ${e instanceof Error ? e.message : e}`));
   };
 
   const handleFinalizeTerms = (app: DealApplicationItem) => {
@@ -321,20 +227,13 @@ export const BrandPostedDealsView: React.FC<{
 
   const handleOpenCollabWorkspace = (app: DealApplicationItem) => {
     setActiveCollabApp(app);
+    // Three invented deliverables used to appear here whenever a collab had none - an
+    // "Instagram Reel" whose thumbnail was a stock Unsplash photo, plus two stories. A
+    // brand could sit reviewing submissions no creator had ever uploaded.
     fetch(`/api/posted-deals/applications/${app.id}/submissions`)
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setCollabSubmissions(data);
-        } else {
-          setCollabSubmissions([
-            { id: 301, application_id: app.id, deal_id: app.deal_id, title: 'Instagram Reel', submission_type: 'video', status: 'SUBMITTED', content_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80', due_date: '20 Aug' },
-            { id: 302, application_id: app.id, deal_id: app.deal_id, title: 'Instagram Story #1', submission_type: 'image', status: 'PENDING', due_date: '20 Aug' },
-            { id: 303, application_id: app.id, deal_id: app.deal_id, title: 'Instagram Story #2', submission_type: 'image', status: 'PENDING', due_date: '20 Aug' }
-          ]);
-        }
-      })
-      .catch(() => {});
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => setCollabSubmissions(Array.isArray(data) ? data : []))
+      .catch(() => setCollabSubmissions([]));
   };
 
   const handleReviewSubmission = (subId: number, status: 'APPROVED' | 'REVISION_REQUESTED', reason?: string) => {
@@ -343,27 +242,25 @@ export const BrandPostedDealsView: React.FC<{
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, revision_reason: reason })
     })
-      .then(r => r.json())
-      .then(() => {
+      .then(async r => {
+        if (!r.ok) throw new Error(`Request failed (${r.status})`);
         setCollabSubmissions(prev => prev.map(s => s.id === subId ? { ...s, status, revision_reason: reason } : s));
         setSelectedSubForRevision(null);
       })
-      .catch(() => {
-        setCollabSubmissions(prev => prev.map(s => s.id === subId ? { ...s, status, revision_reason: reason } : s));
-        setSelectedSubForRevision(null);
-      });
+      .catch(e => alert(`Could not record this review: ${e instanceof Error ? e.message : e}\n\nThe creator has not been notified.`));
   };
 
   const handleCompleteCampaign = (appId: number) => {
+    // Completing a campaign is what unlocks the creator's payout, so faking it in the catch
+    // told a brand the campaign was closed and the creator could cash out while the server
+    // still had it open - a disagreement about money between two screens.
     fetch(`/api/posted-deals/applications/${appId}/complete`, { method: 'POST' })
-      .then(() => {
+      .then(async r => {
+        if (!r.ok) throw new Error(`Request failed (${r.status})`);
         setActiveCollabApp(prev => prev ? { ...prev, status: 'COMPLETED' } : null);
         alert('Campaign marked COMPLETED! Creator can now request payout cashout.');
       })
-      .catch(() => {
-        setActiveCollabApp(prev => prev ? { ...prev, status: 'COMPLETED' } : null);
-        alert('Campaign marked COMPLETED!');
-      });
+      .catch(e => alert(`Could not complete this campaign: ${e instanceof Error ? e.message : e}\n\nNothing has changed — please try again.`));
   };
 
   const filteredApps = applications.filter(a => {
@@ -372,66 +269,24 @@ export const BrandPostedDealsView: React.FC<{
     return true;
   });
 
-  // Sample active finalized collaborations for brand
-  const activeCollaborations: DealApplicationItem[] = [
-    {
-      id: 701,
-      deal_id: 101,
-      campaign_name: 'Summer Festive UGC Campaign',
-      brand_name: 'Aura Premium',
-      creator_handle: 'samairaa.r',
-      creator_name: 'Samaira Rao',
-      creator_avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-      creator_followers: '18.8k',
-      creator_engagement: '6.8%',
-      creator_location: 'Gurgaon, India',
-      match_score: 94,
-      proposal_text: '1 Reel + 2 Stories for Summer Glow Skincare Set',
-      proposed_price: 15000,
-      final_price: 15000,
-      final_deliverables: 'Instagram Reel, Instagram Story #1, Instagram Story #2',
-      final_delivery_days: 7,
-      status: 'CONFIRMED'
-    },
-    {
-      id: 702,
-      deal_id: 102,
-      campaign_name: 'Product Launch & Unboxing Review',
-      brand_name: 'Aura Premium',
-      creator_handle: 'ankrena',
-      creator_name: 'Ankit kumar',
-      creator_avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-      creator_followers: '4.98k',
-      creator_engagement: '7.2%',
-      creator_location: 'Delhi, India',
-      match_score: 91,
-      proposal_text: 'Tech product review reel with unboxing demo',
-      proposed_price: 8000,
-      final_price: 8000,
-      final_deliverables: 'Instagram Reel, Instagram Story #1',
-      final_delivery_days: 4,
-      status: 'ACCEPTED'
-    },
-    {
-      id: 703,
-      deal_id: 103,
-      campaign_name: 'Aesthetic Skincare Reels',
-      brand_name: 'Aura Premium',
-      creator_handle: 'drishtiid06',
-      creator_name: 'Drishti Rawat',
-      creator_avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80',
-      creator_followers: '2.38k',
-      creator_engagement: '8.4%',
-      creator_location: 'Ghaziabad, India',
-      match_score: 88,
-      proposal_text: 'Aesthetic product photography & story reel',
-      proposed_price: 5000,
-      final_price: 5000,
-      final_deliverables: 'Instagram Reel, Product Photography',
-      final_delivery_days: 3,
-      status: 'COMPLETED'
-    }
-  ];
+  // Real finalized collaborations for this workspace, from the endpoint added alongside
+  // this change. Previously a hardcoded array: one invented creator ("Samaira Rao", an
+  // Unsplash headshot) on an invented campaign, identical for every brand, and clickable
+  // through into a collab workspace for a deal that did not exist.
+  const [activeCollaborations, setActiveCollaborations] = useState<DealApplicationItem[]>([]);
+  const [collabsLoading, setCollabsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setCollabsLoading(false); return; }
+    const token = localStorage.getItem('token');
+    setCollabsLoading(true);
+    fetch(`/api/posted-deals/brand/${workspaceId}/collaborations`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => setActiveCollaborations(Array.isArray(d) ? d : []))
+      .catch(() => setActiveCollaborations([]))
+      .finally(() => setCollabsLoading(false));
+  }, [workspaceId]);
 
   if (mode === 'my_collaborations') {
     return (
@@ -446,6 +301,25 @@ export const BrandPostedDealsView: React.FC<{
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {collabsLoading && (
+            <div style={{ padding: '28px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+              Loading collaborations…
+            </div>
+          )}
+          {!collabsLoading && activeCollaborations.length === 0 && (
+            <div style={{
+              padding: '32px', textAlign: 'center', background: 'rgba(255,255,255,0.02)',
+              border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '14px',
+            }}>
+              <div style={{ fontSize: '15px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>
+                No active collaborations yet
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                Once you accept a creator's application on one of your posted deals, the
+                collaboration appears here with its deliverables and escrow status.
+              </div>
+            </div>
+          )}
           {activeCollaborations.map(collab => (
             <div key={collab.id} className="glow-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,15,22,0.7)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '20px', flexWrap: 'wrap', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -949,144 +823,13 @@ export const CreatorBrandOpportunitiesView: React.FC<{
   const [appliedDealIds, setAppliedDealIds] = useState<number[]>([]);
 
   useEffect(() => {
+    // Fixture brands ("Aura Premium", "Nykaa Fashion", with Unsplash logos and invented
+    // budgets) used to fill this list whenever the API returned nothing or failed, so a
+    // creator browsing opportunities could apply to campaigns that never existed.
     fetch(`/api/posted-deals/discover?handle=${encodeURIComponent(creatorHandle)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setDeals(data);
-        } else {
-          setDeals([
-            {
-              id: 101,
-              brand_name: 'Aura Premium',
-              brand_url: 'aura.com',
-              campaign_name: 'Summer Fashion & Lifestyle Campaign',
-              product_name: 'Summer Glow Skincare Set',
-              description: 'Looking for fashion and lifestyle creators in India targeting women aged 18-34.',
-              objective: 'UGC Content & Brand Awareness',
-              platform: 'Instagram',
-              creator_category: 'Micro',
-              niche: 'Fashion & Lifestyle',
-              location: 'Delhi / Gurgaon',
-              creators_required: 3,
-              total_budget: 50000,
-              budget_per_creator: 15000,
-              deliverables_json: JSON.stringify(['1 Reel', '2 Stories']),
-              application_deadline: '20 Aug 2026',
-              status: 'ACTIVE',
-              match_score: 94
-            },
-            {
-              id: 102,
-              brand_name: 'FitApp Pro',
-              brand_url: 'fitapp.io',
-              campaign_name: 'Fitness & Routine UGC Reels',
-              product_name: 'FitApp Premium Membership',
-              description: 'Seeking energetic fitness & lifestyle creators to demonstrate daily workout routine.',
-              objective: 'App Downloads & Conversions',
-              platform: 'Instagram',
-              creator_category: 'Nano / Micro',
-              niche: 'Fitness & Health',
-              location: 'India',
-              creators_required: 2,
-              total_budget: 30000,
-              budget_per_creator: 10000,
-              deliverables_json: JSON.stringify(['1 UGC Reel', '1 Story']),
-              application_deadline: '25 Aug 2026',
-              status: 'ACTIVE',
-              match_score: 88
-            }
-          ]);
-        }
-      })
-      .catch(() => {
-        setDeals([
-          {
-            id: 101,
-            brand_name: 'Aura Premium',
-            brand_logo: 'https://images.unsplash.com/photo-1619994121345-b61cd610c5a6?auto=format&fit=crop&w=80&q=80',
-            brand_url: 'aura.com',
-            campaign_name: 'Summer Fashion & Lifestyle Campaign',
-            product_name: 'Summer Glow Skincare Set',
-            description: 'Looking for fashion and lifestyle creators in India targeting women aged 18-34. We need authentic, aesthetic content that showcases the product in everyday life.',
-            objective: 'UGC Content & Brand Awareness',
-            platform: 'Instagram',
-            creator_category: 'Micro',
-            niche: 'Fashion & Lifestyle',
-            location: 'Delhi / Gurgaon',
-            creators_required: 3,
-            total_budget: 50000,
-            budget_per_creator: 15000,
-            deliverables_json: JSON.stringify(['1 Reel (30-45s)', '2 Stories', '1 Static Post']),
-            application_deadline: '20 Aug 2026',
-            status: 'ACTIVE',
-            match_score: 96
-          },
-          {
-            id: 102,
-            brand_name: 'FitApp Pro',
-            brand_logo: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=80&q=80',
-            brand_url: 'fitapp.io',
-            campaign_name: 'Fitness & Morning Routine UGC Reels',
-            product_name: 'FitApp Premium Membership',
-            description: 'Seeking energetic fitness & lifestyle creators to demonstrate daily workout routine using the app. Raw, authentic content preferred.',
-            objective: 'App Downloads & Conversions',
-            platform: 'Instagram',
-            creator_category: 'Nano / Micro',
-            niche: 'Fitness & Health',
-            location: 'India',
-            creators_required: 2,
-            total_budget: 30000,
-            budget_per_creator: 10000,
-            deliverables_json: JSON.stringify(['1 UGC Reel (60s)', '1 Story with Link']),
-            application_deadline: '25 Aug 2026',
-            status: 'ACTIVE',
-            match_score: 88
-          },
-          {
-            id: 103,
-            brand_name: 'Nykaa Fashion',
-            brand_logo: 'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?auto=format&fit=crop&w=80&q=80',
-            brand_url: 'nykaafashion.com',
-            campaign_name: 'Monsoon Wardrobe Collection Launch',
-            product_name: 'Monsoon Edit — Ethnic & Fusion Wear',
-            description: 'We need fashion-forward creators to style and showcase our new Monsoon Edit collection. Trendy, editorial style reels preferred.',
-            objective: 'Sales & Product Discovery',
-            platform: 'Instagram',
-            creator_category: 'Micro',
-            niche: 'Fashion & Lifestyle',
-            location: 'Mumbai / Delhi / Bangalore',
-            creators_required: 5,
-            total_budget: 75000,
-            budget_per_creator: 12000,
-            deliverables_json: JSON.stringify(['2 Reels', '3 Stories', '1 Carousel Post']),
-            application_deadline: '18 Aug 2026',
-            status: 'ACTIVE',
-            match_score: 91
-          },
-          {
-            id: 104,
-            brand_name: 'BrewBrew Coffee',
-            brand_logo: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=80&q=80',
-            brand_url: 'brewbrew.in',
-            campaign_name: 'Morning Ritual x BrewBrew Collab',
-            product_name: 'Specialty Cold Brew & Espresso Kit',
-            description: 'Looking for lifestyle creators who capture cozy, aesthetic morning moments. Show how BrewBrew fits into your daily ritual.',
-            objective: 'Brand Awareness & Community',
-            platform: 'Instagram',
-            creator_category: 'All Tiers',
-            niche: 'Lifestyle & Food',
-            location: 'Pan India',
-            creators_required: 4,
-            total_budget: 40000,
-            budget_per_creator: 8000,
-            deliverables_json: JSON.stringify(['1 Reel', '2 Stories']),
-            application_deadline: '30 Aug 2026',
-            status: 'ACTIVE',
-            match_score: 83
-          }
-        ]);
-      });
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => setDeals(Array.isArray(data) ? data : []))
+      .catch(() => setDeals([]));
   }, [creatorHandle]);
 
   const handleApplySubmit = () => {
@@ -1105,16 +848,21 @@ export const CreatorBrandOpportunitiesView: React.FC<{
         estimated_delivery_days: 5
       })
     })
-      .then(r => r.json())
-      .then(() => {
+      .then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || `Request failed (${r.status})`);
+        }
         setAppliedDealIds(prev => [...prev, selectedDeal.id]);
         setIsApplyModalOpen(false);
         alert(`Application Submitted ✓ Your proposal has been sent to ${selectedDeal.brand_name}!`);
       })
-      .catch(() => {
-        setAppliedDealIds(prev => [...prev, selectedDeal.id]);
-        setIsApplyModalOpen(false);
-        alert(`Application Submitted ✓`);
+      // Marking the deal applied in the catch told a creator their proposal had been sent
+      // when it had not - and the button then read "Applied", so they could not retry.
+      .catch(e => {
+        alert(`Could not submit your application: ${e instanceof Error ? e.message : e}
+
+Please try again.`);
       });
   };
 
@@ -1269,93 +1017,30 @@ export const CreatorApplicationsView: React.FC<{
   const [apps, setApps] = useState<DealApplicationItem[]>([]);
 
   useEffect(() => {
+    // Same fixture problem as the opportunities list above: a creator with no applications
+    // saw invented ones, complete with statuses and payout amounts.
     fetch(`/api/posted-deals/creator/applications/${encodeURIComponent(creatorHandle)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setApps(data);
-        } else {
-          setApps([
-            {
-              id: 501,
-              deal_id: 101,
-              campaign_name: 'Summer Fashion & Lifestyle Campaign',
-              brand_name: 'Aura Premium',
-              proposed_price: 15000,
-              match_score: 96,
-              status: 'COMPLETED',
-              cashout_requested: false,
-              creator_handle: creatorHandle,
-              creator_name: 'Samaira Rao'
-            },
-            {
-              id: 502,
-              deal_id: 102,
-              campaign_name: 'Product Launch & Unboxing Review',
-              brand_name: 'FitApp Pro',
-              proposed_price: 10000,
-              match_score: 92,
-              status: 'SUBMITTED',
-              cashout_requested: false,
-              creator_handle: creatorHandle,
-              creator_name: 'Samaira Rao'
-            }
-          ]);
-        }
-      })
-      .catch(() => {
-        setApps([
-          {
-            id: 501,
-            deal_id: 101,
-            campaign_name: 'Summer Fashion & Lifestyle Campaign',
-            brand_name: 'Aura Premium',
-            proposed_price: 15000,
-            final_price: 15000,
-            match_score: 96,
-            status: 'COMPLETED',
-            cashout_requested: false,
-            creator_handle: creatorHandle,
-            creator_name: 'Samaira Rao'
-          },
-          {
-            id: 502,
-            deal_id: 103,
-            campaign_name: 'Monsoon Wardrobe Collection Launch',
-            brand_name: 'Nykaa Fashion',
-            proposed_price: 12000,
-            final_price: 12000,
-            match_score: 94,
-            status: 'CONFIRMED',
-            cashout_requested: false,
-            creator_handle: creatorHandle,
-            creator_name: 'Samaira Rao'
-          },
-          {
-            id: 503,
-            deal_id: 102,
-            campaign_name: 'Fitness & Morning Routine UGC Reels',
-            brand_name: 'FitApp Pro',
-            proposed_price: 10000,
-            match_score: 90,
-            status: 'SUBMITTED',
-            cashout_requested: false,
-            creator_handle: creatorHandle,
-            creator_name: 'Samaira Rao'
-          }
-        ]);
-      });
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => setApps(Array.isArray(data) ? data : []))
+      .catch(() => setApps([]));
   }, [creatorHandle]);
 
   const handleRequestCashout = (appId: number) => {
+    // The catch here used to mark the payout REQUESTED and tell the creator
+    // "Payout Request Submitted ✓" even when the request never reached the server. That is
+    // the worst possible failure on this screen: someone is told they are owed money and
+    // waits for a payout no one has any record of. A failed request must fail visibly.
     fetch(`/api/posted-deals/applications/${appId}/payout`, { method: 'POST' })
-      .then(() => {
+      .then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || `Request failed (${r.status})`);
+        }
         setApps(prev => prev.map(a => a.id === appId ? { ...a, cashout_requested: true, cashout_status: 'REQUESTED' } : a));
         alert('Payout Request Submitted ✓ Admin verification in progress.');
       })
-      .catch(() => {
-        setApps(prev => prev.map(a => a.id === appId ? { ...a, cashout_requested: true, cashout_status: 'REQUESTED' } : a));
-        alert('Payout Request Submitted ✓');
+      .catch(e => {
+        alert(`Could not submit the payout request: ${e instanceof Error ? e.message : e}\n\nNothing has been recorded — please try again.`);
       });
   };
 

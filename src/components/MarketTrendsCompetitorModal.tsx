@@ -1,716 +1,768 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X,
-  TrendingUp,
-  Search,
-  Zap,
-  Target,
-  Layers,
-  Sparkles,
-  ExternalLink,
-  ShieldCheck,
-  CheckCircle2,
-  Copy,
-  Check,
-  Play,
-  ArrowRight,
-  BarChart2,
-  PieChart,
-  Globe,
-  Flame,
-  Bookmark,
-  Share2,
-  Download,
-  Eye
+  X, TrendingUp, Zap, Sparkles, ExternalLink, ShieldCheck, Copy, Check, Flame,
+  RefreshCw, AlertTriangle, Play, Clock, Tag
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
+import {
+  IntelligenceService, relativeTime, BUCKET_COLORS, BUCKET_LABELS,
+  type CompetitorAdsResponse, type MarketTrendsResponse, type CompetitorGroup,
+} from '../services/intelligence';
+
+/**
+ * Market Intelligence — the competitor ad vault and the market/search-trend radar for ONE
+ * workspace.
+ *
+ * This screen used to be ~700 lines of fixture: Portronics and StuffCool ad counts, festive
+ * keyword scores, three YouTube links, a blue-ocean/red-ocean analysis — all hardcoded, all
+ * identical for every tenant, and none of it fetched from anywhere. It read as a working
+ * product and was a mock, so the numbers on it could not be acted on.
+ *
+ * Everything below now comes from /api/workspaces/{id}/competitor-ads and /market-trends,
+ * which are filled by the fortnightly and four-weekly syncs. When a source is not
+ * configured, or a sync has never run, the panel says exactly that instead of showing a
+ * plausible report.
+ */
 
 interface MarketTrendsCompetitorModalProps {
   isOpen: boolean;
   onClose: () => void;
+  workspaceId?: number | null;
   onNavigateTab?: (tab: string) => void;
 }
 
+const CARD = {
+  background: 'rgba(255, 255, 255, 0.02)',
+  border: '1px solid rgba(255, 255, 255, 0.08)',
+  borderRadius: '18px',
+  padding: '20px 24px',
+} as const;
+
+const LABEL = {
+  fontSize: '11px', fontWeight: 800, textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+} as const;
+
+/** Empty / not-configured / failed states all look the same and differ only in words, so
+ *  they share one component — the alternative was four near-identical blocks. */
+const StateCard: React.FC<{ tone: 'info' | 'warn'; title: string; children: React.ReactNode }> = ({
+  tone, title, children,
+}) => (
+  <div style={{
+    ...CARD,
+    background: tone === 'warn' ? 'rgba(255, 176, 32, 0.06)' : 'rgba(255,255,255,0.02)',
+    border: `1px solid ${tone === 'warn' ? 'rgba(255, 176, 32, 0.35)' : 'rgba(255,255,255,0.08)'}`,
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+      <AlertTriangle size={16} color={tone === 'warn' ? '#FFB020' : '#7C75FF'} />
+      <h3 style={{ fontSize: '15px', color: '#fff', margin: 0, fontWeight: 700 }}>{title}</h3>
+    </div>
+    <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.6 }}>{children}</div>
+  </div>
+);
+
+const SyncBar: React.FC<{
+  label: string;
+  cadenceDays: number;
+  sync: { status: string; last_run_at: string | null; message: string } | undefined;
+  configured: boolean;
+  busy: boolean;
+  onSync: () => void;
+}> = ({ label, cadenceDays, sync, configured, busy, onSync }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px',
+    flexWrap: 'wrap', padding: '12px 18px', background: 'rgba(0,0,0,0.35)',
+    border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px',
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+      <Clock size={14} color="var(--text-secondary)" />
+      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+        {label} · refreshes every {cadenceDays === 14 ? '2 weeks' : `${cadenceDays / 7} weeks`} ·
+        {' '}last run <strong style={{ color: '#fff' }}>{relativeTime(sync?.last_run_at ?? null)}</strong>
+      </span>
+      {sync?.status === 'failed' && (
+        <span style={{
+          fontSize: '11px', background: 'rgba(255,71,87,0.15)', color: '#ff4757',
+          border: '1px solid rgba(255,71,87,0.35)', padding: '2px 10px', borderRadius: '100px', fontWeight: 700,
+        }}>
+          last run failed
+        </span>
+      )}
+    </div>
+    <GlowButton
+      variant="glow"
+      onClick={onSync}
+      disabled={busy || !configured}
+      style={{ padding: '8px 18px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px' }}
+    >
+      <RefreshCw size={13} className={busy ? 'spin-animation' : undefined} />
+      {busy ? 'Syncing…' : 'Sync now'}
+    </GlowButton>
+  </div>
+);
+
 export const MarketTrendsCompetitorModal: React.FC<MarketTrendsCompetitorModalProps> = ({
-  isOpen,
-  onClose,
-  onNavigateTab
+  isOpen, onClose, workspaceId = null,
 }) => {
   const [activeReportTab, setActiveReportTab] = useState<'competitor_ads' | 'keyword_trends'>('competitor_ads');
   const [copiedHook, setCopiedHook] = useState<string | null>(null);
-  const [activeCompetitorTab, setActiveCompetitorTab] = useState<'portronics' | 'stuffcool'>('portronics');
 
-  if (!isOpen) return null;
+  const [ads, setAds] = useState<CompetitorAdsResponse | null>(null);
+  const [trends, setTrends] = useState<MarketTrendsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState<'ads' | 'trends' | null>(null);
+  const [activeCompetitor, setActiveCompetitor] = useState<string | null>(null);
 
-  const handleCopyHook = (text: string) => {
+  const load = useCallback(async () => {
+    if (!workspaceId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [a, t] = await Promise.all([
+        IntelligenceService.competitorAds(workspaceId),
+        IntelligenceService.marketTrends(workspaceId),
+      ]);
+      setAds(a);
+      setTrends(t);
+      setActiveCompetitor(prev => prev ?? (a.competitors[0]?.competitor ?? null));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load market intelligence.');
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => { if (isOpen) load(); }, [isOpen, load]);
+
+  const runSync = async (kind: 'ads' | 'trends') => {
+    if (!workspaceId) return;
+    setSyncing(kind);
+    setError(null);
+    try {
+      if (kind === 'ads') await IntelligenceService.syncCompetitorAds(workspaceId);
+      else await IntelligenceService.syncMarketTrends(workspaceId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sync failed.');
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const copyHook = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedHook(text);
     setTimeout(() => setCopiedHook(null), 2000);
   };
 
-  const strategicKeywords = [
-    {
-      keyword: 'power bank',
-      bucket: 'core',
-      avgInterest: 84,
-      adHook: '“One power bank. No dead-phone panic.” Open with a real low-battery moment, then prove the recovery.',
-      badgeColor: '#00E676'
-    },
-    {
-      keyword: 'charging cable',
-      bucket: 'core',
-      avgInterest: 78,
-      adHook: '“Your cable does more than charge.” Lead with the built-in/utility benefit and a fast visual test.',
-      badgeColor: '#00E676'
-    },
-    {
-      keyword: 'MagSafe power bank',
-      bucket: 'emerging',
-      avgInterest: 24,
-      adHook: '“Snap. Charge. Keep moving.” Use an iPhone-on-the-go scene rather than a feature list.',
-      badgeColor: '#7C75FF'
-    },
-    {
-      keyword: 'fast charger',
-      bucket: 'core',
-      avgInterest: 8,
-      adHook: '“The charger that keeps up with your day.” Show a timed fast-charge proof and multi-device use.',
-      badgeColor: '#00D2FF'
-    },
-    {
-      keyword: '100W charger',
-      bucket: 'lifestyle',
-      avgInterest: 8,
-      adHook: '“One desk charger for laptop, phone and travel.” Demonstrate ports, laptop compatibility and packability.',
-      badgeColor: '#FFB300'
-    }
-  ];
+  if (!isOpen) return null;
 
-  const portronicsAds = [
-    'Portronics - Muffs M6 – Made for Music, Movies & More',
-    'Portronics - Play Longer with Twins One',
-    'Portronics - Stylish, Silent & Smart – Meet Key11 Combo',
-    'Portronics - Turn Up the Fun with Dual Karaoke Mics',
-    'Portronics - Pure Air for Your Family',
-    'Portronics - Beem 560 - Smart LED Netflix Projector',
-    'Portronics - Aerolift Duo - Dual Monitor Desk Mount',
-    'Portronics - Ruffpad 15M Re-writable LCD Pad',
-    'Portronics - Dash 12 Wireless Bluetooth Speaker',
-    'Portronics - Talk 2 Bluetooth Calling Smartwatch',
-    'Portronics - Clamp M2 Car Mobile Holder',
-    'Portronics - Power Plate 7 Power Strip with USB',
-    'Portronics - Adapto 65W GaN Fast Charger',
-    'Portronics - Konnect CL Type-C to Lightning Cable',
-    'Portronics - Auto 10 Bluetooth Audio Receiver',
-    'Portronics - SoundDrum 1 10W TWS Speaker',
-    'Portronics - Mobike Motorcycle Mobile Holder',
-    'Portronics - My Buddy K6 Portable Laptop Stand',
-    'Portronics - Toad 23 Wireless Optical Mouse',
-    'Portronics - Harmonics Z5 Neckband Earphones'
-  ];
-
-  const stuffCoolAds = [
-    'StuffCool - Mega 20000mAh 65W Laptop Power Bank',
-    'StuffCool - Neutron 33W Tiny GaN Fast Charger',
-    'StuffCool - Magnetic MagSafe Wireless Powerbank with Stand',
-    'StuffCool - Centurion 100W 4-Port Fast Desktop Charger',
-    'StuffCool - Snap 5000mAh Ultra-Slim MagSafe Battery',
-    'StuffCool - Type-C 100W Braided Cable with LED Display',
-    'StuffCool - Flow 30W Super Fast Dual Port Charger',
-    'StuffCool - PB9063W Heavy Duty Laptop Battery Pack',
-    'StuffCool - Rover 100W 3-in-1 Fast Charging Station',
-    'StuffCool - ChargePort 65W Multi-Device Travel Adapter',
-    'StuffCool - Palm 10000mAh Pocket Size Powerbank',
-    'StuffCool - Quantum 20W PD Type C Power Bank',
-    'StuffCool - 65W GaN Ultra Compact MacBook Charger',
-    'StuffCool - 3-in-1 Foldable MagSafe Travel Dock',
-    'StuffCool - Ultima 100W Type-C E-Marker Silicone Cable',
-    'StuffCool - Matrix 10000mAh Qi2 Magnetic Fast Bank',
-    'StuffCool - Bullet 45W Metal Car Super Fast Charger',
-    'StuffCool - PowerBolt 25000mAh 140W MacBook Pro Monster',
-    'StuffCool - Wireless Car Mount with Auto-Clamping & MagSafe',
-    'StuffCool - Quad 4-in-1 Multi-Device Charging Pad'
-  ];
+  const group: CompetitorGroup | undefined =
+    ads?.competitors.find(c => c.competitor === activeCompetitor) ?? ads?.competitors[0];
+  const report = trends?.latest ?? null;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.88)',
-        backdropFilter: 'blur(12px)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px'
-      }}
-    >
+    <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 15 }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
         style={{
-          width: '100%',
-          maxWidth: '1080px',
-          maxHeight: '90vh',
-          background: 'linear-gradient(180deg, #10101c 0%, #08080e 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          borderRadius: '24px',
-          boxShadow: '0 25px 80px rgba(0, 0, 0, 0.9)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden'
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex',
+          alignItems: 'center', justifyContent: 'center', padding: '24px',
         }}
       >
-        {/* ── MODAL HEADER ─────────────────────────────────────────── */}
-        <div
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 15 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: 15 }}
+          onClick={e => e.stopPropagation()}
           style={{
-            padding: '22px 28px',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: 'rgba(255, 255, 255, 0.02)'
+            width: '100%', maxWidth: '1080px', maxHeight: '90vh',
+            background: 'linear-gradient(180deg, #10101c 0%, #08080e 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '24px',
+            boxShadow: '0 25px 80px rgba(0, 0, 0, 0.9)', display: 'flex',
+            flexDirection: 'column', overflow: 'hidden',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(124, 117, 255, 0.15)', border: '1px solid rgba(124, 117, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TrendingUp size={22} color="#7C75FF" />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h2 style={{ fontSize: '20px', color: '#fff', margin: 0, fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
-                  Market Trends & Competitor Analysis Intelligence
-                </h2>
-                <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
-                  IN · META · LIVE AUDIT
-                </span>
+          {/* ── HEADER ─────────────────────────────────────────────── */}
+          <div style={{
+            padding: '22px 28px', borderBottom: '1px solid rgba(255,255,255,0.1)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            background: 'rgba(255,255,255,0.02)', gap: '16px', flexWrap: 'wrap',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{
+                width: '44px', height: '44px', borderRadius: '12px',
+                background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <TrendingUp size={22} color="#7C75FF" />
               </div>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-                Active Meta ads observed in India on August 18, 2026 • Realtime India search demand & creator hooks
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              onClick={() => {
-                alert('Intelligence Report exported as PDF & CSV summary!');
-              }}
-              style={{
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                color: '#fff',
-                padding: '7px 14px',
-                borderRadius: '100px',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              <Download size={13} /> Export Report
-            </button>
-
-            <button
-              onClick={onClose}
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '50%',
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: 'none',
-                color: '#fff',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* ── REPORT TABS NAVIGATION ────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: '8px', padding: '14px 28px', background: 'rgba(0,0,0,0.4)', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
-          <button
-            onClick={() => setActiveReportTab('competitor_ads')}
-            style={{
-              background: activeReportTab === 'competitor_ads' ? 'rgba(124, 117, 255, 0.2)' : 'transparent',
-              border: '1px solid',
-              borderColor: activeReportTab === 'competitor_ads' ? '#7C75FF' : 'transparent',
-              color: activeReportTab === 'competitor_ads' ? '#fff' : 'var(--text-secondary)',
-              padding: '8px 20px',
-              borderRadius: '100px',
-              fontSize: '13px',
-              fontWeight: activeReportTab === 'competitor_ads' ? 700 : 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <ShieldCheck size={14} color={activeReportTab === 'competitor_ads' ? '#7C75FF' : 'currentColor'} />
-            <span>Demo Brand Competitor Ad Report (Portronics & StuffCool)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveReportTab('keyword_trends')}
-            style={{
-              background: activeReportTab === 'keyword_trends' ? 'rgba(0, 230, 118, 0.2)' : 'transparent',
-              border: '1px solid',
-              borderColor: activeReportTab === 'keyword_trends' ? '#00E676' : 'transparent',
-              color: activeReportTab === 'keyword_trends' ? '#fff' : 'var(--text-secondary)',
-              padding: '8px 20px',
-              borderRadius: '100px',
-              fontSize: '13px',
-              fontWeight: activeReportTab === 'keyword_trends' ? 700 : 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Flame size={14} color={activeReportTab === 'keyword_trends' ? '#00E676' : 'currentColor'} />
-            <span>India Charging Trends: Festive Run-Up & Search Hooks</span>
-          </button>
-        </div>
-
-        {/* ── MODAL SCROLLABLE CONTENT BODY ─────────────────────────── */}
-        <div style={{ padding: '24px 28px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          
-          {/* ════════════════════════════════════════════════════════════ */}
-          {/* TAB 1: DEMO BRAND COMPETITOR AD REPORT                      */}
-          {/* ════════════════════════════════════════════════════════════ */}
-          {activeReportTab === 'competitor_ads' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
-              {/* Executive Summary Card */}
-              <div className="glow-card" style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '18px', padding: '20px 24px' }}>
-                <span style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  EXECUTIVE SUMMARY
-                </span>
-                <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: '8px 0 0 0', lineHeight: 1.6 }}>
-                  <strong>Portronics</strong> uses broad, feature-led electronics merchandising with a recurring 10% coupon, while <strong>StuffCool</strong> owns the sharper high-wattage, laptop-ready power narrative. The opening for <strong>Demo Brand</strong> is to turn its charging range into scenario-led proof: pocket backup, cable-free iPhone charging, and dependable laptop power—without relying on spec density alone. This report assumes India as Demo Brand’s sole target market and focuses on active Meta ads only.
-                </p>
-              </div>
-
-              {/* Where We Win Card */}
-              <div className="glow-card" style={{ background: 'linear-gradient(135deg, rgba(0, 230, 118, 0.1) 0%, rgba(10, 20, 15, 0.8) 100%)', border: '1.5px solid rgba(0, 230, 118, 0.35)', borderRadius: '18px', padding: '22px 26px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <Sparkles size={18} color="#00E676" />
-                  <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                    Where We Win (Demo Brand Advantage)
-                  </h3>
-                </div>
-                <p style={{ fontSize: '13.5px', color: 'rgba(255, 255, 255, 0.85)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
-                  Demo Brand can own <strong>practical, proudly Indian charging confidence</strong>: modern power for the exact device and moment people depend on, from pocket-ready phone backup to cable-light iPhone and laptop charging.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: 'rgba(255, 255, 255, 0.85)' }}>
-                  <div>• Neither competitor consistently organizes the charging decision around everyday scenarios and device needs.</div>
-                  <div>• Portronics lacks specialist charging authority, while StuffCool underplays approachable value and routine convenience.</div>
-                  <div>• Both use <em>"Shop now"</em> universally, leaving room for decision-support creative that reduces product-choice friction.</div>
-                </div>
-              </div>
-
-              {/* Brand Strategy: Blue Ocean vs Red Ocean */}
               <div>
-                <h3 style={{ fontSize: '18px', color: '#fff', margin: '0 0 14px 0', fontWeight: 800 }}>
-                  Brand Strategy (Blue Ocean / Red Ocean Moves)
-                </h3>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
-                  
-                  {/* Blue Ocean */}
-                  <div className="glow-card" style={{ background: 'rgba(0, 210, 255, 0.05)', border: '1.5px solid rgba(0, 210, 255, 0.3)', borderRadius: '18px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', background: 'rgba(0, 210, 255, 0.2)', color: '#00D2FF', border: '1px solid rgba(0, 210, 255, 0.4)', padding: '2px 10px', borderRadius: '100px', fontWeight: 800 }}>
-                        BLUE OCEAN
-                      </span>
-                      <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                        Scenario-led charging confidence
-                      </h4>
-                    </div>
-                    <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)', margin: 0, lineHeight: 1.5 }}>
-                      Make Demo Brand’s range feel easier to choose by leading with the moment of need, then proving the right capacity, wattage or magnetic technology for it.
-                    </p>
-                    <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div>• Build a repeatable use-case creative system across commute, campus, work travel and iPhone desk setups.</div>
-                      <div>• Pair concise visual proof—built-in cable, magnetic hold, wattage or display—with plain-language outcome copy.</div>
-                      <div>• Use product-choice carousels that guide shoppers to the right power solution.</div>
-                    </div>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0, 210, 255, 0.2)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px' }}>
-                      <strong style={{ color: '#00D2FF' }}>Action Items:</strong>
-                      <div style={{ color: 'rgba(255,255,255,0.85)', marginTop: '4px' }}>
-                        1. Produce a four-part scenario-led Meta creative series for Demo Brand’s core charging products.<br />
-                        2. Create a choose-your-power carousel that routes phone, iPhone and laptop users.
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Red Ocean */}
-                  <div className="glow-card" style={{ background: 'rgba(255, 71, 87, 0.05)', border: '1.5px solid rgba(255, 71, 87, 0.3)', borderRadius: '18px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', background: 'rgba(255, 71, 87, 0.2)', color: '#ff4757', border: '1px solid rgba(255, 71, 87, 0.4)', padding: '2px 10px', borderRadius: '100px', fontWeight: 800 }}>
-                        RED OCEAN
-                      </span>
-                      <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                        Win high-power proof
-                      </h4>
-                    </div>
-                    <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)', margin: 0, lineHeight: 1.5 }}>
-                      Laptop charging, high capacity and Qi2/MagSafe are crowded claims. Demo Brand should defend with clear compatibility, transparent performance proof and a stronger value story.
-                    </p>
-                    <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div>• Put device compatibility, wattage and capacity in the first visual frame for high-power products.</div>
-                      <div>• Demonstrate charging convenience rather than repeating generic fast-charging language.</div>
-                      <div>• Test bundles that increase perceived value while preserving product credibility.</div>
-                    </div>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255, 71, 87, 0.2)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px' }}>
-                      <strong style={{ color: '#ff4757' }}>Action Items:</strong>
-                      <div style={{ color: 'rgba(255,255,255,0.85)', marginTop: '4px' }}>
-                        1. Develop a MacBook-ready power-bank ad with device-specific proof and a real workday story.<br />
-                        2. Test a charging bundle offer against a no-discount proof-led creative.
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-
-              {/* Competitor Snapshot & 20 Active Ads Breakdown */}
-              <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                    Competitor Snapshot (Active Meta Ads In India)
-                  </h3>
-
-                  {/* Competitor Toggle */}
-                  <div style={{ display: 'flex', gap: '6px', background: 'rgba(255,255,255,0.04)', padding: '3px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <button
-                      onClick={() => setActiveCompetitorTab('portronics')}
-                      style={{
-                        background: activeCompetitorTab === 'portronics' ? '#7C75FF' : 'transparent',
-                        color: activeCompetitorTab === 'portronics' ? '#fff' : 'var(--text-secondary)',
-                        border: 'none',
-                        borderRadius: '100px',
-                        padding: '5px 14px',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Portronics (20 Ads)
-                    </button>
-                    <button
-                      onClick={() => setActiveCompetitorTab('stuffcool')}
-                      style={{
-                        background: activeCompetitorTab === 'stuffcool' ? '#00D2FF' : 'transparent',
-                        color: activeCompetitorTab === 'stuffcool' ? '#000' : 'var(--text-secondary)',
-                        border: 'none',
-                        borderRadius: '100px',
-                        padding: '5px 14px',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      StuffCool (20 Ads)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Competitor Details Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '18px' }}>
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '14px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Messaging Pattern</span>
-                    <p style={{ fontSize: '12.5px', color: '#fff', margin: '4px 0 0 0' }}>
-                      {activeCompetitorTab === 'portronics' ? 'Feature-to-benefit demos across audio, peripherals & electronics' : 'High wattage (65W/100W GaN), MacBook-ready power & MagSafe'}
-                    </p>
-                  </div>
-
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '14px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Visual Style</span>
-                    <p style={{ fontSize: '12.5px', color: '#fff', margin: '4px 0 0 0' }}>
-                      {activeCompetitorTab === 'portronics' ? 'Product-focused static commerce creatives & icon callouts' : 'Sleek dark mode renders, wattage speedometers & desk setups'}
-                    </p>
-                  </div>
-
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '14px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Offer & CTA</span>
-                    <p style={{ fontSize: '12.5px', color: '#00E676', margin: '4px 0 0 0', fontWeight: 600 }}>
-                      {activeCompetitorTab === 'portronics' ? '10% Extra Off with code TODAY • CTA: Shop now' : 'Premium bundle pricing & fast dispatch • CTA: Shop now'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* 20 Active Ads List */}
-                <div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                    20 Active Ads Observed in Library:
-                  </span>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
-                    {(activeCompetitorTab === 'portronics' ? portronicsAds : stuffCoolAds).map((ad, idx) => (
-                      <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#7C75FF', fontWeight: 800 }}>#{idx + 1}</span>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ad}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* 3 Core Action Items */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#7C75FF', marginBottom: '4px' }}>01</div>
-                  <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Build Scenario Series</h4>
-                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                    Scenario-first creative gives Demo Brand a more ownable route than broad gadget merchandising and makes the product choice simpler at a glance.
-                  </p>
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#00D2FF', marginBottom: '4px' }}>02</div>
-                  <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Create Choice Carousel</h4>
-                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                    A guided product-selection carousel can reduce choice friction that both competitors leave unresolved through universal Shop now merchandising.
-                  </p>
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#00E676', marginBottom: '4px' }}>03</div>
-                  <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Prove Laptop Power</h4>
-                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                    StuffCool demonstrates strong high-wattage ownership; a real workday demonstration with compatibility proof lets Demo Brand compete effectively.
-                  </p>
-                </div>
-              </div>
-
-            </div>
-          )}
-
-          {/* ════════════════════════════════════════════════════════════ */}
-          {/* TAB 2: INDIA CHARGING TRENDS & FESTIVE RUN-UP                */}
-          {/* ════════════════════════════════════════════════════════════ */}
-          {activeReportTab === 'keyword_trends' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
-              {/* Keyword Trends Summary Card */}
-              <div className="glow-card" style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '18px', padding: '20px 24px' }}>
-                <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  INDIA SEARCH DEMAND & CREATOR SIGNALS (AUG 17, 2025–AUG 22, 2026)
-                </span>
-                <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: '8px 0 0 0', lineHeight: 1.6 }}>
-                  India’s charging category is still led by broad, high-volume utility searches: <strong>“power bank”</strong> averaged 84 and <strong>“charging cable”</strong> 78 over the last 12 months. The more valuable growth lanes are intent-rich: <strong>“MagSafe power bank”</strong> averaged 24, while <strong>“fast charger”</strong> reached its 12-month high in mid-August. For Demo Brand, the opportunity is to convert specification-led products into proof-led short video.
+                <h2 style={{
+                  fontSize: '20px', color: '#fff', margin: 0, fontWeight: 800,
+                  fontFamily: 'var(--font-heading)',
+                }}>
+                  Market Intelligence
+                </h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                  {report?.region ? `${report.region} · ` : ''}
+                  Competitor ad vault refreshed fortnightly · search &amp; creator radar every 4 weeks
                 </p>
               </div>
+            </div>
 
-              {/* Strategic Keywords & Copyable Ad Hooks Table */}
-              <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                    Strategic Keywords & Converting Ad Hooks
-                  </h3>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click copy icon to copy hook for Creative Studio</span>
-                </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                onClick={load}
+                disabled={loading}
+                style={{
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+                  color: '#fff', padding: '7px 14px', borderRadius: '100px', fontSize: '12px',
+                  fontWeight: 600, cursor: loading ? 'default' : 'pointer', display: 'flex',
+                  alignItems: 'center', gap: '5px',
+                }}
+              >
+                <RefreshCw size={13} className={loading ? 'spin-animation' : undefined} /> Reload
+              </button>
+              <button
+                onClick={onClose}
+                style={{
+                  width: '34px', height: '34px', borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {strategicKeywords.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.02)',
-                        border: '1px solid rgba(255, 255, 255, 0.06)',
-                        borderRadius: '14px',
-                        padding: '14px 18px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '12px'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${item.badgeColor}22`, border: `1px solid ${item.badgeColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.badgeColor, fontWeight: 900, fontSize: '14px' }}>
-                          {item.avgInterest}
-                        </div>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <h4 style={{ fontSize: '15px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                              {item.keyword}
-                            </h4>
-                            <span style={{ fontSize: '10.5px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
-                              {item.bucket}
+          {/* ── TABS ───────────────────────────────────────────────── */}
+          <div style={{
+            display: 'flex', gap: '8px', padding: '14px 28px', background: 'rgba(0,0,0,0.4)',
+            borderBottom: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap',
+          }}>
+            {([
+              { id: 'competitor_ads' as const, icon: ShieldCheck, color: '#7C75FF',
+                label: `Competitor ad vault${ads ? ` (${ads.total_ads})` : ''}` },
+              { id: 'keyword_trends' as const, icon: Flame, color: '#00E676',
+                label: `Search & creator radar${report ? ` (${report.strategic_keywords.length})` : ''}` },
+            ]).map(tab => {
+              const on = activeReportTab === tab.id;
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveReportTab(tab.id)}
+                  style={{
+                    background: on ? `${tab.color}33` : 'transparent',
+                    border: '1px solid', borderColor: on ? tab.color : 'transparent',
+                    color: on ? '#fff' : 'var(--text-secondary)', padding: '8px 20px',
+                    borderRadius: '100px', fontSize: '13px', fontWeight: on ? 700 : 500,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                  }}
+                >
+                  <Icon size={14} color={on ? tab.color : 'currentColor'} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── BODY ───────────────────────────────────────────────── */}
+          <div style={{
+            padding: '24px 28px', overflowY: 'auto', display: 'flex',
+            flexDirection: 'column', gap: '20px',
+          }}>
+            {!workspaceId && (
+              <StateCard tone="warn" title="No workspace selected">
+                Open a brand workspace to see its competitor ads and market trends.
+              </StateCard>
+            )}
+
+            {error && (
+              <StateCard tone="warn" title="Something went wrong">{error}</StateCard>
+            )}
+
+            {loading && !ads && !trends && (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <RefreshCw size={22} className="spin-animation" />
+                <p style={{ marginTop: '12px', fontSize: '13px' }}>Loading this workspace's intelligence…</p>
+              </div>
+            )}
+
+            {/* ══════════════ TAB 1 — COMPETITOR AD VAULT ══════════════ */}
+            {activeReportTab === 'competitor_ads' && ads && (
+              <>
+                <SyncBar
+                  label="Meta Ad Library"
+                  cadenceDays={ads.cadence_days}
+                  sync={ads.sync}
+                  configured={ads.source_configured}
+                  busy={syncing === 'ads'}
+                  onSync={() => runSync('ads')}
+                />
+
+                {!ads.source_configured && (
+                  <StateCard tone="warn" title="No ad source is configured yet">
+                    Meta's official Ad Library API returns commercial ads only for EU/EEA
+                    countries — everywhere else it is limited to political and social-issue
+                    ads. Set <code>META_AD_LIBRARY_TOKEN</code> for EU competitors, and
+                    <code> APIFY_TOKEN</code> for markets like India. Until one is set this
+                    vault stays empty rather than showing invented ads.
+                  </StateCard>
+                )}
+
+                {ads.source_configured && ads.competitors.length === 0 && (
+                  <StateCard tone="info" title="No competitor ads stored yet">
+                    {ads.sync.status === 'skipped'
+                      ? 'Add competitors under “Research a competitor” first — the ad sync tracks the rivals you have named.'
+                      : ads.sync.status === 'failed'
+                        ? `The last sync failed: ${ads.sync.message}`
+                        : 'Run “Sync now” to pull each competitor’s currently active ads.'}
+                  </StateCard>
+                )}
+
+                {ads.competitors.length > 0 && (
+                  <>
+                    {/* competitor switcher */}
+                    <div style={{
+                      display: 'flex', gap: '6px', background: 'rgba(255,255,255,0.04)',
+                      padding: '4px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.1)',
+                      flexWrap: 'wrap', alignSelf: 'flex-start',
+                    }}>
+                      {ads.competitors.map(c => {
+                        const on = (group?.competitor ?? '') === c.competitor;
+                        return (
+                          <button
+                            key={c.competitor}
+                            onClick={() => setActiveCompetitor(c.competitor)}
+                            style={{
+                              background: on ? 'rgba(124,117,255,0.25)' : 'transparent',
+                              border: 'none', color: on ? '#fff' : 'var(--text-secondary)',
+                              padding: '7px 16px', borderRadius: '100px', fontSize: '12.5px',
+                              fontWeight: on ? 700 : 500, cursor: 'pointer',
+                            }}
+                          >
+                            {c.competitor} <span style={{ opacity: 0.6 }}>({c.ad_count})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {group && (
+                      <>
+                        {group.strategy?.summary && (
+                          <div style={CARD}>
+                            <span style={{ ...LABEL, color: '#7C75FF' }}>Executive summary</span>
+                            <p style={{
+                              fontSize: '14px', color: 'rgba(255,255,255,0.9)',
+                              margin: '8px 0 0 0', lineHeight: 1.6,
+                            }}>
+                              {group.strategy.summary}
+                            </p>
+                            {group.strategy.offer_strategy && (
+                              <p style={{
+                                fontSize: '13px', color: 'var(--text-secondary)',
+                                margin: '10px 0 0 0', lineHeight: 1.6,
+                              }}>
+                                <strong style={{ color: '#fff' }}>Offer strategy: </strong>
+                                {group.strategy.offer_strategy}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Blue / Red ocean, only when the analysis produced them. */}
+                        {(group.strategy?.blue_ocean?.title || group.strategy?.red_ocean?.title) && (
+                          <div style={{
+                            display: 'grid', gap: '16px',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+                          }}>
+                            {([
+                              { key: 'blue', tag: 'BLUE OCEAN', color: '#00D2FF', data: group.strategy?.blue_ocean },
+                              { key: 'red', tag: 'RED OCEAN', color: '#ff4757', data: group.strategy?.red_ocean },
+                            ]).filter(o => o.data?.title).map(o => (
+                              <div key={o.key} className="glow-card" style={{
+                                background: `${o.color}0d`, border: `1.5px solid ${o.color}4d`,
+                                borderRadius: '18px', padding: '22px', display: 'flex',
+                                flexDirection: 'column', gap: '12px',
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <span style={{
+                                    ...LABEL, background: `${o.color}33`, color: o.color,
+                                    border: `1px solid ${o.color}66`, padding: '2px 10px',
+                                    borderRadius: '100px',
+                                  }}>{o.tag}</span>
+                                  <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700 }}>
+                                    {o.data?.title}
+                                  </h4>
+                                </div>
+                                {o.data?.rationale && (
+                                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', margin: 0, lineHeight: 1.5 }}>
+                                    {o.data.rationale}
+                                  </p>
+                                )}
+                                {!!o.data?.actions?.length && (
+                                  <div style={{
+                                    background: 'rgba(0,0,0,0.3)', border: `1px solid ${o.color}33`,
+                                    borderRadius: '10px', padding: '10px 14px', fontSize: '12px',
+                                  }}>
+                                    <strong style={{ color: o.color }}>Action items:</strong>
+                                    <div style={{ color: 'rgba(255,255,255,0.85)', marginTop: '4px', lineHeight: 1.6 }}>
+                                      {o.data.actions.map((a, i) => <div key={i}>{i + 1}. {a}</div>)}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* the ads themselves */}
+                        <div className="glow-card" style={{
+                          background: '#0a0a12', borderRadius: '20px', padding: '24px',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                        }}>
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            flexWrap: 'wrap', gap: '12px', marginBottom: '16px',
+                          }}>
+                            <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                              {group.competitor} — active ads
+                            </h3>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              {group.evergreen_count} running 45+ days · {group.ad_count} total
                             </span>
                           </div>
-                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', margin: '4px 0 0 0' }}>
-                            {item.adHook}
-                          </p>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {group.ads.map(ad => {
+                              const evergreen = (ad.days_active ?? 0) >= 45;
+                              return (
+                                <div key={ad.id} style={{
+                                  background: 'rgba(255,255,255,0.02)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '14px', padding: '16px 18px',
+                                }}>
+                                  <div style={{
+                                    display: 'flex', justifyContent: 'space-between',
+                                    gap: '12px', flexWrap: 'wrap', marginBottom: '8px',
+                                  }}>
+                                    <strong style={{ fontSize: '14px', color: '#fff' }}>
+                                      {ad.title || '(no headline)'}
+                                    </strong>
+                                    <span style={{
+                                      ...LABEL,
+                                      background: evergreen ? 'rgba(0,230,118,0.15)' : 'rgba(255,255,255,0.06)',
+                                      color: evergreen ? '#00E676' : 'var(--text-secondary)',
+                                      border: `1px solid ${evergreen ? 'rgba(0,230,118,0.35)' : 'rgba(255,255,255,0.12)'}`,
+                                      padding: '2px 10px', borderRadius: '100px',
+                                    }}>
+                                      {ad.days_active === null ? 'age unknown' : `${ad.days_active} days active`}
+                                    </span>
+                                  </div>
+
+                                  {ad.copy && (
+                                    <p style={{
+                                      fontSize: '13px', color: 'rgba(255,255,255,0.8)',
+                                      margin: '0 0 10px 0', lineHeight: 1.55, whiteSpace: 'pre-wrap',
+                                    }}>
+                                      {ad.copy.slice(0, 340)}{ad.copy.length > 340 ? '…' : ''}
+                                    </p>
+                                  )}
+
+                                  <div style={{
+                                    display: 'flex', gap: '8px', alignItems: 'center',
+                                    flexWrap: 'wrap', fontSize: '11.5px', color: 'var(--text-muted)',
+                                  }}>
+                                    {ad.offers?.code && (
+                                      <span style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                        background: 'rgba(255,176,32,0.12)', color: '#FFB020',
+                                        border: '1px solid rgba(255,176,32,0.3)', padding: '2px 10px',
+                                        borderRadius: '100px', fontWeight: 700,
+                                      }}>
+                                        <Tag size={11} /> {ad.offers.code}
+                                      </span>
+                                    )}
+                                    {!!ad.offers?.percent_off && (
+                                      <span style={{ color: '#FFB020', fontWeight: 700 }}>
+                                        {ad.offers.percent_off}% off
+                                      </span>
+                                    )}
+                                    {(ad.offers?.perks ?? []).map(p => (
+                                      <span key={p} style={{ color: '#00E676' }}>free {p}</span>
+                                    ))}
+                                    {ad.platforms.length > 0 && <span>· {ad.platforms.join(', ')}</span>}
+                                    {/* Where the row came from, always shown — the official
+                                        API and a third-party collector are not the same
+                                        provenance and should never look like it. */}
+                                    <span>· via {ad.source}</span>
+                                    {ad.snapshot_url && (
+                                      <a
+                                        href={ad.snapshot_url} target="_blank" rel="noopener noreferrer"
+                                        style={{
+                                          color: '#7C75FF', display: 'inline-flex', alignItems: 'center',
+                                          gap: '4px', textDecoration: 'none', fontWeight: 600,
+                                        }}
+                                      >
+                                        View in Ad Library <ExternalLink size={11} />
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {!!group.strategy?.recommended_formats?.length && (
+                          <div style={CARD}>
+                            <span style={{ ...LABEL, color: '#00E676' }}>Recommended creative formats</span>
+                            <div style={{
+                              marginTop: '10px', display: 'flex', flexDirection: 'column',
+                              gap: '6px', fontSize: '13px', color: 'rgba(255,255,255,0.85)',
+                            }}>
+                              {group.strategy.recommended_formats.map((f, i) => <div key={i}>• {f}</div>)}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* ══════════════ TAB 2 — SEARCH & CREATOR RADAR ══════════════ */}
+            {activeReportTab === 'keyword_trends' && trends && (
+              <>
+                <SyncBar
+                  label="Search trends & creator refs"
+                  cadenceDays={trends.cadence_days}
+                  sync={trends.sync}
+                  configured={trends.source_configured}
+                  busy={syncing === 'trends'}
+                  onSync={() => runSync('trends')}
+                />
+
+                {!trends.source_configured && (
+                  <StateCard tone="warn" title="No trend source is configured yet">
+                    Set <code>SERPAPI_KEY</code> (or install <code>pytrends</code>) for search
+                    interest, and <code>YOUTUBE_API_KEY</code> for creator video references.
+                    Without one of these the radar has nothing real to measure, so it stays
+                    empty.
+                  </StateCard>
+                )}
+
+                {trends.source_configured && !report && (
+                  <StateCard tone="info" title="No trend report yet">
+                    {trends.sync.status === 'failed'
+                      ? `The last sync failed: ${trends.sync.message}`
+                      : 'Run “Sync now” to build this workspace’s first market radar. Keywords are derived from the product categories found during brand onboarding.'}
+                  </StateCard>
+                )}
+
+                {report && (
+                  <>
+                    <div style={CARD}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <Sparkles size={16} color="#00E676" />
+                        <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                          {report.report_title}
+                        </h3>
+                        <span style={{
+                          ...LABEL, background: 'rgba(0,230,118,0.15)', color: '#00E676',
+                          border: '1px solid rgba(0,230,118,0.3)', padding: '2px 10px', borderRadius: '100px',
+                        }}>
+                          {report.region}
+                        </span>
+                      </div>
+                      {report.summary && (
+                        <p style={{
+                          fontSize: '13.5px', color: 'rgba(255,255,255,0.85)',
+                          margin: '10px 0 0 0', lineHeight: 1.6,
+                        }}>
+                          {report.summary}
+                        </p>
+                      )}
+                      <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: '12px 0 0 0' }}>
+                        {report.period_start?.slice(0, 10)} → {report.period_end?.slice(0, 10)} ·
+                        {' '}sources: {report.sources.length ? report.sources.join(', ') : 'none recorded'}
+                      </p>
+                    </div>
+
+                    {report.strategic_keywords.length > 0 && (
+                      <div className="glow-card" style={{
+                        background: '#0a0a12', borderRadius: '20px', padding: '24px',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                      }}>
+                        <h3 style={{ fontSize: '17px', color: '#fff', margin: '0 0 14px 0', fontWeight: 800 }}>
+                          Strategic keywords &amp; copy hooks
+                        </h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {report.strategic_keywords.map(k => {
+                            const color = BUCKET_COLORS[k.bucket] ?? '#7C75FF';
+                            return (
+                              <div key={k.keyword} style={{
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                borderRadius: '14px', padding: '14px 18px',
+                              }}>
+                                <div style={{
+                                  display: 'flex', alignItems: 'center', gap: '10px',
+                                  flexWrap: 'wrap', marginBottom: k.hook ? '8px' : 0,
+                                }}>
+                                  <strong style={{ fontSize: '14px', color: '#fff' }}>{k.keyword}</strong>
+                                  <span style={{
+                                    ...LABEL, background: `${color}26`, color,
+                                    border: `1px solid ${color}59`, padding: '2px 10px', borderRadius: '100px',
+                                  }}>
+                                    {BUCKET_LABELS[k.bucket] ?? k.bucket}
+                                  </span>
+                                  {/* The interest index is a measured value, so it gets a
+                                      bar rather than a bare number — a 84 next to a 12 is
+                                      only meaningful when you can see the difference. */}
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                                    <span style={{
+                                      width: '90px', height: '6px', borderRadius: '100px',
+                                      background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+                                    }}>
+                                      <span style={{
+                                        display: 'block', height: '100%', background: color,
+                                        width: `${Math.max(0, Math.min(100, k.score))}%`,
+                                      }} />
+                                    </span>
+                                    <span style={{ fontSize: '12px', color: '#fff', fontWeight: 700, minWidth: '26px' }}>
+                                      {k.score}
+                                    </span>
+                                  </span>
+                                </div>
+                                {k.hook && (
+                                  <div style={{
+                                    display: 'flex', alignItems: 'center', gap: '10px',
+                                    justifyContent: 'space-between', flexWrap: 'wrap',
+                                  }}>
+                                    <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 }}>
+                                      “{k.hook}”
+                                    </span>
+                                    <button
+                                      onClick={() => copyHook(k.hook)}
+                                      style={{
+                                        background: 'rgba(255,255,255,0.06)',
+                                        border: '1px solid rgba(255,255,255,0.12)', color: '#fff',
+                                        padding: '5px 12px', borderRadius: '100px', fontSize: '11.5px',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                                      }}
+                                    >
+                                      {copiedHook === k.hook ? <Check size={12} color="#00E676" /> : <Copy size={12} />}
+                                      {copiedHook === k.hook ? 'Copied' : 'Copy hook'}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
+                    )}
 
-                      <button
-                        onClick={() => handleCopyHook(item.adHook)}
-                        style={{
-                          background: copiedHook === item.adHook ? 'rgba(0, 230, 118, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid',
-                          borderColor: copiedHook === item.adHook ? '#00E676' : 'rgba(255, 255, 255, 0.12)',
-                          color: copiedHook === item.adHook ? '#00E676' : '#fff',
-                          padding: '6px 14px',
-                          borderRadius: '100px',
-                          fontSize: '11.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '5px'
-                        }}
-                      >
-                        {copiedHook === item.adHook ? <Check size={12} /> : <Copy size={12} />}
-                        <span>{copiedHook === item.adHook ? 'Copied!' : 'Copy Hook'}</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Winning Patterns & Opportunity Gaps */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
-                
-                {/* Winning Patterns */}
-                <div className="glow-card" style={{ background: 'rgba(0, 230, 118, 0.04)', border: '1px solid rgba(0, 230, 118, 0.25)', borderRadius: '18px', padding: '22px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <Sparkles size={16} color="#00E676" />
-                    <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                      Winning Patterns in Creator & Ad Content
-                    </h4>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
-                    <div>• <strong>Proof-first “real test” short videos</strong> are outperforming polished spec dumps: battery-vs-phone tests, laptop charging speed tests.</div>
-                    <div>• <strong>Curiosity hook in first second:</strong> contrast and surprise framing such as capacity challenges or bold performance claims.</div>
-                    <div>• <strong>Built-in-cable convenience:</strong> understood instantly in commute, café, classroom, airport, or desk without reading a spec card.</div>
-                    <div>• <strong>Diwali festive run-up (Nov 2026):</strong> move from pure utility into gifting, travel, and upgrade bundles starting September.</div>
-                  </div>
-                </div>
-
-                {/* Opportunity Gaps */}
-                <div className="glow-card" style={{ background: 'rgba(124, 117, 255, 0.04)', border: '1px solid rgba(124, 117, 255, 0.25)', borderRadius: '18px', padding: '22px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <Target size={16} color="#7C75FF" />
-                    <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700 }}>
-                      Category Opportunity Gaps for Demo Brand
-                    </h4>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
-                    <div>• Most category ads treat mAh, watts, and ports as the message. Demo Brand can own <strong>“proof of preparedness”</strong>.</div>
-                    <div>• Creator format often proves 1 device at a time. Demo Brand can differentiate through <strong>device-stack demos (phone + earbuds + laptop)</strong>.</div>
-                    <div>• Demo Brand’s Indian-origin and accessible-tech story is underused in short-form charging content.</div>
-                    <div>• Replace generic price discounts with <strong>“travel-ready power”</strong> and <strong>“work-ready charging”</strong> bundles.</div>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Creator Short Video Sources */}
-              <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '18px', padding: '20px 24px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
-                  High-Impact Creator Video References
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
-                  {[
-                    { title: 'Thor Wala Powerbank ⚡ #shorts', channel: 'YouTube · 2026-07-13', url: 'https://www.youtube.com/watch?v=mpuqxOWKdZ8', desc: 'Dramatic test-led power-bank storytelling around travel and built-in cables.' },
-                    { title: 'New Fast PowerBank From Xiaomi - Test !', channel: 'YouTube · 2026-08-09', url: 'https://www.youtube.com/watch?v=plp4hkEEQ0c', desc: 'Visible laptop and fast-charging real-time test.' },
-                    { title: 'Throw Away Your Charging Cables 🚨', channel: 'YouTube · 2026-05-16', url: 'https://www.youtube.com/watch?v=pNJlpb79oSA', desc: 'Bold 1-second hook demonstrating functional convenience.' }
-                  ].map((src, i) => (
-                    <a
-                      key={i}
-                      href={src.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                        borderRadius: '12px',
-                        padding: '12px 14px',
-                        textDecoration: 'none',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '13px', color: '#fff', fontWeight: 700 }}>{src.title}</span>
-                        <ExternalLink size={12} color="#7C75FF" />
+                    {(report.winning_patterns.length > 0 || report.creative_formats.length > 0) && (
+                      <div style={{
+                        display: 'grid', gap: '16px',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                      }}>
+                        {report.winning_patterns.length > 0 && (
+                          <div style={CARD}>
+                            <span style={{ ...LABEL, color: '#00D2FF' }}>Winning patterns</span>
+                            <div style={{
+                              marginTop: '10px', display: 'flex', flexDirection: 'column',
+                              gap: '6px', fontSize: '13px', color: 'rgba(255,255,255,0.85)',
+                            }}>
+                              {report.winning_patterns.map((p, i) => <div key={i}>• {p}</div>)}
+                            </div>
+                          </div>
+                        )}
+                        {report.creative_formats.length > 0 && (
+                          <div style={CARD}>
+                            <span style={{ ...LABEL, color: '#FFB020' }}>Creative formats to produce</span>
+                            <div style={{
+                              marginTop: '10px', display: 'flex', flexDirection: 'column',
+                              gap: '6px', fontSize: '13px', color: 'rgba(255,255,255,0.85)',
+                            }}>
+                              {report.creative_formats.map((f, i) => <div key={i}>• {f}</div>)}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{src.channel}</span>
-                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>{src.desc}</p>
-                    </a>
-                  ))}
-                </div>
-              </div>
+                    )}
 
-            </div>
-          )}
+                    {report.creator_video_refs.length > 0 && (
+                      <div className="glow-card" style={{
+                        background: '#0a0a12', borderRadius: '20px', padding: '24px',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                      }}>
+                        <h3 style={{ fontSize: '17px', color: '#fff', margin: '0 0 14px 0', fontWeight: 800 }}>
+                          Creator video references
+                        </h3>
+                        <div style={{
+                          display: 'grid', gap: '14px',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                        }}>
+                          {report.creator_video_refs.map(v => (
+                            <a
+                              key={v.url} href={v.url} target="_blank" rel="noopener noreferrer"
+                              style={{
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px',
+                                overflow: 'hidden', textDecoration: 'none', display: 'flex',
+                                flexDirection: 'column',
+                              }}
+                            >
+                              {v.thumbnail && (
+                                <img
+                                  src={v.thumbnail} alt=""
+                                  style={{ width: '100%', height: '130px', objectFit: 'cover' }}
+                                />
+                              )}
+                              <div style={{ padding: '12px 14px' }}>
+                                <div style={{
+                                  fontSize: '13px', color: '#fff', fontWeight: 600,
+                                  lineHeight: 1.4, marginBottom: '6px',
+                                }}>
+                                  {v.title}
+                                </div>
+                                <div style={{
+                                  fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex',
+                                  alignItems: 'center', gap: '5px',
+                                }}>
+                                  <Play size={11} /> {v.channel} · {v.published_at}
+                                </div>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-        </div>
-
-        {/* ── MODAL FOOTER ─────────────────────────────────────────── */}
-        <div
-          style={{
-            padding: '16px 28px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: 'rgba(0,0,0,0.5)'
-          }}
-        >
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Raftra Market & Ad Intelligence Engine • Realtime India Meta & Google Signals
-          </span>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={onClose}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: 'none',
-                color: '#fff',
-                padding: '9px 18px',
-                borderRadius: '100px',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              Close
-            </button>
-
-            <GlowButton
-              variant="glow"
-              onClick={() => {
-                onClose();
-                if (onNavigateTab) onNavigateTab('studio');
-              }}
-              style={{ fontSize: '13px', padding: '9px 22px' }}
-            >
-              Generate Ads from these Hooks 🚀
-            </GlowButton>
+                    {trends.history.length > 0 && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        <Zap size={12} style={{ verticalAlign: 'middle' }} /> Earlier reports:{' '}
+                        {trends.history.map(h => `${h.report_title} (${h.period_end?.slice(0, 10)})`).join(' · ')}
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
           </div>
-        </div>
-
+        </motion.div>
       </motion.div>
-    </div>
+    </AnimatePresence>
   );
 };

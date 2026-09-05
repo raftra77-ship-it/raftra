@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard } from 'lucide-react';
 import { WorkspaceInfluencer } from '../components/workspaces/WorkspaceInfluencer';
 import { GlowButton } from '../components/GlowButton';
 
@@ -34,12 +34,8 @@ export const InfluencerMarketplacePage: React.FC = () => {
         zIndex: 100
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div
-            onClick={() => navigate('/')}
-            title="Back to Raftra home"
-            role="link"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }}
+          <div 
+            onClick={() => navigate('/')} 
             style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
           >
             <span style={{ color: 'var(--primary, #5A52FF)' }}>RAFTRA</span> MARKETPLACE
@@ -50,16 +46,8 @@ export const InfluencerMarketplacePage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Always-present way back to the marketing site. This page is opened with
-              target="_blank" from the landing page, so the tab has no history and the
-              browser Back button is dead. Without this the only controls were "Back to
-              Dashboard" and "Sign In", which both push a logged-out visitor to /login
-              and leave them with no route back to the site. */}
-          <GlowButton variant="secondary" onClick={() => navigate('/')} style={{ fontSize: '13px', padding: '8px 16px' }}>
-            <ArrowLeft size={15} /> Back to Home
-          </GlowButton>
           <GlowButton variant="secondary" onClick={handleDashboardClick} style={{ fontSize: '13px', padding: '8px 16px' }}>
-            <LayoutDashboard size={15} /> {isLoggedIn ? 'Dashboard' : 'Dashboard (Sign In)'}
+            <LayoutDashboard size={15} /> {isLoggedIn ? 'Back to Dashboard' : 'Back to Dashboard (Sign In)'}
           </GlowButton>
           {!isLoggedIn && (
             <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ fontSize: '13px', padding: '8px 16px' }}>

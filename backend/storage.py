@@ -17,8 +17,13 @@ if SUPABASE_URL and SUPABASE_KEY:
 
 async def upload_file_to_supabase(file: UploadFile, folder: str = "general") -> str:
     if not supabase:
-        print("Warning: Supabase not configured. Simulating upload.")
-        return f"https://mock.raftra.com/storage/{folder}/{file.filename}"
+        # Used to "simulate" the upload by returning https://mock.raftra.com/... - a URL that
+        # resolves to nothing. The caller stored it as if the file were saved, so the failure
+        # only showed up later as a broken image. Fail here instead.
+        raise HTTPException(
+            status_code=503,
+            detail="File storage is not configured on this server (SUPABASE_URL and "
+                   "SUPABASE_KEY are unset), so uploads cannot be saved.")
         
     try:
         file_ext = file.filename.split(".")[-1]

@@ -1208,17 +1208,20 @@ class GoogleAdsCampaignBudgetBody(BaseModel):
 def gads_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _get_gads(workspace_id, db)
-    # login_customer_id is the manager (MCC) account every call is made through. It is
-    # surfaced so the UI can warn when the selected customer IS that manager: campaigns
-    # cannot be created inside a manager account, so such a selection always fails at
-    # publish time — and listAccessibleCustomers returns the manager alongside the real
-    # ad accounts, so it is an easy one to pick by mistake.
+    # login_customer_id is the manager (MCC) this connection must act through, and is NULL
+    # in the normal case where the connected Google account reaches the customer directly.
+    # It is surfaced so the UI can warn when the selected customer IS that manager:
+    # campaigns cannot be created inside a manager account, so such a selection always
+    # fails at publish time — and listAccessibleCustomers returns the manager alongside
+    # the real ad accounts, so it is an easy one to pick by mistake.
     return {
         "configured": gads.is_configured(),
         "connected": bool(conn and conn.refresh_token),
         "email": conn.connected_email if conn else None,
         "customer_id": conn.customer_id if conn else None,
-        "login_customer_id": (gads.LOGIN_CUSTOMER_ID or "").replace("-", "") or None,
+        "login_customer_id": (conn.login_customer_id if conn else None) or None,
+        # Whether the SELECTED account is a manager — campaigns cannot live in one.
+        "is_manager_account": bool(conn.customer_is_manager) if conn else False,
     }
 
 
@@ -1291,12 +1294,36 @@ async def gads_accounts(workspace_id: int, db: Session = Depends(database.get_db
 
 
 @router.post("/google-ads/{workspace_id}/account")
-def gads_select_account(workspace_id: int, body: GoogleAdsAccountSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def gads_select_account(workspace_id: int, body: GoogleAdsAccountSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _gads_ready(workspace_id, db, need_account=False)
-    conn.customer_id = body.customer_id.replace("-", "")
+    chosen = body.customer_id.replace("-", "")
+
+    # Decide how this account has to be reached before storing it. listAccessibleCustomers
+    # returns the accounts the connected Google user can reach DIRECTLY; for those, no
+    # login-customer-id is sent and the customer's own OAuth grant authorises every call —
+    # they never have to link their ad account under our manager, and revoking access in
+    # their Google account is enough to cut us off. Anything else is only reachable through
+    # our manager, so record that we must act as it.
+    accounts = []
+    try:
+        accounts = await gads.list_accessible_customers(conn)
+    except Exception:
+        pass   # listing failed; assume direct rather than forcing a manager hop
+    direct = {str(a.get("customer_id") or "").replace("-", "") for a in accounts}
+    picked = next((a for a in accounts if str(a.get("customer_id") or "").replace("-", "") == chosen), None)
+
+    conn.customer_id = chosen
+    conn.login_customer_id = None if (not direct or chosen in direct) else (gads.LOGIN_CUSTOMER_ID or "").replace("-", "") or None
+    # Recorded at selection time so the publish screen can warn without another API call.
+    conn.customer_is_manager = bool(picked and picked.get("manager"))
     db.commit()
-    return {"status": "success", "customer_id": conn.customer_id}
+    return {
+        "status": "success",
+        "customer_id": conn.customer_id,
+        "via_manager": bool(conn.login_customer_id),
+        "is_manager_account": bool(conn.customer_is_manager),
+    }
 
 
 @router.post("/google-ads/{workspace_id}/publish-campaign")
@@ -1377,10 +1404,24 @@ async def gads_set_budget(workspace_id: int, body: GoogleAdsCampaignBudgetBody, 
 
 
 @router.delete("/google-ads/{workspace_id}")
-def gads_disconnect(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def gads_disconnect(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Revoke the Google grant and drop the stored tokens.
+
+    Deleting the row alone left the refresh token live at Google, so "Disconnect" removed
+    our access but not Google's record of it — the user would still see Raftra listed under
+    their account connections. Revocation is best-effort, matching Search Console: if Google
+    rejects it we still clear our side rather than keep credentials we no longer want.
+    """
     _require_workspace(workspace_id, db, current_user)
     conn = _get_gads(workspace_id, db)
     if conn:
+        token = conn.refresh_token or conn.access_token
+        if token:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post("https://oauth2.googleapis.com/revoke", data={"token": token})
+            except Exception as e:
+                print(f"Google Ads token revoke failed (clearing locally anyway): {e}")
         db.delete(conn)
         db.commit()
     return {"status": "success"}

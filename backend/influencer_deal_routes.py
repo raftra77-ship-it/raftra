@@ -29,6 +29,9 @@ import models
 
 router = APIRouter(prefix="/api/deals", tags=["deals"])
 
+# Used when composing plain-text enquiry emails.
+NEWLINE = chr(10)
+
 
 # ---------------------------------------------------------------------------- request bodies
 class DealProposeRequest(BaseModel):
@@ -272,3 +275,69 @@ def release_deal_payment(deal_id: int, req: Optional[DealReleaseRequest] = None,
         "emailed": bool(creator_email),
         "deal": _serialise(deal),
     }
+
+
+# ----------------------------------------------------------------- expert enquiry
+class ExpertInquiry(BaseModel):
+    name: str
+    email: str
+    phone: Optional[str] = ""
+    websiteUrl: Optional[str] = ""
+    instaPage: Optional[str] = ""
+    campaignGoal: Optional[str] = ""
+    budget: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+@router.post("/expert-inquiry")
+def expert_inquiry(body: ExpertInquiry, background_tasks: BackgroundTasks):
+    """"Request Expert Advice" from the Creator Marketplace.
+
+    The form posted to /api/v1/workspaces/influencer/expert-inquiry, a path that has never
+    existed on this backend, so every submission 404'd while the UI showed a thank-you
+    screen. Deliberately unauthenticated: the marketplace page is reachable logged out, and
+    turning a lead away for having no account defeats the point of the form.
+
+    Emailed to the team rather than stored: there is no table for enquiries and no screen
+    that would read one, so a row nobody looks at would be worse than an inbox.
+    """
+    if not body.name.strip() or "@" not in body.email:
+        raise HTTPException(status_code=400, detail="A name and a valid email are required.")
+
+    to_addr = os.getenv("SMTP_FROM") or os.getenv("SMTP_USER")
+    if not to_addr:
+        # Accepted anyway - the visitor should not see a failure caused by our config.
+        print("[expert-inquiry] SMTP not configured; enquiry not delivered:", body.model_dump())
+        return {"status": "success", "message": "Thanks - our team will be in touch."}
+
+    def _send() -> None:
+        try:
+            lines = [
+                "Name: " + body.name,
+                "Email: " + body.email,
+                "Phone: " + (body.phone or ""),
+                "Website: " + (body.websiteUrl or ""),
+                "Instagram: " + (body.instaPage or ""),
+                "Goal: " + (body.campaignGoal or ""),
+                "Budget: " + (body.budget or ""),
+                "",
+                "Notes:",
+                body.notes or "(none)",
+            ]
+            msg = EmailMessage()
+            msg["Subject"] = "Expert advice request - " + body.name
+            msg["From"] = os.getenv("SMTP_FROM", to_addr)
+            msg["To"] = to_addr
+            msg["Reply-To"] = body.email
+            msg.set_content(NEWLINE.join(lines))
+            host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+            port = int(os.getenv("SMTP_PORT", "587"))
+            with smtplib.SMTP(host, port, timeout=20) as srv:
+                srv.starttls()
+                srv.login(os.getenv("SMTP_USER", ""), os.getenv("SMTP_PASSWORD", ""))
+                srv.send_message(msg)
+        except Exception as e:  # noqa: BLE001 - the visitor is not shown our mail problems
+            print("[expert-inquiry] delivery failed:", e)
+
+    background_tasks.add_task(_send)
+    return {"status": "success", "message": "Thanks - our team will be in touch within 24 hours."}

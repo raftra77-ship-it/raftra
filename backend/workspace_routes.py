@@ -13,6 +13,44 @@ def get_workspaces(db: Session = Depends(database.get_db), current_user: models.
     workspaces = db.query(models.Workspace).filter(models.Workspace.user_id == current_user.id).all()
     return workspaces
 
+@router.get("/onboarding-state")
+def onboarding_state(db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Where this user should land after logging in, decided server-side.
+
+    The client used to answer this itself with "does /api/workspaces return anything" -
+    which is not the same question. A workspace row is created before the onboarding crawl
+    finishes, and BrandDashboard also creates one lazily, so "has a workspace" was true for
+    people who had never completed onboarding and false for people who had. The stored
+    is_onboarded flag was written by the crawl and then read by nothing except a badge, so
+    a user who finished onboarding could still be sent back through it on the next login.
+
+    Returning both facts from one endpoint also keeps login to a single round trip, which
+    is the other half of the complaint: the client previously fetched the workspace list and
+    then would have needed a second call for the profile.
+    """
+    workspaces = (db.query(models.Workspace)
+                    .filter(models.Workspace.user_id == current_user.id)
+                    .order_by(models.Workspace.id.asc()).all())
+    if not workspaces:
+        return {"has_workspace": False, "is_onboarded": False, "workspace_id": None,
+                "next": "onboarding"}
+
+    ws_ids = [w.id for w in workspaces]
+    onboarded = (db.query(models.BrandProfile)
+                   .filter(models.BrandProfile.workspace_id.in_(ws_ids),
+                           models.BrandProfile.is_onboarded.is_(True))
+                   .first())
+    return {
+        "has_workspace": True,
+        "is_onboarded": bool(onboarded),
+        # The onboarded workspace when there is one, so the dashboard opens on a brand that
+        # actually has a kit rather than whichever row happens to sort first.
+        "workspace_id": (onboarded.workspace_id if onboarded else workspaces[0].id),
+        "next": "dashboard" if onboarded else "onboarding",
+    }
+
+
 @router.get("/discover")
 def discover_brands(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     workspaces = db.query(models.Workspace).all()
@@ -35,6 +73,148 @@ def create_workspace(ws: schemas.WorkspaceCreate, db: Session = Depends(database
     db.commit()
     db.refresh(new_ws)
     return new_ws
+
+from pydantic import BaseModel as _WorkspaceBase
+
+
+class WorkspaceUpdate(_WorkspaceBase):
+    name: Optional[str] = None
+    company_url: Optional[str] = None
+    brand_logo: Optional[str] = None
+    brand_color: Optional[str] = None
+    brand_voice: Optional[str] = None
+
+
+@router.patch("/{workspace_id}", response_model=schemas.WorkspaceResponse)
+def update_workspace(workspace_id: int, body: WorkspaceUpdate,
+                     db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Edit a workspace's brand settings.
+
+    There was no update route at all, so the Settings screen's "Save Settings" button had
+    nothing to call - it showed "Settings saved successfully!" and the edits were lost on
+    the next reload.
+    """
+    ws = _require_workspace(workspace_id, db, current_user)
+
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="A workspace needs a name.")
+        data["name"] = name
+    if data.get("company_url"):
+        # Same normalisation as create, so a pasted URL with a stray space does not reach
+        # the crawler as an invalid address later.
+        from agents.seo_geo import normalize_target_url
+        data["company_url"] = normalize_target_url(data["company_url"]) or data["company_url"]
+
+    for k, v in data.items():
+        setattr(ws, k, v)
+    db.commit()
+    db.refresh(ws)
+    return ws
+
+
+class BrandProfileUpdate(_WorkspaceBase):
+    brand_guidelines_summary: Optional[str] = None
+    target_audience: Optional[str] = None
+    color_palette: Optional[List[str]] = None
+    # Editable for the same reason the palette is: the crawl's read of a site's CSS
+    # variables is a starting point, and a designer correcting a role or dropping a
+    # mis-detected logo must not be forced to re-run onboarding to do it.
+    color_tokens: Optional[List[dict]] = None
+    logos: Optional[List[dict]] = None
+    typography: Optional[dict] = None
+    guidelines: Optional[dict] = None
+
+
+def _brand_profile_json(ws, bp) -> dict:
+    """Merges the workspace's own brand fields with the scraped profile. The Knowledge Vault
+    needs both: name/url/voice/colour live on the workspace, while the summary, audience,
+    palette and typography come from onboarding's crawl."""
+    return {
+        "name": ws.name,
+        "url": ws.company_url,
+        "brand_voice": ws.brand_voice,
+        "brand_color": ws.brand_color,
+        "brand_guidelines_summary": (bp.brand_guidelines_summary if bp else None),
+        "target_audience": (bp.target_audience if bp else None),
+        "color_palette": (bp.color_palette if bp else None) or [],
+        # The same colours with the name and role the site's own CSS variables gave them,
+        # plus the logo files found in its markup. Both are empty for workspaces onboarded
+        # before extraction existed, and the vault falls back accordingly.
+        "color_tokens": (bp.color_tokens if bp else None) or [],
+        "logos": (bp.logos if bp else None) or [],
+        "typography": (bp.typography if bp else None) or {},
+        "guidelines": (bp.guidelines if bp else None) or {},
+        "is_onboarded": bool(bp.is_onboarded) if bp else False,
+    }
+
+
+@router.delete("/{workspace_id}")
+def delete_workspace(workspace_id: int, db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Delete a workspace and everything scoped to it.
+
+    Same schema-driven sweep as delete-account: the child tables pointing at workspaces.id
+    are found from the mapper registry rather than a hand-written list, so a table added
+    later does not quietly break this with a foreign-key error.
+    """
+    _require_workspace(workspace_id, db, current_user)
+
+    # Refuse to remove the last one: the whole dashboard is keyed on having a workspace,
+    # and an account with none lands on a permanently empty screen.
+    remaining = (db.query(models.Workspace)
+                   .filter(models.Workspace.user_id == current_user.id).count())
+    if remaining <= 1:
+        raise HTTPException(status_code=400,
+                            detail="This is your only workspace, so it cannot be deleted.")
+
+    for model in [m.class_ for m in models.Base.registry.mappers]:
+        col = getattr(model, "workspace_id", None)
+        if col is not None and model is not models.Workspace:
+            db.query(model).filter(col == workspace_id).delete(synchronize_session=False)
+
+    db.query(models.Workspace).filter(models.Workspace.id == workspace_id)      .delete(synchronize_session=False)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.get("/{workspace_id}/brand-profile")
+def get_brand_profile(workspace_id: int, db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    """What onboarding actually learned about this brand.
+
+    brand_profiles has been written by the onboarding crawl and read by the agents since the
+    start, but nothing ever exposed it over HTTP - which is why the Brand Knowledge vault
+    showed five paragraphs about a fictional power-bank company instead.
+    """
+    ws = _require_workspace(workspace_id, db, current_user)
+    bp = (db.query(models.BrandProfile)
+            .filter(models.BrandProfile.workspace_id == workspace_id).first())
+    return _brand_profile_json(ws, bp)
+
+
+@router.patch("/{workspace_id}/brand-profile")
+def update_brand_profile(workspace_id: int, body: BrandProfileUpdate,
+                         db: Session = Depends(database.get_db),
+                         current_user: models.User = Depends(auth.get_current_user)):
+    """Edit what the agents are told about this brand. The crawl's guess is a starting point,
+    not the final word, so this is editable rather than read-only."""
+    ws = _require_workspace(workspace_id, db, current_user)
+    bp = (db.query(models.BrandProfile)
+            .filter(models.BrandProfile.workspace_id == workspace_id).first())
+    if not bp:
+        bp = models.BrandProfile(workspace_id=workspace_id)
+        db.add(bp)
+
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(bp, k, v)
+    db.commit()
+    db.refresh(bp)
+    return _brand_profile_json(ws, bp)
+
 
 @router.post("/{workspace_id}/reindex")
 def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -298,48 +478,12 @@ def get_dashboard_metrics(workspace_id: int, db: Session = Depends(database.get_
         "active_ai_agents": agents,
     }
 
-@router.get("/{workspace_id}/dashboard/organic")
-async def get_organic_dashboard(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
-    if not ws: raise HTTPException(status_code=403, detail="Workspace access denied")
-    
-    # In production, query GA4, GSC, Firecrawl data from Qdrant/PostgreSQL
-    data = {
-        "seo_traffic": 15400,
-        "keyword_growth": "+24%",
-        "geo_visibility": 88,
-        "citation_count": 142,
-        "entity_authority": 92
-    }
-    
-    from core.providers.llm_providers import OpenRouterProvider
-    llm = OpenRouterProvider()
-    claude_prompt = f"Analyze this organic growth data and provide a 2 sentence recommendation for SEO:\n{data}"
-    claude_response = await llm.generate_text(claude_prompt)
-    
-    data["claude_recommendation"] = claude_response
-    return data
-
-@router.get("/{workspace_id}/dashboard/paid")
-async def get_paid_dashboard(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
-    if not ws: raise HTTPException(status_code=403, detail="Workspace access denied")
-    
-    data = {
-        "ad_spend": 4500.00,
-        "roas": 3.4,
-        "ctr": 2.1,
-        "conversions": 340,
-        "influencer_performance": "High"
-    }
-    
-    from core.providers.llm_providers import OpenRouterProvider
-    llm = OpenRouterProvider()
-    claude_prompt = f"Analyze this paid growth data and provide a 2 sentence recommendation for ad optimization and budget:\n{data}"
-    claude_response = await llm.generate_text(claude_prompt)
-    
-    data["claude_recommendation"] = claude_response
-    return data
+# The /dashboard/organic and /dashboard/paid endpoints were removed here. Both returned a
+# hardcoded dictionary - 15,400 organic sessions, 88 GEO visibility, $4,500 ad spend, 3.4
+# ROAS - and then passed those invented figures to an LLM for a "recommendation", so the
+# advice was reasoning about numbers no one had measured. Nothing in the app called either
+# one. Real equivalents already exist: /dashboard/metrics reads campaigns and audits from
+# the database, and the GA4 and Search Console panels read the connected accounts.
 
 # Campaigns
 @router.get("/{workspace_id}/campaigns", response_model=List[schemas.CampaignResponse])
@@ -982,6 +1126,35 @@ class CompetitorBody(_CompetitorBase):
     competitor: str
 
 
+def _competitor_json(r) -> dict:
+    return {
+        "id": r.id,
+        "competitor": r.competitor,
+        "site_url": r.site_url,
+        "positioning": r.positioning or "",
+        "audience": r.audience or "",
+        "tone": r.tone or "",
+        "offers": r.offers or [],
+        "hooks": r.hooks or [],
+        "ctas": r.ctas or [],
+        "notes": r.notes or "",
+        "sources": r.sources or [],
+        "researched_at": (r.updated_at or r.created_at).isoformat() if (r.updated_at or r.created_at) else None,
+    }
+
+
+@router.get("/{workspace_id}/competitors")
+def list_competitors(workspace_id: int, db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Every competitor researched for this workspace, newest first."""
+    _require_workspace(workspace_id, db, current_user)
+    rows = (db.query(models.CompetitorReport)
+              .filter(models.CompetitorReport.workspace_id == workspace_id)
+              .order_by(models.CompetitorReport.updated_at.desc())
+              .all())
+    return [_competitor_json(r) for r in rows]
+
+
 @router.post("/{workspace_id}/competitors/analyze")
 async def analyze_competitor_route(workspace_id: int, body: CompetitorBody,
                                    db: Session = Depends(database.get_db),
@@ -1000,11 +1173,52 @@ async def analyze_competitor_route(workspace_id: int, body: CompetitorBody,
 
     from core.competitors import analyze_competitor
     try:
-        return await analyze_competitor(name)
+        data = await analyze_competitor(name)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Competitor research failed: {e}")
+
+    # Re-researching a competitor updates its report rather than adding a second one, so the
+    # list stays one row per rival however often it is refreshed.
+    from sqlalchemy import func as _func
+    from datetime import datetime as _datetime
+    row = (db.query(models.CompetitorReport)
+             .filter(models.CompetitorReport.workspace_id == workspace_id,
+                     _func.lower(models.CompetitorReport.competitor) == name.lower())
+             .first())
+    if not row:
+        row = models.CompetitorReport(workspace_id=workspace_id, competitor=name)
+        db.add(row)
+
+    row.site_url = data.get("site_url")
+    row.positioning = data.get("positioning") or ""
+    row.audience = data.get("audience") or ""
+    row.tone = data.get("tone") or ""
+    row.offers = data.get("offers") or []
+    row.hooks = data.get("hooks") or []
+    row.ctas = data.get("ctas") or []
+    row.notes = data.get("notes") or ""
+    row.sources = data.get("sources") or []
+    row.updated_at = _datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _competitor_json(row)
+
+
+@router.delete("/{workspace_id}/competitors/{report_id}")
+def delete_competitor(workspace_id: int, report_id: int, db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    row = (db.query(models.CompetitorReport)
+             .filter(models.CompetitorReport.id == report_id,
+                     models.CompetitorReport.workspace_id == workspace_id)
+             .first())
+    if not row:
+        raise HTTPException(status_code=404, detail="Competitor report not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "deleted"}
 
 
 @router.get("/{workspace_id}/creatives/{asset_id}/image")

@@ -64,10 +64,154 @@ async def _format_connected_data(workspace_id: int) -> str:
         else:
             lines.append("Google Search Console: NOT CONNECTED.")
 
-        lines.append("Google Analytics 4: NOT CONNECTED.")
+        # Was hardcoded to NOT CONNECTED. GA4 rides on the same Google grant as Search
+        # Console, so the property id on that row is what decides it.
+        if gsc_conn and gsc_conn.refresh_token and getattr(gsc_conn, "ga4_property_id", None):
+            lines.append(f"Google Analytics 4: connected (property {gsc_conn.ga4_property_id}).")
+        else:
+            lines.append("Google Analytics 4: NOT CONNECTED.")
+
+        # This workspace's own stored results. Without these the agent could not answer
+        # "what is my latest SEO score" about data the dashboard was showing on the same page.
+        lines.append(_workspace_data_summary(workspace_id))
     except Exception as e:
         lines.append(f"(Could not check connection status: {e})")
     return "\n".join(lines)
+
+
+def _workspace_data_summary(workspace_id: int) -> str:
+    """Audits, campaigns, creatives, competitors and schedules held for this workspace.
+
+    These are results the product produced itself, as opposed to the connector sections
+    above which depend on an external platform being linked. Everything here is measured or
+    stored - the prompt's rule against inventing figures still applies to anything absent.
+    """
+    from database import SessionLocal
+    import models
+
+    out = []
+    try:
+        with SessionLocal() as db:
+            # ── audits, split by pipeline ────────────────────────────────────────
+            # SEO and GEO answer different questions and move independently, so an average
+            # across both tells the user nothing they can act on.
+            audits = (db.query(models.SEOAudit)
+                        .filter(models.SEOAudit.workspace_id == workspace_id)
+                        .order_by(models.SEOAudit.created_at.desc())
+                        .all())
+
+            def _pipeline(a) -> str:
+                try:
+                    return ((a.keywords_data or {}).get("pipeline") or "SEO").upper()
+                except Exception:
+                    return "SEO"
+
+            def _is_demo(a) -> bool:
+                try:
+                    return bool((a.keywords_data or {}).get("demo"))
+                except Exception:
+                    return False
+
+            if audits:
+                # Spelled out because the model otherwise reads "GEO" as geographical
+                # targeting and gives location-based advice for an AI-visibility score.
+                out.append("Note: GEO here means Generative Engine Optimization - how "
+                           "visible and accurately described this brand is inside AI "
+                           "assistants and AI search answers. It is not geographic targeting.")
+                for name in ("SEO", "GEO"):
+                    runs = [a for a in audits if _pipeline(a) == name and a.score is not None]
+                    if not runs:
+                        out.append(f"{name} audits: none recorded.")
+                        continue
+                    latest = runs[0]
+                    when = latest.created_at.strftime("%d %b %Y") if latest.created_at else "an unknown date"
+                    line = (f"{name} audits: {len(runs)} recorded. Latest {latest.score}/100 on {when}.")
+                    trail = ", ".join(str(a.score) for a in reversed(runs[:8]))
+                    if len(runs) > 1:
+                        line += f" Recent scores oldest-first: {trail}."
+                    demo = sum(1 for a in runs if _is_demo(a))
+                    if demo:
+                        # Flagged because these did not come from crawling the real site;
+                        # treating them as measurements would skew any trend the agent reads.
+                        line += f" {demo} of these were demo-mode runs, not real crawls."
+                    out.append(line)
+
+                newest = audits[0]
+                if newest.recommendation:
+                    out.append(f"  Latest audit recommendation: {str(newest.recommendation)[:500]}")
+            else:
+                out.append("SEO/GEO audits: none recorded yet.")
+
+            # ── campaigns, individually ──────────────────────────────────────────
+            campaigns = (db.query(models.Campaign)
+                           .filter(models.Campaign.workspace_id == workspace_id).all())
+            if campaigns:
+                by_status = {}
+                for camp in campaigns:
+                    key = (camp.status or "UNKNOWN").lower()
+                    by_status[key] = by_status.get(key, 0) + 1
+                spread = ", ".join(f"{n} {s}" for s, n in sorted(by_status.items()))
+                budget = sum(float(camp.budget or 0) for camp in campaigns)
+                out.append(f"Campaigns: {len(campaigns)} ({spread}). Total budget booked: {budget:,.2f}.")
+
+                top = sorted(campaigns, key=lambda x: float(x.budget or 0), reverse=True)[:10]
+                for camp in top:
+                    bits = [f"  - {camp.name or 'Untitled'} ({camp.platform or 'no platform'})",
+                            f"status {(camp.status or 'unknown').lower()}",
+                            f"budget {float(camp.budget or 0):,.2f}"]
+                    if camp.objective:
+                        bits.append(f"objective {camp.objective}")
+                    # roas defaults to 0 and is only meaningful once a platform reports back,
+                    # so it is stated as stored rather than presented as measured return.
+                    if camp.roas:
+                        bits.append(f"stored ROAS {camp.roas}x")
+                    out.append(", ".join(bits) + ".")
+                if len(campaigns) > len(top):
+                    out.append(f"  ({len(campaigns) - len(top)} further campaigns not listed.)")
+            else:
+                out.append("Campaigns: none created yet.")
+
+            creatives = (db.query(models.AdAsset)
+                           .filter(models.AdAsset.workspace_id == workspace_id).count())
+            out.append(f"Generated ad creatives: {creatives}.")
+
+            # ── competitor research ──────────────────────────────────────────────
+            comps = (db.query(models.CompetitorReport)
+                       .filter(models.CompetitorReport.workspace_id == workspace_id)
+                       .order_by(models.CompetitorReport.updated_at.desc())
+                       .limit(5).all())
+            if comps:
+                out.append(f"Competitors researched ({len(comps)}):")
+                for r in comps:
+                    line = f"  - {r.competitor}"
+                    if r.positioning:
+                        line += f": {str(r.positioning)[:220]}"
+                    out.append(line)
+                    offers = (r.offers or [])[:3]
+                    if offers:
+                        out.append(f"      offers: {'; '.join(str(o) for o in offers)}")
+            else:
+                out.append("Competitors researched: none yet.")
+
+            # ── scheduled runs ───────────────────────────────────────────────────
+            schedules = (db.query(models.ScheduledTask)
+                           .filter(models.ScheduledTask.workspace_id == workspace_id).all())
+            if schedules:
+                enabled = sum(1 for s in schedules if s.enabled)
+                out.append(f"Scheduled agent runs: {len(schedules)} ({enabled} enabled).")
+                for s in schedules[:5]:
+                    line = f"  - {s.name} ({s.agent}, {s.cadence})"
+                    if s.last_status:
+                        line += f", last run {s.last_status}"
+                        if s.last_status == "failed" and s.last_message:
+                            line += f": {str(s.last_message)[:160]}"
+                    out.append(line + ".")
+            else:
+                out.append("Scheduled agent runs: none.")
+    except Exception as e:
+        return f"(Could not read stored workspace data: {e})"
+
+    return "\n".join(out)
 
 
 async def _meta_insights_summary(meta_conn) -> str:
@@ -103,6 +247,14 @@ async def _gads_insights_summary(gads_conn) -> str:
         ]
         return "Google Ads: CONNECTED - real data, last 7 days:\n" + "\n".join(rows)
     except Exception as e:
+        # A manager (MCC) account has no campaigns of its own, so a metrics query against it
+        # always fails with "invalid argument". Reporting that as a generic fetch failure
+        # sends people looking for an outage instead of changing the selected account.
+        if getattr(gads_conn, "customer_is_manager", False):
+            return ("Google Ads: connected, but the selected customer "
+                    f"({gads_conn.customer_id}) is a manager (MCC) account. Manager accounts "
+                    "hold no campaigns, so no performance data can be read from it - a client "
+                    "account under it has to be selected instead.")
         return f"Google Ads: connected, but could not fetch live insights right now ({e})."
 
 class AnalyticsState(TypedDict):

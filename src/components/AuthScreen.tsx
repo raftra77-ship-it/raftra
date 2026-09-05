@@ -89,12 +89,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
 
       if (!actualIsCreator) {
         try {
-          const wsRes = await fetch('/api/workspaces', {
+          // Asks the server where to land rather than inferring it from the workspace list.
+          // "Has a workspace" is not the same question as "finished onboarding": a workspace
+          // row exists before the crawl completes, so the old check sent users who had
+          // already onboarded back through the wizard on every login.
+          const stRes = await fetch('/api/workspaces/onboarding-state', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
-          if (wsRes.ok) {
-            const wsData = await wsRes.json();
-            if (wsData && wsData.length > 0) hasWorkspace = true;
+          if (stRes.ok) {
+            const st = await stRes.json();
+            hasWorkspace = !!st.is_onboarded;
           }
         } catch (e) {}
       }

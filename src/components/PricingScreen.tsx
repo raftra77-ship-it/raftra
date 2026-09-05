@@ -752,7 +752,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   <h4 style={{ fontSize: '22px', color: '#00E676', margin: '0 0 8px 0', fontWeight: 800 }}>Inquiry Submitted to raftra.77mail.com!</h4>
                   <p style={{ fontSize: '14.5px', color: 'rgba(255,255,255,0.9)', margin: '0 0 18px 0', lineHeight: 1.6 }}>
                     Thank you! Your Enterprise Growth inquiry has been sent to <strong>raftra.77mail.com</strong>.<br/>
-                    Our Dedicated Brand Strategist & Ads team will review your requirements and contact you within 2 hours.
+                    Our Dedicated Brand Strategist & Ads team will review your requirements and contact you within 24 hours.
                   </p>
                   <button onClick={() => setInquirySubmitted(false)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '10px 24px', borderRadius: '100px', fontSize: '13.5px', cursor: 'pointer', fontWeight: 700 }}>
                     Submit Another Inquiry
