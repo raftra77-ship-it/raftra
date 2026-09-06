@@ -587,7 +587,7 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
       )}
 
       {/* LARGE PROMINENT HERO TAB BUTTONS — DARK THEME NO EMOJI */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', margin: '10px 0 10px 0' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '16px', margin: '10px 0 10px 0' }}>
         <button
           onClick={() => setMainSubTab('discover')}
           style={{
@@ -1058,7 +1058,7 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '12px' }}>
               {[
                 { step: '1', title: 'Negotiate Directly with Influencer', tag: 'Web Chat Discussion', desc: 'Open Web Chat & discuss project requirements directly with creator.' },
                 { step: '2', title: 'Send Finalize Deal Proposal', tag: 'Price (₹) & Deliverables', desc: 'Click "Finalize Deal", enter final price & deliverables, and send proposal.' },
@@ -1171,7 +1171,7 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
           </div>
 
           {/* Influencers grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '22px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: '22px' }}>
             {sortedCreators.map((creator) => (
               <div key={creator.id} className="glow-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column' }}>
 

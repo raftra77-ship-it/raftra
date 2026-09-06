@@ -166,7 +166,7 @@ export const SearchConsolePanel: React.FC<{ workspaceId: number | null; onRunAud
             <MetricTile label="Average Position" value="—" />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '10px', marginBottom: '16px' }}>
             <DataSection title="Top Queries" />
             <DataSection title="Top Pages" />
             <DataSection title="Countries" />

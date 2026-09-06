@@ -333,7 +333,7 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
       )}
 
       {/* ── 1. LOGO, COLOR PALETTE & TYPOGRAPHY ───────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '24px' }}>
         
         {/* LOGO BOX */}
         <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -348,7 +348,7 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
               on white — because that is the question anyone opening this panel has: does
               the mark survive both grounds, or is there only a light-background version? */}
           {logos.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '14px' }}>
               {logos.slice(0, 4).map(logo => (
                 <div key={logo.url} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -442,7 +442,7 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
           </h3>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '14px' }}>
           {colourTokens.map(token => (
             <div
               key={token.hex}
@@ -628,7 +628,7 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '14px' }}>
           {assets.map((asset) => (
             <div
               key={asset.id}
@@ -667,7 +667,7 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
       </div>
 
       {/* ── 4. TARGET AUDIENCE, CATEGORIES & COUNTRIES ─────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '24px' }}>
         
         {/* COUNTRIES & CATEGORIES */}
         <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)' }}>

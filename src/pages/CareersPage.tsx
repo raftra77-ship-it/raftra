@@ -165,7 +165,7 @@ export const CareersPage: React.FC = () => {
         </div>
 
         {/* ── INTERNSHIP PERKS STRIP ─────────────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '56px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '16px', marginBottom: '56px' }}>
           {[
             { icon: <FileCheck2 size={20} color="#00E676" />, title: 'Verified Certificate & LOR', desc: 'Receive an official Certificate of Internship and personalized Letter of Recommendation.' },
             { icon: <Globe size={20} color="#00D2FF" />, title: '100% Remote & Flexible', desc: 'Work flexibly from your college or home with asynchronous team coordination.' },

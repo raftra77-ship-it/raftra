@@ -14,7 +14,7 @@ export const AboutUs = () => {
         <div style={{ position: 'absolute', top: '10%', right: '10%', width: '600px', height: '600px', background: 'var(--accent)', filter: 'blur(300px)', opacity: 0.1, borderRadius: '50%' }}></div>
         <div style={{ position: 'absolute', bottom: '10%', left: '10%', width: '500px', height: '500px', background: 'var(--primary)', filter: 'blur(250px)', opacity: 0.05, borderRadius: '50%' }}></div>
         
-        <div style={{ maxWidth: '1680px', margin: '0 auto', padding: '40px 60px', position: 'relative', zIndex: 1 }}>
+        <div className="about-inner" style={{ maxWidth: '1680px', margin: '0 auto', padding: '40px 60px', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '80px' }}>
             <motion.div 
               initial={{ opacity: 0, scale: 0.8 }}
@@ -26,7 +26,7 @@ export const AboutUs = () => {
             </motion.div>
             <motion.h1 
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-              style={{ fontSize: '64px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
+              style={{ fontSize: 'clamp(34px, 7vw, 64px)', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
             >
               Raftra AI
             </motion.h1>
@@ -40,7 +40,7 @@ export const AboutUs = () => {
 
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="glow-card" style={{ padding: '48px', marginBottom: '80px', display: 'flex', gap: '48px', alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ flex: '1', minWidth: '300px' }}>
-              <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '24px' }}>The Problem & The Mission</h2>
+              <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', fontFamily: 'var(--font-heading)', marginBottom: '24px' }}>The Problem & The Mission</h2>
               <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '16px', marginBottom: '16px' }}>
                 Modern companies use separate tools for advertising, SEO, analytics, social media, influencer management, and AI workflows. Raftra AI brings these capabilities together into a single platform powered by intelligent agents that work continuously to improve growth performance.
               </p>
@@ -66,7 +66,7 @@ export const AboutUs = () => {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Cpu size={32} color="var(--accent)" />
-                <span style={{ fontSize: '38px', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#ffffff', letterSpacing: '-0.03em' }}>R</span>
+                <span style={{ fontSize: 'clamp(26px, 5vw, 38px)', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#ffffff', letterSpacing: '-0.03em' }}>R</span>
               </div>
               <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--success)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>RAFTRA AI</span>
             </div>
@@ -74,12 +74,12 @@ export const AboutUs = () => {
 
           {/* OUR FOUNDING VISION & CREDIBILITY RESEARCH */}
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px' }}>
-            <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '16px', textAlign: 'center' }}>Backed by Global Industry Data & Visionary Leadership</h2>
+            <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', fontFamily: 'var(--font-heading)', marginBottom: '16px', textAlign: 'center' }}>Backed by Global Industry Data & Visionary Leadership</h2>
             <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '40px', fontSize: '17px', maxWidth: '800px', margin: '0 auto 40px auto' }}>
               Why the world's fastest-growing brands are switching to Agentic AI and Open-Web Search Engine Optimization.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '24px' }}>
               {/* Taboola Study Card */}
               <div style={{ padding: '32px', background: 'rgba(90,82,255,0.06)', borderRadius: '24px', border: '1px solid rgba(90,82,255,0.25)' }}>
                 <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.08em', marginBottom: '12px' }}>TABOOLA RESEARCH STUDY (2026)</div>
@@ -110,9 +110,9 @@ export const AboutUs = () => {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px' }}>
-            <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '40px', textAlign: 'center' }}>What Raftra AI Does</h2>
+            <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', fontFamily: 'var(--font-heading)', marginBottom: '40px', textAlign: 'center' }}>What Raftra AI Does</h2>
             <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '48px', fontSize: '18px' }}>Raftra AI combines six core growth functions into one platform:</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '24px' }}>
               {[
                 { title: "AI Creative Studio", desc: "Generate high-converting ad creatives, videos, hooks, and copy.", icon: <Zap color="var(--primary)" /> },
                 { title: "Campaign Management", desc: "Launch and optimize campaigns across multiple advertising platforms.", icon: <LayoutDashboard color="var(--accent)" /> },
@@ -131,7 +131,7 @@ export const AboutUs = () => {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px' }}>
-            <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '40px', textAlign: 'center' }}>Why Businesses Choose Us</h2>
+            <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', fontFamily: 'var(--font-heading)', marginBottom: '40px', textAlign: 'center' }}>Why Businesses Choose Us</h2>
             <div style={{ overflowX: 'auto', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
@@ -159,7 +159,7 @@ export const AboutUs = () => {
             </div>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '32px' }}>
             <div className="glow-card" style={{ padding: '40px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
                 <Building2 size={24} color="var(--primary)" />

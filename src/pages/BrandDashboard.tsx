@@ -389,7 +389,7 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
           {note}
         </div>
       )}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))', gap: '20px' }}>
       {INTEGRATIONS.map((i) => {
         const st = states[i.key];
         const view = st && st !== 'error' ? st : null;
@@ -2363,7 +2363,7 @@ export function BrandDashboard() {
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
               {renderLockOverlay('analytics', 129)}
               <WorkspaceAnalytics
-                workspaceId={workspaceId}
+                onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
                 chatHistory={chatHistory}
                 onSendMessage={handleSendClaudeMessage}
               />

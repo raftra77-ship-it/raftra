@@ -575,7 +575,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       )}
 
       {/* ── 1. TOP KPI ROW (6 COMPACT METRICS) ────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '14px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '14px' }}>
         {kpis.map((kpi) => (
           <div
             key={kpi.id}
@@ -862,7 +862,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       </div>
 
       {/* ── 3 & 4. DUAL GRID: CHANNEL PERFORMANCE & CLAUDE GROWTH INSIGHT ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '20px' }}>
         
         {/* ── 3. CHANNEL PERFORMANCE MATRIX ─────────────────────────── */}
         <div
@@ -1069,7 +1069,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       </div>
 
       {/* ── 5 & 6. DUAL GRID: BUDGET EFFICIENCY & INFLUENCER PERFORMANCE ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '20px' }}>
         
         {/* ── 5. BUDGET EFFICIENCY ──────────────────────────────────── */}
         <div
@@ -1263,7 +1263,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
           <Activity size={13} color="#00E676" /> Growth Alerts
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '10px' }}>
           {growthAlerts.map((alert) => (
             <div
               key={alert.id}

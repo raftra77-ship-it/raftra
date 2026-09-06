@@ -713,7 +713,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           </div>
 
           {/* ── 3 KEY METRICS: PACKAGE, AD SPEND, ESCROW VAULT ───────── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '18px' }}>
             
             {/* Card 1: Purchased Package */}
             <div
@@ -983,7 +983,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             </div>
 
             {/* Category breakdown chips */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '12px' }}>
               <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '12px' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>AI Creative Generation</span>
                 <div style={{ fontSize: '16px', fontWeight: 800, color: '#fff', marginTop: '2px' }}>8,500 Credits</div>
@@ -1009,7 +1009,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
               Available Plan Tiers (₹ INR)
             </h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '18px' }}>
               {INR_PLANS.map((plan) => {
                 const isSelected = plan.id === currentPlanId;
                 const priceDisplay = billingCycle === 'monthly'
@@ -1387,7 +1387,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
               Credit Consumption Rates
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '10px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
               <div>• 1 Static Ad Generation: <strong>50 Credits</strong></div>
               <div>• 1 Video UGC Storyboard: <strong>200 Credits</strong></div>
               <div>• 1 Competitor Audit Crawl: <strong>150 Credits</strong></div>

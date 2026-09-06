@@ -240,7 +240,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
             <Sparkles size={14} /> RAFTRA TRANSPARENT PRICING & GROWTH PLANS
           </div>
           
-          <h1 style={{ fontSize: '52px', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', fontWeight: 800, lineHeight: 1.2 }}>
+          <h1 style={{ fontSize: 'clamp(30px, 6vw, 52px)', fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '16px', fontWeight: 800, lineHeight: 1.2 }}>
             Scale Your Brand with Flexible AI Suites.<br/>Simple, Transparent & Value-Packed.
           </h1>
 
@@ -360,7 +360,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           </div>
 
           {/* Center: Ad Spend Selector Bar */}
-          <div style={{
+          <div className="pricing-adspend" style={{
             background: 'rgba(124, 117, 255, 0.08)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
@@ -534,7 +534,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
                 COMPLETE ALL-IN-ONE EMPIRE SUITES & FULL-SERVICE GROWTH PARTNERSHIPS
               </div>
-              <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+              <h2 style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
                 Raftra Complete Operating System & Growth Partner Packages
               </h2>
               <p style={{ fontSize: '16px', color: 'var(--text-secondary)', marginTop: '8px', maxWidth: '900px', margin: '8px auto 0 auto' }}>
@@ -542,7 +542,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '28px', alignItems: 'stretch' }}>
               
               {/* 1. D2C Growth Pack ⭐ */}
               <div
@@ -557,7 +557,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>D2C Growth Pack ⭐</h3>
 
-                  <div style={{ fontSize: '36px', color: '#FFB300', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                  <div style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#FFB300', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
                     {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
                       <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
                     ) : (
@@ -605,7 +605,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>All-in-One Business Suite</h3>
 
-                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                  <div style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
                     {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
                       <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
                     ) : (
@@ -660,7 +660,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     End-to-End Marketing Partner for Your Brand
                   </div>
 
-                  <div style={{ fontSize: '36px', color: '#00E676', fontWeight: 900, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                  <div style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#00E676', fontWeight: 900, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
                     {formatPrice(54999, 699, 549999)}
                     <span style={{ fontSize: '18px', color: '#00E676', fontWeight: 700, marginLeft: '2px' }}>+</span>
                   </div>
@@ -738,7 +738,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '5px 16px', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '100px', color: '#00E676', fontWeight: 800, fontSize: '12.5px', marginBottom: '12px' }}>
                   <MessageSquare size={15} /> DIRECT ENTERPRISE SALES INQUIRY FORM
                 </div>
-                <h3 style={{ fontSize: '30px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+                <h3 style={{ fontSize: 'clamp(22px, 4.2vw, 30px)', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
                   Contact Sales — Enterprise Growth Partner (₹54,999+/mo)
                 </h3>
                 <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
@@ -748,7 +748,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
               {inquirySubmitted ? (
                 <div style={{ background: 'rgba(0, 230, 118, 0.15)', border: '1.5px solid #00E676', borderRadius: '16px', padding: '28px', textAlign: 'center', color: '#fff' }}>
-                  <div style={{ fontSize: '36px', marginBottom: '10px' }}>🚀</div>
+                  <div style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', marginBottom: '10px' }}>🚀</div>
                   <h4 style={{ fontSize: '22px', color: '#00E676', margin: '0 0 8px 0', fontWeight: 800 }}>Inquiry Submitted to raftra.77mail.com!</h4>
                   <p style={{ fontSize: '14.5px', color: 'rgba(255,255,255,0.9)', margin: '0 0 18px 0', lineHeight: 1.6 }}>
                     Thank you! Your Enterprise Growth inquiry has been sent to <strong>raftra.77mail.com</strong>.<br/>
@@ -759,7 +759,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleInquirySubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <form onSubmit={handleInquirySubmit} className="pricing-inquiry-form" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '20px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ fontSize: '13px', color: '#ccc', fontWeight: 600 }}>Your Full Name *</label>
                     <input
@@ -877,7 +877,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
                 HEAVILY DISCOUNTED DUAL MODULE STARTER PACKS
               </div>
-              <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+              <h2 style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
                 Dual-Module Starter Bundles
               </h2>
               <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px' }}>
@@ -885,7 +885,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px', alignItems: 'stretch' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '28px', alignItems: 'stretch' }}>
               
               {/* 1. Creator Launch Pack */}
               <div
@@ -900,7 +900,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
 
                   <h3 style={{ fontSize: '24px', color: '#fff', margin: '0 0 6px 0', fontFamily: 'var(--font-heading)' }}>Creator Launch Pack</h3>
                   
-                  <div style={{ fontSize: '36px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                  <div style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
                     {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
                       <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
                     ) : (
@@ -951,7 +951,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     Perfect for businesses creating creatives but wanting paid ads + SEO.
                   </p>
 
-                  <div style={{ fontSize: '36px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                  <div style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
                     {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
                       <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Enterprise</span>
                     ) : (
@@ -991,7 +991,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 1</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Creative Studio (Credit Based Media Generation)</h2>
+              <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Creative Studio (Credit Based Media Generation)</h2>
             </div>
 
             {/* CREATIVE STUDIO CREDIT & FEATURE EXCLUSIVITY NOTE BOX */}
@@ -1002,7 +1002,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               AI Credits are exclusively used for compute-intensive media generation and editing (images, videos, audio renders). All software features, automation, publishing, analytics, reporting, SEO workflows, and campaign management are included with your subscription and do not consume credits.
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
               
               {/* Starter */}
               <div
@@ -1012,7 +1012,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Starter</div>
-                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                  <div style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
                     {formatPrice(1499, 19, 14999)}
                   </div>
                   <div style={{ fontSize: '13px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
@@ -1045,7 +1045,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </div>
 
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Pro</div>
-                  <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                  <div style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
                     {formatPrice(2999, 35, 29999)}
                   </div>
                   <div style={{ fontSize: '13px', color: '#00E676', fontWeight: 700, marginBottom: '20px', background: 'rgba(0,230,118,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
@@ -1082,7 +1082,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Business</div>
-                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
+                  <div style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>
                     {formatPrice(5499, 65, 54999)}
                   </div>
                   <div style={{ fontSize: '13px', color: '#7C75FF', fontWeight: 700, marginBottom: '20px', background: 'rgba(124,117,255,0.1)', padding: '4px 12px', borderRadius: '6px', display: 'inline-block' }}>
@@ -1111,7 +1111,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 2</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Campaign Manager Plan</h2>
+              <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>Campaign Manager Plan</h2>
             </div>
 
             <div
@@ -1122,7 +1122,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                 padding: '36px'
               }}
             >
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '36px', alignItems: 'center', width: '100%' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '36px', alignItems: 'center', width: '100%' }}>
                 
                 {/* Left Column: Title, Ad Spend Dropdown, Price & Action CTA */}
                 <div style={{ borderRight: '1px solid rgba(255, 255, 255, 0.1)', paddingRight: '28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1163,7 +1163,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                       </select>
                     </div>
 
-                    <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+                    <div style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
                       {AD_SPEND_TIERS[adSpendIndex].isEnterprise ? (
                         <span style={{ fontSize: '28px', color: '#FFB300' }}>Custom Pricing</span>
                       ) : (
@@ -1183,7 +1183,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                     Included Features & Capabilities (Campaign Analytics Included)
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px 12px', fontSize: '12px', color: '#e0e0e0' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(220px, 100%), 1fr))', gap: '8px 12px', fontSize: '12px', color: '#e0e0e0' }}>
                     {[
                       'Unlimited Campaign Creation',
                       'Meta Ads Publishing',
@@ -1234,10 +1234,10 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
           <div style={{ marginBottom: '80px' }}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>MODULE 3</div>
-              <h2 style={{ fontSize: '32px', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>SEO & GEO Search Engine Optimization</h2>
+              <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#fff', margin: '4px 0 0 0', fontFamily: 'var(--font-heading)' }}>SEO & GEO Search Engine Optimization</h2>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
               
               {/* Starter */}
               <div
@@ -1247,7 +1247,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>SEO Starter</div>
-                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
+                  <div style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
                     {formatPrice(3499, 42, 34999)}
                   </div>
 
@@ -1278,7 +1278,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
                   </div>
 
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>SEO Growth</div>
-                  <div style={{ fontSize: '32px', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
+                  <div style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#00E676', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
                     {formatPrice(9999, 119, 99999)}
                   </div>
 
@@ -1305,7 +1305,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               >
                 <div>
                   <div style={{ fontSize: '18px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>Managed SEO</div>
-                  <div style={{ fontSize: '32px', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
+                  <div style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', color: '#fff', fontWeight: 800, fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>
                     {formatPrice(30999, 369, 309999)}
                   </div>
 
@@ -1335,7 +1335,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               <div style={{ fontSize: '12px', color: 'var(--success)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
                 ALWAYS INCLUDED FREE WITH RAFTRA ACCOUNTS
               </div>
-              <h2 style={{ fontSize: '36px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
+              <h2 style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
                 Included Core Tools, Specialist Growth & Escrow
               </h2>
               <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '8px', maxWidth: '750px', margin: '8px auto 0 auto' }}>
@@ -1343,7 +1343,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(350px, 100%), 1fr))', gap: '28px' }}>
               
               {/* Social Hub Card */}
               <div
@@ -1448,7 +1448,7 @@ export const PricingScreen: React.FC<PricingScreenProps> = ({ onComplete }) => {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '20px', marginBottom: '40px' }}>
               
               {/* Image Credits */}
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>

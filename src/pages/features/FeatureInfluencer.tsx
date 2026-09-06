@@ -124,7 +124,7 @@ export const FeatureInfluencer = () => {
           <h2 style={{ fontSize: '42px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>What You Can Do</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '28px' }}>
           {whatYouCanDo.map((item, idx) => (
             <div 
               key={idx}
@@ -163,7 +163,7 @@ export const FeatureInfluencer = () => {
           borderRadius: '24px',
           padding: '48px 40px'
         }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '28px', position: 'relative' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '28px', position: 'relative' }}>
             {howItWorksFlow.map((s, idx) => (
               <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -183,7 +183,7 @@ export const FeatureInfluencer = () => {
       </section>
 
       {/* WHY BRANDS CHOOSE vs WHY CREATORS JOIN */}
-      <section style={{ marginBottom: '80px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '32px' }}>
+      <section style={{ marginBottom: '80px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '32px' }}>
         {/* For Brands */}
         <div style={{ padding: '40px', background: 'rgba(0,210,255,0.04)', border: '1px solid rgba(0,210,255,0.25)', borderRadius: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
@@ -242,7 +242,7 @@ export const FeatureInfluencer = () => {
           <h2 style={{ fontSize: '38px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>Features Included</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '18px' }}>
           {featuresIncluded.map((feat, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <CheckCircle2 size={20} color="#00E676" style={{ flexShrink: 0 }} />
@@ -280,7 +280,7 @@ export const FeatureInfluencer = () => {
           </div>
 
           {/* Live Creator Card Preview */}
-          <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+          <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
             
             {/* Featured Creator Card */}
             <div style={{ background: 'linear-gradient(135deg, rgba(20,20,32,0.9), rgba(10,10,16,0.98))', border: '1px solid rgba(0,210,255,0.3)', borderRadius: '20px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>

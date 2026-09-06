@@ -6,7 +6,7 @@ import { Footer } from '../components/Footer';
 
 export const Security = () => {
   return (
-    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', paddingTop: '100px', paddingBottom: '100px', fontFamily: 'var(--font-sans)' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', color: '#fff', paddingTop: '100px', paddingBottom: '100px', fontFamily: 'var(--font-sans)', position: 'relative', overflow: 'hidden' }}>
       <Navbar />
       
       {/* Background decorations */}
@@ -25,7 +25,7 @@ export const Security = () => {
           </motion.div>
           <motion.h1 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-            style={{ fontSize: '56px', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
+            style={{ fontSize: 'clamp(32px, 6.5vw, 56px)', fontFamily: 'var(--font-heading)', margin: '0 0 24px 0', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.7))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}
           >
             Why Raftra AI Is Secure
           </motion.h1>
@@ -38,7 +38,7 @@ export const Security = () => {
         </div>
 
         {/* Core Pillars Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px', marginBottom: '80px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(400px, 100%), 1fr))', gap: '32px', marginBottom: '80px' }}>
           
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="glow-card" style={{ padding: '40px' }}>
             <div style={{ width: '48px', height: '48px', background: 'rgba(90,82,255,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', border: '1px solid rgba(90,82,255,0.2)' }}>
@@ -115,12 +115,12 @@ export const Security = () => {
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px', background: 'rgba(0,0,0,0.3)', borderRadius: '24px', padding: '48px', border: '1px solid rgba(255,255,255,0.05)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
             <Cpu size={32} color="var(--primary)" />
-            <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', margin: 0 }}>AI Agent Security</h2>
+            <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', fontFamily: 'var(--font-heading)', margin: 0 }}>AI Agent Security</h2>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '18px', marginBottom: '32px', maxWidth: '800px' }}>
             Raftra AI uses isolated AI workflows for creative generation, SEO analysis, campaign optimization, and analytics.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '24px' }}>
             {[
               "Agent executions are isolated per workspace",
               "Prompts and outputs are logged for auditing",
@@ -138,7 +138,7 @@ export const Security = () => {
 
         {/* Infrastructure Table */}
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px' }}>
-          <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '32px', textAlign: 'center' }}>Infrastructure Security</h2>
+          <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', fontFamily: 'var(--font-heading)', marginBottom: '32px', textAlign: 'center' }}>Infrastructure Security</h2>
           <div style={{ overflowX: 'auto', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
@@ -169,7 +169,7 @@ export const Security = () => {
         {/* What We Don't Do */}
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ marginBottom: '80px', display: 'flex', flexWrap: 'wrap', gap: '48px', alignItems: 'center' }}>
           <div style={{ flex: '1', minWidth: '300px' }}>
-            <h2 style={{ fontSize: '32px', fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>What We Don't Do</h2>
+            <h2 style={{ fontSize: 'clamp(23px, 4.4vw, 32px)', fontFamily: 'var(--font-heading)', marginBottom: '16px' }}>What We Don't Do</h2>
             <p style={{ color: 'var(--accent)', fontSize: '18px', fontWeight: 500, marginBottom: '32px' }}>Your data stays under your control</p>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '16px', color: '#ccc', fontSize: '16px' }}>
               <li style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}><XCircle size={20} color="var(--accent)" style={{ flexShrink: 0, marginTop: '2px' }} /> We do not sell customer data.</li>

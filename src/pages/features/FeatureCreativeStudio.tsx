@@ -170,7 +170,7 @@ export const FeatureCreativeStudio = () => {
           <h2 style={{ fontSize: '42px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>What You Can Create</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '28px' }}>
           {whatYouCanCreate.map((item, idx) => (
             <div 
               key={idx}
@@ -209,7 +209,7 @@ export const FeatureCreativeStudio = () => {
           borderRadius: '24px',
           padding: '48px 40px'
         }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '28px', position: 'relative' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '28px', position: 'relative' }}>
             {howItWorksFlow.map((s, idx) => (
               <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -229,7 +229,7 @@ export const FeatureCreativeStudio = () => {
       </section>
 
       {/* STREAMLINED CREATIVE INTELLIGENCE & EDITOR SUITE (LARGE TEXT) */}
-      <section style={{ marginBottom: '80px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '32px' }}>
+      <section style={{ marginBottom: '80px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '32px' }}>
         {/* Creative Intelligence */}
         <div style={{ padding: '40px', background: 'rgba(0,230,118,0.04)', border: '1px solid rgba(0,230,118,0.25)', borderRadius: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
@@ -274,7 +274,7 @@ export const FeatureCreativeStudio = () => {
           <h2 style={{ fontSize: '38px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>Features Included</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '18px' }}>
           {featuresIncluded.map((feat, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <CheckCircle2 size={20} color="#00E676" style={{ flexShrink: 0 }} />
@@ -335,7 +335,7 @@ export const FeatureCreativeStudio = () => {
           </div>
 
           {/* Main Dashboard Control & Preview Panel */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '0' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '0' }}>
             
             {/* Left Control Panel */}
             <div style={{ padding: '32px', borderRight: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -400,7 +400,7 @@ export const FeatureCreativeStudio = () => {
                 <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 600 }}>✓ 94% Predicted ROAS Score</span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px' }}>
                 
                 {/* Generated Card 1 */}
                 <div style={{ background: 'linear-gradient(135deg, #181824 0%, #0d0d14 100%)', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>

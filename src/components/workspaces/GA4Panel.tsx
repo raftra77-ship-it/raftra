@@ -182,7 +182,7 @@ export const GA4Panel: React.FC<{ workspaceId: number | null }> = ({ workspaceId
             <MetricTile label="Avg. Session Duration" value="—" />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '10px', marginBottom: '16px' }}>
             <DataSection
               title="Traffic Sources"
               rows={traffic && traffic.channels.length > 0 ? traffic.channels.map((c, i) => (

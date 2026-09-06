@@ -297,9 +297,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           </div>
 
           {/* Inner Dashboard View Layout */}
-          <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', background: '#09090b', height: '420px', fontSize: '13px' }}>
+          <div className="sim-shell" style={{ display: 'grid', gridTemplateColumns: '200px 1fr', background: '#09090b', height: '420px', fontSize: '13px' }}>
             {/* Sidebar Mockup */}
-            <div style={{ borderRight: '1px solid rgba(255, 255, 255, 0.05)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#070709', textAlign: 'left' }}>
+            <div className="sim-sidebar" style={{ borderRight: '1px solid rgba(255, 255, 255, 0.05)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#070709', textAlign: 'left' }}>
               <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', letterSpacing: '0.05em' }}>RAFTRA CORE</div>
               <div
                 onClick={() => resetSimulationState('creative')}
@@ -363,8 +363,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             </div>
 
             {/* Main Area Mockup */}
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'hidden', textAlign: 'left' }}>
-              <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="sim-main" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'hidden', textAlign: 'left' }}>
+              <div className="sim-rowsplit" style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#fff' }}>
                     {activeSimTab === 'creative' && 'Creative Generation Sandbox'}
@@ -383,7 +383,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
               </div>
 
               {/* Metric Row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+              <div className="sim-metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                 <div style={{ background: '#121217', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
                   <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>BUDGET NODE</span>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: '#fff', marginTop: '4px' }}>Active Sandbox</div>
@@ -399,7 +399,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
               </div>
 
               {/* Dynamic Generation card simulation */}
-              <div className="glow-card" style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.01)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="glow-card sim-rowsplit" style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.01)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyItems: 'center', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', color: '#fff', borderRadius: '6px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Sparkles size={16} />
@@ -451,7 +451,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         <span className="section-tag" style={{ color: '#FF4757', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
           THE FRICTION
         </span>
-        <h2 className="section-title" style={{ fontSize: '52px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
+        <h2 className="section-title" style={{ fontSize: 'clamp(30px, 6vw, 52px)', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
           Fragmented Tools Are Killing Your Growth
         </h2>
         <p className="section-desc" style={{ fontSize: '19px', color: 'rgba(255,255,255,0.7)', maxWidth: '680px' }}>Managing separate tools for ads, SEO, social media, and analytics wastes thousands of dollars and breaks your brand consistency.</p>
@@ -523,7 +523,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         <span className="section-tag" style={{ color: '#00E676', fontSize: '18px', fontWeight: 800, letterSpacing: '0.12em', display: 'block', marginBottom: '10px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
           THE SOLUTION
         </span>
-        <h2 className="section-title" style={{ fontSize: '52px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
+        <h2 className="section-title" style={{ fontSize: 'clamp(30px, 6vw, 52px)', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, margin: '0 0 16px 0', letterSpacing: '-0.02em' }}>
           Everything Your Brand Needs to Grow — In One Platform
         </h2>
         <p className="section-desc" style={{ fontSize: '19.5px', color: 'rgba(255,255,255,0.7)', maxWidth: '950px' }}>
@@ -751,7 +751,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.1em', background: 'rgba(90,82,255,0.12)', padding: '6px 14px', borderRadius: '100px', border: '1px solid rgba(90,82,255,0.3)', textTransform: 'uppercase' }}>
               INDUSTRY PROOF & FOUNDER TRUST
             </span>
-            <h2 style={{ fontSize: '36px', fontFamily: 'var(--font-heading)', marginTop: '16px', marginBottom: '12px', color: '#fff' }}>
+            <h2 style={{ fontSize: 'clamp(25px, 4.8vw, 36px)', fontFamily: 'var(--font-heading)', marginTop: '16px', marginBottom: '12px', color: '#fff' }}>
               Why Modern Brands Are Shifting to Agentic AI
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '16px', lineHeight: 1.6 }}>
@@ -759,7 +759,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '24px' }}>
             {/* Statement Card 1: Taboola Study */}
             <div style={{
               background: 'rgba(255,255,255,0.03)',
@@ -838,7 +838,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         <h2 className="section-title">How Raftra Growth OS Works</h2>
         <p className="section-desc">We replace standard static interfaces with a live agent coordination network that keeps your business growing.</p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', textAlign: 'left', marginTop: '40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(250px, 100%), 1fr))', gap: '20px', textAlign: 'left', marginTop: '40px' }}>
           <div className="glow-card" style={{ padding: '24px' }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent-glow)', border: '1px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'var(--accent)', marginBottom: '16px' }}>1</div>
             <h4 style={{ fontSize: '15px', color: '#fff', marginBottom: '8px' }}>Asset Scraping</h4>
@@ -864,7 +864,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
 
       {/* Footer / Outro CTA */}
       <section className="section-container" style={{ textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '80px' }}>
-        <h2 className="section-title text-gradient-glow" style={{ fontSize: '36px' }}>
+        <h2 className="section-title text-gradient-glow" style={{ fontSize: 'clamp(25px, 4.8vw, 36px)' }}>
           Stop wasting budget on 15 disconnected marketing tools.
         </h2>
         <p style={{ maxWidth: '600px', margin: '16px auto 32px', color: 'var(--text-secondary)' }}>
@@ -1116,7 +1116,7 @@ const FreeAuditSandboxEngine: React.FC<{ onStartFree: () => void }> = ({ onStart
 
           {/* Tab Content */}
           {activeTab === 'mistakes' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px', maxHeight: '300px', overflowY: 'auto', paddingRight: '4px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '12px', maxHeight: '300px', overflowY: 'auto', paddingRight: '4px' }}>
               {seoMistakesList.map((m, idx) => (
                 <div key={idx} style={{ padding: '12px 14px', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,95,86,0.2)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
@@ -1130,7 +1130,7 @@ const FreeAuditSandboxEngine: React.FC<{ onStartFree: () => void }> = ({ onStart
           )}
 
           {activeTab === 'campaigns' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '12px' }}>
               {campaignSuggestionsList.map((c, idx) => (
                 <div key={idx} style={{ padding: '14px', background: 'rgba(90,82,255,0.06)', borderRadius: '10px', border: '1px solid rgba(90,82,255,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 700, color: 'var(--primary)', marginBottom: '6px' }}>
@@ -1144,7 +1144,7 @@ const FreeAuditSandboxEngine: React.FC<{ onStartFree: () => void }> = ({ onStart
           )}
 
           {activeTab === 'hooks' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '10px' }}>
               {adHooksList.map((h, idx) => (
                 <div key={idx} style={{ padding: '12px', background: 'rgba(255,189,46,0.05)', borderRadius: '8px', border: '1px solid rgba(255,189,46,0.2)' }}>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: '#FFBD2E', marginBottom: '4px' }}>{h.angle}</div>

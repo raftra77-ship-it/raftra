@@ -1378,3 +1378,98 @@ h2[style], h3[style] {
 @media (max-width: 900px) {
   .camp-split { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Mobile layout corrections ──────────────────────────────────────────────
+   The pages below build their layout in inline styles, which a stylesheet can
+   only reach past with !important. These rules are confined to the mobile
+   breakpoint, so desktop renders exactly as it did before. Anything that could
+   be fixed in the component itself (grid tracks, clipped decorations) was fixed
+   there instead; what remains here is only what inline styles own. */
+
+/* Nothing should let the page pan sideways on a phone. Individual wide things
+   (code blocks, tab strips) still scroll inside their own container.
+   This is a backstop for pages not covered above, not a substitute for fixing
+   the element that overflows: `hidden` on html+body still lets the root element
+   report the wider scroll box, so `clip` is used wherever it is supported. It
+   also leaves position:sticky working, which `hidden` would break. */
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@supports (overflow: clip) {
+  @media (max-width: 768px) {
+    html,
+    body {
+      overflow-x: clip;
+    }
+  }
+}
+
+/* Landing hero: the simulated dashboard. On desktop it is a 200px sidebar next
+   to a fixed-height panel; at phone width that sidebar alone eats half the
+   screen and the panel's contents spill out of the (overflow:hidden) shell,
+   so the metrics and the deploy button simply vanished. */
+@media (max-width: 768px) {
+  .sim-shell {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+  }
+  /* Sidebar becomes a scrollable tab strip above the panel, keeping the
+     Creative/Campaigns/SEO switcher usable rather than hiding it. */
+  .sim-sidebar {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 6px !important;
+    padding: 10px 12px !important;
+    overflow-x: auto;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .sim-sidebar > div {
+    white-space: nowrap;
+    margin-top: 0 !important;
+  }
+  .sim-main {
+    padding: 16px !important;
+  }
+  /* Three fixed columns became ~55px each; let them reflow instead. */
+  .sim-metrics {
+    grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr)) !important;
+    gap: 10px !important;
+  }
+  /* space-between rows that pushed their right-hand element off-screen. */
+  .sim-rowsplit {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
+
+/* Pricing: the "Ad Spend" pill is a nowrap label plus a <select> sized to its
+   longest option — 395px of intrinsic width against a 375px screen. */
+@media (max-width: 768px) {
+  .pricing-adspend {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
+    padding: 10px 14px !important;
+    border-radius: 20px !important;
+  }
+  .pricing-adspend select {
+    max-width: 100%;
+    min-width: 0;
+  }
+  /* Two side-by-side fields at 375px leave no room to type. */
+  .pricing-inquiry-form {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* About: 60px of horizontal padding each side left 255px of usable width. */
+@media (max-width: 768px) {
+  .about-inner {
+    padding: 24px 16px !important;
+  }
+}

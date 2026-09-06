@@ -158,7 +158,7 @@ export const FeatureSocial = () => {
           <h2 style={{ fontSize: '42px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>Available Specialists</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '28px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '28px' }}>
           {availableSpecialists.map((item, idx) => (
             <div 
               key={idx}
@@ -197,7 +197,7 @@ export const FeatureSocial = () => {
           borderRadius: '24px',
           padding: '48px 40px'
         }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '28px', position: 'relative' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '28px', position: 'relative' }}>
             {howItWorksFlow.map((s, idx) => (
               <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -223,7 +223,7 @@ export const FeatureSocial = () => {
           <h2 style={{ fontSize: '38px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>Why Businesses Choose Expert Services</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '20px' }}>
           {[
             "No need to hire or manage a full in-house marketing team",
             "Specialists are already trained on Raftra tools & AI workflows",
@@ -248,7 +248,7 @@ export const FeatureSocial = () => {
           <h2 style={{ fontSize: '38px', fontFamily: 'var(--font-heading)', marginTop: '8px', fontWeight: 800 }}>Features Included</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '18px' }}>
           {featuresIncluded.map((feat, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <CheckCircle2 size={20} color="#00E676" style={{ flexShrink: 0 }} />
@@ -286,7 +286,7 @@ export const FeatureSocial = () => {
           </div>
 
           {/* Live Active Specialist Task Panel */}
-          <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+          <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
             
             {/* Active Specialist Card */}
             <div style={{ background: 'linear-gradient(135deg, rgba(20,20,32,0.9), rgba(10,10,16,0.98))', border: '1px solid rgba(124,117,255,0.3)', borderRadius: '20px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>

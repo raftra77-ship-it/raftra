@@ -455,7 +455,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
         </div>
 
         {/* Checklist of 6 Items */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '12px' }}>
           {brandKitItems.map((item) => (
             <div
               key={item.id}
@@ -502,7 +502,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
       </div>
 
       {/* ── 2 & 3. DUAL GRID: ACTION NEEDED & TOP PERFORMING CREATIVES ──────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))', gap: '24px' }}>
         
         {/* ── ACTION NEEDED ────────────────────────────────────────── */}
         <div
@@ -986,7 +986,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 {activeBrandKitTab === 'colors' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Color Palette Tokens</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: '14px' }}>
                       {[
                         { name: 'Electric Violet (Primary)', hex: '#5A52FF' },
                         { name: 'Neon Emerald (Accent)', hex: '#00E676' },
@@ -1048,7 +1048,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                       Generated assets ({snapshot?.creatives ?? 0})
                     </h4>
                     {topCreatives.length ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(130px, 100%), 1fr))', gap: '12px' }}>
                         {topCreatives.map((cr) => (
                           <div key={cr.id} style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
                             {cr.image_url ? (

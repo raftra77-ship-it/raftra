@@ -256,7 +256,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         <h3 style={{ fontSize: '15px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
           <Activity size={18} color="var(--success)" /> Live Brand Social Performance
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px' }}>
           
           <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
@@ -414,7 +414,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
           </div>
 
           {/* 2-Column Comparison Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '24px' }}>
             
             {/* Column 1: What Raftra Automates */}
             <div style={{ background: 'rgba(90,82,255,0.05)', border: '1px solid rgba(90,82,255,0.15)', borderRadius: '14px', padding: '24px' }}>
@@ -482,7 +482,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
         </div>
 
         {/* Workflow Comparison Diagram */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '32px', marginBottom: '40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '32px', marginBottom: '40px' }}>
           
           {/* Traditional Agency */}
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', padding: '28px 24px' }}>
@@ -565,7 +565,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
             Why It Matters
           </h4>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '18px' }}>
             {[
               { icon: Zap, text: 'Up to 70% less repetitive work', color: '#7C75FF' },
               { icon: Clock, text: 'AI handles monitoring 24/7', color: 'violet' },

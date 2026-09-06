@@ -444,7 +444,7 @@ export const BrandPostedDealsView: React.FC<{
       </div>
 
       {/* Main Deals List */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))', gap: '20px' }}>
         {displayDeals.map(deal => {
           const statusColors: Record<string, { c: string; b: string; label: string }> = {
             ACTIVE: { c: '#00e676', b: 'rgba(0,230,118,0.12)', label: '🟢 Active' },
@@ -877,7 +877,7 @@ Please try again.`);
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '22px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))', gap: '22px' }}>
         {deals.map(deal => {
           const isApplied = appliedDealIds.includes(deal.id) || deal.has_applied;
           return (

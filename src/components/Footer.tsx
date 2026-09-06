@@ -9,7 +9,7 @@ export const Footer = () => {
     <footer style={{ background: '#050508', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '64px', paddingBottom: '40px', color: '#8e8e9e', fontSize: '14px', fontFamily: 'var(--font-sans)' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px' }}>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '40px', marginBottom: '56px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '40px', marginBottom: '56px' }}>
           
           {/* Brand Info Column (Span 2) */}
           <div style={{ gridColumn: 'span 2', maxWidth: '380px' }}>

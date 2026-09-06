@@ -462,7 +462,7 @@ export const FeatureExplainerVideo: React.FC<FeatureExplainerVideoProps> = ({
                   {currentStep.description}
                 </p>
                 {currentStep.metrics && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(110px, 100%), 1fr))', gap: '8px' }}>
                     {currentStep.metrics.map((m, idx) => (
                       <div key={idx} style={{
                         background: 'rgba(255,255,255,0.03)',

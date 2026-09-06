@@ -736,7 +736,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
               const totalPayoutCount = creatorPayouts.filter((p: any) => p.status === 'paid').length;
 
               return (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '32px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '20px', marginBottom: '32px' }}>
                   <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>TOTAL PAYOUTS DISBURSED</div>
                     <div style={{ fontSize: '28px', fontWeight: 800, color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -843,7 +843,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </h3>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px' }}>
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     🛑 NO PERSONAL / OFF-PLATFORM CONTACT
@@ -1116,7 +1116,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 off — your details are saved either way.
               </p>
 
-              <form onSubmit={handleVerifyProfile} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', alignItems: 'end' }}>
+              <form onSubmit={handleVerifyProfile} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: '14px', alignItems: 'end' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>INSTAGRAM HANDLE</label>
                   <input

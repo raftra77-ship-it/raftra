@@ -232,7 +232,7 @@ export const BlogPage: React.FC = () => {
               borderRadius: '24px',
               overflow: 'hidden',
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))',
               gap: '24px',
               cursor: 'pointer',
               marginBottom: '40px',
@@ -286,7 +286,7 @@ export const BlogPage: React.FC = () => {
         )}
 
         {/* ── BLOG POSTS GRID ────────────────────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
           {filteredPosts.map((post) => (
             <motion.div
               key={post.id}

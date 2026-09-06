@@ -34,7 +34,7 @@ export const PrivacyPolicy = () => (
     <Navbar />
     <div style={{ maxWidth: '820px', margin: '0 auto', padding: '40px 24px', position: 'relative', zIndex: 1 }}>
 
-      <h1 style={{ fontSize: '44px', fontFamily: 'var(--font-heading)', margin: '0 0 10px', lineHeight: 1.15 }}>
+      <h1 style={{ fontSize: 'clamp(28px, 5.4vw, 44px)', fontFamily: 'var(--font-heading)', margin: '0 0 10px', lineHeight: 1.15 }}>
         Privacy Policy
       </h1>
       <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 8px' }}>Last updated: {LAST_UPDATED}</p>

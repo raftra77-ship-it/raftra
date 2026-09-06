@@ -1071,7 +1071,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         </div>
 
         {/* 3 MASTER SECTIONS CARDS GRID (FULL LEFT-TO-RIGHT WIDTH) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', width: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px', width: '100%' }}>
           {[
             { id: 'create_intel', label: '1. Create & Intelligence 🪄', tag: 'AI GENERATOR & VAULT', desc: 'AI Generator, Saved Projects, Competitor Spy & Winning Vault', color: '#00E676', bg: 'linear-gradient(135deg, rgba(0,230,118,0.14) 0%, rgba(10,14,20,0.95) 100%)' },
             { id: 'editing', label: '2. Creative Editing 🎨', tag: 'CANVA & FIGMA WORKBENCH', desc: 'Single Graphic Studio, Multi-Card Carousel Builder & Video Storyboard', color: '#7C75FF', bg: 'linear-gradient(135deg, rgba(124,117,255,0.14) 0%, rgba(12,10,24,0.95) 100%)' },
@@ -1273,7 +1273,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>Step 2 — Choose Input Method</h3>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px', marginBottom: '20px' }}>
               
               <div 
                 onClick={() => setInputOption('brand_kb')}
@@ -1455,7 +1455,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               ))}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '20px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '20px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '20px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
               
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>PLATFORM</label>
@@ -1634,7 +1634,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
 
               {/* Preview & Editable Details Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '32px' }}>
                 
                 <div>
                   <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#000' }}>
@@ -1821,7 +1821,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
             {competitorResult && (
               <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '14px' }}>
                   {[
                     { label: 'POSITIONING', value: competitorResult.positioning },
                     { label: 'AUDIENCE', value: competitorResult.audience },
@@ -1883,7 +1883,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               Select Competitor Brand to Inspect Active Campaigns
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '16px' }}>
               {[
                 { id: 'Boat', name: 'Boat Electronics', category: 'Audio & Wearables', activeAds: '14 Active Ads Tracked', engagement: '4.8% Avg Engagement', status: 'Market Leader' },
                 { id: 'Noise', name: 'Noise Audio & Smartwatches', category: 'Fitness & Smart Tech', activeAds: '18 Active Ads Tracked', engagement: '5.2% Avg Engagement', status: 'Scaling Fast' },
@@ -1989,7 +1989,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px' }}>
               
               {vaultSubTab === 'hooks' && [
                 { text: 'Stop scrolling if your powerbank dies right when you need it most.', roas: '4.6x ROAS', tag: 'Visual Shock' },
@@ -2085,7 +2085,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
               {[
                 {
                   id: 'comp_ad_1',
@@ -2219,7 +2219,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
             {displayProjects.map((proj) => (
                 <div
                   key={proj.id}
@@ -2273,7 +2273,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '24px', marginBottom: '24px' }}>
                   <div>
                     <img src={selectedProjectModal.img} alt="Project visual" style={{ width: '100%', height: '220px', objectFit: 'cover', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.1)' }} />
                   </div>
@@ -2393,7 +2393,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
             {displayProjects.filter(p => p.status === 'Approved').map(proj => (
               <div
                 key={proj.id}
@@ -2456,7 +2456,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
             {[
               { name: 'Problem-Agitate-Solution (PAS)', desc: 'Highlight customer pain point and introduce Ambrane product as the ultimate fix.', ctr: '3.4% Avg CTR' },
               { name: 'Before vs After Showcase', desc: 'Direct visual comparison showing slow charging vs 22.5W Power Delivery.', ctr: '4.1% Avg CTR' },
@@ -2525,7 +2525,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </h3>
                 <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>Select an AI human avatar, voice model, and script topic to see how a UGC Reel would be assembled.</p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>CHOOSE AI AVATAR</label>
                     <select
@@ -2603,7 +2603,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '24px' }}>
                     {/* Playable Video Card — a real <video> so the play button actually plays.
                         Falls back to the avatar poster if there is no video, or if the one we
                         picked fails to load, rather than leaving a black rectangle. */}
@@ -2699,7 +2699,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </GlowButton>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '20px' }}>
                 {[
                   { name: 'Priya Sharma', niche: 'Tech & Gadgets', rate: '₹3,500/video', followers: '45k', rating: '4.9 ★', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80' },
                   { name: 'Aarav Mehta', niche: 'Lifestyle & D2C', rate: '₹4,000/video', followers: '62k', rating: '4.8 ★', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80' },

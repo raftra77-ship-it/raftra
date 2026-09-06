@@ -381,7 +381,7 @@ export const MarketTrendsCompetitorModal: React.FC<MarketTrendsCompetitorModalPr
                         {(group.strategy?.blue_ocean?.title || group.strategy?.red_ocean?.title) && (
                           <div style={{
                             display: 'grid', gap: '16px',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))',
                           }}>
                             {([
                               { key: 'blue', tag: 'BLUE OCEAN', color: '#00D2FF', data: group.strategy?.blue_ocean },
@@ -675,7 +675,7 @@ export const MarketTrendsCompetitorModal: React.FC<MarketTrendsCompetitorModalPr
                     {(report.winning_patterns.length > 0 || report.creative_formats.length > 0) && (
                       <div style={{
                         display: 'grid', gap: '16px',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))',
                       }}>
                         {report.winning_patterns.length > 0 && (
                           <div style={CARD}>
@@ -712,7 +712,7 @@ export const MarketTrendsCompetitorModal: React.FC<MarketTrendsCompetitorModalPr
                         </h3>
                         <div style={{
                           display: 'grid', gap: '14px',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))',
                         }}>
                           {report.creator_video_refs.map(v => (
                             <a
