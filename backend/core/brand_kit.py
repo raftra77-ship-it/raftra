@@ -707,3 +707,131 @@ async def extract_brand_kit_with_vision(llm, content: str, screenshot: bytes) ->
         # tested against a real storefront.
         print("[brand_kit] vision extraction unusable (%s); using the text-only pass." % e)
         return await extract_brand_kit(llm, content)
+
+
+# ------------------------------------------------- accent roles (primary / glow / dark)
+
+def _hsl(hex_code: str):
+    r, g, b = (int(hex_code[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    return h, s, l
+
+
+# A CSS variable's NAME is evidence the pixels do not carry. `--color-accent` is the site
+# stating its accent; `--diff-old-color` is syntax highlighting that happens to be vivid.
+# Without this, scoring collapses to chroma alone for CSS tokens (which have no share), and
+# on linear.app that picked "Diff Old Color" (#f34e52, chroma 0.65) over "Color Accent"
+# (#7170ff, chroma 0.56) - a red from a code sample presented as the brand colour.
+_BRAND_NAME_RE = re.compile(r"\b(accent|brand|primary|cta|highlight)\b", re.I)
+_NON_BRAND_NAME_RE = re.compile(
+    r"\b(diff|icon|error|danger|success|warning|info|disabled|placeholder|shadow|"
+    r"overlay|scrollbar|selection|link|visited|code|syntax|token)\b", re.I)
+
+
+def _primary_score(c: dict) -> float:
+    """How likely this colour is the brand's primary.
+
+    Chroma and prevalence, then weighted by what the site calls it. Prevalence is the
+    stronger signal when we have it (clustered pixels), the name is the stronger signal
+    when we do not (declared variables, which carry no share).
+    """
+    base = c["_chroma"] * (0.3 + c["_share"])
+    label = "%s %s" % (c.get("name", ""), c.get("role", ""))
+    if _NON_BRAND_NAME_RE.search(label):
+        return base * 0.15
+    if _BRAND_NAME_RE.search(label):
+        return base * 2.5
+    return base
+
+
+def classify_accents(colours: List[dict]) -> dict:
+    """Sort clustered colours into the three roles a brand actually designs with.
+
+    A flat ranked palette does not tell a designer what to DO with a colour. These three
+    are the ones a brief needs, and they are distinguishable by measurement rather than
+    taste:
+
+      primary  the brand colour - the most present colour that is genuinely chromatic.
+      glow     a vivid, LIGHT accent used for emphasis: highlights, hover states, the lit
+               edge of a gradient. High chroma AND high lightness together, which is what
+               separates it from the primary rather than being a second primary.
+      dark     the deep surface a dark-mode brand sits on. Low lightness, and it is a
+               *choice* (near-black with a hue) rather than pure #000.
+
+    Returns {"primary": {...}|None, "glow": ..., "dark": ...}. A role stays None when
+    nothing qualifies - a brand with no dark surface should not be handed one.
+    """
+    scored = []
+    for c in colours:
+        hex_code = c.get("hex", "")
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", hex_code or ""):
+            continue
+        r, g, b = (int(hex_code[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        chroma = max(r, g, b) - min(r, g, b)
+        # rgb_to_hls returns (hue, LIGHTNESS, saturation) - lightness is the SECOND value.
+        # Unpacking the third here read saturation as lightness, which classified #ffffff
+        # (saturation 0.0) as the dark surface and #ff5207 (saturation 0.97) as the glow.
+        _, lightness, _ = colorsys.rgb_to_hls(r, g, b)
+        scored.append({**c, "_chroma": chroma, "_lightness": lightness,
+                       "_share": float(c.get("share") or c.get("_share") or 0)})
+
+    out = {"primary": None, "glow": None, "dark": None}
+    if not scored:
+        return out
+
+    # Dark first: a deep surface would otherwise be a poor "primary" purely by area.
+    darks = [c for c in scored if c["_lightness"] <= 0.22]
+    if darks:
+        # The most chromatic dark - a brand's obsidian usually carries a hue, and picking
+        # the *least* chromatic would just return black.
+        out["dark"] = max(darks, key=lambda c: (c["_chroma"], c["_share"]))
+
+    # Primary BEFORE glow. Ordering matters: a brand whose only chromatic colour is a
+    # bright one (Linear's #7170ff) would otherwise have it taken as the glow, leaving
+    # primary to fall through to the most-present colour - which is usually #ffffff. The
+    # brand's one colour is its primary; a glow is a *second* vivid accent or nothing.
+    taken = {id(v) for v in out.values() if v}
+    candidates = [c for c in scored if id(c) not in taken and c["_chroma"] >= 0.15]
+    if candidates:
+        out["primary"] = max(candidates, key=_primary_score)
+    # No fallback to the most-present colour: a palette with nothing chromatic in it has no
+    # primary, and reporting white as a brand colour is worse than reporting none.
+
+    # Glow: vivid AND light, and not already spoken for. Both conditions matter - a
+    # vivid-but-dark colour is a primary, and a light-but-dull one is a background.
+    taken = {id(v) for v in out.values() if v}
+    glows = [c for c in scored
+             if id(c) not in taken and c["_chroma"] >= 0.35 and c["_lightness"] >= 0.55]
+    if glows:
+        out["glow"] = max(glows, key=lambda c: c["_chroma"] * c["_lightness"])
+
+    for role, c in out.items():
+        if c:
+            for k in ("_chroma", "_lightness", "_share"):
+                c.pop(k, None)
+            c["role"] = {"primary": "Primary brand colour",
+                         "glow": "Glow / emphasis accent",
+                         "dark": "Dark surface"}[role]
+            c["name"] = role.capitalize()
+    return out
+
+
+async def screenshot_color_tokens(screenshot: bytes, limit: int = 4) -> List[dict]:
+    """Cluster the RENDERED page.
+
+    Distinct from hero_color_tokens, which reads image FILES. A screenshot carries what the
+    browser actually painted - CSS gradients, glows, overlays, and any colour that exists
+    only as a rule rather than a file. On a dark-mode brand that is usually where the
+    surface and the glow live, and no <img> on the page contains either.
+    """
+    if not screenshot:
+        return []
+    clusters = kmeans_palette(screenshot, k=limit + 2)
+    out = []
+    for c in clusters[:limit]:
+        if c["share"] < 0.04:
+            continue
+        out.append({"name": "Rendered %d" % (len(out) + 1), "hex": c["hex"],
+                    "role": "Painted on the page (%d%%)" % round(c["share"] * 100),
+                    "source": "screenshot-kmeans", "share": c["share"]})
+    return out

@@ -21,6 +21,7 @@ import auth, database, models
 from agents.creative_nodes.router import router_decision_engine
 from core.creative import optimizer, platforms
 from core.creative.service import service
+from core import tenancy
 
 router = APIRouter(prefix="/api/creative", tags=["creative"])
 
@@ -29,7 +30,7 @@ _MAX_PROMPT_CHARS = 2000
 
 def _require_workspace(workspace_id: int, db: Session, user: models.User) -> models.Workspace:
     ws = db.query(models.Workspace).filter(
-        models.Workspace.id == workspace_id, models.Workspace.user_id == user.id).first()
+        models.Workspace.id == workspace_id, tenancy.visible_workspace(user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     return ws
@@ -62,6 +63,74 @@ def get_platforms(current_user: models.User = Depends(auth.get_current_user)):
     """One source of truth for the platform picker, so the UI cannot drift from what the
     backend will actually render."""
     return {"platforms": platforms.list_platforms()}
+
+
+@router.get("/templates")
+def creative_templates(workspace_id: int, db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Creative frameworks, grounded in this workspace's own brand kit.
+
+    Two things were wrong with the hardcoded version this replaces. It carried invented
+    performance numbers - "3.4% Avg CTR", "5.2% Avg CTR" - which no workspace had ever
+    measured and nothing in the schema tracks, so they were presented as evidence while
+    being decoration. And the descriptions named a specific brand's products ("Ambrane
+    product", "22.5W Power Delivery") regardless of whose workspace was open.
+
+    The frameworks themselves are legitimate: PAS, before/after, unboxing and urgency are
+    standard direct-response structures, not invented. So they stay - but described in
+    terms of THIS brand's categories and USPs, and with no metric attached unless the
+    workspace has actually generated assets to count.
+    """
+    ws = (db.query(models.Workspace)
+            .filter(models.Workspace.id == workspace_id,
+                    tenancy.visible_workspace(current_user)).first())
+    if not ws:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+
+    bp = (db.query(models.BrandProfile)
+            .filter(models.BrandProfile.workspace_id == workspace_id).first())
+    guidelines = (bp.guidelines if bp else None) or {}
+    categories = [str(c) for c in (guidelines.get("categories") or []) if str(c).strip()]
+    usps_raw = guidelines.get("usps") or ""
+    usps = [u.lstrip("- ").strip() for u in str(usps_raw).splitlines() if u.strip()]
+
+    product = categories[0] if categories else (ws.name or "your product")
+    usp = usps[0] if usps else ""
+    brand = ws.name or "your brand"
+
+    generated = (db.query(models.AdAsset)
+                   .filter(models.AdAsset.workspace_id == workspace_id).count())
+
+    frameworks = [
+        {"key": "pas", "name": "Problem-Agitate-Solution (PAS)",
+         "desc": "Open on the pain your buyer already feels, make it concrete, then show "
+                 "%s as the fix." % product},
+        {"key": "before_after", "name": "Before vs After Showcase",
+         "desc": "Show the situation without %s beside the situation with it. Strongest "
+                 "when the difference is visible in one frame." % product},
+        {"key": "unboxing", "name": "Unboxing & First Reaction",
+         "desc": "UGC-style first look at %s. Reads as a real person's opinion rather than "
+                 "an ad, which is what carries it on Reels and Shorts." % product},
+        {"key": "urgency", "name": "Flash Sale & Urgency Trigger",
+         "desc": "A dated offer on %s with the deadline visible in the first frame. Use for "
+                 "retargeting, not cold traffic." % product},
+        {"key": "proof", "name": "Proof & Credibility",
+         "desc": ("Lead with %s." % usp) if usp else
+                 "Lead with a checkable claim - a certification, a warranty, a test result."},
+        {"key": "scenario", "name": "Scenario / Use-Case Series",
+         "desc": "One everyday moment per creative, each ending on %s. Builds a repeatable "
+                 "series rather than a single ad." % brand},
+    ]
+
+    return {
+        "frameworks": frameworks,
+        # Honest, workspace-real context instead of a fabricated per-framework CTR.
+        "assets_generated": generated,
+        "brand_grounded": bool(categories or usps),
+        "note": "" if (categories or usps) else
+                "Run Sync Knowledge Graph so these frameworks can reference your own "
+                "products and USPs instead of generic wording.",
+    }
 
 
 @router.post("/analyze")

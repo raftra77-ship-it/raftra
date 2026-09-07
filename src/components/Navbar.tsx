@@ -337,55 +337,6 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 18px', fontSize: '13px', whiteSpace: 'nowrap' }}>
             Login
           </GlowButton>
-
-          {/* Creator Marketplace — now the last item INSIDE the bar.
-              It used to be a fixed-position pill in LandingPage, anchored with
-              `left: calc(50% + 419px)` to the old 1024px bar's right edge. This bar is
-              1240px wide, so that maths now lands the pill on top of the nav links, and
-              placing it after a 1240px bar instead overflows a 1440px viewport. Living in
-              the flex row removes the geometry problem entirely and puts it at the far
-              right, which is where it was asked for. */}
-          <motion.button
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
-            onClick={() => window.open('/influencer-marketplace', '_blank')}
-            style={{
-              background: 'linear-gradient(135deg, #8e0b00ff 0%, #290605ff 45%, #410c06ff 100%)',
-              border: '1px solid rgba(124, 0, 0, 0.6)',
-              color: '#ffffffff',
-              borderRadius: '100px',
-              padding: '8px 16px',
-              fontSize: '12.5px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              whiteSpace: 'nowrap',
-              boxShadow: '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)',
-              letterSpacing: '0.02em',
-              position: 'relative',
-              overflow: 'hidden',
-              transition: 'all 0.25s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = '0 6px 30px rgba(220, 53, 69, 0.75), 0 0 0 1px rgba(255,107,107,0.5), inset 0 1px 0 rgba(255,255,255,0.4)';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)';
-              e.currentTarget.style.transform = 'translateY(0px)';
-            }}
-          >
-            <span style={{ position: 'absolute', top: 0, left: '-60%', width: '40%', height: '100%',
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
-              transform: 'skewX(-20deg)', animation: 'shimmer-slide 2.4s ease-in-out infinite',
-              pointerEvents: 'none' }} />
-            <span style={{ fontSize: '13px' }}>✦</span>
-            Creator Marketplace
-            <span style={{ opacity: 0.8, fontSize: '11px' }}>↗</span>
-          </motion.button>
         </motion.div>
 
         {/* Mobile Hamburger Toggle Button */}

@@ -25,6 +25,18 @@ def _is_rate_limit(err: Exception) -> bool:
     return "429" in s or "quota" in s or "rate limit" in s or "resource_exhausted" in s
 
 
+def _is_model_unavailable(err: Exception) -> bool:
+    """A retired or unknown model, which is a reason to try the next one rather than fail.
+
+    Google retires model ids on its own schedule - gemini-2.0-flash now answers every call
+    with '404 ... is no longer available'. That is not a bad request the caller can fix, but
+    the loop below treated any non-quota error as fatal and raised, so a single retired id
+    in the fallback list could take down every generation that reached it.
+    """
+    s = str(err).lower()
+    return "404" in s or "not found" in s or "no longer available" in s or "is not supported" in s
+
+
 def _safe_response_text(response) -> str:
     """Extract text without raising. `response.text` throws when a candidate has no
     text part (e.g. a 2.5 'thinking' model that spent the whole token budget thinking,
@@ -85,7 +97,10 @@ class GeminiProvider(LLMProvider):
                 if _is_rate_limit(e):
                     print(f"Gemini {m} rate-limited (daily quota), trying next model...")
                     continue
-                # Non-quota error (bad request, etc.) - other models won't help.
+                if _is_model_unavailable(e):
+                    print(f"Gemini {m} is retired/unavailable, trying next model...")
+                    continue
+                # Anything else (bad request, auth) - other models won't help.
                 print(f"Gemini Error ({m}): {e}")
                 raise LLMProviderError(f"Gemini call failed for model '{m}': {e}") from e
         raise LLMProviderError(f"All Gemini models exhausted (free-tier daily quota or no output). Last error: {last_err}")

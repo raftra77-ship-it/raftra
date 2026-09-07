@@ -130,7 +130,11 @@ async def websocket_endpoint(websocket: WebSocket):
     db = database.SessionLocal()
     try:
         workspace_ids = {
-            w.id for w in db.query(models.Workspace).filter(models.Workspace.user_id == user_id).all()
+            w.id for w in db.query(models.Workspace)
+            .filter(models.Workspace.tenant_id.in_(
+                db.query(models.TenantMember.tenant_id)
+                  .filter(models.TenantMember.user_id == user_id).scalar_subquery())
+                | (models.Workspace.user_id == user_id)).all()
         }
     finally:
         db.close()

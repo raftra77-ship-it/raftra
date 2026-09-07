@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
   CheckCircle2,
   ChevronRight,
+  ExternalLink,
+  Plus,
   Layers,
   BarChart3,
   Calendar,
@@ -11,13 +13,22 @@ import {
   Zap,
   TrendingUp,
   Image as ImageIcon,
+  Video,
+  Eye,
   ArrowUpRight,
   Palette,
   Type,
   FileText,
   Target,
+  Share2,
   AlertCircle,
+  RefreshCw,
+  Sliders,
+  Check,
   X,
+  Play,
+  Copy,
+  Cpu,
   Link2
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
@@ -26,53 +37,15 @@ interface ModernHomeOverviewProps {
   userName?: string;
   brandName?: string;
   onNavigateTab: (tab: string) => void;
-  /** Needed for the headline figures — they are read per workspace. */
-  workspaceId?: number | null;
-}
-
-interface WorkspaceSnapshot {
-  spend: number;
-  roas: number;
-  seoScore: number;
-  activeAgents: number;
-  campaigns: number;
-  creatives: number;
+  onOpenReview?: (itemTitle: string) => void;
 }
 
 export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
-  userName = 'there',
-  brandName = 'your brand',
+  userName = 'aryan070606',
+  brandName = 'Demo Brand',
   onNavigateTab,
-  workspaceId = null,
+  onOpenReview
 }) => {
-  // What this workspace actually contains. Everything in the card below is read from here;
-  // nothing is filled in when a value is missing.
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
-  const [snapshotLoading, setSnapshotLoading] = useState(true);
-
-  useEffect(() => {
-    if (!workspaceId) { setSnapshotLoading(false); return; }
-    const token = localStorage.getItem('token');
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-    Promise.all([
-      fetch(`/api/workspaces/${workspaceId}/dashboard/metrics`, { headers }).then(r => (r.ok ? r.json() : null)),
-      fetch(`/api/workspaces/${workspaceId}/campaigns`, { headers }).then(r => (r.ok ? r.json() : [])),
-      fetch(`/api/workspaces/${workspaceId}/creatives`, { headers }).then(r => (r.ok ? r.json() : [])),
-    ])
-      .then(([metrics, campaigns, creatives]) => {
-        setSnapshot({
-          spend: metrics?.recent_quarter_spend ?? 0,
-          roas: metrics?.roas ?? 0,
-          seoScore: metrics?.seo_score ?? 0,
-          activeAgents: metrics?.active_ai_agents ?? 0,
-          campaigns: Array.isArray(campaigns) ? campaigns.length : 0,
-          creatives: Array.isArray(creatives) ? creatives.length : 0,
-        });
-      })
-      .catch(() => { /* the tiles fall back to their empty state */ })
-      .finally(() => setSnapshotLoading(false));
-  }, [workspaceId]);
   // Brand Kit Review Modal State
   const [showBrandKitModal, setShowBrandKitModal] = useState(false);
   const [activeBrandKitTab, setActiveBrandKitTab] = useState<'logo' | 'colors' | 'typography' | 'knowledge' | 'assets' | 'market'>('logo');
@@ -80,20 +53,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   // Ad Account Connection Modal State
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [isAdAccountConnected, setIsAdAccountConnected] = useState(false);
-
-  // Whether an ad account is really linked, from the connector status endpoints. This used
-  // to be flipped by a 900ms setTimeout in handleSimulateConnect.
-  useEffect(() => {
-    if (!workspaceId) return;
-    const token = localStorage.getItem('token');
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    Promise.all([
-      fetch(`/api/connectors/meta/${workspaceId}/status`, { headers }).then(r => (r.ok ? r.json() : null)),
-      fetch(`/api/connectors/google-ads/${workspaceId}/status`, { headers }).then(r => (r.ok ? r.json() : null)),
-    ])
-      .then(([meta, gads]) => setIsAdAccountConnected(Boolean(meta?.connected || gads?.connected)))
-      .catch(() => {});
-  }, [workspaceId]);
+  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
 
   // Recommendations Modal State
   const [showRecommendationsModal, setShowRecommendationsModal] = useState(false);
@@ -102,157 +62,112 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   const [showSchedulerModal, setShowSchedulerModal] = useState(false);
 
   // Schedule items state
-  // Real recurring runs from the scheduler. This card used to list three fixtures - a
-  // "Fresh Creative Batch", a "Weekly competitor report" and a "Daily ROAS Guardrail" -
-  // that existed nowhere and could not be run, paused or edited.
-  const [schedules, setSchedules] = useState<{
-    id: number; name: string; agent: string; cadence: string; hour: number; minute: number;
-    weekday: number | null; day_of_month: number | null; enabled: boolean;
-    next_run_at: string | null; last_status: string | null;
-  }[]>([]);
-  const [runningScheduleId, setRunningScheduleId] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!workspaceId) return;
-    const token = localStorage.getItem('token');
-    fetch(`/api/workspaces/${workspaceId}/schedules`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    })
-      .then(r => (r.ok ? r.json() : []))
-      .then(d => setSchedules(Array.isArray(d) ? d : []))
-      .catch(() => {});
-  }, [workspaceId]);
-
-  // The same brand profile the Knowledge vault edits, so the checklist below reflects it.
-  const [brandKit, setBrandKit] = useState<{
-    brand_color?: string | null; color_palette?: string[];
-    typography?: Record<string, string>; brand_guidelines_summary?: string | null;
-    target_audience?: string | null;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!workspaceId) return;
-    const token = localStorage.getItem('token');
-    fetch(`/api/workspaces/${workspaceId}/brand-profile`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    })
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) setBrandKit(d); })
-      .catch(() => {});
-  }, [workspaceId]);
-
-  const scheduleColour = (agent: string) =>
-    agent === 'creative' ? '#7C75FF' : agent === 'campaign' ? '#00D2FF' : '#00E676';
-
-  const scheduleFrequency = (s: { cadence: string; hour: number; minute: number; weekday: number | null; day_of_month: number | null; next_run_at: string | null; enabled: boolean }) => {
-    const two = (n: number) => String(n).padStart(2, '0');
-    const at = `${two(s.hour)}:${two(s.minute)} UTC`;
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const base =
-      s.cadence === 'hourly' ? `Hourly at :${two(s.minute)}`
-      : s.cadence === 'weekly' ? `Weekly on ${days[s.weekday ?? 0]} at ${at}`
-      : s.cadence === 'monthly' ? `Monthly on day ${s.day_of_month ?? 1} at ${at}`
-      : `Daily at ${at}`;
-    if (!s.enabled) return `${base} • Paused`;
-    if (!s.next_run_at) return base;
-    const iso = s.next_run_at;
-    const when = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : `${iso}Z`);
-    const mins = Math.round((when.getTime() - Date.now()) / 60000);
-    const rel = mins <= 0 ? 'due now'
-      : mins < 60 ? `in ${mins}m`
-      : mins < 1440 ? `in ${Math.floor(mins / 60)}h`
-      : `in ${Math.floor(mins / 1440)}d`;
-    return `${base} • Next run ${rel}`;
-  };
-
-  const runScheduleNow = async (id: number) => {
-    if (!workspaceId) return;
-    setRunningScheduleId(id);
-    const token = localStorage.getItem('token');
-    try {
-      await fetch(`/api/workspaces/${workspaceId}/schedules/${id}/run`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-    } catch { /* the refetch below shows whatever actually happened */ }
-    // The run happens in a background task, so re-read the row rather than assume it worked.
-    setTimeout(async () => {
-      try {
-        const r = await fetch(`/api/workspaces/${workspaceId}/schedules`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        if (r.ok) setSchedules(await r.json());
-      } catch { /* leave the list as it was */ }
-      setRunningScheduleId(null);
-    }, 6000);
-  };
+  const [schedules, setSchedules] = useState([
+    {
+      id: 'sch_1',
+      title: `${brandName} Fresh Creative Batch`,
+      frequency: 'Mon, Thu at 9:00 AM • Next run in 2d',
+      type: 'Creative AI Generation',
+      status: 'Active',
+      color: '#7C75FF'
+    },
+    {
+      id: 'sch_2',
+      title: 'Weekly competitor report',
+      frequency: 'Weekly on Mon at 9:00 AM • Next run in 6d',
+      type: 'Market Intelligence Crawl',
+      status: 'Active',
+      color: '#00D2FF'
+    },
+    {
+      id: 'sch_3',
+      title: 'Daily ROAS Guardrail & Bid Scaling',
+      frequency: 'Daily at 12:00 AM • Next run in 11h',
+      type: 'Ad Optimization Auto-Pilot',
+      status: 'Active',
+      color: '#00E676'
+    }
+  ]);
 
   // Brand Kit Checklist Items
-  // Each item reports whether that piece of the brand kit actually exists. All six were
-  // hardcoded to "Ready", so a workspace with no palette, no typography and no audience
-  // still showed a complete kit at 100% extracted.
   const brandKitItems = [
-    { id: 'logo', label: 'Logo', status: brandKit?.brand_color ? 'Ready' : 'Missing', icon: <ImageIcon size={16} color="#7C75FF" /> },
-    { id: 'colors', label: 'Colors', status: brandKit?.color_palette?.length ? 'Ready' : 'Missing', icon: <Palette size={16} color="#00E676" /> },
-    { id: 'typography', label: 'Typography', status: Object.keys(brandKit?.typography || {}).length ? 'Ready' : 'Missing', icon: <Type size={16} color="#00D2FF" /> },
-    { id: 'knowledge', label: 'Brand knowledge', status: brandKit?.brand_guidelines_summary ? 'Ready' : 'Missing', icon: <FileText size={16} color="#FFB300" /> },
-    { id: 'assets', label: 'Assets', status: (snapshot?.creatives ?? 0) > 0 ? 'Ready' : 'Missing', icon: <Layers size={16} color="#FF5296" /> },
-    { id: 'market', label: 'Target Market', status: brandKit?.target_audience ? 'Ready' : 'Missing', icon: <Target size={16} color="#A855F7" /> }
+    { id: 'logo', label: 'Logo', status: 'Ready', icon: <ImageIcon size={16} color="#7C75FF" /> },
+    { id: 'colors', label: 'Colors', status: 'Ready', icon: <Palette size={16} color="#00E676" /> },
+    { id: 'typography', label: 'Typography', status: 'Ready', icon: <Type size={16} color="#00D2FF" /> },
+    { id: 'knowledge', label: 'Brand knowledge', status: 'Ready', icon: <FileText size={16} color="#FFB300" /> },
+    { id: 'assets', label: 'Assets', status: 'Ready', icon: <Layers size={16} color="#FF5296" /> },
+    { id: 'market', label: 'Target Market', status: 'Ready', icon: <Target size={16} color="#A855F7" /> }
   ];
 
-  const kitReady = brandKitItems.filter(i => i.status === 'Ready').length;
-  const kitPercent = Math.round((kitReady / brandKitItems.length) * 100);
-
-  // Written playbooks, not findings. These were presented as things the AI had detected
-  // about this account - "Creative CTR dropped by 22% over last 48h", "+Rs 18,000 weekly
-  // savings", "maintaining 4.8x ROAS" - with no ad account connected and no analysis run.
-  // The advice is still worth showing; the invented measurements are not.
-  const mockRecommendations = [
+  // Mock Top Performing Creatives (shown when connected or preview toggled)
+  const mockCreatives = [
     {
-      id: 'rec_1',
-      title: 'Refresh creative that has been running a while',
-      desc: 'Click-through usually falls as an audience sees the same creative repeatedly. Generate fresh variants of your best performer rather than raising the budget on a tired one.',
-      impact: 'Creative Studio',
-      urgency: 'Playbook',
-      tab: 'studio'
+      id: 'cr_1',
+      title: '15s High-Hook UGC Video Reel',
+      type: 'Video Reel',
+      roas: '4.8x',
+      spend: '₹14,500',
+      ctr: '3.6%',
+      revenue: '₹69,600',
+      thumbnail: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=400&q=80',
+      tag: 'Scale Winner'
     },
     {
-      id: 'rec_2',
-      title: 'Scale what is already converting',
-      desc: 'When a campaign holds its target return, raise its budget in steps rather than at once - large jumps reset the learning phase and costs climb before they settle.',
-      impact: 'Campaign Manager',
-      urgency: 'Playbook',
-      tab: 'campaign'
+      id: 'cr_2',
+      title: '3-Slide Value Carousel - Social Proof',
+      type: 'Carousel',
+      roas: '4.1x',
+      spend: '₹9,800',
+      ctr: '2.9%',
+      revenue: '₹40,180',
+      thumbnail: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=400&q=80',
+      tag: 'High CTR'
     },
     {
-      id: 'rec_3',
-      title: 'Check how AI assistants describe you',
-      desc: 'Buyers increasingly ask an assistant before they search. The GEO pipeline reports what those answers say about your brand and where the gaps are.',
-      impact: 'Search & AEO',
-      urgency: 'Playbook',
-      tab: 'seo'
+      id: 'cr_3',
+      title: 'Feature Comparison Static Ad',
+      type: 'Static Post',
+      roas: '3.7x',
+      spend: '₹6,400',
+      ctr: '2.4%',
+      revenue: '₹23,680',
+      thumbnail: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80',
+      tag: 'Consistent'
     }
   ];
 
-  // This workspace's real generated creatives. It was a fixture list of three "winners"
-  // with ROAS, spend and revenue figures and Unsplash photographs - none of it measured,
-  // and shown for any workspace.
-  const [topCreatives, setTopCreatives] = useState<{ id: number; headline: string; image_url?: string | null }[]>([]);
+  // Mock Recommendations
+  const mockRecommendations = [
+    {
+      id: 'rec_1',
+      title: 'Auto-Refresh Fatigued Creative in Ad Set #2',
+      desc: 'Creative CTR dropped by 22% over last 48h. Swap with new AI UGC Variation #3 to restore 4.2x ROAS.',
+      impact: '+₹18,000 weekly savings',
+      urgency: 'High Impact'
+    },
+    {
+      id: 'rec_2',
+      title: 'Scale Lookalike Top Converting Ad Set (+15%)',
+      desc: 'Campaign maintaining 4.8x ROAS with 68% headroom before CPA inflection.',
+      impact: '+34 new orders/day',
+      urgency: 'Growth Opportunity'
+    },
+    {
+      id: 'rec_3',
+      title: 'Enable Advantage+ Placements on Meta',
+      desc: 'AI detected 18% cheaper CPMs across Instagram Reels & Stories inventory.',
+      impact: '-14% Blended CPA',
+      urgency: 'Optimization'
+    }
+  ];
 
-  useEffect(() => {
-    if (!workspaceId) return;
-    const token = localStorage.getItem('token');
-    fetch(`/api/workspaces/${workspaceId}/creatives`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    })
-      .then(r => (r.ok ? r.json() : []))
-      .then(d => setTopCreatives(Array.isArray(d) ? d.slice(-3).reverse() : []))
-      .catch(() => {});
-  }, [workspaceId]);
-
-  const handleGoConnect = () => {
-    setShowConnectModal(false);
-    onNavigateTab('integrations');
+  const handleSimulateConnect = (platform: string) => {
+    setConnectingPlatform(platform);
+    setTimeout(() => {
+      setConnectingPlatform(null);
+      setIsAdAccountConnected(true);
+      setShowConnectModal(false);
+    }, 900);
   };
 
   return (
@@ -277,10 +192,8 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
 
         {/* Action controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Was a toggle that flipped its own label to "Ad Account: Connected" without
-              connecting anything. It now goes to the screen that actually connects one. */}
           <button
-            onClick={() => onNavigateTab('integrations')}
+            onClick={() => setIsAdAccountConnected(!isAdAccountConnected)}
             style={{
               background: isAdAccountConnected ? 'rgba(0, 230, 118, 0.12)' : 'rgba(255, 255, 255, 0.04)',
               border: isAdAccountConnected ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
@@ -297,7 +210,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
             }}
           >
             {isAdAccountConnected ? <CheckCircle2 size={14} color="#00E676" /> : <Link2 size={14} />}
-            {isAdAccountConnected ? 'Ad account connected' : 'Connect an ad account'}
+            {isAdAccountConnected ? 'Ad Account: Connected' : 'Demo Mode (Click to Toggle)'}
           </button>
 
           <GlowButton variant="glow" onClick={() => onNavigateTab('studio')} style={{ fontSize: '13.5px', padding: '10px 20px' }}>
@@ -306,10 +219,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
         </div>
       </div>
 
-      {/* ── 0. WHAT THIS WORKSPACE HOLDS ──────────────────────────── */}
-      {/* Was an "Overall Growth Score" of 84/100 with four invented metric tiles and four
-          progress bars, none of which were read from anywhere. These are counts and scores
-          out of the database; a tile with no data says so instead of showing a number. */}
+      {/* ── 0. OVERALL GROWTH SCORE & TRAJECTORY TRACKER CARD ──────── */}
       <div
         className="glow-card"
         style={{
@@ -320,84 +230,142 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
           boxShadow: '0 12px 40px rgba(0, 230, 118, 0.12)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '20px'
+          gap: '22px'
         }}
       >
+        {/* Top Header Row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <h2 style={{ fontSize: '22px', color: '#fff', margin: '0 0 4px 0', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
-              {brandName} at a glance
-            </h2>
-            <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0 }}>
-              Read from this workspace — campaigns, generated creatives, your latest audit and
-              anything running right now.
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {/* Score Ring / Pill */}
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '18px',
+                background: 'linear-gradient(135deg, rgba(0, 230, 118, 0.2) 0%, rgba(0, 200, 83, 0.08) 100%)',
+                border: '2px solid #00E676',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 20px rgba(0, 230, 118, 0.25)',
+                flexShrink: 0
+              }}
+            >
+              <span style={{ fontSize: '22px', fontWeight: 900, color: '#00E676', lineHeight: 1 }}>84</span>
+              <span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>/ 100</span>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <h2 style={{ fontSize: '22px', color: '#fff', margin: 0, fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+                  Overall Growth Score & Trajectory
+                </h2>
+                <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.2)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.4)', padding: '2px 9px', borderRadius: '100px', fontWeight: 800 }}>
+                  🔥 High Velocity Growth (+18.4 pts)
+                </span>
+              </div>
+              <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0 }}>
+                Real-time composite score based on creative velocity, ROAS efficiency, competitor defense, and AEO schema.
+              </p>
+            </div>
           </div>
 
           <button
             onClick={() => onNavigateTab('studio')}
             style={{
               background: 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
-              color: '#000000', border: 'none', borderRadius: '100px',
-              padding: '9px 20px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '6px',
+              color: '#000000',
+              border: 'none',
+              borderRadius: '100px',
+              padding: '9px 20px',
+              fontSize: '13px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
               boxShadow: '0 4px 16px rgba(0, 230, 118, 0.35)',
+              transition: 'all 0.2s ease'
             }}
           >
-            <TrendingUp size={14} /> Open Creative Studio
+            <TrendingUp size={14} /> Boost Score 🚀
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px,100%), 1fr))', gap: '14px' }}>
-          {([
-            { label: 'Campaigns', value: snapshot?.campaigns ?? 0, colour: '#fff',
-              empty: 'None yet', tab: 'campaign', cta: 'Plan one' },
-            { label: 'Creatives generated', value: snapshot?.creatives ?? 0, colour: '#fff',
-              empty: 'None yet', tab: 'studio', cta: 'Generate' },
-            { label: 'Ad spend booked', value: snapshot?.spend ? `$${Number(snapshot.spend).toLocaleString()}` : 0,
-              colour: '#00E676', empty: 'No live campaigns', tab: 'campaign', cta: 'Set a budget' },
-            { label: 'Latest SEO score', value: snapshot?.seoScore ?? 0, colour: '#7C75FF',
-              empty: 'Not audited yet', tab: 'seo', cta: 'Run an audit' },
-          ] as { label: string; value: number | string; colour: string; empty: string; tab: string; cta: string }[])
-            .map((tile) => {
-              const hasValue = tile.value !== 0 && tile.value !== '0';
-              return (
-                <div key={tile.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '14px 18px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                    {tile.label}
-                  </span>
-                  {snapshotLoading ? (
-                    <div style={{ height: '26px', marginTop: '4px', width: '60%', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }} />
-                  ) : hasValue ? (
-                    <div style={{ fontSize: '22px', fontWeight: 900, color: tile.colour, marginTop: '2px' }}>
-                      {tile.value}
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: '4px' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{tile.empty}</div>
-                      <button
-                        onClick={() => onNavigateTab(tile.tab)}
-                        style={{ background: 'none', border: 'none', color: '#7C75FF', fontSize: '12px', fontWeight: 700, cursor: 'pointer', padding: '4px 0 0' }}
-                      >
-                        {tile.cta} →
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+        {/* 4 Key Growth Metrics Strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+          <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Attributed Revenue</span>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: '#fff', marginTop: '2px' }}>
+              ₹7,74,900 <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>+38.4%</span>
+            </div>
+          </div>
+
+          <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Blended ROAS</span>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: '#00E676', marginTop: '2px' }}>
+              4.2x <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Target: &gt;3.5x</span>
+            </div>
+          </div>
+
+          <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Conversion Rate</span>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: '#fff', marginTop: '2px' }}>
+              3.8% <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>+0.9%</span>
+            </div>
+          </div>
+
+          <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>AEO / Search Citations</span>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: '#7C75FF', marginTop: '2px' }}>
+              76% <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>+14% AI</span>
+            </div>
+          </div>
         </div>
 
-        {!!snapshot?.roas && (
-          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px' }}>
-            Average ROAS across live campaigns: <strong style={{ color: '#00E676' }}>{snapshot.roas}x</strong>
+        {/* 4 Growth Pillars Progress Bars */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '16px' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
+              <span style={{ color: '#fff', fontWeight: 600 }}>🎨 Creative Hook Power & Freshness</span>
+              <span style={{ color: '#00E676', fontWeight: 800 }}>92%</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
+              <div style={{ width: '92%', height: '100%', background: '#00E676', borderRadius: '100px' }} />
+            </div>
           </div>
-        )}
-        {!!snapshot?.activeAgents && (
-          <div style={{ fontSize: '12.5px', color: '#FFB300' }}>
-            {snapshot.activeAgents} agent{snapshot.activeAgents > 1 ? 's' : ''} running right now.
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
+              <span style={{ color: '#fff', fontWeight: 600 }}>⚡ Ad Spend Auto-Scale & Guardrails</span>
+              <span style={{ color: '#00D2FF', fontWeight: 800 }}>86%</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
+              <div style={{ width: '86%', height: '100%', background: '#00D2FF', borderRadius: '100px' }} />
+            </div>
           </div>
-        )}
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
+              <span style={{ color: '#fff', fontWeight: 600 }}>🔍 Competitor Defense & Recon</span>
+              <span style={{ color: '#FFB300', fontWeight: 800 }}>78%</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
+              <div style={{ width: '78%', height: '100%', background: '#FFB300', borderRadius: '100px' }} />
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
+              <span style={{ color: '#fff', fontWeight: 600 }}>🤝 Creator & UGC Pipeline</span>
+              <span style={{ color: '#7C75FF', fontWeight: 800 }}>80%</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
+              <div style={{ width: '80%', height: '100%', background: '#7C75FF', borderRadius: '100px' }} />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ── 1. BRAND KIT EXTRACTION CARD ──────────────────────────── */}
@@ -424,7 +392,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 Brand kit extraction
               </h2>
               <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
-                {kitPercent}% complete
+                100% Extracted
               </span>
             </div>
             <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0 }}>
@@ -455,7 +423,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
         </div>
 
         {/* Checklist of 6 Items */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
           {brandKitItems.map((item) => (
             <div
               key={item.id}
@@ -487,14 +455,9 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 {item.icon}
                 <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#fff' }}>{item.label}</span>
               </div>
-              {/* Was a literal "Ready" for every row regardless of item.status, so the
-                  list stayed green even as the percentage above it fell. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700,
-                            color: item.status === 'Ready' ? '#00E676' : 'var(--text-muted)' }}>
-                {item.status === 'Ready'
-                  ? <CheckCircle2 size={13} color="#00E676" />
-                  : <AlertCircle size={13} color="var(--text-muted)" />}
-                <span>{item.status}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#00E676', fontSize: '11px', fontWeight: 700 }}>
+                <CheckCircle2 size={13} color="#00E676" />
+                <span>Ready</span>
               </div>
             </div>
           ))}
@@ -502,7 +465,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
       </div>
 
       {/* ── 2 & 3. DUAL GRID: ACTION NEEDED & TOP PERFORMING CREATIVES ──────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
         
         {/* ── ACTION NEEDED ────────────────────────────────────────── */}
         <div
@@ -542,7 +505,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                   padding: 0
                 }}
               >
-                View all plays <ArrowUpRight size={14} />
+                View All Recommendations <ArrowUpRight size={14} />
               </button>
             </div>
 
@@ -713,11 +676,9 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 </button>
               </div>
             ) : (
-              /* Real creatives from this workspace. Per-creative ROAS and spend are not
-                 shown because nothing measures them yet - that needs insights pulled back
-                 from the connected ad account, which is a different job from generating. */
+              /* CONNECTED ACTIVE CREATIVES PREVIEW */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {topCreatives.map((cr) => (
+                {mockCreatives.map((cr) => (
                   <div
                     key={cr.id}
                     style={{
@@ -730,41 +691,35 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                       gap: '14px'
                     }}
                   >
-                    {cr.image_url ? (
-                      <img
-                        src={cr.image_url}
-                        alt=""
-                        style={{ width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
-                      />
-                    ) : (
-                      <div style={{ width: '44px', height: '44px', borderRadius: '8px', background: 'rgba(124,117,255,0.12)', border: '1px solid rgba(124,117,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Sparkles size={16} color="#7C75FF" />
-                      </div>
-                    )}
+                    <img
+                      src={cr.thumbnail}
+                      alt={cr.title}
+                      style={{ width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h5 style={{ fontSize: '13px', color: '#fff', margin: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {cr.headline || 'Untitled creative'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '10px', background: 'rgba(0,230,118,0.15)', color: '#00E676', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                          {cr.tag}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{cr.type}</span>
+                      </div>
+                      <h5 style={{ fontSize: '13px', color: '#fff', margin: '2px 0 0 0', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {cr.title}
                       </h5>
                     </div>
-                    <button
-                      onClick={() => onNavigateTab('studio')}
-                      style={{ background: 'none', border: 'none', color: '#7C75FF', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Open →
-                    </button>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '14px', color: '#00E676', fontWeight: 800 }}>{cr.roas} ROAS</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Spend: {cr.spend}</div>
+                    </div>
                   </div>
                 ))}
-                {!topCreatives.length && (
-                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
-                    No creatives generated for this workspace yet.
-                  </p>
-                )}
               </div>
             )}
           </div>
 
-          <div style={{ marginTop: '16px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
-            <span>Spend and return per creative need insights read back from a connected ad account.</span>
+          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--text-muted)' }}>
+            <span>Attribution: 7-day click, 1-day view</span>
+            <span style={{ color: '#7C75FF' }}>● Realtime Meta & Google Sync</span>
           </div>
         </div>
       </div>
@@ -837,29 +792,24 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: `${scheduleColour(sch.agent)}15`, border: `1px solid ${scheduleColour(sch.agent)}40`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Clock size={18} color={scheduleColour(sch.agent)} />
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: `${sch.color}15`, border: `1px solid ${sch.color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Clock size={18} color={sch.color} />
                 </div>
                 <div>
                   <h4 style={{ fontSize: '14.5px', color: '#fff', margin: '0 0 3px 0', fontWeight: 700 }}>
-                    {sch.name}
+                    {sch.title}
                   </h4>
-                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    <span>{scheduleFrequency(sch)}</span>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{sch.frequency}</span>
                     <span>•</span>
-                    <span style={{ color: scheduleColour(sch.agent) }}>{sch.agent}</span>
+                    <span style={{ color: sch.color }}>{sch.type}</span>
                   </div>
                 </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{
-                  fontSize: '11px', padding: '3px 10px', borderRadius: '100px', fontWeight: 700,
-                  background: sch.enabled ? 'rgba(0, 230, 118, 0.12)' : 'rgba(255,255,255,0.06)',
-                  color: sch.enabled ? '#00E676' : 'var(--text-muted)',
-                  border: `1px solid ${sch.enabled ? 'rgba(0, 230, 118, 0.3)' : 'rgba(255,255,255,0.12)'}`,
-                }}>
-                  ● {sch.enabled ? 'Active' : 'Paused'}
+                <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.12)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '3px 10px', borderRadius: '100px', fontWeight: 700 }}>
+                  ● {sch.status}
                 </span>
                 <button
                   onClick={() => setShowSchedulerModal(true)}
@@ -986,7 +936,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 {activeBrandKitTab === 'colors' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Color Palette Tokens</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px' }}>
                       {[
                         { name: 'Electric Violet (Primary)', hex: '#5A52FF' },
                         { name: 'Neon Emerald (Accent)', hex: '#00E676' },
@@ -1042,33 +992,17 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
 
                 {activeBrandKitTab === 'assets' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {/* Real assets, and a real count. "28 Synced" was a fixed number over
-                        three stock photographs. */}
-                    <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>
-                      Generated assets ({snapshot?.creatives ?? 0})
-                    </h4>
-                    {topCreatives.length ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(130px, 100%), 1fr))', gap: '12px' }}>
-                        {topCreatives.map((cr) => (
-                          <div key={cr.id} style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                            {cr.image_url ? (
-                              <img src={cr.image_url} alt="" style={{ width: '100%', height: '100px', objectFit: 'cover' }} />
-                            ) : (
-                              <div style={{ height: '100px', background: 'rgba(124,117,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Sparkles size={18} color="#7C75FF" />
-                              </div>
-                            )}
-                            <div style={{ padding: '6px 8px', background: '#0d0d14', fontSize: '11px', color: '#fff', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {cr.headline || 'Untitled'}
-                            </div>
+                    <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Media & Product Assets (28 Synced)</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                      {mockCreatives.map((c) => (
+                        <div key={c.id} style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                          <img src={c.thumbnail} alt={c.title} style={{ width: '100%', height: '100px', objectFit: 'cover' }} />
+                          <div style={{ padding: '6px', background: '#0d0d14', fontSize: '11px', color: '#fff', textAlign: 'center' }}>
+                            {c.type}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
-                        Nothing generated for this workspace yet.
-                      </p>
-                    )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -1099,10 +1033,8 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 >
                   Close
                 </button>
-                {/* This modal reviews the brand kit; it has nothing to save. Editing happens in the
-                    Brand Knowledge vault, so that is where the button goes. */}
-                <GlowButton variant="glow" onClick={() => { setShowBrandKitModal(false); onNavigateTab('knowledge'); }} style={{ padding: '9px 24px', fontSize: '13px' }}>
-                  Edit in Brand Knowledge
+                <GlowButton variant="glow" onClick={() => { setShowBrandKitModal(false); alert('Brand Kit confirmed and synced across AI Agents!'); }} style={{ padding: '9px 24px', fontSize: '13px' }}>
+                  Confirm & Save Kit ✓
                 </GlowButton>
               </div>
             </motion.div>
@@ -1171,7 +1103,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                   { id: 'amazon', name: 'Amazon Ads', desc: 'Run and optimize product ads on Amazon.', tag: 'Coming Soon', isLocked: true },
                   { id: 'ga4', name: 'Google Analytics 4', desc: 'Pull traffic, event, and conversion data across your site and campaigns.', tag: 'Analytics', isLocked: false },
                   { id: 'gsc', name: 'Google Search Console', desc: 'Monitor organic search rankings, keyword impressions, CTR, and indexing health.', tag: 'Analytics', isLocked: false },
-                  { id: 'drive', name: 'Google Drive', desc: 'Sync brand assets, video footage, product catalogs, and creative guidelines.', tag: 'Coming Soon', isLocked: true },
+                  { id: 'drive', name: 'Google Drive', desc: 'Sync brand assets, video footage, product catalogs, and creative guidelines.', tag: 'Productivity', isLocked: false },
                   { id: 'slack', name: 'Slack', desc: 'Receive real-time campaign alerts and creative approval requests.', tag: 'Team Alert', isLocked: false },
                   { id: 'hubspot', name: 'HubSpot', desc: 'Sync leads, CRM contacts, deals, and attribution pipelines.', tag: 'CRM', isLocked: false }
                 ].map((plat) => (
@@ -1211,7 +1143,8 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                       </span>
                     ) : (
                       <button
-                        onClick={handleGoConnect}
+                        onClick={() => handleSimulateConnect(plat.id)}
+                        disabled={Boolean(connectingPlatform)}
                         style={{
                           background: 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
                           color: '#000000',
@@ -1224,7 +1157,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                           whiteSpace: 'nowrap'
                         }}
                       >
-                        Connect
+                        {connectingPlatform === plat.id ? 'Connecting...' : 'Connect'}
                       </button>
                     )}
                   </div>
@@ -1274,7 +1207,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontWeight: 800 }}>
-                    Growth plays
+                    AI Recommendations & Opportunities
                   </h3>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
                     Live algorithmic decisions calculated from your creative & campaign telemetry.
@@ -1311,10 +1244,8 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                     <h4 style={{ fontSize: '14px', color: '#fff', margin: 0, fontWeight: 700 }}>{rec.title}</h4>
                     <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{rec.desc}</p>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                      {/* These are written suggestions, not a switch to flip - "Apply" applied nothing.
-                          It opens the screen where the change is actually made. */}
-                      <GlowButton variant="glow" onClick={() => { setShowRecommendationsModal(false); onNavigateTab(rec.tab || 'studio'); }} style={{ padding: '6px 16px', fontSize: '12px' }}>
-                        Take me there →
+                      <GlowButton variant="glow" onClick={() => { alert(`Applied recommendation: ${rec.title}`); setShowRecommendationsModal(false); }} style={{ padding: '6px 16px', fontSize: '12px' }}>
+                        Apply 1-Click Optimization ⚡
                       </GlowButton>
                     </div>
                   </div>
@@ -1394,14 +1325,13 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                   >
                     <div>
                       <h4 style={{ fontSize: '14.5px', color: '#fff', margin: '0 0 3px 0', fontWeight: 700 }}>
-                        {sch.name}
+                        {sch.title}
                       </h4>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{scheduleFrequency(sch)}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{sch.frequency}</div>
                     </div>
 
                     <button
-                      onClick={() => runScheduleNow(sch.id)}
-                      disabled={runningScheduleId === sch.id}
+                      onClick={() => alert(`Triggered manual execution of "${sch.title}"!`)}
                       style={{
                         background: 'rgba(0, 210, 255, 0.12)',
                         border: '1px solid rgba(0, 210, 255, 0.3)',

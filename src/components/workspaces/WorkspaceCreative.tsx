@@ -54,20 +54,94 @@ interface WorkspaceCreativeProps {
   onNavigateTab?: (tab: string) => void;
   /** An asset handed over from the Media vault, used as the reference image. */
   incomingReferenceImage?: string | null;
+  /** Every workspace this user can reach, so Step 1 can actually offer a choice. */
+  brands?: { id: number; name: string; company_url?: string; brand_color?: string }[];
+  /** Switches the whole dashboard to another workspace. */
+  onSwitchWorkspace?: (id: number) => void;
 }
 
+/** What GET /api/workspaces/{id}/brand-profile returns. */
+interface BrandProfileFull {
+  name?: string;
+  url?: string;
+  brand_voice?: string | null;
+  brand_color?: string | null;
+  brand_guidelines_summary?: string | null;
+  target_audience?: string | null;
+  color_palette?: string[];
+  typography?: Record<string, string>;
+  guidelines?: Record<string, unknown>;
+  is_onboarded?: boolean;
+}
+
+/** The guidelines blob holds strings, string[] and persona objects depending on which
+ *  extractor wrote the field. Coerce whatever is there into one readable line, or null
+ *  so the caller can render a "not set" state instead of an invented value. */
+const asLine = (v: unknown): string | null => {
+  if (typeof v === 'string') return v.trim() || null;
+  if (Array.isArray(v)) {
+    const parts = v
+      .map(x => (typeof x === 'string' ? x
+        : x && typeof x === 'object' ? String((x as any).name ?? (x as any).label ?? (x as any).title ?? '')
+        : ''))
+      .map(s => s.trim())
+      .filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+  if (v && typeof v === 'object') {
+    const o = v as any;
+    const s = String(o.name ?? o.label ?? o.title ?? '').trim();
+    return s || null;
+  }
+  return null;
+};
+
 export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
-  brandUrl = 'ambrane.com',
+  brandUrl = '',
   assets = [],
   onOpenReview,
   onGenerate,
   onAssetSaved,
   workspaceId,
   onNavigateTab,
-  incomingReferenceImage = null
+  incomingReferenceImage = null,
+  brands = [],
+  onSwitchWorkspace
 }) => {
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'create' | 'competitors' | 'projects' | 'templates' | 'ugc' | 'editor' | 'carousel' | 'video_editor' | 'ad_library'>('create');
+
+  /* Step 1 reads the real brand rather than the hardcoded "Ambrane India / Modern Tech /
+     18-35 Urban Pros" panel it used to show for every workspace. Theme, tone and audience
+     come from what onboarding's crawl actually found; a field it could not determine
+     renders as "Not set" with a route to the vault, never as a plausible-looking guess. */
+  const [brandProfile, setBrandProfile] = useState<BrandProfileFull | null>(null);
+  const [brandLoading, setBrandLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setBrandLoading(false); return; }
+    let cancelled = false;
+    setBrandLoading(true);
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/brand-profile`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d) setBrandProfile(d); })
+      .catch(() => { /* the card falls back to its "not set" state */ })
+      .finally(() => { if (!cancelled) setBrandLoading(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const g = (brandProfile?.guidelines || {}) as Record<string, unknown>;
+  const brandName = brandProfile?.name || brands.find(b => b.id === workspaceId)?.name || null;
+  const brandSite = (brandProfile?.url || brandUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const brandCategory = asLine(g.categories) || asLine(g.business_model);
+  const brandTheme = asLine(g.personality);
+  const brandTone = asLine(g.tone) || asLine(g.tone_of_voice) || asLine(brandProfile?.brand_voice);
+  const brandAudience = asLine(brandProfile?.target_audience) || asLine(g.target_audiences);
+  // "Connected" means onboarding actually wrote something the agents can read.
+  const kbConnected = Boolean(brandProfile?.is_onboarded || brandProfile?.brand_guidelines_summary);
   
   // Market Intelligence — this workspace's competitor ad vault and search/creator radar,
   // both filled by the scheduled syncs in backend/core/intel_sync.py.
@@ -184,6 +258,26 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [editorSidebarTab, setEditorSidebarTab] = useState<'ai' | 'text' | 'elements' | 'uploads' | 'layers'>('ai');
   const [canvasAspectRatio, setCanvasAspectRatio] = useState<'1:1' | '9:16' | '4:5' | '16:9'>('1:1');
   const [editorZoom, setEditorZoom] = useState<number>(100);
+  // Creative frameworks, from GET /api/creative/templates. Previously four hardcoded
+  // entries carrying invented CTRs ("3.4% Avg CTR") that nothing in the schema tracks, and
+  // descriptions naming another brand's products regardless of whose workspace was open.
+  const [frameworks, setFrameworks] = useState<{ key: string; name: string; desc: string }[]>([]);
+  const [templatesNote, setTemplatesNote] = useState<string>('');
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    fetch(`/api/creative/templates?workspace_id=${workspaceId}`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d) return;
+        setFrameworks(Array.isArray(d.frameworks) ? d.frameworks : []);
+        setTemplatesNote(d.note || '');
+      })
+      .catch(() => {});
+  }, [workspaceId]);
+
   const [aiPromptInstruction, setAiPromptInstruction] = useState<string>('');
   const [isProcessingStudioAi, setIsProcessingStudioAi] = useState<boolean>(false);
   const [editorDocumentTitle, setEditorDocumentTitle] = useState<string>('Ambrane Powerbank — 1:1 Festive Campaign');
@@ -219,49 +313,70 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setDraggedElId(null);
   };
 
-  // Save active Studio design as Draft into Recent Projects
-  const handleSaveAsDraft = () => {
+  /** Persists the canvas to the workspace's ad assets.
+   *
+   *  Both save buttons used to push into local React state only - so "Saved to Verified Ad
+   *  Library & Vault 🏛️" was a claim about a row that never existed, and the design was
+   *  gone on refresh. They also substituted another brand's copy when a canvas element was
+   *  missing ("Unstoppable Power in Your Pocket ⚡", "#Ambrane"), which then read as this
+   *  workspace's own ad. Now it writes through POST /creatives/save and reports honestly.
+   */
+  const persistEditorDesign = async (status: 'approved' | 'pending_review') => {
     const bgEl = editorCanvasElements.find(el => el.id === 'el_bg') || editorCanvasElements.find(el => el.type === 'image');
     const headEl = editorCanvasElements.find(el => el.id === 'el_headline') || editorCanvasElements.find(el => el.type === 'text');
     const bodyEl = editorCanvasElements.find(el => el.id === 'el_body');
+    const ctaEl = editorCanvasElements.find(el => el.type === 'button');
 
-    const newDraftAd = {
-      id: `proj_draft_${Date.now()}`,
-      title: editorDocumentTitle || 'Draft Campaign Design',
-      date: 'Just now (Draft)',
-      status: 'Draft' as const,
-      img: bgEl?.content || PRODUCT_IMG,
-      headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
-      bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
-      cta: 'Shop Now',
-      hashtags: '#Ambrane #Draft'
-    };
+    const headline = (headEl?.content || '').trim();
+    if (!headline) {
+      triggerToast('Add a headline to the canvas before saving.');
+      return;
+    }
+    if (!workspaceId) {
+      triggerToast('Open a workspace before saving.');
+      return;
+    }
 
-    setProjectsList(prev => [newDraftAd, ...prev]);
-    triggerToast('Saved project as Draft in Recent Projects! 💾');
+    const label = status === 'approved' ? 'Ad Library' : 'Drafts';
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/workspaces/${workspaceId}/creatives/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          headline,
+          body_text: (bodyEl?.content || '').trim(),
+          cta: (ctaEl?.content || '').trim(),
+          type: editorDocumentTitle?.trim() || 'Studio design',
+          image_url: bgEl?.content || null,
+          status,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || `Save failed (${res.status})`);
+      }
+      const saved = await res.json();
+      // Hand it to the dashboard so Recent Projects, the Ad Library and the Asset Vault all
+      // see the same row without a reload - this is the "sync with the rest of the
+      // platform" part.
+      onAssetSaved?.({
+        id: String(saved.id),
+        headline: saved.headline,
+        bodyText: saved.body_text,
+        cta: saved.cta,
+        type: saved.type,
+        imageUrl: saved.image_url,
+        status: saved.status,
+      } as CreativeAsset);
+      triggerToast(`Saved to ${label}.`);
+    } catch (e) {
+      triggerToast(`Could not save: ${e instanceof Error ? e.message : e}`);
+    }
   };
 
-  // Save active Studio design directly into Ad Library / Recent Projects Vault
-  const handleSaveToVault = () => {
-    const bgEl = editorCanvasElements.find(el => el.id === 'el_bg') || editorCanvasElements.find(el => el.type === 'image');
-    const headEl = editorCanvasElements.find(el => el.id === 'el_headline') || editorCanvasElements.find(el => el.type === 'text');
-    const bodyEl = editorCanvasElements.find(el => el.id === 'el_body');
-
-    const newVaultAd = {
-      id: `proj_vault_${Date.now()}`,
-      title: editorDocumentTitle || 'Powerbank Festive Campaign',
-      date: 'Just now (Studio Design)',
-      status: 'Approved' as const,
-      img: bgEl?.content || PRODUCT_IMG,
-      headline: headEl?.content || 'Unstoppable Power in Your Pocket ⚡',
-      bodyText: bodyEl?.content || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
-      cta: 'Shop Now',
-      hashtags: '#Ambrane #FestiveCampaign #StudioAd'
-    };
-
-    setProjectsList(prev => [newVaultAd, ...prev]);
-    triggerToast('Saved ad design to Verified Ad Library & Vault! 🏛️');
-  };
+  const handleSaveAsDraft = () => persistEditorDesign('pending_review');
+  const handleSaveToVault = () => persistEditorDesign('approved');
 
   // Export active Canvas to 4K PNG file download
   const handleExport4KPng = () => {
@@ -444,41 +559,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // Projects Modal State
   // Seeded demo ads. These are the empty state - what the studio shows a workspace that has
   // not generated anything yet - and are replaced by real assets as soon as any exist.
-  const [projectsList, setProjectsList] = useState<ProjectCard[]>([
-    {
-      id: 'proj_1',
-      title: 'Ambrane Powerbank Festive Carousel',
-      date: "Today's Ad",
-      status: 'Approved',
-      img: PRODUCT_IMG,
-      headline: 'Festive Flash Sale — 20,000mAh Powerbank',
-      bodyText: 'Never run out of power during celebrations. Ultra fast 22.5W charging.',
-      cta: 'Shop Now',
-      hashtags: '#Ambrane #FestiveOffer #PowerBank'
-    },
-    {
-      id: 'proj_2',
-      title: 'Ultra Fast Charger Video Reel 15s',
-      date: 'Yesterday',
-      status: 'In Review',
-      img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80',
-      headline: 'Charge 50% in Just 20 Minutes ⚡',
-      bodyText: 'Engineered with smart temperature management and aircraft aluminum body.',
-      cta: 'Claim 30% Off',
-      hashtags: '#FastCharging #MakeInIndia #TechReels'
-    },
-    {
-      id: 'proj_3',
-      title: 'Noise Cancelling Earbuds Minimal Ad',
-      date: 'Last Week',
-      status: 'Draft',
-      img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80',
-      headline: 'Pure Acoustic Silence — Ambrane ANC',
-      bodyText: 'Block out traffic & airplane noise with 35dB Active Noise Cancellation.',
-      cta: 'Order Today',
-      hashtags: '#AudioTech #NoiseCancelling #Ambrane'
-    }
-  ]);
+  // Was seeded with four invented ads ("Ambrane Powerbank Festive Carousel", Unsplash
+  // photography, headlines and hashtags for a brand that may not be this one). They only
+  // showed when a workspace had no real assets - which is exactly when a user is deciding
+  // whether the product works, so the emptiest workspace got the most convincing fiction.
+  // Now genuinely empty, and the locally-created drafts below still push into it.
+  const [projectsList, setProjectsList] = useState<ProjectCard[]>([]);
   const [selectedProjectModal, setSelectedProjectModal] = useState<ProjectCard | null>(null);
 
   // This workspace's actual generated ads, shaped for the same grids. `assets` was being
@@ -497,7 +583,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     hashtags: '',
     real: true,
   }));
-  const displayProjects: ProjectCard[] = realProjects.length > 0 ? realProjects : projectsList;
+  // Real assets first, then anything drafted in this session. No fixture fallback.
+  const displayProjects: ProjectCard[] = [...realProjects, ...projectsList];
 
   // UGC State & Realistic Generation Flow
   const [ugcSubTab, setUgcSubTab] = useState<'ai_ugc' | 'hire_human'>('ai_ugc');
@@ -1230,39 +1317,79 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <span style={{ background: '#7C75FF', color: '#fff', width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 'bold' }}>1</span>
                 <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>Step 1 — Choose Brand</h3>
               </div>
-              <span style={{ fontSize: '12px', color: 'var(--success)', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 600 }}>
-                Automatically Selected
-              </span>
+              {brands.length > 1 && onSwitchWorkspace ? (
+                <select
+                  value={workspaceId ?? ''}
+                  onChange={(e) => onSwitchWorkspace(Number(e.target.value))}
+                  aria-label="Choose brand workspace"
+                  style={{ fontSize: '12px', color: '#fff', background: 'rgba(124,117,255,0.12)', border: '1px solid rgba(124,117,255,0.35)', padding: '5px 12px', borderRadius: '100px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {brands.map(b => (
+                    <option key={b.id} value={b.id} style={{ background: '#0c0c12' }}>{b.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{ fontSize: '12px', color: 'var(--success)', background: 'rgba(0,230,118,0.12)', padding: '4px 12px', borderRadius: '100px', fontWeight: 600 }}>
+                  Automatically Selected
+                </span>
+              )}
             </div>
 
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '14px', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-              <div>
-                <h4 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>Ambrane India</h4>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>ambrane.com • Consumer Electronics & Mobile Power</p>
+              <div style={{ minWidth: 0 }}>
+                <h4 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>
+                  {brandLoading ? 'Loading brand…' : (brandName || 'No brand connected')}
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                  {[brandSite, brandCategory].filter(Boolean).join(' • ') || 'Add your site in the Brand Knowledge vault to fill this in.'}
+                </p>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ background: 'rgba(124,117,255,0.1)', border: '1px solid rgba(124,117,255,0.2)', padding: '8px 14px', borderRadius: '10px', fontSize: '12px', color: '#fff' }}>
-                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>THEME</span>
-                  <strong>Modern Tech</strong>
-                </div>
-                <div style={{ background: 'rgba(124,117,255,0.1)', border: '1px solid rgba(124,117,255,0.2)', padding: '8px 14px', borderRadius: '10px', fontSize: '12px', color: '#fff' }}>
-                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>TONE</span>
-                  <strong>Professional & High Energy</strong>
-                </div>
-                <div style={{ background: 'rgba(124,117,255,0.1)', border: '1px solid rgba(124,117,255,0.2)', padding: '8px 14px', borderRadius: '10px', fontSize: '12px', color: '#fff' }}>
-                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>AUDIENCE</span>
-                  <strong>18 – 35 Urban Pros</strong>
-                </div>
-                <div style={{ background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.25)', padding: '8px 14px', borderRadius: '10px', fontSize: '12px', color: 'var(--success)' }}>
+                {([
+                  { label: 'THEME', value: brandTheme },
+                  { label: 'TONE', value: brandTone },
+                  { label: 'AUDIENCE', value: brandAudience },
+                ] as { label: string; value: string | null }[]).map(chip => (
+                  <div
+                    key={chip.label}
+                    title={chip.value || 'Not extracted yet — set it in the Brand Knowledge vault'}
+                    style={{
+                      background: chip.value ? 'rgba(124,117,255,0.1)' : 'rgba(255,255,255,0.03)',
+                      border: chip.value ? '1px solid rgba(124,117,255,0.2)' : '1px dashed rgba(255,255,255,0.15)',
+                      padding: '8px 14px', borderRadius: '10px', fontSize: '12px',
+                      color: chip.value ? '#fff' : 'var(--text-muted)', maxWidth: '210px'
+                    }}
+                  >
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>{chip.label}</span>
+                    <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {brandLoading ? '…' : (chip.value || 'Not set')}
+                    </strong>
+                  </div>
+                ))}
+
+                <button
+                  onClick={() => onNavigateTab?.('kb_brands')}
+                  title={kbConnected ? 'Open the Brand Knowledge vault' : 'Set up the Brand Knowledge vault'}
+                  style={{
+                    textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                    background: kbConnected ? 'rgba(0,230,118,0.12)' : 'rgba(255,183,0,0.1)',
+                    border: kbConnected ? '1px solid rgba(0,230,118,0.25)' : '1px solid rgba(255,183,0,0.3)',
+                    padding: '8px 14px', borderRadius: '10px', fontSize: '12px',
+                    color: kbConnected ? 'var(--success)' : '#FFB300'
+                  }}
+                >
                   <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>KNOWLEDGE BASE</span>
-                  <strong>Connected ✔</strong>
-                </div>
+                  <strong>{brandLoading ? '…' : (kbConnected ? 'Connected ✔' : 'Set up →')}</strong>
+                </button>
               </div>
             </div>
 
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '14px 0 0 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Zap size={13} color="#7C75FF" /> Brand ki saari knowledge (Product USPs, colors, past campaigns) automatically use hogi.
+              <Zap size={13} color="#7C75FF" />
+              {kbConnected
+                ? 'Brand ki saari knowledge (Product USPs, colors, past campaigns) automatically use hogi.'
+                : 'Brand knowledge abhi connect nahi hui — vault set karo taaki generation me USPs aur colors use ho sakein.'}
             </p>
           </div>
 
@@ -2456,22 +2583,40 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </p>
           </div>
 
+          {templatesNote && (
+            <div style={{
+              padding: '12px 16px', borderRadius: '10px', fontSize: '13px', lineHeight: 1.55,
+              background: 'rgba(255,193,7,0.07)', border: '1px solid rgba(255,193,7,0.28)',
+              color: '#ffc107', marginBottom: '4px',
+            }}>
+              {templatesNote}
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
-            {[
-              { name: 'Problem-Agitate-Solution (PAS)', desc: 'Highlight customer pain point and introduce Ambrane product as the ultimate fix.', ctr: '3.4% Avg CTR' },
-              { name: 'Before vs After Showcase', desc: 'Direct visual comparison showing slow charging vs 22.5W Power Delivery.', ctr: '4.1% Avg CTR' },
-              { name: 'Unboxing & First Reaction', desc: 'UGC-style authentic unboxing experience with energetic voiceover.', ctr: '4.8% Avg CTR' },
-              { name: 'Flash Sale & Urgency Trigger', desc: 'Countdown timer + discount code overlay for impulse purchase conversion.', ctr: '5.2% Avg CTR' }
-            ].map((tmpl, idx) => (
-              <div key={idx} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px' }}>
-                <div style={{ fontSize: '12px', color: 'var(--success)', fontWeight: 700, marginBottom: '8px' }}>{tmpl.ctr}</div>
+            {frameworks.map((tmpl) => (
+              <div key={tmpl.key} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px' }}>
                 <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 8px 0' }}>{tmpl.name}</h4>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.4 }}>{tmpl.desc}</p>
-                <GlowButton variant="glow" onClick={() => setActiveTab('create')} style={{ padding: '8px 16px', fontSize: '12px' }}>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.45 }}>{tmpl.desc}</p>
+                <GlowButton
+                  variant="glow"
+                  onClick={() => {
+                    // Carries the framework into the generator instead of just switching
+                    // tabs, so "Use Framework" actually does something.
+                    setProductPrompt(prev => prev?.trim()
+                      ? `${prev}\n\nUse the ${tmpl.name} framework.`
+                      : `Write an ad using the ${tmpl.name} framework. ${tmpl.desc}`);
+                    setActiveTab('create');
+                  }}
+                  style={{ padding: '8px 16px', fontSize: '12px' }}
+                >
                   Use Framework
                 </GlowButton>
               </div>
             ))}
+            {frameworks.length === 0 && (
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Loading frameworks…</div>
+            )}
           </div>
         </div>
       )}

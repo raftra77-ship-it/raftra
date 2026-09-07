@@ -43,3 +43,14 @@ apscheduler>=3.10,<4
 # video rendering works from a plain pip install — no system package or admin rights needed.
 # A system ffmpeg on PATH (or FFMPEG_BINARY) still takes precedence if one exists.
 imageio-ffmpeg
+
+# Hero-image colour clustering (core/brand_kit.kmeans_palette) and the Asset Vault's site
+# harvest (core/site_images), which decodes each image to get real dimensions. Small wheels,
+# unlike torch - without them both features silently return nothing rather than crashing.
+pillow
+numpy
+scikit-learn
+
+# Free Google Trends fallback for the market-trend radar (core/market_trends). Only used
+# when SERPAPI_KEY is unset; without either, a trend sync records an honest failure.
+pytrends

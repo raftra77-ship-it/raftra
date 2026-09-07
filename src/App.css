@@ -67,15 +67,16 @@
 
 /* Hero Section */
 .hero-section {
-  max-width: 1200px;
-  margin: 80px auto 120px;
-  padding: 0 24px;
+  max-width: 1640px;
+  margin: 110px auto 120px;
+  padding: 0 40px;
   text-align: center;
 }
 
 @media (max-width: 768px) {
   .hero-section {
     margin: 40px auto 60px;
+    padding: 0 20px;
   }
 }
 
@@ -104,7 +105,7 @@
 .hero-title {
   font-size: 64px;
   line-height: 1.1;
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto 24px;
   font-family: var(--font-heading);
   letter-spacing: -0.03em;
@@ -119,7 +120,7 @@
 .hero-subtitle {
   font-size: 20px;
   color: var(--text-secondary);
-  max-width: 700px;
+  max-width: 950px;
   margin: 0 auto 40px;
   line-height: 1.6;
 }
@@ -139,7 +140,7 @@
 
 /* Agent Terminal Preview on Landing Page */
 .terminal-preview-container {
-  max-width: 1000px;
+  max-width: 1540px;
   margin: 0 auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
@@ -209,9 +210,9 @@
 
 /* Problems Grid & Solutions Section */
 .section-container {
-  max-width: 1200px;
+  max-width: 1640px;
   margin: 120px auto;
-  padding: 0 24px;
+  padding: 0 40px;
 }
 
 .section-tag {
@@ -230,7 +231,7 @@
 .section-desc {
   color: var(--text-secondary);
   font-size: 18px;
-  max-width: 600px;
+  max-width: 900px;
   margin-bottom: 48px;
 }
 
@@ -336,11 +337,6 @@
   flex-direction: column;
   gap: 6px;
   flex: 1;
-  /* min-height:0 is required for overflow-y to work on a flex item. Without it the item
-     keeps its default min-height:auto, refuses to shrink below its content, and grows past
-     the sidebar instead of scrolling - which silently clipped the lower menu entries
-     (Campaign Manager onward) with no scrollbar to reach them. */
-  min-height: 0;
   overflow-y: auto;
 }
 

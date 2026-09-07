@@ -8,9 +8,9 @@
   --bg-tertiary: #121217;
   
   --accent: #5a52ff;
-  --accent-glow: rgba(90, 82, 255, 0.15);
+  --accent-glow: rgba(90, 82, 255, 0.2);
   --accent-glow-strong: rgba(90, 82, 255, 0.4);
-  --accent-muted: #3d37b8;
+  --accent-muted: #1e1b4b;
   
   --text-primary: #ffffff;
   --text-secondary: #8f8f9b;
@@ -49,6 +49,9 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -90,17 +93,35 @@ body {
   }
 }
 
-/* Typography */
+/* Typography Scale - Clean, Spacious, Highly Readable */
+h1 {
+  font-size: 2.8rem;
+  line-height: 1.2;
+}
+h2 {
+  font-size: 2.1rem;
+  line-height: 1.25;
+}
+h3 {
+  font-size: 1.5rem;
+  line-height: 1.3;
+}
+h4 {
+  font-size: 1.2rem;
+  line-height: 1.35;
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   color: var(--text-primary);
 }
 
 p {
   color: var(--text-secondary);
   line-height: 1.6;
+  font-size: 15.5px;
 }
 
 /* Utility Classes */
@@ -207,12 +228,10 @@ p {
   color: #ffffff;
 }
 
-/* GlowButton still renders this div for variant="glow". It used to be a blurred indigo
-   bloom behind the button, which fights the metal finish - neutralised rather than
-   removed so the component needs no change. */
-.btn-glow-shadow {
-  display: none;
-}
+/* GlowButton renders an empty <div class="btn-glow-shadow"> for variant="glow". It is
+   deliberately left unstyled, as in the reference build: it draws nothing, but it stays a
+   flex item, so the button's `gap` applies to it and every glow button is 8px wider.
+   Setting `display: none` here silently narrowed all of them. */
 
 /* Badge animation */
 .badge-pulse {

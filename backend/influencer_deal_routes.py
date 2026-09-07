@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 import auth
 import database
 import models
+from core import tenancy
 
 router = APIRouter(prefix="/api/deals", tags=["deals"])
 
@@ -57,7 +58,7 @@ def _clean_handle(value: str) -> str:
 def _owned_workspace(workspace_id: int, db: Session, user: models.User) -> models.Workspace:
     ws = db.query(models.Workspace).filter(
         models.Workspace.id == workspace_id,
-        models.Workspace.user_id == user.id,
+        tenancy.visible_workspace(user),
     ).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
@@ -72,7 +73,7 @@ def _deal_as_brand(deal_id: int, db: Session, user: models.User) -> models.Influ
         raise HTTPException(status_code=404, detail="Deal not found")
     owns = db.query(models.Workspace).filter(
         models.Workspace.id == deal.workspace_id,
-        models.Workspace.user_id == user.id,
+        tenancy.visible_workspace(user),
     ).first()
     if not owns:
         raise HTTPException(status_code=404, detail="Deal not found")

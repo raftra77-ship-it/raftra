@@ -1761,19 +1761,26 @@ export function BrandDashboard() {
       else if (lower.includes('pie')) { isVisual = true; visualType = 'pie'; }
       else if (lower.includes('line')) { isVisual = true; visualType = 'line'; }
 
+      // A placeholder reply goes in straight away and is swapped for the real one when it
+      // lands. The request takes seconds; without this the chat sat visibly dead after the
+      // question, with nothing to say it had been received.
+      const pendingId = String(Date.now() + 1);
+      setChatHistory((prev) => [...prev, {
+        id: pendingId, sender: 'claude', text: '', pending: true, isVisual: false, visualType: null,
+      }]);
+      const settle = (text: string, ok: boolean) =>
+        setChatHistory((prev) => prev.map(m => m.id === pendingId
+          ? { ...m, text, pending: false, isVisual: ok && isVisual, visualType: ok ? visualType : null }
+          : m));
+
       fetch(`/api/agents/${workspaceId}/analytics`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ query_message: message })
       })
         .then(r => r.json())
-        .then(d => {
-          const text = d?.text || 'Sorry, I could not generate a response just now — please try again.';
-          setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text, isVisual, visualType }]);
-        })
-        .catch(() => {
-          setChatHistory((prev) => [...prev, { id: String(Date.now() + 1), sender: 'claude', text: 'I could not reach the analytics agent — please try again.', isVisual: false, visualType: null }]);
-        });
+        .then(d => settle(d?.text || 'Sorry, I could not generate a response just now — please try again.', Boolean(d?.text)))
+        .catch(() => settle('I could not reach the analytics agent — please try again.', false));
     }
   };
 
@@ -2029,7 +2036,12 @@ export function BrandDashboard() {
 
         {/* Sidebar Footer: Active Brand Profile & Sign Out */}
         <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '8px', padding: '12px 10px 10px', background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.06)', borderRadius: '0 0 16px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '4px 6px' }}>
+          {/* alignSelf:stretch pins this row to the footer's full width. The footer centres
+              its children, and without this the row is content-sized — so a long workspace
+              URL widened it and a short one narrowed it, sliding the avatar sideways by up
+              to 20px between workspaces. Stretching also finally constrains the info block
+              below, so its ellipsis actually engages instead of the row just growing. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '4px 6px', alignSelf: 'stretch' }}>
             <div className="user-avatar" style={{ flexShrink: 0, width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '13px' }}>
               {(brandProfile?.name || 'D').charAt(0)}
             </div>
@@ -2303,9 +2315,9 @@ export function BrandDashboard() {
               {/* MODERN HOME OVERVIEW (Brand Kit Extraction, Action Needed, Top Creatives, Schedules) */}
               <ModernHomeOverview
                 userName={userName}
-                brandName={brandProfile?.name || 'Your brand'}
-                workspaceId={workspaceId}
+                brandName={brandProfile?.name || 'Demo Brand'}
                 onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+                onOpenReview={handleOpenReview}
               />
             </div>
           )}
@@ -2322,6 +2334,8 @@ export function BrandDashboard() {
                 onAssetSaved={handleAssetSaved}
                 onNavigateTab={(tab: string) => setActiveTab(tab as NavigationTab)}
                 incomingReferenceImage={studioReferenceImage}
+                brands={allWorkspaces}
+                onSwitchWorkspace={switchWorkspace}
               />
             </div>
           )}
@@ -2366,6 +2380,7 @@ export function BrandDashboard() {
                 onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
                 chatHistory={chatHistory}
                 onSendMessage={handleSendClaudeMessage}
+                workspaceId={workspaceId}
               />
             </div>
           )}

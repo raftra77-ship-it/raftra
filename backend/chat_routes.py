@@ -5,6 +5,7 @@ from typing import List
 import database, auth, models
 from pydantic import BaseModel
 from core.websocket import manager
+from core import tenancy
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -29,7 +30,7 @@ class ChatMessageResponse(BaseModel):
 def get_chat_history(workspace_id: int, influencer_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     # Security: check if user owns workspace or is the influencer
     if current_user.role == "brand":
-        ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+        ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
         if not ws:
             raise HTTPException(status_code=403, detail="Not authorized")
     elif current_user.role == "creator":
@@ -48,7 +49,7 @@ def get_chat_history(workspace_id: int, influencer_id: int, db: Session = Depend
 async def send_message(workspace_id: int, msg: ChatMessageCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     # Determine sender type
     if current_user.role == "brand":
-        ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+        ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
         if not ws: raise HTTPException(status_code=403, detail="Not authorized")
         sender_type = "brand"
     else:

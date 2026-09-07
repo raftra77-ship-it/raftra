@@ -12,13 +12,14 @@ import database, models, auth
 from publishing.publish_service import PublishService, CONNECTION_MODELS
 from publishing.page_mapping import PageMappingService
 from publishing.publishers import get_publisher
+from core import tenancy
 
 router = APIRouter(prefix="/api/workspaces", tags=["publishing"])
 
 
 def _require_workspace(workspace_id: int, db: Session, current_user: models.User):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id,
-                                           models.Workspace.user_id == current_user.id).first()
+                                           tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     return ws

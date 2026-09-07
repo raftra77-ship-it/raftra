@@ -29,6 +29,7 @@ from core import campaign_optimizer as optimizer
 from core import shopify_connect as shop
 from core import wordpress_connect as wp
 from core import wpcom_oauth as wpcom
+from core import tenancy
 
 router = APIRouter(prefix="/api/connectors", tags=["connectors"])
 
@@ -37,7 +38,7 @@ _STATE_TTL_MIN = 15
 
 def _require_workspace(workspace_id: int, db: Session, user: models.User) -> models.Workspace:
     ws = db.query(models.Workspace).filter(
-        models.Workspace.id == workspace_id, models.Workspace.user_id == user.id
+        models.Workspace.id == workspace_id, tenancy.visible_workspace(user)
     ).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")

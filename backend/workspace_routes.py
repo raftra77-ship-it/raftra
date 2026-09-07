@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import database, models, schemas, auth
+from core import tenancy
 import asyncio
+import datetime
 import os
 from core import meta_ads as meta, google_ads as gads
 
@@ -10,7 +12,7 @@ router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
 @router.get("", response_model=List[schemas.WorkspaceResponse])
 def get_workspaces(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    workspaces = db.query(models.Workspace).filter(models.Workspace.user_id == current_user.id).all()
+    workspaces = db.query(models.Workspace).filter(tenancy.visible_workspace(current_user)).all()
     return workspaces
 
 @router.get("/onboarding-state")
@@ -30,7 +32,7 @@ def onboarding_state(db: Session = Depends(database.get_db),
     then would have needed a second call for the profile.
     """
     workspaces = (db.query(models.Workspace)
-                    .filter(models.Workspace.user_id == current_user.id)
+                    .filter(tenancy.visible_workspace(current_user))
                     .order_by(models.Workspace.id.asc()).all())
     if not workspaces:
         return {"has_workspace": False, "is_onboarded": False, "workspace_id": None,
@@ -166,7 +168,7 @@ def delete_workspace(workspace_id: int, db: Session = Depends(database.get_db),
     # Refuse to remove the last one: the whole dashboard is keyed on having a workspace,
     # and an account with none lands on a permanently empty screen.
     remaining = (db.query(models.Workspace)
-                   .filter(models.Workspace.user_id == current_user.id).count())
+                   .filter(tenancy.visible_workspace(current_user)).count())
     if remaining <= 1:
         raise HTTPException(status_code=400,
                             detail="This is your only workspace, so it cannot be deleted.")
@@ -218,7 +220,7 @@ def update_brand_profile(workspace_id: int, body: BrandProfileUpdate,
 
 @router.post("/{workspace_id}/reindex")
 def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     
@@ -311,7 +313,7 @@ def knowledge_stats(workspace_id: int, db: Session = Depends(database.get_db),
 
 
 def _require_workspace(workspace_id: int, db: Session, current_user: models.User):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     return ws
@@ -393,7 +395,7 @@ def edit_content(workspace_id: int, draft_id: int, req: schemas.ContentEditReque
 def list_agent_tasks(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     """Real agent activity for this workspace, from the agent_tasks table (populated by
     pipelines as they run). Powers the dashboard's 'AI Agents' panel with live data."""
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
@@ -423,7 +425,7 @@ def list_agent_tasks(workspace_id: int, db: Session = Depends(database.get_db), 
 def recent_actions(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     """Recent REAL outputs the agents produced (generated ads, SEO audits, social posts,
     campaigns) - replaces the dashboard's hardcoded 'Recent AI Actions' list."""
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
@@ -450,7 +452,7 @@ def recent_actions(workspace_id: int, db: Session = Depends(database.get_db), cu
 
 @router.get("/{workspace_id}/dashboard/metrics")
 def get_dashboard_metrics(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
         
@@ -488,7 +490,7 @@ def get_dashboard_metrics(workspace_id: int, db: Session = Depends(database.get_
 # Campaigns
 @router.get("/{workspace_id}/campaigns", response_model=List[schemas.CampaignResponse])
 def get_campaigns(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     campaigns = db.query(models.Campaign).filter(models.Campaign.workspace_id == workspace_id).all()
@@ -1064,7 +1066,7 @@ def campaign_analytics(workspace_id: int, campaign_id: int, db: Session = Depend
 
 @router.post("/{workspace_id}/campaigns/{campaign_id}/toggle")
 def toggle_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     camp = db.query(models.Campaign).filter(models.Campaign.id == campaign_id, models.Campaign.workspace_id == workspace_id).first()
@@ -1253,7 +1255,7 @@ def get_creative_image(workspace_id: int, asset_id: int, v: str, k: str,
 
 @router.get("/{workspace_id}/creatives", response_model=List[schemas.AdAssetResponse])
 def get_creatives(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     # Deliberately column-level rather than db.query(AdAsset): selecting the whole row pulls
@@ -1295,7 +1297,7 @@ def get_creatives(workspace_id: int, db: Session = Depends(database.get_db), cur
 
 @router.post("/{workspace_id}/creatives/save", response_model=schemas.AdAssetResponse)
 def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     
@@ -1307,7 +1309,10 @@ def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session =
         type=asset.type,
         image_url=asset.image_url,
         video_url=asset.video_url,
-        status="approved"
+        # Was hardcoded "approved", so a design saved from the Studio as a *draft* came back
+        # as an approved library asset. Constrained to the states the review flow knows.
+        status=(asset.status if asset.status in ("approved", "pending_review", "rejected")
+                else "approved"),
     )
     db.add(new_asset)
     db.commit()
@@ -1337,7 +1342,7 @@ async def upload_asset(workspace_id: int, file: UploadFile = File(...), db: Sess
     "logo.png" overwrote each other, and a crafted name could escape the directory. It also
     accepted any file of any size with no validation.
     """
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
@@ -1376,7 +1381,7 @@ async def upload_asset(workspace_id: int, file: UploadFile = File(...), db: Sess
 
 @router.delete("/{workspace_id}/creatives/{asset_id}")
 def delete_creative(workspace_id: int, asset_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
         
@@ -1392,7 +1397,7 @@ def delete_creative(workspace_id: int, asset_id: int, db: Session = Depends(data
 # SEO audits
 @router.get("/{workspace_id}/seo", response_model=List[schemas.SEOAuditResponse])
 def get_seo_audits(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     audits = db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id).all()
@@ -1409,15 +1414,51 @@ def latest_audit(workspace_id: int, db: Session = Depends(database.get_db),
     rows = (db.query(models.SEOAudit)
               .filter(models.SEOAudit.workspace_id == workspace_id)
               .order_by(models.SEOAudit.created_at.desc()).all())
-    latest_with_audit = next((r for r in rows if (r.keywords_data or {}).get("audit")), None)
-    if not latest_with_audit:
+
+    # SEO and GEO are stored as SEPARATE audit rows, each carrying only its own section
+    # ("audit": {"seo": ...} or {"geo": ...}). This used to return the single newest row
+    # with an audit on it, so whichever pipeline ran last was shown and the other was
+    # invisible - a workspace that had run both saw only one, which is what "the audit
+    # results are not coming as expected" looks like from the dashboard.
+    #
+    # Both are now merged into one response, each from its own most recent run, so the two
+    # halves can be months apart and still both appear (with their own timestamps).
+    def _newest(pipeline: str):
+        for r in rows:
+            kd = r.keywords_data or {}
+            audit = kd.get("audit") or {}
+            if kd.get("pipeline", "SEO") == pipeline and audit.get(pipeline.lower()):
+                return r
+        return None
+
+    seo_row, geo_row = _newest("SEO"), _newest("GEO")
+    if not seo_row and not geo_row:
         return {"has_audit": False, "target_url": None, "created_at": None, "audit": None}
-    kd = latest_with_audit.keywords_data or {}
+
+    newest = max([r for r in (seo_row, geo_row) if r],
+                 key=lambda r: r.created_at or datetime.datetime.min)
+    merged = {}
+    for row, key in ((seo_row, "seo"), (geo_row, "geo")):
+        if not row:
+            continue
+        audit = (row.keywords_data or {}).get("audit") or {}
+        if audit.get(key):
+            merged[key] = audit[key]
+        # Shared, non-pipeline-specific sections come from whichever row is newer.
+        for shared in ("target_url", "priority_issues", "top_5_issues", "real_keywords"):
+            if row is newest and audit.get(shared) is not None:
+                merged[shared] = audit[shared]
+
+    kd_newest = newest.keywords_data or {}
     return {
         "has_audit": True,
-        "target_url": kd.get("target_url"),
-        "created_at": latest_with_audit.created_at.isoformat() if latest_with_audit.created_at else None,
-        "audit": kd.get("audit"),
+        "target_url": kd_newest.get("target_url"),
+        "created_at": newest.created_at.isoformat() if newest.created_at else None,
+        # Per-pipeline timestamps, because the two halves are independent runs and a stale
+        # GEO score beside a fresh SEO one should be legible as stale.
+        "seo_run_at": seo_row.created_at.isoformat() if seo_row and seo_row.created_at else None,
+        "geo_run_at": geo_row.created_at.isoformat() if geo_row and geo_row.created_at else None,
+        "audit": merged or None,
     }
 
 
@@ -1930,7 +1971,7 @@ def publishing_queue(workspace_id: int, db: Session = Depends(database.get_db),
 # Social posts
 @router.get("/{workspace_id}/social", response_model=List[schemas.SocialPostResponse])
 def get_social_posts(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     posts = db.query(models.SocialPost).filter(models.SocialPost.workspace_id == workspace_id).all()
@@ -1939,7 +1980,7 @@ def get_social_posts(workspace_id: int, db: Session = Depends(database.get_db), 
 # Influencers
 @router.get("/{workspace_id}/influencers", response_model=List[schemas.InfluencerResponse])
 def get_influencers(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     # For marketplace, return all influencers globally so brands can discover them
@@ -2043,7 +2084,7 @@ def import_influencers(workspace_id: int, body: ImportCreatorsBody,
 
 @router.get("/{workspace_id}/influencers/{influencer_id}/chat")
 def get_chat_history(workspace_id: int, influencer_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     messages = db.query(models.ChatMessage).filter(models.ChatMessage.workspace_id == workspace_id, models.ChatMessage.influencer_id == influencer_id).order_by(models.ChatMessage.created_at.asc()).all()
@@ -2117,7 +2158,7 @@ async def verify_creator_profile(req: VerifyCreatorRequest, db: Session = Depend
 
 @router.post("/{workspace_id}/influencers/{influencer_id}/chat")
 async def send_chat_message(workspace_id: int, influencer_id: int, msg: ChatMessageCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     
@@ -2247,7 +2288,7 @@ _LAUNCHED_CAMPAIGN_STATUSES = _LIVE_CAMPAIGN_STATUSES | {"PAUSED"}
 
 @router.get("/{workspace_id}/metrics")
 def get_workspace_metrics(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
@@ -2288,7 +2329,7 @@ class AnalyticsQuery(BaseModel):
 
 @router.post("/{workspace_id}/analytics/query")
 def query_analytics(workspace_id: int, query: AnalyticsQuery, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, models.Workspace.user_id == current_user.id).first()
+    ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
     msg = query.message.lower()

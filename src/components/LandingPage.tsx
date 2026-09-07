@@ -20,7 +20,8 @@ import {
   Lightbulb,
   Zap,
   AlertCircle,
-  TrendingDown
+  TrendingDown,
+  BookOpen
 } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 import { motion } from 'framer-motion';
@@ -190,15 +191,77 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     <div className="app-wrapper">
       <Navbar onOpenCreatorPortal={() => setShowCreatorPortal(true)} />
 
-      {/* The Creator Marketplace pill now lives inside Navbar.tsx, as the last item in
-          the bar's right-hand action group. It was a fixed-position element anchored to
-          the old 1024px bar's geometry, which broke when the bar became 1240px wide. */}
-      <style>{`
-        @keyframes shimmer-slide {
-          0% { left: -60%; }
-          60%, 100% { left: 130%; }
-        }
-      `}</style>
+      {/* Fixed Top-Right Marketplace Button — aligned with navbar */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '16px',
+          right: '24px',
+          zIndex: 1100,
+          display: 'flex',
+          alignItems: 'center',
+          height: '52px',
+        }}
+      >
+        <motion.button
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
+          onClick={() => window.open('/influencer-marketplace', '_blank')}
+          style={{
+            background: 'linear-gradient(135deg, #8e0b00ff 0%, #290605ff 45%, #410c06ff 100%)',
+            border: '1px solid rgba(124, 0, 0, 0.6)',
+            color: '#ffffffff',
+            borderRadius: '100px',
+            padding: '9px 20px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            letterSpacing: '0.02em',
+            position: 'relative',
+            overflow: 'hidden',
+            transition: 'all 0.25s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = '0 6px 30px rgba(220, 53, 69, 0.75), 0 0 0 1px rgba(255,107,107,0.5), inset 0 1px 0 rgba(255,255,255,0.4)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #410c06ff 45%, #290605ff 100%)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = '0 4px 20px rgba(220, 53, 69, 0.55), 0 0 0 1px rgba(255,107,107,0.25), inset 0 1px 0 rgba(255,255,255,0.3)';
+            e.currentTarget.style.transform = 'translateY(0px)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, #740000ff 0%, #5f100dff 45%, #290605ff 100%)';
+          }}
+        >
+          {/* Shimmer overlay */}
+          <span style={{
+            position: 'absolute',
+            top: 0, left: '-60%',
+            width: '40%',
+            height: '100%',
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
+            transform: 'skewX(-20deg)',
+            animation: 'shimmer-slide 2.4s ease-in-out infinite',
+            pointerEvents: 'none',
+          }} />
+          <span style={{ fontSize: '14px' }}>✦</span>
+          Creator Marketplace
+          <span style={{ opacity: 0.8, fontSize: '12px' }}>↗</span>
+        </motion.button>
+        <style>{`
+          @keyframes shimmer-slide {
+            0% { left: -60%; }
+            60%, 100% { left: 130%; }
+          }
+        `}</style>
+      </div>
 
       {/* Hero Section */}
       <section className="hero-section">
@@ -859,6 +922,173 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             <h4 style={{ fontSize: '15px', color: '#fff', marginBottom: '8px' }}>Real-time Optimization</h4>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Continuously audits adset performance curves to maximize budget conversion efficiency.</p>
           </div>
+        </div>
+      </section>
+
+      {/* ── KNOWLEDGE, STORIES & CAREER HUB (BLOGS, CAREERS, USER MANUALS) ── */}
+      <section className="section-container" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '80px', paddingBottom: '40px' }}>
+        <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 48px auto' }}>
+          <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-mono)' }}>
+            RESOURCES & COMMUNITY
+          </span>
+          <h2 style={{ fontSize: '42px', fontWeight: 900, color: '#fff', margin: '12px 0 16px 0', fontFamily: 'var(--font-heading)' }}>
+            Knowledge, Playbooks & Open Roles
+          </h2>
+          <p style={{ fontSize: '17px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+            Discover how top brands scale with autonomous AI marketing, master the platform with interactive manuals, or join our team.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+          
+          {/* Card 1: Growth Blogs */}
+          <div
+            onClick={() => navigate('/blog')}
+            className="glow-card"
+            style={{
+              background: '#0a0a12',
+              border: '1.5px solid rgba(124, 117, 255, 0.3)',
+              borderRadius: '24px',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '20px',
+              cursor: 'pointer',
+              transition: 'all 0.25s ease'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(124, 117, 255, 0.15)', border: '1px solid rgba(124, 117, 255, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <BookOpen size={24} color="#7C75FF" />
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(124, 117, 255, 0.15)', color: '#7C75FF', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
+                  WEEKLY ARTICLES
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '22px', color: '#fff', margin: '0 0 10px 0', fontWeight: 800 }}>
+                Raftra Growth Blog
+              </h3>
+
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Deep dives into creative psychology, Meta ad tear-downs of rivals like Portronics & StuffCool, and Answer Engine Optimization (AEO).
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)' }}>
+                <div>• Autonomous Meta Ad scaling in 2026</div>
+                <div>• Dominating ChatGPT & Perplexity Citations</div>
+                <div>• Diwali festive run-up e-com playbook</div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#7C75FF', fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                Explore Articles <ArrowRight size={15} />
+              </span>
+            </div>
+          </div>
+
+          {/* Card 2: Careers */}
+          <div
+            onClick={() => navigate('/careers')}
+            className="glow-card"
+            style={{
+              background: '#0a0a12',
+              border: '1.5px solid rgba(0, 230, 118, 0.35)',
+              borderRadius: '24px',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '20px',
+              cursor: 'pointer',
+              boxShadow: '0 8px 30px rgba(0, 230, 118, 0.12)',
+              transition: 'all 0.25s ease'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 230, 118, 0.15)', border: '1px solid rgba(0, 230, 118, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Rocket size={24} color="#00E676" />
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.35)', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
+                  INTERNSHIP PROGRAM
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '22px', color: '#fff', margin: '0 0 10px 0', fontWeight: 800 }}>
+                Join Team Raftra
+              </h3>
+
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Hands-on remote internships working directly on AI agent graphs, growth marketing pipelines, and modern design systems.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)' }}>
+                <div>• AI & LLM Engineering Intern (Unpaid • Certificate + LOR)</div>
+                <div>• Growth Marketing Intern (Unpaid • PPO Opportunity)</div>
+                <div>• UI/UX Product Design Intern (Unpaid • Live Portfolio)</div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#00E676', fontSize: '13.5px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                View Internships & Apply <ArrowRight size={15} />
+              </span>
+            </div>
+          </div>
+
+          {/* Card 3: User Manuals */}
+          <div
+            onClick={() => navigate('/docs')}
+            className="glow-card"
+            style={{
+              background: '#0a0a12',
+              border: '1.5px solid rgba(0, 210, 255, 0.3)',
+              borderRadius: '24px',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '20px',
+              cursor: 'pointer',
+              transition: 'all 0.25s ease'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Cpu size={24} color="#00D2FF" />
+                </div>
+                <span style={{ fontSize: '11px', background: 'rgba(0, 210, 255, 0.15)', color: '#00D2FF', padding: '3px 10px', borderRadius: '100px', fontWeight: 800 }}>
+                  OFFICIAL GUIDES
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '22px', color: '#fff', margin: '0 0 10px 0', fontWeight: 800 }}>
+                User Manuals & Docs
+              </h3>
+
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Interactive step-by-step documentation, code rules, API triggers, Brand Kit ingestion checks, and creator escrow setup guides.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)' }}>
+                <div>• Brand Kit extraction & font guardrails</div>
+                <div>• 1-Click Meta & Google ad deployment</div>
+                <div>• Creator Escrow Vault milestone release</div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#00D2FF', fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                Read Documentation <ArrowRight size={15} />
+              </span>
+            </div>
+          </div>
+
         </div>
       </section>
 

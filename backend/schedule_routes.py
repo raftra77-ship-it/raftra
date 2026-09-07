@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 import auth
 import database
 import models
+from core import tenancy
 
 router = APIRouter(prefix="/api", tags=["schedules"])
 
@@ -92,7 +93,7 @@ class ScheduleOut(BaseModel):
 def _own_workspace(workspace_id: int, db: Session, user: models.User) -> models.Workspace:
     ws = (db.query(models.Workspace)
             .filter(models.Workspace.id == workspace_id,
-                    models.Workspace.user_id == user.id)
+                    tenancy.visible_workspace(user))
             .first())
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")

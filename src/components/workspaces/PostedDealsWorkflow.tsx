@@ -75,6 +75,13 @@ export interface DeliverableSubmissionItem {
 }
 
 // ── BRAND POSTED DEALS VIEW ──────────────────────────────────────────────────
+/** An ISO yyyy-mm-dd date `days` from now, for the campaign-brief date defaults. */
+const _inDays = (days: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
 export const BrandPostedDealsView: React.FC<{
   workspaceId: number;
   mode?: 'posted_deals' | 'my_collaborations';
@@ -83,6 +90,21 @@ export const BrandPostedDealsView: React.FC<{
 }> = ({ workspaceId, mode = 'posted_deals', onOpenChatWithCreator, onViewCreatorProfile }) => {
   const [deals, setDeals] = useState<PostedDealItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /* Whose brand is publishing. Every deal was posted as the literal string "Aura Premium",
+     so a creator browsing the marketplace saw that name against briefs from every brand on
+     the platform, and the workspace that actually posted one could not be told apart. */
+  const [brandName, setBrandName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+    fetch(`/api/workspaces/${workspaceId}/brand-profile`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d?.name) setBrandName(d.name); })
+      .catch(() => { /* publish stays disabled until we know who is posting */ });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
 
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -106,10 +128,13 @@ export const BrandPostedDealsView: React.FC<{
     total_budget: 45000,
     budget_per_creator: 15000,
     allow_negotiation: true,
-    application_deadline: '2026-08-30',
-    campaign_start: '2026-09-01',
-    deliverable_deadline: '2026-09-15',
-    campaign_end: '2026-09-30'
+    // Relative to today. These were fixed literals ('2026-08-30' and on), so once those
+    // dates passed every new brief was created with an application deadline already in
+    // the past — closed to applicants the moment it was published.
+    application_deadline: _inDays(14),
+    campaign_start: _inDays(21),
+    deliverable_deadline: _inDays(35),
+    campaign_end: _inDays(50)
   });
 
   // Applications view
@@ -142,12 +167,16 @@ export const BrandPostedDealsView: React.FC<{
   const displayDeals = deals;
 
   const handlePublishDeal = () => {
+    if (!brandName) {
+      alert('Still loading your brand details — try again in a moment.');
+      return;
+    }
     fetch('/api/posted-deals/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        brand_name: 'Aura Premium',
+        brand_name: brandName,
         campaign_name: newDeal.campaign_name || 'New Creator Campaign',
         product_name: newDeal.product_name,
         description: newDeal.description,
@@ -163,15 +192,20 @@ export const BrandPostedDealsView: React.FC<{
         application_deadline: newDeal.application_deadline
       })
     })
-      .then(r => r.json())
-      .then(res => {
+      // A failed publish used to close the modal and report "Deal created in sandbox
+      // mode!", so a request that saved nothing looked like a success and the brief was
+      // lost. A failure now says so and keeps the form open with the user's input intact.
+      .then(async r => {
+        if (!r.ok) throw new Error((await r.text().catch(() => '')) || `HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(() => {
         alert('Deal published successfully! Relevant creators are being notified.');
         setIsCreateModalOpen(false);
         fetchBrandDeals();
       })
       .catch(err => {
-        alert('Deal created in sandbox mode!');
-        setIsCreateModalOpen(false);
+        alert(`Could not publish the deal — nothing was saved.\n\n${String(err.message || err).slice(0, 200)}`);
       });
   };
 

@@ -1,5 +1,7 @@
 from sqlalchemy import Boolean, Column, Integer, String, Float, ForeignKey, DateTime, JSON, Text
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import text
 import datetime
 from pgvector.sqlalchemy import Vector
 from database import Base
@@ -68,8 +70,15 @@ class Workspace(Base):
     brand_voice = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+    # Who created it. No longer the access predicate - that is tenant membership - but kept
+    # because a number of queries read it and "who set this up" stays useful.
     user_id = Column(Integer, ForeignKey("users.id"))
     user = relationship("User", back_populates="workspaces")
+
+    # The organisation this brand belongs to. Everything in the workspace is reachable by
+    # any member of this tenant, which is what makes an agency with several people possible.
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+    tenant = relationship("Tenant", back_populates="workspaces")
 
     integrations = relationship("Integration", back_populates="workspace", cascade="all, delete-orphan")
     campaigns = relationship("Campaign", back_populates="workspace", cascade="all, delete-orphan")
@@ -928,3 +937,45 @@ class MediaAsset(Base):
 
     tags = Column(JSON, default=list)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+
+class Tenant(Base):
+    """An organisation. The unit that owns brands and pays the bill.
+
+    Before this, a workspace belonged to one user, so "customer" and "person" were the same
+    row - an agency could not put two people on one brand without sharing a password. A
+    tenant sits above workspaces so several people can work across several brands.
+
+    UUID rather than a serial: tenant ids travel in URLs and API payloads, and sequential
+    integers advertise how many customers exist and invite enumeration.
+    """
+    __tablename__ = "tenants"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=text("NOW()"))
+
+    members = relationship("TenantMember", back_populates="tenant",
+                           cascade="all, delete-orphan")
+    workspaces = relationship("Workspace", back_populates="tenant")
+
+
+class TenantMember(Base):
+    """A person's membership of an organisation, and what they may do in it.
+
+    Membership - not workspace.user_id - is what every RLS policy resolves against now, so
+    adding a row here is the whole act of giving a colleague access to every brand in the
+    org. Removing it revokes that access everywhere at once.
+    """
+    __tablename__ = "tenant_members"
+
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"),
+                       primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     primary_key=True, index=True)
+    # owner: billing and deletion. admin: manage members. member: use the workspaces.
+    role = Column(String, nullable=False, default="member")
+    created_at = Column(DateTime, server_default=text("NOW()"))
+
+    tenant = relationship("Tenant", back_populates="members")
+    user = relationship("User")

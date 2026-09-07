@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 import auth
 import database
 import models
+from core import tenancy
 
 router = APIRouter(prefix="/api/posted-deals", tags=["Posted Deals"])
 
@@ -112,7 +113,7 @@ def _my_handles(db: Session, user: models.User) -> set:
 def _owned_workspace(workspace_id: int, db: Session, user: models.User) -> models.Workspace:
     ws = db.query(models.Workspace).filter(
         models.Workspace.id == workspace_id,
-        models.Workspace.user_id == user.id,
+        tenancy.visible_workspace(user),
     ).first()
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
@@ -125,7 +126,7 @@ def _brand_owns_deal(deal_id: int, db: Session, user: models.User) -> models.Pos
         raise HTTPException(status_code=404, detail="Deal not found")
     owns = db.query(models.Workspace).filter(
         models.Workspace.id == deal.workspace_id,
-        models.Workspace.user_id == user.id,
+        tenancy.visible_workspace(user),
     ).first()
     if not owns:
         raise HTTPException(status_code=404, detail="Deal not found")
@@ -381,7 +382,7 @@ def get_notifications(recipient_type: str = "creator", workspace_id: Optional[in
             | (models.PostedDealNotification.recipient_handle == "all"))
     else:
         owned = db.query(models.Workspace.id).filter(
-            models.Workspace.user_id == current_user.id).all()
+            tenancy.visible_workspace(current_user)).all()
         owned_ids = [w[0] for w in owned]
         if workspace_id is not None:
             if workspace_id not in owned_ids:

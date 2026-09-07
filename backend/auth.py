@@ -19,6 +19,7 @@ import httpx
 
 import database, models, schemas
 from pydantic import BaseModel
+from core import tenancy
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
@@ -299,7 +300,7 @@ def delete_account(req: DeleteAccountRequest, request: Request,
     # tables pointing at workspaces.id, and a list would silently fall behind the next one
     # added - leaving delete-account broken for whoever tried it next.
     ws_ids = [w.id for w in db.query(models.Workspace)
-                                .filter(models.Workspace.user_id == current_user.id).all()]
+                                .filter(tenancy.visible_workspace(current_user)).all()]
 
     mapped = [m.class_ for m in models.Base.registry.mappers]
 

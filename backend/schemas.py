@@ -116,6 +116,10 @@ class AdAssetCreate(BaseModel):
     image_url: Optional[str] = None
     video_url: Optional[str] = None
     audio_url: Optional[str] = None
+    # Review state. Defaults to "approved" so every existing caller behaves exactly as
+    # before; the Studio editor sends "pending_review" when saving a draft, which is the
+    # difference between "Save as Draft" and "Save to Vault" actually meaning something.
+    status: Optional[str] = "approved"
 
 class AdAssetResponse(BaseModel):
     id: int

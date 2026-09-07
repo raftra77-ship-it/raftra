@@ -40,13 +40,22 @@ def _record(db, workspace_id: int, kind: str, status: str, message: str = "",
     return row
 
 
-def _index(workspace_id: int, kind: str, texts: List[dict]) -> int:
-    """Upsert this workspace's points of one kind, replacing what was there.
+def _index(workspace_id: int, kind: str, texts: List[dict], replace: bool = True,
+           retain_days: int = 0) -> int:
+    """Write this workspace's points of one kind.
 
-    Replacing rather than appending is deliberate: these are refreshed snapshots, and a
-    two-week-old ad set left in the index competes with the current one for the same
-    queries. Returns how many points were written; never raises, because a vector store
-    that is down must not lose the relational rows that were already committed.
+    `replace=True` (competitor ads): the previous snapshot is dropped first. An ad set from
+    two weeks ago is not history, it is a stale answer to the same question, and leaving it
+    in means a query about "what are they running" retrieves ads that have since stopped.
+
+    `replace=False` with `retain_days` (market trends): points ACCUMULATE, and anything
+    older than the window is pruned. Trends are the opposite case - a four-weekly sync
+    exists so the market can be compared across time, and deleting last month's index is
+    exactly what makes "what changed" unanswerable. Retention keeps that bounded rather
+    than growing forever.
+
+    Returns how many points were written; never raises, because a vector store that is down
+    must not lose the relational rows that were already committed.
     """
     if not texts:
         return 0
@@ -55,18 +64,36 @@ def _index(workspace_id: int, kind: str, texts: List[dict]) -> int:
         from qdrant_client.models import (PointStruct, Filter, FieldCondition, MatchValue)
         from core.embeddings import embed_passage, ensure_collection, COLLECTION_NAME
 
+        from qdrant_client.models import Range
+
         ensure_collection(qdrant_client)
-        qdrant_client.delete(
-            collection_name=COLLECTION_NAME,
-            points_selector=Filter(must=[
-                FieldCondition(key="workspace_id", match=MatchValue(value=workspace_id)),
-                FieldCondition(key="type", match=MatchValue(value=kind)),
-            ]),
-        )
+        scope = [
+            FieldCondition(key="workspace_id", match=MatchValue(value=workspace_id)),
+            FieldCondition(key="type", match=MatchValue(value=kind)),
+        ]
+        if replace:
+            qdrant_client.delete(collection_name=COLLECTION_NAME,
+                                 points_selector=Filter(must=scope))
+        elif retain_days:
+            # Keep history, but bounded: drop anything past the retention window rather
+            # than letting a four-weekly job grow the index without limit.
+            cutoff = int((datetime.utcnow() - timedelta(days=retain_days)).timestamp())
+            qdrant_client.delete(
+                collection_name=COLLECTION_NAME,
+                points_selector=Filter(must=scope + [
+                    FieldCondition(key="indexed_ts", range=Range(lt=cutoff))]),
+            )
+        # Every point carries WHEN it was written, in two forms. `indexed_at` is readable in
+        # a payload dump; `indexed_ts` is an integer epoch because Qdrant range filters and
+        # ordering need a number, not an ISO string. Without these a trend index answers
+        # "what is true about this market" but never "what changed since last month" - and
+        # a four-weekly sync exists precisely to make that question answerable.
+        now = datetime.utcnow()
+        stamp = {"indexed_at": now.isoformat(), "indexed_ts": int(now.timestamp())}
         points = [
             PointStruct(id=str(uuid.uuid4()), vector=embed_passage(t["content"]),
                         payload={"workspace_id": workspace_id, "type": kind,
-                                 "content": t["content"], **(t.get("meta") or {})})
+                                 "content": t["content"], **stamp, **(t.get("meta") or {})})
             for t in texts if (t.get("content") or "").strip()
         ]
         if points:
@@ -279,13 +306,19 @@ async def sync_market_trends(workspace_id: int, region: str = None,
             "content": "Search trend in %s - '%s' interest %s (%s intent). Hook: %s"
                        % (report["region"], k.get("keyword", ""), k.get("score", ""),
                           k.get("bucket", ""), k.get("hook", "")),
-            "meta": {"report_id": report_id, "keyword": k.get("keyword", "")},
+            "meta": {"report_id": report_id, "keyword": k.get("keyword", ""),
+                     "region": report["region"], "bucket": k.get("bucket", ""),
+                     "score": k.get("score"),
+                     "period_end": report["period_end"].isoformat()},
         })
     for p in (report.get("winning_patterns") or []):
         docs.append({"content": "Winning creative pattern in %s: %s" % (report["region"], p),
                      "meta": {"report_id": report_id}})
 
-    indexed = _index(workspace_id, KIND_TREND, docs)
+    # Trends accumulate so the index can be queried across time - that is the whole point
+    # of a recurring sync. A year keeps ~13 reports per workspace, which is enough for
+    # year-on-year seasonality without unbounded growth.
+    indexed = _index(workspace_id, KIND_TREND, docs, replace=False, retain_days=365)
     with SessionLocal() as db:
         _record(db, workspace_id, "market_trends", "success",
                 "%d keyword(s), %d video ref(s); %d indexed. Sources: %s"

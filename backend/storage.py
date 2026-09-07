@@ -15,7 +15,36 @@ if SUPABASE_URL and SUPABASE_KEY:
     except Exception as e:
         print(f"Warning: Failed to initialize Supabase client: {e}")
 
-async def upload_file_to_supabase(file: UploadFile, folder: str = "general") -> str:
+def tenant_prefix(workspace_id=None, user_id=None, category: str = "assets") -> str:
+    """The owning prefix every stored object must sit under.
+
+    Object storage has no row-level security: a bucket is a flat namespace, and the only
+    thing that makes one tenant's files separable from another's is the path. Without a
+    prefix you cannot apply a per-tenant storage policy, cannot delete a tenant's media
+    when they leave, and cannot tell from an object who it belongs to.
+
+    Shape is `w<workspace_id>/<category>/` for workspace-owned media and `u<user_id>/...`
+    for anything owned by a person rather than a brand (a creator's payout proof belongs to
+    the creator, who may have no workspace at all). The `w`/`u` sigil keeps the two ranges
+    from ever colliding, which bare integers would.
+    """
+    category = "".join(ch for ch in (category or "assets") if ch.isalnum() or ch in "-_") or "assets"
+    if workspace_id is not None:
+        return f"w{int(workspace_id)}/{category}"
+    if user_id is not None:
+        return f"u{int(user_id)}/{category}"
+    raise ValueError("A stored object must belong to a workspace or a user.")
+
+
+async def upload_file_to_supabase(file: UploadFile, folder: str = None,
+                                  workspace_id=None, user_id=None,
+                                  category: str = "assets") -> str:
+    """Store a file under its owner's prefix and return its URL.
+
+    `folder` is still accepted for callers that already compute their own path, but passing
+    a workspace_id or user_id is preferred: the prefix is then derived here, so a new caller
+    cannot forget it and drop a tenant's file into a shared namespace.
+    """
     if not supabase:
         # Used to "simulate" the upload by returning https://mock.raftra.com/... - a URL that
         # resolves to nothing. The caller stored it as if the file were saved, so the failure
@@ -24,7 +53,10 @@ async def upload_file_to_supabase(file: UploadFile, folder: str = "general") -> 
             status_code=503,
             detail="File storage is not configured on this server (SUPABASE_URL and "
                    "SUPABASE_KEY are unset), so uploads cannot be saved.")
-        
+
+    if folder is None:
+        folder = tenant_prefix(workspace_id=workspace_id, user_id=user_id, category=category)
+
     try:
         file_ext = file.filename.split(".")[-1]
         unique_filename = f"{folder}/{uuid.uuid4()}.{file_ext}"

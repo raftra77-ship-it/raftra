@@ -138,26 +138,69 @@ async def fetch_creator_videos(client: httpx.AsyncClient, query: str, region: st
     if not key or not query.strip():
         return []
     after = (date.today() - timedelta(days=120)).isoformat() + "T00:00:00Z"
-    r = await client.get("https://www.googleapis.com/youtube/v3/search", params={
-        "part": "snippet", "q": query, "type": "video", "order": "viewCount",
-        "publishedAfter": after, "regionCode": region.upper(), "maxResults": limit,
-        "key": key,
-    })
-    if r.status_code != 200:
-        print("[market_trends] YouTube API returned %s: %s" % (r.status_code, r.text[:200]))
-        return []
-    out = []
-    for item in (r.json().get("items") or []):
+
+    # Two passes: Shorts first, then long-form.
+    #
+    # The spec asks for Shorts specifically, and they are a different creative artefact -
+    # a vertical hook that has to land in three seconds, versus a review that can take a
+    # minute to get going. A single unfiltered search returns mostly long-form (it has the
+    # view counts), so a brief built from it would describe the wrong format entirely.
+    #
+    # `videoDuration=short` is <4 minutes, which is the narrowest filter the API offers;
+    # true Shorts are <=60s, so durations are checked below and only real Shorts are
+    # labelled as such.
+    async def _search(duration: str, want: int) -> List[dict]:
+        r = await client.get("https://www.googleapis.com/youtube/v3/search", params={
+            "part": "snippet", "q": query, "type": "video", "order": "viewCount",
+            "publishedAfter": after, "regionCode": region.upper(), "maxResults": want,
+            "videoDuration": duration, "key": key,
+        })
+        if r.status_code != 200:
+            print("[market_trends] YouTube API returned %s: %s" % (r.status_code, r.text[:200]))
+            return []
+        return r.json().get("items") or []
+
+    shorts_n = max(1, limit // 2)
+    items = await _search("short", shorts_n) + await _search("medium", limit - shorts_n)
+
+    # One extra call resolves real durations for everything found, so "Short" is a measured
+    # fact rather than an assumption from the search filter.
+    ids = [i.get("id", {}).get("videoId") for i in items if i.get("id", {}).get("videoId")]
+    seconds: dict = {}
+    if ids:
+        try:
+            d = await client.get("https://www.googleapis.com/youtube/v3/videos", params={
+                "part": "contentDetails", "id": ",".join(ids[:50]), "key": key})
+            if d.status_code == 200:
+                for v in (d.json().get("items") or []):
+                    iso = ((v.get("contentDetails") or {}).get("duration") or "")
+                    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", iso)
+                    if m:
+                        h, mi, se = (int(g or 0) for g in m.groups())
+                        seconds[v.get("id")] = h * 3600 + mi * 60 + se
+        except Exception as e:
+            print("[market_trends] duration lookup failed: %s" % e)
+
+    out, seen = [], set()
+    for item in items:
         vid = (item.get("id") or {}).get("videoId")
         snip = item.get("snippet") or {}
-        if not vid:
+        if not vid or vid in seen:
             continue
+        seen.add(vid)
+        dur = seconds.get(vid)
+        is_short = dur is not None and dur <= 60
         out.append({
             "title": snip.get("title", ""),
             "channel": snip.get("channelTitle", ""),
             "published_at": (snip.get("publishedAt") or "")[:10],
-            "url": "https://www.youtube.com/watch?v=" + vid,
+            # Shorts resolve correctly from either URL form, but /shorts/ is the one that
+            # opens in the vertical player, which is how the format should be reviewed.
+            "url": ("https://www.youtube.com/shorts/" + vid) if is_short
+                   else ("https://www.youtube.com/watch?v=" + vid),
             "thumbnail": ((snip.get("thumbnails") or {}).get("medium") or {}).get("url", ""),
+            "format": "short" if is_short else "long",
+            "duration_seconds": dur,
         })
     return out
 
@@ -231,8 +274,11 @@ async def generate_hooks(llm, brand_name: str, region: str, keywords: List[dict]
     payload += ["- %s | score %s | bucket %s" % (k["keyword"], k["score"], k.get("bucket", "core"))
                 for k in keywords]
     if videos:
-        payload += ["", "TRENDING VIDEOS:"]
-        payload += ["- %s (%s, %s)" % (v["title"], v["channel"], v["published_at"]) for v in videos]
+        payload += ["", "TRENDING VIDEOS (format matters - a Short is a 3-second hook, "
+                        "long-form can build):"]
+        payload += ["- [%s] %s (%s, %s)"
+                    % ("SHORT" if v.get("format") == "short" else "long-form",
+                       v["title"], v["channel"], v["published_at"]) for v in videos]
     try:
         raw = await llm.generate_text("\n".join([_HOOK_PROMPT] + payload),
                                       system_prompt="You are a precise copywriter. You output JSON only.")

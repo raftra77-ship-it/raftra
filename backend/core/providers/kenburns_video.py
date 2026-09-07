@@ -162,10 +162,17 @@ class KenBurnsVideoProvider(VideoProvider):
         # Deterministic per prompt: same ad keeps its motion, different ads differ.
         motion = _MOTIONS[int(hashlib.sha1((prompt or "").encode()).hexdigest(), 16) % len(_MOTIONS)]
 
-        VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+        # Rendered videos used to land flat in generated_media/videos/, so every tenant's
+        # output shared one directory. Nothing leaked - the filenames are UUIDs - but there
+        # was no way to apply a per-tenant retention policy, delete a brand's media when
+        # they leave, or tell from a file who owned it. Scoped by workspace now, matching
+        # the prefix rule in storage.tenant_prefix.
+        workspace_id = kwargs.get("workspace_id")
+        out_dir = (VIDEO_DIR / f"w{int(workspace_id)}") if workspace_id else VIDEO_DIR
+        out_dir.mkdir(parents=True, exist_ok=True)
         token = uuid.uuid4().hex
-        src = VIDEO_DIR / f"{token}.src"
-        out = VIDEO_DIR / f"{token}.mp4"
+        src = out_dir / f"{token}.src"
+        out = out_dir / f"{token}.mp4"
         src.write_bytes(await _load_image_bytes(image_url))
 
         cmd = [
@@ -192,4 +199,8 @@ class KenBurnsVideoProvider(VideoProvider):
             detail = (stderr or b"").decode(errors="replace").strip()[:300]
             raise VideoProviderError(f"ffmpeg failed to render the video: {detail}")
 
-        return f"{PUBLIC_PREFIX}/{out.name}"
+        # Relative to VIDEO_DIR, not just the bare filename: the file now sits in a
+        # per-workspace subdirectory, and StaticFiles is mounted at VIDEO_DIR, so the URL
+        # has to carry that segment or it 404s.
+        rel = out.relative_to(VIDEO_DIR).as_posix()
+        return f"{PUBLIC_PREFIX}/{rel}"

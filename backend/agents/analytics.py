@@ -29,7 +29,10 @@ Act as an intelligent marketing consultant, not a live analytics engine. You hav
 5. If the user pastes or describes their own numbers/table/CSV content directly in the chat, treat that as real data and analyze it specifically - just don't imply it came from a live API pull unless the CONNECTED DATA section says so.
 
 ## How to answer
-Be conversational and specific, like a senior performance marketer talking to a founder - not a formal report. When explaining a metric change, cover likely causes and the standard corrective actions marketers take. Prefer a few concrete, actionable next steps over generic theory."""
+Be conversational and specific, like a senior performance marketer talking to a founder - not a formal report. When explaining a metric change, cover likely causes and the standard corrective actions marketers take. Prefer a few concrete, actionable next steps over generic theory.
+
+## Length - this is a chat, not a report
+Keep answers short: aim for under 180 words, and never exceed 250. Lead with the direct answer in one or two sentences, then at most 3-4 bullets. No preamble ("Hey there!", "That's a great question"), no restating the question back, no closing summary. If a platform is not connected, say so in one line and give the single next step - do not explain every disconnected source in turn. The user can always ask a follow-up; a long reply is slower to produce and slower to read."""
 
 
 async def _format_connected_data(workspace_id: int) -> str:
@@ -49,15 +52,47 @@ async def _format_connected_data(workspace_id: int) -> str:
             gads_conn = db.query(models.GoogleAdsConnection).filter(
                 models.GoogleAdsConnection.workspace_id == workspace_id).first()
 
-        if meta_conn and meta_conn.access_token and meta_conn.ad_account_id:
-            lines.append(await _meta_insights_summary(meta_conn))
-        else:
-            lines.append("Meta Ads: NOT CONNECTED - no live campaign data available.")
+        # Meta and Google Ads are two independent HTTP round trips. Awaiting them one after
+        # the other meant the user waited for the sum; they now overlap, alongside the
+        # synchronous workspace read below.
+        async def _meta_line() -> str:
+            if meta_conn and meta_conn.access_token and meta_conn.ad_account_id:
+                return await _meta_insights_summary(meta_conn)
+            return "Meta Ads: NOT CONNECTED - no live campaign data available."
 
-        if gads_conn and gads_conn.refresh_token and gads_conn.customer_id:
-            lines.append(await _gads_insights_summary(gads_conn))
-        else:
-            lines.append("Google Ads: NOT CONNECTED - no live campaign data available.")
+        async def _gads_line() -> str:
+            if not (gads_conn and gads_conn.refresh_token and gads_conn.customer_id):
+                return "Google Ads: NOT CONNECTED - no live campaign data available."
+            # A manager account holds no campaigns, so the metrics query is guaranteed to
+            # fail. Asking anyway cost a full round trip and an API error on every single
+            # message, to arrive at a conclusion already recorded on the connection.
+            if getattr(gads_conn, "customer_is_manager", False):
+                return ("Google Ads: connected, but the selected customer "
+                        f"({gads_conn.customer_id}) is a manager (MCC) account. Manager accounts "
+                        "hold no campaigns, so no performance data can be read from it - a client "
+                        "account under it has to be selected instead.")
+            return await _gads_insights_summary(gads_conn)
+
+        # A chat reply is interactive, but the connector clients are built for background
+        # jobs - meta.fetch_insights alone allows 40s. One slow platform must not hold the
+        # whole answer, so each source gets a wall-clock budget and the answer proceeds
+        # without it. Saying a source could not be read is fine; the prompt's rules stop
+        # the model inventing figures for it either way.
+        async def _budgeted(coro, label: str, seconds: float = 8.0) -> str:
+            try:
+                return await asyncio.wait_for(coro, timeout=seconds)
+            except asyncio.TimeoutError:
+                return f"{label}: connected, but its data did not load in time for this answer."
+            except Exception as e:
+                return f"{label}: connected, but could not be read right now ({e})."
+
+        meta_line, gads_line, ws_summary = await asyncio.gather(
+            _budgeted(_meta_line(), "Meta Ads"),
+            _budgeted(_gads_line(), "Google Ads"),
+            asyncio.to_thread(_workspace_data_summary, workspace_id),
+        )
+        lines.append(meta_line)
+        lines.append(gads_line)
 
         if gsc_conn and gsc_conn.refresh_token and gsc_conn.site_url:
             lines.append("Google Search Console: connected (organic search data, not paid ads).")
@@ -72,8 +107,9 @@ async def _format_connected_data(workspace_id: int) -> str:
             lines.append("Google Analytics 4: NOT CONNECTED.")
 
         # This workspace's own stored results. Without these the agent could not answer
-        # "what is my latest SEO score" about data the dashboard was showing on the same page.
-        lines.append(_workspace_data_summary(workspace_id))
+        # "what is my latest SEO score" about data the dashboard was showing on the same
+        # page. Gathered above, in parallel with the two connector calls.
+        lines.append(ws_summary)
     except Exception as e:
         lines.append(f"(Could not check connection status: {e})")
     return "\n".join(lines)
@@ -271,7 +307,8 @@ async def collect_data_node(state: AnalyticsState) -> AnalyticsState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Data Analyst", msg, "running")
     await manager.broadcast_node_update("analytics", "Collect Data", "running")
-    await asyncio.sleep(1.0)
+    # This node reads nothing; it only reports progress. It used to sleep 1s to look busy,
+    # which is a second added to every reply the user waits on.
     return state
 
 async def analyze_trends_node(state: AnalyticsState) -> AnalyticsState:
@@ -280,7 +317,7 @@ async def analyze_trends_node(state: AnalyticsState) -> AnalyticsState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Data Analyst", msg, "thinking")
     await manager.broadcast_node_update("analytics", "Analyze Trends", "running")
-    await asyncio.sleep(1.0)
+    # Same as collect_data: a status broadcast, previously padded with another 1s sleep.
     return state
 
 async def claude_recommendation_node(state: AnalyticsState) -> AnalyticsState:
@@ -292,9 +329,17 @@ async def claude_recommendation_node(state: AnalyticsState) -> AnalyticsState:
 
     # Ground the answer in this company's real brand profile + knowledge base, and in the
     # real (not invented) connection/data status for this workspace.
+    #
+    # These two are independent, and both are slow: the brand context is a synchronous DB
+    # read, and the connection status calls out to Meta and Google Ads. Running them one
+    # after the other put the sum of both in front of every reply, and the sync one also
+    # blocked the event loop for every other request. Now they overlap, and the blocking
+    # call is handed to a worker thread.
     from core.brand_context import get_brand_context
-    brand = get_brand_context(state["workspace_id"], query=state['query_message'])
-    connected_data = await _format_connected_data(state["workspace_id"])
+    brand, connected_data = await asyncio.gather(
+        asyncio.to_thread(get_brand_context, state["workspace_id"], query=state["query_message"]),
+        _format_connected_data(state["workspace_id"]),
+    )
     prompt = (
         f"User question: {state['query_message']}\n\n"
         f"Brand context (tailor the answer to this business, audience and offerings):\n{brand}\n\n"
@@ -306,8 +351,17 @@ async def claude_recommendation_node(state: AnalyticsState) -> AnalyticsState:
     # On failure we must NOT invent numbers. The old fallback fabricated hard figures
     # ("CPA rose to $28.40", "ROAS 4.0x") that were indistinguishable from a real
     # analysis - a founder could act on made-up data. Fail the node instead.
+    # Latency here is dominated by how much the model writes, not by which model runs. The
+    # old prompt produced ~900-token essays and took ~30s; the length rules in the system
+    # prompt bring that to well under 100 words and a few seconds, with no model change.
+    # (gemini-2.0-flash was tried and is retired - it 404s.) The cap is a guard rail only,
+    # set high enough that 2.5-flash's thinking tokens cannot exhaust it and return empty.
     llm = GeminiProvider()
-    response = await llm.generate_text(prompt=prompt, system_prompt=MARKETING_ANALYST_PROMPT)
+    response = await llm.generate_text(
+        prompt=prompt,
+        system_prompt=MARKETING_ANALYST_PROMPT,
+        max_output_tokens=1400,
+    )
     state["explanation"] = response.strip()
     return state
 

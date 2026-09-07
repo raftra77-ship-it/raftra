@@ -432,7 +432,10 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
             try:
                 state["video_url"] = await KenBurnsVideoProvider().generate_video(
                     image_url=state["image_url"], prompt=state["prompt"],
-                    duration=duration, ad_ratio=ad_ratio)
+                    duration=duration, ad_ratio=ad_ratio,
+                    # So the rendered file lands under this tenant's prefix rather than in
+                    # a directory shared by every workspace.
+                    workspace_id=state.get("workspace_id"))
                 await manager.broadcast_agent_log(
                     "Video Agent", "Video rendered from your generated creative.", "completed")
             except VideoProviderError as e:

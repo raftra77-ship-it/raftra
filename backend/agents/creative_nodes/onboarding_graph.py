@@ -575,8 +575,38 @@ async def vision_analysis_node(state: OnboardingState) -> OnboardingState:
             # Held in state for the vision pass in synthesis; never persisted as-is.
             if rendered.get("screenshot"):
                 state["screenshot"] = rendered["screenshot"]
+
+                # Cluster the RENDERED page as well as the image files. A CSS gradient, a
+                # glow behind a hero, a dark surface painted by a rule rather than a file -
+                # none of those exist in any <img>, so the hero pass above is structurally
+                # blind to them. On a dark-mode brand that is usually where the surface and
+                # the accent both live.
+                try:
+                    from core.brand_kit import screenshot_color_tokens
+                    shot_tokens = await screenshot_color_tokens(rendered["screenshot"])
+                    known = {t["hex"] for t in colour_tokens}
+                    new_shot = [t for t in shot_tokens if t["hex"] not in known]
+                    colour_tokens += new_shot
+                    palette = [t["hex"] for t in colour_tokens]
+                    if new_shot:
+                        await manager.broadcast_agent_log(
+                            "Brand Style",
+                            f"Clustered {len(new_shot)} colour(s) from the rendered page.",
+                            "thinking")
+                except Exception as shot_err:
+                    print(f"Screenshot clustering failed for {url}: {shot_err}")
         except Exception as e:
             print(f"[onboarding] headless render skipped for {url}: {e}")
+
+    # Name the three roles a brief actually asks for. A ranked list says which colours the
+    # brand uses; it does not say which one is the brand colour, which is the glow, and
+    # which is the surface to set them on.
+    try:
+        from core.brand_kit import classify_accents
+        accents = {k: v for k, v in classify_accents(colour_tokens).items() if v}
+    except Exception as acc_err:
+        print(f"Accent classification failed for {url}: {acc_err}")
+        accents = {}
 
     # Both fall back to the original readers if the token pass found nothing, so a site
     # that ships neither CSS variables nor a Google Fonts link is no worse off than before.
@@ -595,6 +625,8 @@ async def vision_analysis_node(state: OnboardingState) -> OnboardingState:
 
     state["vision_insights"] = {"palette": palette, "typography": typography,
                                 "colour_tokens": colour_tokens, "logos": logos,
+                                # primary / glow / dark, named rather than ranked.
+                                "accents": accents,
                                 "founded": founded, "rating": rating}
 
     if palette or typography or logos:
@@ -719,6 +751,12 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
             bp.typography = state["typography"]
             bp.color_palette = state["color_palette"]
             bp.color_tokens = insights.get("colour_tokens") or []
+            # Stored under guidelines so the Brand Kit can label a swatch "Primary brand
+            # colour" / "Glow accent" / "Dark surface" instead of "Supporting 3".
+            if insights.get("accents"):
+                existing_acc = dict(bp.guidelines or {})
+                existing_acc["accents"] = insights["accents"]
+                bp.guidelines = existing_acc
             bp.logos = insights.get("logos") or []
             # Merged, not replaced: everything else under guidelines is user-written and a
             # re-crawl must not wipe it. kit_to_guidelines omits its own empty fields, so a
