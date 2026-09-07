@@ -70,10 +70,37 @@ interface GrowthPoint {
 interface GrowthPayload {
   series: GrowthPoint[];
   kpis: { key: string; label: string; value: number; format: string }[];
-  channels: { name: string; connected: boolean; spend: number; revenue: number; roas: number }[];
+  channels: {
+    name: string; connected: boolean; spend: number; revenue: number; roas: number;
+    orders?: number; booked?: number;
+    /** False for a channel whose return this product does not measure (creator bookings),
+     *  so the row shows spend without an unsupported ROAS. */
+    revenue_tracked?: boolean;
+  }[];
   sources: Record<string, { connected: boolean; has_data: boolean }>;
+  /** Creators actually booked in this window, from finalized deal applications. */
+  influencers?: {
+    handle: string; name: string; avatar?: string | null; followers?: string | null;
+    engagement?: string | null; cost: number; status: string; revenue_tracked: boolean;
+  }[];
+  influencer_spend?: number;
   note?: string;
 }
+
+/** ₹ figures in the compact form this screen already used (₹11.18L, ₹88K). */
+const fmtINR = (n: number): string => {
+  const v = Math.abs(n);
+  if (v >= 1e7) return `₹${(n / 1e7).toFixed(2)}Cr`;
+  if (v >= 1e5) return `₹${(n / 1e5).toFixed(2)}L`;
+  if (v >= 1e3) return `₹${Math.round(n / 1e3)}K`;
+  return `₹${Math.round(n)}`;
+};
+
+const fmtKpi = (value: number, format: string): string => {
+  if (format === 'currency') return fmtINR(value);
+  if (format === 'x') return `${value.toFixed(2)}x`;
+  return value.toLocaleString('en-IN');
+};
 
 // ── Timeframe & Metric Types ──
 type Timeframe = '7D' | '30D' | '90D';
@@ -112,7 +139,10 @@ const MiniSparkline: React.FC<{ data: number[]; color: string; isPositive?: bool
 export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
   onNavigateTab,
   onSendMessage,
-  connectedSources = { meta: true, google: true, ga4: true, gsc: true, shopify: true },
+  // Nothing is assumed connected. This defaulted to all five true, so any caller that did
+  // not pass the prop rendered every connector green and every KPI populated regardless of
+  // what the workspace had actually linked.
+  connectedSources = {},
   workspaceId = null
 }) => {
   const [timeframe, setTimeframe] = useState<Timeframe>('30D');
@@ -145,11 +175,15 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
   // Connection state: the API's answer wins whenever we have one, because it reflects what
   // is genuinely linked for this workspace rather than the component's optimistic defaults.
   const src = live?.sources;
-  const isMetaConnected = src ? !!src.meta?.connected : (isDemoActive && (connectedSources.meta ?? true));
-  const isGoogleConnected = src ? !!src.google?.connected : (isDemoActive && (connectedSources.google ?? true));
-  const isGa4Connected = src ? !!src.ga4?.connected : (isDemoActive && (connectedSources.ga4 ?? true));
-  const isGscConnected = src ? !!src.gsc?.connected : (isDemoActive && (connectedSources.gsc ?? true));
-  const isShopifyConnected = src ? !!src.shopify?.connected : (isDemoActive && (connectedSources.shopify ?? true));
+  // The API's answer wins. Without one, fall back to what the caller passed, and only then
+  // to the demo toggle - each `?? true` here used to make an unspecified source connected.
+  const conn = (k: keyof typeof connectedSources) =>
+    src ? !!src[k]?.connected : (connectedSources[k] ?? (isDemoActive ? true : false));
+  const isMetaConnected = conn('meta');
+  const isGoogleConnected = conn('google');
+  const isGa4Connected = conn('ga4');
+  const isGscConnected = conn('gsc');
+  const isShopifyConnected = conn('shopify');
 
   const hasAnyConnection = isMetaConnected || isGoogleConnected || isGa4Connected || isGscConnected || isShopifyConnected;
 
@@ -205,13 +239,29 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
     return (metaWeight + googleWeight + infWeight + otherWeight).toFixed(2);
   }, [budgetMeta, budgetGoogle, budgetInfluencer, budgetOther]);
 
+  /* Real KPI values for this workspace, keyed the way the backend returns them. The cards
+     below keep their labels, tooltips, colours and connection rules; only the number comes
+     from here. When the API has answered, a key it did not return means that metric is not
+     measured for this workspace, and the card shows its unconnected state rather than the
+     sample figure it used to print (₹11.18L revenue, 3.81x ROAS, ₹220 CAC) for everyone. */
+  const liveKpi = useMemo(() => {
+    const m = new Map<string, string>();
+    (live?.kpis || []).forEach(k => m.set(k.key, fmtKpi(k.value, k.format)));
+    return m;
+  }, [live]);
+
+  /** Sample value only when running without a workspace (design review); otherwise the
+   *  real figure, or null so the card renders its empty state. */
+  const kpiValue = (key: string, sample: string): string | null =>
+    live ? (liveKpi.get(key) ?? null) : (workspaceId ? null : sample);
+
   // ── Top KPI Metrics Data ──
   const kpis = [
     {
       id: 'rev',
       label: 'Revenue',
       connected: isShopifyConnected || isMetaConnected,
-      value: timeframe === '7D' ? '₹4.78L' : timeframe === '30D' ? '₹11.18L' : '₹28.58L',
+      value: kpiValue('revenue', timeframe === '7D' ? '₹4.78L' : timeframe === '30D' ? '₹11.18L' : '₹28.58L'),
       change: '+18.4%',
       isPositive: true,
       sparkline: [24, 28, 26, 32, 36, 42, 48],
@@ -224,7 +274,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       id: 'spend',
       label: 'Marketing Spend',
       connected: isMetaConnected || isGoogleConnected,
-      value: timeframe === '7D' ? '₹1.27L' : timeframe === '30D' ? '₹2.93L' : '₹7.93L',
+      value: kpiValue('spend', timeframe === '7D' ? '₹1.27L' : timeframe === '30D' ? '₹2.93L' : '₹7.93L'),
       change: '+8.2%',
       isPositive: true,
       sparkline: [18, 20, 19, 22, 24, 27, 29],
@@ -237,7 +287,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       id: 'roas',
       label: 'ROAS',
       connected: (isMetaConnected || isGoogleConnected) && (isShopifyConnected || isGa4Connected),
-      value: timeframe === '7D' ? '3.76x' : timeframe === '30D' ? '3.81x' : '3.60x',
+      value: kpiValue('roas', timeframe === '7D' ? '3.76x' : timeframe === '30D' ? '3.81x' : '3.60x'),
       change: '+9.5%',
       isPositive: true,
       sparkline: [3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8],
@@ -250,7 +300,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       id: 'cac',
       label: 'CAC',
       connected: (isMetaConnected || isGoogleConnected) && (isShopifyConnected || isGa4Connected),
-      value: timeframe === '7D' ? '₹226' : timeframe === '30D' ? '₹220' : '₹235',
+      value: kpiValue('cac', timeframe === '7D' ? '₹226' : timeframe === '30D' ? '₹220' : '₹235'),
       change: '-12.1%',
       isPositive: true,
       sparkline: [265, 258, 250, 242, 235, 228, 220],
@@ -263,7 +313,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       id: 'cvr',
       label: 'Conversion Rate',
       connected: isGa4Connected || isShopifyConnected,
-      value: '3.42%',
+      value: kpiValue('cvr', '3.42%'),
       change: '+0.6%',
       isPositive: true,
       sparkline: [2.8, 2.9, 3.1, 3.0, 3.2, 3.3, 3.4],
@@ -276,7 +326,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       id: 'orders',
       label: 'Orders',
       connected: isShopifyConnected || isGa4Connected,
-      value: timeframe === '7D' ? '561' : timeframe === '30D' ? '1,331' : '3,391',
+      value: kpiValue('orders', timeframe === '7D' ? '561' : timeframe === '30D' ? '1,331' : '3,391'),
       change: '+22.8%',
       isPositive: true,
       sparkline: [120, 140, 160, 190, 220, 280, 330],
@@ -288,7 +338,16 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
   ];
 
   // ── Channels Performance Matrix ──
-  const channels = [
+  // Colours and connect targets stay keyed by channel name so the API's rows keep the
+  // styling this table already had.
+  const channelChrome: Record<string, { badgeColor: string; connectId: string }> = {
+    'Meta Ads': { badgeColor: '#1877F2', connectId: 'meta_ads' },
+    'Google Ads': { badgeColor: '#4285F4', connectId: 'google_ads' },
+    'Influencer / UGC': { badgeColor: '#FF5296', connectId: 'influencer' },
+    'Organic Search': { badgeColor: '#00E676', connectId: 'gsc' },
+  };
+
+  const sampleChannels = [
     {
       name: 'Meta Ads',
       connected: isMetaConnected,
@@ -357,8 +416,29 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
     }
   ];
 
+  /* The real channel table. Meta and Google carry measured spend/revenue; Influencer/UGC
+     carries committed creator spend, which this product measures itself but has no revenue
+     attribution for - so its ROAS reads "Not tracked" instead of the 4.90x that used to be
+     printed there. Email Marketing and Direct/Referral are gone: nothing in the codebase
+     ingests either, so there was no honest number to show. */
+  const channels = live
+    ? live.channels.map(c => ({
+        name: c.name,
+        connected: c.connected,
+        spend: fmtINR(c.spend),
+        revenue: c.revenue_tracked === false ? '—' : fmtINR(c.revenue),
+        roas: c.revenue_tracked === false
+          ? 'Not tracked'
+          : (c.roas ? `${c.roas.toFixed(2)}x` : '—'),
+        trend: 'up' as const,
+        trendPct: c.revenue_tracked === false && c.booked ? `${c.booked} booked` : '',
+        badgeColor: channelChrome[c.name]?.badgeColor ?? '#7C75FF',
+        connectId: channelChrome[c.name]?.connectId ?? 'meta_ads',
+      }))
+    : sampleChannels;
+
   // ── Top Influencers Data ──
-  const creators = [
+  const sampleCreators = [
     {
       name: '@techguru_sam',
       handle: 'Samir Verma',
@@ -396,6 +476,29 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       conversions: 26
     }
   ];
+
+  /* Creators this workspace has actually booked, from finalized deal applications. The
+     three profiles above are fixtures (stock headshots, invented reach and conversions)
+     and now render only outside a workspace. What the product genuinely knows is who was
+     booked and what they were paid; per-creator revenue is not attributed anywhere, so
+     revenue/ROAS/reach/conversions are left blank rather than filled with a plausible
+     number. */
+  const creators = live
+    ? (live.influencers || []).map(c => ({
+        name: c.handle?.startsWith('@') ? c.handle : `@${c.handle || 'creator'}`,
+        handle: c.name || c.handle || 'Creator',
+        platform: [c.followers ? `${c.followers} followers` : null,
+                   c.status ? c.status.toLowerCase() : null].filter(Boolean).join(' · ')
+                  || 'Booked creator',
+        avatar: c.avatar || '',
+        hasData: true,
+        cost: fmtINR(c.cost),
+        revenue: '—',
+        roas: 'Not tracked',
+        reach: c.followers || '—',
+        conversions: null as number | null,
+      }))
+    : sampleCreators.map(c => ({ ...c, conversions: c.conversions as number | null }));
 
   // ── Growth Alerts Data ──
   const growthAlerts = [
@@ -637,19 +740,26 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
               </div>
             </div>
 
-            {/* Value & Trend or Disconnected State */}
-            {kpi.connected ? (
+            {/* Value & Trend or Disconnected State.
+                A connected source with no figure for this window is its own case: the card
+                shows the metric as unavailable rather than the sample number it used to
+                fall back on. The trend line and sparkline only appear off the sample data -
+                the API returns one window total with no prior period, so "+18.4% vs prev
+                30D" and a rising sparkline would both be invented. */}
+            {kpi.connected && kpi.value !== null ? (
               <div style={{ margin: '8px 0 4px 0' }}>
                 <div style={{ fontSize: '22px', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-mono)', lineHeight: 1.2 }}>
                   {kpi.value}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                  <span style={{ fontSize: '11px', color: kpi.isPositive ? '#00E676' : '#FF5296', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    {kpi.isPositive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                    {kpi.change} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>vs prev {timeframe}</span>
-                  </span>
-                  <MiniSparkline data={kpi.sparkline} color={kpi.sparkColor} isPositive={kpi.isPositive} />
-                </div>
+                {!live && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+                    <span style={{ fontSize: '11px', color: kpi.isPositive ? '#00E676' : '#FF5296', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      {kpi.isPositive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                      {kpi.change} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>vs prev {timeframe}</span>
+                    </span>
+                    <MiniSparkline data={kpi.sparkline} color={kpi.sparkColor} isPositive={kpi.isPositive} />
+                  </div>
+                )}
               </div>
             ) : (
               /* Disconnected Empty Metric (Never display fake zeros) */
@@ -658,7 +768,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                   —
                 </div>
                 <span style={{ fontSize: '10.5px', color: '#FFB300', lineHeight: 1.3, display: 'block', marginTop: '4px' }}>
-                  {kpi.unconnectedText}
+                  {kpi.connected ? 'No data for this timeframe' : kpi.unconnectedText}
                 </span>
               </div>
             )}
@@ -1204,11 +1314,19 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <img
-                      src={c.avatar}
-                      alt={c.name}
-                      style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
-                    />
+                    {/* A booked creator often has no avatar on file; an empty src renders a
+                        broken image, so fall back to their initial. */}
+                    {c.avatar ? (
+                      <img
+                        src={c.avatar}
+                        alt=""
+                        style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
+                      />
+                    ) : (
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 800, color: '#7C75FF' }}>
+                        {(c.handle || c.name || '?').replace('@', '').charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>{c.name}</div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{c.platform}</div>
@@ -1217,11 +1335,13 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
 
                   {c.hasData ? (
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 800, color: '#00E676' }}>
-                        {c.roas} ROAS
+                      {/* Return per creator is not attributed anywhere in the product, so a
+                          real booking shows what it cost and says the rest is untracked. */}
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: c.roas === 'Not tracked' ? 'var(--text-muted)' : '#00E676' }}>
+                        {c.roas === 'Not tracked' ? c.cost : `${c.roas} ROAS`}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        {c.cost} Cost · {c.revenue} Rev
+                        {c.roas === 'Not tracked' ? 'Paid · revenue not tracked' : `${c.cost} Cost · ${c.revenue} Rev`}
                       </div>
                     </div>
                   ) : (
@@ -1231,6 +1351,21 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                   )}
                 </div>
               ))}
+
+              {/* Real workspace with nothing booked yet - previously three fixture profiles. */}
+              {creators.length === 0 && (
+                <div style={{ padding: '18px 12px', textAlign: 'center' }}>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+                    No creators booked in this {timeframe} window.
+                  </p>
+                  <button
+                    onClick={() => onNavigateTab?.('influencer')}
+                    style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                  >
+                    Open Creator Marketplace →
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

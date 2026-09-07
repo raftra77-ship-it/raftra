@@ -544,9 +544,21 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
       <div style={{ height: '1px', background: 'var(--border)', margin: '10px 0' }} />
 
       {/* 3. BOTTOM SECTION: Upgraded Growth Analysis & Intelligence Engine */}
-      <GrowthAnalysisSection 
+      {/* workspaceId was never passed, so the section fell back to `workspaceId = null`:
+          its growth fetch never ran, its demo toggle defaulted ON, and every connector
+          indicator and KPI rendered from the built-in sample set. It also gets the same
+          connector states this screen already resolved, so the two agree while the growth
+          payload loads. */}
+      <GrowthAnalysisSection
         onNavigateTab={onNavigateTab}
         onSendMessage={onSendMessage}
+        workspaceId={workspaceId}
+        connectedSources={{
+          meta: sources.meta,
+          google: sources.googleAds,
+          ga4: sources.ga4,
+          gsc: sources.gsc,
+        }}
       />
 
     </div>

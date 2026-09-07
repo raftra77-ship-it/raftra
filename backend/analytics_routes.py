@@ -127,6 +127,136 @@ async def _google_totals(db: Session, workspace_id: int, date_range: str) -> Opt
             "clicks": clicks, "impressions": impressions}
 
 
+def _source_states(db: Session, workspace_id: int, meta: Optional[dict],
+                   google: Optional[dict]) -> dict:
+    """Connection state for every source the Growth section can show.
+
+    Only meta and google were reported here, so the component's ga4/gsc/shopify indicators
+    fell back to its own optimistic defaults and painted themselves connected. GA4 and
+    Search Console share one Google grant - the row is the Search Console connection, and
+    GA4 counts as live only once a property has actually been chosen on it.
+    """
+    def _row(model):
+        try:
+            return db.query(model).filter(model.workspace_id == workspace_id).first()
+        except Exception as e:
+            # Same encrypted-credential caveat as the connector helpers above.
+            print("[analytics] %s unreadable for ws %s: %s" % (model.__name__, workspace_id, e))
+            return None
+
+    gsc_conn = _row(models.SearchConsoleConnection)
+    shop_conn = _row(models.ShopifyConnection)
+    meta_conn = _row(models.MetaAdsConnection)
+    gads_conn = _row(models.GoogleAdsConnection)
+
+    # Read `connected` from the connection row, not from whether the insights call parsed.
+    # _meta_totals/_google_totals return None both when nothing is linked AND when a linked
+    # account could not be read - a Google Ads customer that is a manager (MCC) holds no
+    # campaigns, so its metrics query always fails - which reported a genuinely connected
+    # account as disconnected. This module's contract is that those are different problems.
+    meta_linked = bool(meta_conn and getattr(meta_conn, "ad_account_id", None))
+    gads_linked = bool(gads_conn and getattr(gads_conn, "customer_id", None))
+
+    gsc_ok = bool(gsc_conn and getattr(gsc_conn, "refresh_token", None)
+                  and getattr(gsc_conn, "site_url", None))
+    ga4_ok = bool(gsc_conn and getattr(gsc_conn, "refresh_token", None)
+                  and getattr(gsc_conn, "ga4_property_id", None))
+    shop_ok = bool(shop_conn and getattr(shop_conn, "shop_domain", None))
+
+    return {
+        "meta": {"connected": meta_linked,
+                 "has_data": bool(meta and (meta["spend"] or meta["revenue"]))},
+        "google": {"connected": gads_linked,
+                   "has_data": bool(google and (google["spend"] or google["revenue"]))},
+        # These three have no metrics wired into this endpoint yet, so has_data stays False.
+        # Reporting the connection honestly is still better than the component assuming it.
+        "ga4": {"connected": ga4_ok, "has_data": False},
+        "gsc": {"connected": gsc_ok, "has_data": False},
+        "shopify": {"connected": shop_ok, "has_data": False},
+    }
+
+
+# Application states that mean the brand has actually committed money to a creator.
+_COMMITTED_DEAL_STATES = ("ACCEPTED", "CONFIRMED", "COMPLETED")
+
+
+def _influencer_totals(db: Session, workspace_id: int, days: int) -> dict:
+    """Real creator spend for this workspace, from finalized deal applications.
+
+    This is the one channel the product measures itself rather than reading from an ad
+    platform, and it was the only one the component filled with invented profiles. What is
+    genuinely known is who was booked and what they were paid; per-creator REVENUE is not
+    tracked anywhere, so no ROAS is returned and the caller must not compute one.
+    """
+    since = datetime.utcnow() - timedelta(days=days)
+    try:
+        rows = (db.query(models.DealApplication)
+                  .filter(models.DealApplication.workspace_id == workspace_id,
+                          models.DealApplication.status.in_(_COMMITTED_DEAL_STATES),
+                          models.DealApplication.created_at >= since)
+                  .order_by(models.DealApplication.created_at.desc())
+                  .all())
+    except Exception as e:
+        print("[analytics] influencer read failed for ws %s: %s" % (workspace_id, e))
+        return {"spend": 0.0, "creators": [], "booked": 0}
+
+    creators, spend = [], 0.0
+    for r in rows:
+        price = float(r.final_price if r.final_price is not None else (r.proposed_price or 0))
+        spend += price
+        creators.append({
+            "handle": r.creator_handle,
+            "name": r.creator_name,
+            "avatar": r.creator_avatar,
+            "followers": r.creator_followers,
+            "engagement": r.creator_engagement,
+            "cost": round(price, 2),
+            "status": r.status,
+            # Explicit so the UI never fills a ROAS column with something plausible.
+            "revenue_tracked": False,
+        })
+    creators.sort(key=lambda c: c["cost"], reverse=True)
+    return {"spend": round(spend, 2), "creators": creators[:6], "booked": len(rows)}
+
+
+def _channel_rows(meta: Optional[dict], google: Optional[dict], influencer: dict) -> List[dict]:
+    """The channel table. Every row is a source this product can actually measure.
+
+    The component listed six channels including Email Marketing and Direct/Referral with
+    figures behind them; nothing in this codebase ingests either, so they are not returned.
+    `revenue_tracked` lets the UI render spend for a channel whose return genuinely is not
+    measured, instead of printing a ROAS it cannot support.
+    """
+    rows: List[dict] = []
+    for name, totals in (("Meta Ads", meta), ("Google Ads", google)):
+        if totals is None:
+            rows.append({"name": name, "connected": False, "spend": 0, "revenue": 0,
+                         "roas": 0, "orders": 0, "revenue_tracked": True})
+        else:
+            rows.append({
+                "name": name, "connected": True,
+                "spend": round(totals["spend"], 2),
+                "revenue": round(totals["revenue"], 2),
+                "roas": round(_safe_div(totals["revenue"], totals["spend"]), 2),
+                "orders": int(totals["orders"]),
+                "revenue_tracked": True,
+            })
+
+    rows.append({
+        "name": "Influencer / UGC",
+        # "Connected" here means the brand has actually booked creators, which is what the
+        # row has to show; there is no external account to link for this channel.
+        "connected": influencer["booked"] > 0,
+        "spend": influencer["spend"],
+        "revenue": 0,
+        "roas": 0,
+        "orders": 0,
+        "booked": influencer["booked"],
+        "revenue_tracked": False,
+    })
+    return rows
+
+
 def _bucket_labels(kind: str, count: int) -> List[str]:
     """Labels matching what the chart expects: weekday names, Week N, or month names."""
     today = datetime.utcnow().date()
@@ -150,12 +280,10 @@ async def growth_analytics(workspace_id: int, timeframe: str = Query("30D"),
     meta = await _meta_totals(db, workspace_id, date_preset)
     google = await _google_totals(db, workspace_id, date_range)
 
-    sources = {
-        "meta": {"connected": meta is not None,
-                 "has_data": bool(meta and (meta["spend"] or meta["revenue"]))},
-        "google": {"connected": google is not None,
-                   "has_data": bool(google and (google["spend"] or google["revenue"]))},
-    }
+    sources = _source_states(db, workspace_id, meta, google)
+    # Creator spend is measured by this product, not by an ad platform, so it is available
+    # whether or not Meta/Google are linked.
+    influencer = _influencer_totals(db, workspace_id, int(timeframe.rstrip("D")))
 
     spend = (meta or {}).get("spend", 0.0) + (google or {}).get("spend", 0.0)
     revenue = (meta or {}).get("revenue", 0.0) + (google or {}).get("revenue", 0.0)
@@ -172,7 +300,11 @@ async def growth_analytics(workspace_id: int, timeframe: str = Query("30D"),
             "sources": sources,
             "series": [],
             "kpis": [],
-            "channels": [],
+            # Creator bookings are still real even with no ad platform linked, so the
+            # channel table and the influencer list are not blanked out here.
+            "channels": _channel_rows(None, None, influencer),
+            "influencers": influencer["creators"],
+            "influencer_spend": influencer["spend"],
             "campaigns_stored": len(campaigns),
             "note": ("No ad platform is connected to this workspace, so there is no spend or "
                      "revenue to report. Connect Meta or Google Ads under Integrations."),
@@ -200,25 +332,14 @@ async def growth_analytics(workspace_id: int, timeframe: str = Query("30D"),
         {"key": "cac", "label": "CAC", "value": round(_safe_div(spend, orders), 2), "format": "currency"},
     ]
 
-    channels = []
-    for name, totals in (("Meta", meta), ("Google Ads", google)):
-        if totals is None:
-            channels.append({"name": name, "connected": False, "spend": 0, "revenue": 0, "roas": 0})
-        else:
-            channels.append({
-                "name": name, "connected": True,
-                "spend": round(totals["spend"], 2),
-                "revenue": round(totals["revenue"], 2),
-                "roas": round(_safe_div(totals["revenue"], totals["spend"]), 2),
-                "orders": int(totals["orders"]),
-            })
-
     return {
         "timeframe": timeframe,
         "sources": sources,
         "series": series,
         "kpis": kpis,
-        "channels": channels,
+        "channels": _channel_rows(meta, google, influencer),
+        "influencers": influencer["creators"],
+        "influencer_spend": influencer["spend"],
         "note": "" if any(s["has_data"] for s in sources.values())
                 else "Connected, but no delivery data in this window yet.",
     }
