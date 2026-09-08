@@ -74,14 +74,25 @@ async def run_monthly_audits():
 
 
 def intel_syncs_enabled() -> bool:
-    """The external intelligence syncs - competitor ads every 2 weeks, market trends every
-    4 - are opt-in for the same reason audits are: they spend third-party API quota
-    (Meta/Apify, SerpApi, YouTube) on every onboarded workspace, whether or not anyone is
-    looking. Both can always be run on demand from Market Intelligence."""
-    return os.getenv("ENABLE_INTEL_SYNCS", "false").strip().lower() in ("1", "true", "yes", "on")
+    """The external intelligence syncs - market trends every 2 weeks, competitor ads every 4.
+
+    On by default: the product promises both reports keep themselves current once a brand
+    URL is set, and defaulting to off meant a workspace that had onboarded correctly still
+    showed empty reports until someone found the Sync now button. They spend third-party
+    API quota (Meta/Apify, SerpApi, YouTube) per onboarded workspace, so ENABLE_INTEL_SYNCS
+    can still be set to false to turn them off - the reports remain runnable on demand.
+    """
+    return os.getenv("ENABLE_INTEL_SYNCS", "true").strip().lower() in ("1", "true", "yes", "on")
 
 
 # --------------------------------------------------------- user-created schedules
+
+# How often due schedules are checked. Fine-grained enough that an hourly schedule fires
+# close to its minute, cheap enough that a quiet workspace costs one indexed query per
+# tick. Exported so the API reports the interval it is actually running, rather than a
+# number written separately in the UI that can drift away from this one.
+SCHEDULE_TICK_MINUTES = 5
+
 
 def schedules_enabled() -> bool:
     """ON by default, unlike the other jobs here.
@@ -161,18 +172,17 @@ def start_scheduler():
     _scheduler = AsyncIOScheduler(timezone="UTC")
 
     if schedules:
-        # Every 5 minutes: fine-grained enough that an hourly schedule fires close to its
-        # minute, cheap enough that a quiet workspace costs one indexed query per tick.
         _scheduler.add_job(
             run_due_schedules,
-            IntervalTrigger(minutes=5),
+            IntervalTrigger(minutes=SCHEDULE_TICK_MINUTES),
             id="user_scheduled_tasks",
             replace_existing=True,
             misfire_grace_time=600,
             coalesce=True,
             max_instances=1,
         )
-        print("[scheduler] Marketing Calendar schedules are ACTIVE (checked every 5 minutes).")
+        print("[scheduler] Marketing Calendar schedules are ACTIVE "
+              "(checked every %d minutes)." % SCHEDULE_TICK_MINUTES)
 
     if audits:
         # 06:00 UTC on the 1st of every month.
@@ -190,31 +200,35 @@ def start_scheduler():
     if intel:
         from core.intel_sync import run_all_competitor_ad_syncs, run_all_market_trend_syncs
 
-        # Interval rather than cron: the cadences the spec asks for are "every 2 weeks" and
-        # "every 4 weeks", and a cron day-of-month rule drifts against that in every month
-        # that is not 28 days long. The first run is deferred by an hour so a redeploy does
-        # not fire both syncs for every workspace the moment the process boots.
+        # Interval rather than cron: the cadences are "every 2 weeks" and "every 4 weeks",
+        # and a cron day-of-month rule drifts against that in every month that is not 28
+        # days long. The first run is deferred by an hour so a redeploy does not fire both
+        # syncs for every workspace the moment the process boots.
+        #
+        # The two were the wrong way round: market trends ran every 4 weeks and competitor
+        # ads every 2, which inverts the spec. Trends move faster than a rival's creative
+        # rotation, so the fortnightly slot belongs to trends.
         first = datetime.utcnow() + timedelta(hours=1)
         _scheduler.add_job(
-            run_all_competitor_ad_syncs,
+            run_all_market_trend_syncs,
             IntervalTrigger(weeks=2, start_date=first),
-            id="biweekly_competitor_ad_sync",
+            id="biweekly_market_trend_sync",
             replace_existing=True,
             misfire_grace_time=6 * 3600,
             coalesce=True,
             max_instances=1,
         )
         _scheduler.add_job(
-            run_all_market_trend_syncs,
+            run_all_competitor_ad_syncs,
             IntervalTrigger(weeks=4, start_date=first + timedelta(hours=2)),
-            id="four_weekly_market_trend_sync",
+            id="four_weekly_competitor_ad_sync",
             replace_existing=True,
             misfire_grace_time=6 * 3600,
             coalesce=True,
             max_instances=1,
         )
-        print("[scheduler] Intelligence syncs started (competitor ads every 2 weeks, "
-              "market trends every 4 weeks; first run ~1h from boot).")
+        print("[scheduler] Intelligence syncs started (market trends every 2 weeks, "
+              "competitor ads every 4 weeks; first run ~1h from boot).")
 
     _scheduler.start()
     return _scheduler

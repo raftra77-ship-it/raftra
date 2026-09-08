@@ -92,8 +92,14 @@ def enter_tenant_scope(db, user_id: int) -> None:
     try:
         # set_config(..., true) is the local form, and takes the value as a bind parameter,
         # so a user id can never be interpolated into SQL text.
-        db.execute(text("SET LOCAL ROLE " + RLS_ROLE))
-        db.execute(text("SELECT set_config('app.user_id', :uid, true)"),
+        #
+        # Both statements go in one execute because this runs on EVERY authenticated
+        # request, and the database is remote - two executes meant two network round trips
+        # per request before the endpoint had done any work of its own. psycopg2 binds
+        # parameters client-side, so the pair travels as a single statement and the user id
+        # is still never formatted into the SQL here.
+        db.execute(text("SET LOCAL ROLE " + RLS_ROLE + "; "
+                        "SELECT set_config('app.user_id', :uid, true)"),
                    {"uid": str(int(user_id))})
     except Exception as e:
         db.rollback()

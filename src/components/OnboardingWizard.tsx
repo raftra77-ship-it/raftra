@@ -52,6 +52,53 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     }
   };
 
+  /** Commits the onboarded flag so the wizard never reappears, and kicks off the brand
+   *  crawl against the real workspace. Without this nothing ever set is_onboarded, so
+   *  login sent the user back here every time. */
+  /* One request finishes setup: find-or-create the workspace and lock the onboarded flag.
+     This was four awaited calls (list, create, list again, mark) and every one of them is a
+     round trip to a remote database, which was most of the delay before the dashboard
+     appeared. */
+  const completeSetup = async (brand: { url: string; name: string; tone: string; colors: string }) => {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    try {
+      const r = await fetch('/api/workspaces/setup', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          name: brand.name,
+          company_url: brand.url,
+          brand_color: brand.colors,
+          brand_voice: brand.tone,
+        }),
+      });
+      if (!r.ok) return null;
+      const data = await r.json();
+
+      // Remembered so the homepage CTA can route instantly instead of waiting on a state
+      // call; the route guards still verify against the server.
+      try { localStorage.setItem('raftra_onboarded', '1'); } catch { /* private mode */ }
+
+      // Kick the brand crawl off and deliberately do not await it. It takes tens of
+      // seconds and the user is already onboarded and on their way to the dashboard; the
+      // profile fills in behind them. Failures here are logged, never blocking.
+      if (brand.url && data.workspace_id) {
+        fetch(`/api/workspaces/${data.workspace_id}/reindex`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ url: brand.url, tone: brand.tone }),
+        }).catch(err => console.error('Brand enrichment could not be started:', err));
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  };
+
   const handleNext = () => {
     if (step < 3) {
       setStep((prev) => prev + 1);
@@ -62,75 +109,44 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     }
   };
 
+  /* Finishing onboarding is two fast writes: create the workspace, then commit the
+     onboarded flag. The brand crawl is queued server-side against the real workspace and
+     enriches the profile afterwards.
+
+     This used to await POST /api/agents/onboard - a full scrape plus LLM extraction, tens
+     of seconds - before it created anything, which is why login to dashboard dragged. That
+     call also ran the pipeline with workspace_id=0, so its results were written against a
+     workspace that does not exist and this account's profile stayed empty either way. */
   const runScrapingSimulation = async () => {
-    setLoadingText('Connecting to Firecrawl & Tavily APIs...');
-    setLoadingProgress(10);
-    
-    // Start a fake progress bar just for UX while we wait for the backend
-    const interval = setInterval(() => {
-      setLoadingProgress(prev => (prev < 90 ? prev + 5 : prev));
-      setLoadingText('Agents analyzing and extracting brand context...');
-    }, 1000);
+    setLoadingText('Creating your workspace...');
+    setLoadingProgress(20);
 
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/agents/onboard', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ brand_url: url || 'https://raftra.com' })
-      });
-      
-      const resData = await response.json();
-      clearInterval(interval);
-      setLoadingProgress(100);
-      setLoadingText('Extraction complete! Initializing workspace...');
-      
-      if (resData.status === 'success') {
-        const d = resData.data;
-        const brand = {
-          url: url || 'https://raftra.com',
-          name: name || 'Raftra Brand',
-          tone: d.tone || tone,
-          colors: d.colors && d.colors.length > 0 ? d.colors[0] : colors
-        };
-        const created = await ensureWorkspace(brand);
-        if (!created) setLoadingText('Could not create your workspace — please try again.');
-        onComplete(brand);
-      } else {
-        throw new Error("Failed extraction");
-      }
-    } catch (err) {
-      clearInterval(interval);
-      setLoadingProgress(100);
-      setLoadingText('Error during extraction. Falling back to defaults...');
-      // Fallback to user inputs if API fails, simulating real data extraction
-      setTimeout(async () => {
-        let extractedName = name;
-        if (!extractedName && url) {
-          try {
-            const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-            const domainParts = urlObj.hostname.replace('www.', '').split('.');
-            if (domainParts.length > 0) {
-              extractedName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
-            }
-          } catch(e) {}
+    let extractedName = name;
+    if (!extractedName && url) {
+      try {
+        const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+        const domainParts = urlObj.hostname.replace('www.', '').split('.');
+        if (domainParts.length > 0) {
+          extractedName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
         }
-
-        const brand = {
-          url: url || 'https://example.com',
-          name: extractedName || 'Aura Ventures',
-          tone,
-          colors
-        };
-        // Still create the workspace even when the scrape failed, otherwise the
-        // user lands on an unusable dashboard.
-        await ensureWorkspace(brand);
-        onComplete(brand);
-      }, 1500);
+      } catch (e) { /* keep whatever the user typed */ }
     }
+
+    const brand = { url, name: extractedName || name, tone, colors };
+
+    setLoadingProgress(60);
+    const result = await completeSetup(brand);
+    setLoadingProgress(100);
+
+    // If this does not stick the wizard would reappear on the next login, so it is worth
+    // telling the user rather than moving on silently.
+    if (!result) {
+      setLoadingText('Could not save your setup — please try again.');
+      return;
+    }
+
+    setLoadingText('All set! Opening your dashboard...');
+    onComplete(brand);
   };
 
   return (

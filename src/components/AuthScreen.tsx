@@ -99,6 +99,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
           if (stRes.ok) {
             const st = await stRes.json();
             hasWorkspace = !!st.is_onboarded;
+            // Cached so the homepage CTA can route without repeating this call, which is a
+            // round trip to a remote database and takes seconds.
+            try { localStorage.setItem('raftra_onboarded', hasWorkspace ? '1' : '0'); } catch { /* private mode */ }
           }
         } catch (e) {}
       }

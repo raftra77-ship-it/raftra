@@ -267,6 +267,11 @@ class BrandKit(BaseModel):
     mission: str = Field(default="", description="Mission or slogan, only if the site states one")
     positioning: str = Field(default="", description="How it positions in its category, 1-2 sentences")
     business_model: str = Field(default="", description="e.g. D2C ecommerce, B2B SaaS, marketplace")
+    # The Brand Guidelines screen has always rendered a "Visual Design & Brand Identity"
+    # section, but nothing ever produced its content, so it was blank for every brand.
+    # The vision-enabled extractor sees a screenshot, and even the text-only one can read a
+    # site's design language from its copy and structure.
+    visual_identity: str = Field(default="", description="The site's visual/design language and what it signals")
     product_categories: List[str] = Field(default_factory=list)
     usps: List[str] = Field(default_factory=list, description="Concrete differentiators")
     benefits: List[str] = Field(default_factory=list, description="Customer-facing benefits")
@@ -302,6 +307,7 @@ EXTRACTION_PROMPT = """You are a brand strategist reading a company's own websit
 Return ONLY a JSON object with exactly these keys, no code fence, no commentary:
 {
   "overview": "", "mission": "", "positioning": "", "business_model": "",
+  "visual_identity": "",
   "product_categories": [], "usps": [], "benefits": [], "personality": [],
   "tone_of_voice": [], "audience_summary": "", "target_audiences": [{"persona": "", "hook": ""}],
   "key_messages": []
@@ -314,6 +320,9 @@ Rules:
 - "usps" must be concrete and checkable (a certification, a warranty length, a technology),
   never generic praise like "great quality".
 - "target_audiences": up to 4 segments. Each "hook" is one line you could run as an ad.
+- "visual_identity": how the site presents itself visually and what that signals - layout,
+  imagery, density, use of colour and type, and the impression it creates. Describe only
+  what is evident from the page; leave "" if the content gives you nothing to go on.
 - Leave any field empty ("" or []) when the content does not support it. An empty field is
   a correct answer; a plausible guess is not.
 
@@ -377,10 +386,20 @@ def parse_brand_kit(raw: str) -> BrandKit:
         raise ValueError("model response did not match the brand-kit schema: %s" % e) from e
 
 
+# Upper bound on the site text handed to the extractor. Must stay >=
+# onboarding_graph._SYNTHESIS_CHARS (_MAX_KB_PAGES * _PER_PAGE_CHARS + 1000), or the last
+# pages the crawler paid to fetch are discarded here instead - the exact bug this constant
+# was introduced to remove. Kept as a literal rather than imported to avoid a circular
+# import; test_extraction_budgets.py asserts the two stay in step.
+# At 12 pages x 3000 chars that is ~37k characters, roughly 10k tokens, which is
+# unremarkable for the flash model doing the extraction.
+_EXTRACTION_CHARS = 40000
+
+
 async def extract_brand_kit(llm, content: str) -> BrandKit:
     """Run the structured extraction. `llm` is any provider exposing `generate_text`."""
     raw = await llm.generate_text(
-        EXTRACTION_PROMPT + (content or "")[:12000],
+        EXTRACTION_PROMPT + (content or "")[:_EXTRACTION_CHARS],
         system_prompt="You are a precise brand strategist. You output JSON only.")
     return parse_brand_kit(raw)
 
@@ -405,6 +424,8 @@ def kit_to_guidelines(kit: BrandKit) -> dict:
     put("slogan", kit.mission)
     put("competitive", kit.positioning)
     put("business_model", kit.business_model)
+    # Keyed "visual" to match the section id the Brand Guidelines screen renders.
+    put("visual", kit.visual_identity)
     put("categories", kit.product_categories)
     put("usps", "\n".join("- " + u for u in kit.usps))
     put("features", "\n".join("- " + b for b in kit.benefits))
@@ -693,7 +714,7 @@ async def extract_brand_kit_with_vision(llm, content: str, screenshot: bytes) ->
 
     try:
         raw = await llm.generate_with_image(
-            EXTRACTION_PROMPT + (content or "")[:12000] + _VISION_SUFFIX,
+            EXTRACTION_PROMPT + (content or "")[:_EXTRACTION_CHARS] + _VISION_SUFFIX,
             image_bytes=screenshot,
             mime_type="image/jpeg",
             system_prompt="You are a precise brand strategist. You output JSON only.")

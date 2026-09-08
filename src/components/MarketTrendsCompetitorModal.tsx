@@ -210,7 +210,8 @@ export const MarketTrendsCompetitorModal: React.FC<MarketTrendsCompetitorModalPr
                 </h2>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
                   {report?.region ? `${report.region} · ` : ''}
-                  Competitor ad vault refreshed fortnightly · search &amp; creator radar every 4 weeks
+                  {/* Was stated the other way round, contradicting the scheduler. */}
+                  Market trends refreshed fortnightly · competitor ad vault every 4 weeks
                 </p>
               </div>
             </div>

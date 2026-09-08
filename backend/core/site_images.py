@@ -23,7 +23,20 @@ import re
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
-_UA = "Mozilla/5.0 (compatible; RaftraBot/1.0)"
+# A real browser string. The self-identifying "RaftraBot/1.0" was being turned away by
+# CDN bot protection - raftra.com itself answered it with HTTP 520 - so the harvest saw an
+# error page and reported the site as having no usable images.
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
+
+class SiteUnreachable(Exception):
+    """The site itself could not be read, as opposed to being read and having no images.
+
+    Kept distinct because the two need different words to the user: one is "your site
+    blocked us / is down", the other is "your images are all smaller than the threshold",
+    and reporting the first as the second sends people looking in the wrong place.
+    """
 
 # Chrome, sprites, tracking pixels and payment badges - never brand assets.
 _JUNK_RE = re.compile(
@@ -45,6 +58,25 @@ MIN_BYTES = 4 * 1024
 MAX_BYTES = 15 * 1024 * 1024
 
 
+_BASE_RE = re.compile(r'<base[^>]+href\s*=\s*["\']([^"\']+)["\']', re.I)
+
+
+def resolve_base(html: str, page_url: str) -> str:
+    """The URL relative references on this page resolve against.
+
+    HTML lets a page declare <base href>, and static site generators commonly emit one
+    pointing at the site root. Ignoring it resolved raftra.com/ELEGANTE/'s
+    src="gallery/x.jpg" to /ELEGANTE/gallery/x.jpg - a 404 that answers with an HTML error
+    page - instead of the real /gallery/x.jpg, so every image on every sub-page was
+    silently discarded for having the wrong content type.
+    """
+    m = _BASE_RE.search(html or "")
+    if not m:
+        return page_url
+    href = m.group(1).strip()
+    return urljoin(page_url, href) if href else page_url
+
+
 def _first_from_srcset(value: str) -> str:
     """srcset is "a.jpg 400w, b.jpg 1200w" - take the LAST (largest) candidate."""
     parts = [p.strip().split(" ")[0] for p in (value or "").split(",") if p.strip()]
@@ -58,6 +90,8 @@ def collect_image_refs(html: str, base_url: str, limit: int = 60) -> List[dict]:
     and it exists only here in the HTML - by the time we have the bytes it is gone.
     """
     html = html or ""
+    # A page's <base href> wins over its own URL for resolving relative references.
+    base_url = resolve_base(html, base_url)
     seen: set = set()
     out: List[dict] = []
 
@@ -124,7 +158,60 @@ def _probe(content: bytes):
         return 0, 0, ""
 
 
-async def harvest(url: str, max_images: int = 24, max_pages: int = 1) -> List[dict]:
+# Which pages are worth opening for pictures. Deliberately not the same ranking the brand
+# crawl uses: that one wants About and Pricing for copy, while photography lives in shops,
+# collections and galleries.
+_IMAGE_PAGE_PRIORITY = (
+    (100, r"/(product|products|shop|store|collection|collections|catalog|catalogue)"),
+    (85,  r"/(gallery|portfolio|lookbook|work|projects|case-stud)"),
+    (70,  r"/(menu|rooms|fleet|services|solutions)"),
+    (55,  r"/(about|about-us|our-story|team)"),
+    (40,  r"/(blog|news|press)"),
+)
+_IMAGE_PAGE_PENALTY = (r"/(privacy|terms|cookie|legal|refund|shipping|returns|login|signin|"
+                       r"signup|register|account|cart|checkout|search|sitemap)")
+
+
+def _image_page_links(html: str, base_url: str, limit: int) -> List[str]:
+    """Same-domain pages most likely to carry photography, best first."""
+    base_url = resolve_base(html, base_url)
+    base_host = (urlparse(base_url).netloc or "").lower().replace("www.", "")
+    base_norm = base_url.rstrip("/")
+    seen, candidates = set(), []
+    for m in re.finditer(r'href=["\']([^"\']+)["\']', html or "", re.I):
+        href = m.group(1).strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        absu = urljoin(base_url, href)
+        pu = urlparse(absu)
+        if pu.scheme not in ("http", "https"):
+            continue
+        if (pu.netloc or "").lower().replace("www.", "") != base_host:
+            continue
+        clean = pu._replace(fragment="").geturl()
+        if clean.rstrip("/") == base_norm or clean in seen:
+            continue
+        if re.search(r"\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|css|js|mp4|woff2?)(\?|$)", clean, re.I):
+            continue
+        seen.add(clean)
+        candidates.append(clean)
+
+    def score(u: str) -> int:
+        path = (urlparse(u).path or "/").lower()
+        s = 10
+        for weight, pattern in _IMAGE_PAGE_PRIORITY:
+            if re.search(pattern, path):
+                s = weight
+                break
+        if re.search(_IMAGE_PAGE_PENALTY, path):
+            s -= 80
+        return s - min(len([p for p in path.split("/") if p]), 6) * 2
+
+    candidates.sort(key=lambda u: -score(u))
+    return candidates[:limit]
+
+
+async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[dict]:
     """Fetch a site and return its usable images with real dimensions and a category.
 
     Returns [] rather than raising on any failure: a vault that stays empty is a far
@@ -144,13 +231,35 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 1) -> List[di
             try:
                 page = await client.get(url)
                 if page.status_code != 200:
-                    return []
+                    raise SiteUnreachable(
+                        "%s returned HTTP %d" % (url, page.status_code))
                 html = page.text
+            except SiteUnreachable:
+                raise
             except Exception as e:
-                print("[site_images] could not load %s: %s" % (url, e))
-                return []
+                raise SiteUnreachable("could not load %s (%s)" % (url, e)) from e
 
             refs = collect_image_refs(html, url, limit=max_images * 3)
+
+            # max_pages was accepted but never used, so a harvest only ever read the
+            # landing page. On a store that is the hero banner and little else - the
+            # product photography lives on the collection and product pages the homepage
+            # links to, which is most of what a brand would expect in its vault.
+            if max_pages > 1:
+                seen_refs = {r["url"] for r in refs}
+                for link in _image_page_links(html, url, max_pages - 1):
+                    if len(refs) >= max_images * 3:
+                        break
+                    try:
+                        sub = await client.get(link)
+                        if sub.status_code != 200:
+                            continue
+                    except Exception:
+                        continue
+                    for ref in collect_image_refs(sub.text, link, limit=max_images * 2):
+                        if ref["url"] not in seen_refs:
+                            seen_refs.add(ref["url"])
+                            refs.append(ref)
 
             async def one(ref: dict) -> Optional[dict]:
                 try:
@@ -196,6 +305,10 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 1) -> List[di
                     results.append(item)
                     if len(results) >= max_images:
                         break
+    except SiteUnreachable:
+        # Surfaced to the caller: "we could not read your site" is actionable, and the
+        # empty-vault fallback below would report it as "no images big enough".
+        raise
     except Exception as e:
         print("[site_images] harvest failed for %s: %s" % (url, e))
         return []

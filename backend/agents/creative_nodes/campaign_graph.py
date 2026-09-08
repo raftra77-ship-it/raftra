@@ -34,6 +34,59 @@ async def fetch_campaign_context(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("System", "Brand context loaded into Campaign RAG.", "completed")
     return state
 
+_CURRENCY = {"IN": "₹ (INR)", "US": "$ (USD)", "GB": "£ (GBP)", "AE": "AED", "SG": "S$ (SGD)"}
+
+# What a strategist has to know to plan for one market. Qualitative only: no CPMs, no
+# conversion rates, no spend benchmarks - the model is told elsewhere never to invent
+# numbers, and a "typical Indian CPM" would be exactly that.
+_MARKET_NOTES = {
+    "IN": (
+        "MARKET: INDIA. Plan for this market specifically, not a generic global one.\n"
+        "- Currency is the Indian Rupee. Every budget, bid and price you mention is in ₹.\n"
+        "  Do not convert to dollars or quote dollar figures.\n"
+        "- Buyers are price- and value-sensitive and compare heavily before purchase, so\n"
+        "  offers, EMI availability, exchange/return terms and delivery promises carry real\n"
+        "  weight in ad copy.\n"
+        "- Payments: UPI is the default online method; cash on delivery still matters for\n"
+        "  first-time buyers. Mention COD/UPI only if the brand's own context supports it.\n"
+        "- Language: English works for metros, but Hinglish and regional languages (Hindi,\n"
+        "  Tamil, Telugu, Marathi, Bengali) often outperform for tier-2/tier-3 reach.\n"
+        "  Recommend language variants when the audience spans beyond metros.\n"
+        "- Geography: distinguish metro/tier-1 from tier-2 and tier-3 cities - intent,\n"
+        "  price expectation and creative style differ sharply between them.\n"
+        "- Seasonality: the festive calendar dominates retail demand (Diwali, Navratri,\n"
+        "  Dussehra, Raksha Bandhan, Holi, Eid, Pongal/Onam regionally), alongside the big\n"
+        "  ecommerce sale events and end-of-season sales. If the brief names a season or\n"
+        "  date, plan around the relevant one.\n"
+        "- Platforms: Meta (Instagram Reels especially) and YouTube dominate reach;\n"
+        "  WhatsApp is the normal place a purchase conversation continues, so a\n"
+        "  Click-to-WhatsApp destination is often stronger than a web form.\n"
+        "- Mobile-first and data-conscious: assume vertical video, fast-loading pages and\n"
+        "  copy that reads on a small screen.\n"
+    ),
+}
+
+
+def _market_context(state: "CampaignState") -> str:
+    """Market guidance for the strategist prompts.
+
+    The prompts carried no geography at all, so recommendations came back generic and
+    dollar-denominated even though this product defaults to India. The country comes from
+    the campaign's own geo targeting when the user set it, else DEFAULT_MARKET_COUNTRY.
+    """
+    import os
+    country = (os.getenv("DEFAULT_MARKET_COUNTRY") or "IN").strip().upper()
+    locations = [str(x) for x in (state.get("geo_locations") or []) if str(x).strip()]
+
+    parts = [_MARKET_NOTES.get(country, "MARKET: %s. Plan for this market specifically." % country)]
+    parts.append("Currency for all figures: %s." % _CURRENCY.get(country, country))
+    if locations:
+        parts.append("The user targeted these locations (%s): %s. Tailor audience, language "
+                     "and creative to them rather than to the country as a whole."
+                     % (state.get("geo_targeting_level") or "Country-Level", ", ".join(locations[:12])))
+    return "\n".join(parts)
+
+
 def _fit(text: str, limit: int) -> str:
     """Trim to `limit` characters on a word boundary, keeping it readable.
 
@@ -80,8 +133,13 @@ async def objective_budget_node(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("Budget Agent", "Analyzing historical CPA/CPM and mapping objective...", "running")
     llm = GeminiProvider() if "gemini" in state["model"].lower() else OpenRouterProvider()
     
-    prompt = f"User Request: {state['prompt']}\nContext: {state['cached_context']}\nOutput a JSON object with 'objective' (e.g. Traffic, Conversions) and 'daily_budget' (number)."
-    resp = await generate_json(llm, prompt, "You are a performance marketer determining campaign goals and budgets.", state["model"])
+    market = _market_context(state)
+    prompt = (f"User Request: {state['prompt']}\nContext: {state['cached_context']}\n\n{market}\n\n"
+              "Output a JSON object with 'objective' (e.g. Traffic, Conversions) and "
+              "'daily_budget' (number, in the market currency above).")
+    resp = await generate_json(llm, prompt,
+                               "You are a performance marketer determining campaign goals and "
+                               "budgets for the market described in the prompt.", state["model"])
     
     try:
         data = json.loads(resp)
@@ -91,15 +149,28 @@ async def objective_budget_node(state: CampaignState) -> CampaignState:
         state["objective"] = "Conversions"
         state["budget"] = "50"
     
-    await manager.broadcast_agent_log("Budget Agent", f"Set Objective to {state['objective']} at ${state['budget']}/day.", "completed")
+    # Was a hardcoded "$", which mislabelled every budget in a product that runs on rupees.
+    import os as _os
+    _sym = {"IN": "₹", "US": "$", "GB": "£"}.get(
+        (_os.getenv("DEFAULT_MARKET_COUNTRY") or "IN").strip().upper(), "")
+    await manager.broadcast_agent_log(
+        "Budget Agent",
+        f"Set Objective to {state['objective']} at {_sym}{state['budget']}/day.", "completed")
     return state
 
 async def audience_placement_node(state: CampaignState) -> CampaignState:
     await manager.broadcast_agent_log("Audience Agent", "Building ICP, Lookalikes, and Placements...", "running")
     llm = GeminiProvider() if "gemini" in state["model"].lower() else OpenRouterProvider()
     
-    prompt = f"User Request: {state['prompt']}\nContext: {state['cached_context']}\nOutput a JSON object with 'audience_targeting' (string describing demographics/interests) and 'placements' (array of strings like 'Instagram Reels', 'Facebook Feed')."
-    resp = await generate_json(llm, prompt, "You are an audience and media buyer specialist.", state["model"])
+    prompt = (f"User Request: {state['prompt']}\nContext: {state['cached_context']}\n\n"
+              f"{_market_context(state)}\n\n"
+              "Output a JSON object with 'audience_targeting' (string describing demographics "
+              "and interests, using segments that are meaningful in this market - including "
+              "city tiers and language where relevant) and 'placements' (array of strings "
+              "like 'Instagram Reels', 'Facebook Feed').")
+    resp = await generate_json(llm, prompt,
+                               "You are an audience and media buyer specialist for the market "
+                               "described in the prompt.", state["model"])
     
     try:
         data = json.loads(resp)
@@ -134,12 +205,19 @@ async def creative_brief_node(state: CampaignState) -> CampaignState:
         "- Shopping: retail products with a product feed. Keywords not user-set.\n"
         "- Demand Gen: social-style discovery on YouTube/Discover/Gmail. Needs images + audience signals.\n"
         "- Video: awareness/consideration on YouTube. Needs video.\n"
-        "Only fill the asset arrays the chosen type actually uses; leave the rest as []."
+        "Only fill the asset arrays the chosen type actually uses; leave the rest as [].\n\n"
+        "Recommendations must be specific to the market described in the prompt - its "
+        "currency, buying behaviour, languages, city tiers, seasonal calendar and the "
+        "platforms people there actually use. A recommendation that would read identically "
+        "for any country is not specific enough. Still never invent statistics: ground the "
+        "WHY in the market's characteristics and the brand's own context, not in made-up "
+        "benchmark numbers."
     )
     prompt = (
         f"Campaign brief from the user (may include business type, industry, product, goal, budget, "
         f"audience, location, season, website, landing page):\n{state['prompt']}\n\n"
         f"Business/brand context:\n{state['cached_context']}\n\n"
+        f"{_market_context(state)}\n\n"
         f"Chosen objective: {state['objective']}\nAudience: {state['audience']}\n\n"
         "Return ONLY a JSON object with EXACTLY these keys:\n"
         "{\n"

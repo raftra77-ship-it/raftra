@@ -58,6 +58,95 @@ def discover_brands(db: Session = Depends(database.get_db), current_user: models
     workspaces = db.query(models.Workspace).all()
     return [{"id": w.id, "name": w.name} for w in workspaces]
 
+from pydantic import BaseModel as _OnboardingBase
+
+
+class OnboardingSetup(_OnboardingBase):
+    name: Optional[str] = None
+    company_url: Optional[str] = None
+    brand_color: Optional[str] = None
+    brand_voice: Optional[str] = None
+
+
+@router.post("/setup")
+def setup_workspace(body: OnboardingSetup, db: Session = Depends(database.get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    """Finish onboarding in a single request: find-or-create the workspace, then lock it.
+
+    The wizard used to do this in four awaited calls - list workspaces, create one, list
+    again to learn the id, then mark onboarded. Against a remote database each of those is
+    a second or more, which was most of the wait between clicking Initialize and seeing the
+    dashboard. They are one transaction's worth of work, so they are now one request.
+
+    Idempotent: an account that already has a workspace keeps it and is simply marked
+    onboarded, which is what re-running the wizard should do.
+    """
+    from agents.seo_geo import normalize_target_url
+
+    ws = (db.query(models.Workspace)
+            .filter(tenancy.visible_workspace(current_user))
+            .order_by(models.Workspace.id.asc()).first())
+
+    created = False
+    if not ws:
+        name = (body.name or "").strip() or "My Workspace"
+        url = normalize_target_url(body.company_url or "") or (body.company_url or None)
+        ws = models.Workspace(name=name, company_url=url, brand_color=body.brand_color,
+                              brand_voice=body.brand_voice, user_id=current_user.id)
+        db.add(ws)
+        db.flush()          # assigns ws.id inside this transaction, no extra round trip
+        created = True
+
+    bp = (db.query(models.BrandProfile)
+            .filter(models.BrandProfile.workspace_id == ws.id).first())
+    if not bp:
+        bp = models.BrandProfile(workspace_id=ws.id)
+        db.add(bp)
+    bp.is_onboarded = True
+    db.commit()
+
+    return {"status": "success", "workspace_id": ws.id, "is_onboarded": True,
+            "created": created, "company_url": ws.company_url}
+
+
+@router.post("/{workspace_id}/complete-onboarding")
+async def complete_onboarding(workspace_id: int,
+                              db: Session = Depends(database.get_db),
+                              current_user: models.User = Depends(auth.get_current_user)):
+    """Mark this workspace's onboarding finished, and enrich it in the background.
+
+    Nothing in the wizard's path ever wrote is_onboarded. The only writer was the crawl in
+    onboarding_graph, reached solely through /reindex - and the wizard instead called
+    /api/agents/onboard, which runs that pipeline with workspace_id=0, so the flag (and the
+    whole brand profile) was written against a workspace that does not exist. The real
+    workspace stayed is_onboarded=False forever, and because login correctly routes on that
+    flag, every single login sent the user back through the wizard.
+
+    Completing the wizard is what "onboarded" means to the user, so the flag is committed
+    here and now. The crawl still runs, but only to enrich the profile: it is queued as a
+    background task against the REAL workspace id, and if it fails the user stays onboarded
+    rather than being trapped in the wizard by a scrape they cannot influence.
+    """
+    ws = _require_workspace(workspace_id, db, current_user)
+
+    bp = (db.query(models.BrandProfile)
+            .filter(models.BrandProfile.workspace_id == workspace_id).first())
+    if not bp:
+        bp = models.BrandProfile(workspace_id=workspace_id)
+        db.add(bp)
+    bp.is_onboarded = True
+    db.commit()
+
+    # Deliberately does NOT start the crawl. Two earlier attempts both put it in front of
+    # the user: BackgroundTasks runs before the request coroutine finishes (~13s), and
+    # asyncio.create_task still stalled the response (~4s) because the pipeline blocks the
+    # loop as soon as it starts. Enrichment is a separate concern from "this user is
+    # onboarded", so the client fires the existing /reindex route for it and does not wait.
+    # That keeps this endpoint what it should be: one indexed write.
+    return {"status": "success", "workspace_id": workspace_id, "is_onboarded": True,
+            "company_url": ws.company_url}
+
+
 @router.post("", response_model=schemas.WorkspaceResponse)
 def create_workspace(ws: schemas.WorkspaceCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     from agents.seo_geo import normalize_target_url

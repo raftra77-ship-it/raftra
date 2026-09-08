@@ -44,16 +44,34 @@ interface AssetItem {
   category: 'product' | 'lifestyle' | 'banner' | 'logo';
   url: string;
   dimensions: string;
-  format: 'PNG' | 'JPG' | 'WEBP' | 'SVG';
+  /** Free-form so an asset whose format is genuinely unknown can say so. It was a union of
+   *  four literals, which forced every generated creative to claim "JPG" regardless of
+   *  what it actually was - the URLs carry no extension to support that. */
+  format: string;
   size: string;
   source: 'generated' | 'scraped' | 'gdrive' | 'device';
   sourceUrl?: string;
   tag: string;
+  /** Saved to the Ad Library (an approved creative) rather than left as a draft. */
+  inAdLibrary?: boolean;
 }
 
+/** Format from the file extension, or an em dash when the URL does not reveal one.
+ *  Generated creatives are served from URLs without an extension, so guessing produces a
+ *  label that is wrong for every one of them. */
+const formatFromUrl = (url: string): string => {
+  const m = (url || '').split('?')[0].match(/\.([a-z0-9]{2,5})$/i);
+  if (!m) return '—';
+  const ext = m[1].toUpperCase();
+  return ext === 'JPEG' ? 'JPG' : ext;
+};
+
 interface WorkspaceAssetsProps {
-  /** Real generated creatives for this workspace, from GET /workspaces/{id}/creatives. */
-  creatives?: { id: string; headline: string; type: string; imageUrl?: string }[];
+  /** Real generated creatives for this workspace, from GET /workspaces/{id}/creatives.
+   *  `status` distinguishes an approved creative (one saved to the Ad Library) from a
+   *  draft; `videoUrl` carries video creatives, which have no image_url at all. */
+  creatives?: { id: string; headline: string; type: string; imageUrl?: string;
+                videoUrl?: string; status?: string }[];
   /** Opens Creative Studio with this asset as the reference image. */
   onUseAsset?: (url: string, title: string) => void;
   /** Required to read or write the persisted vault. */
@@ -112,18 +130,26 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
   // rather than inventing plausible-looking numbers. Drive and device imports keep theirs.
   useEffect(() => {
     const mapped: AssetItem[] = (creatives || [])
-      .filter((cr) => !!cr.imageUrl)
-      .map((cr) => ({
-        id: `creative-${cr.id}`,
-        title: cr.headline || `Creative ${cr.id}`,
-        category: 'product' as const,
-        url: cr.imageUrl as string,
-        dimensions: '\u2014',
-        format: 'JPG' as const,
-        size: '\u2014',
-        source: 'generated' as const,
-        tag: cr.type || 'Generated creative',
-      }));
+      // A video creative has no image_url, so filtering on it alone dropped every video
+      // saved to the Ad Library from the vault entirely.
+      .filter((cr) => !!(cr.imageUrl || cr.videoUrl))
+      .map((cr) => {
+        const url = (cr.imageUrl || cr.videoUrl) as string;
+        return {
+          id: `creative-${cr.id}`,
+          title: cr.headline || `Creative ${cr.id}`,
+          category: 'product' as const,
+          url,
+          dimensions: '\u2014',
+          format: formatFromUrl(url),
+          size: '\u2014',
+          source: 'generated' as const,
+          // "approved" is what Save to Ad Library writes, so it is what marks a vault item
+          // as being in the library rather than a draft.
+          inAdLibrary: String(cr.status || '').toLowerCase() === 'approved',
+          tag: cr.type || 'Generated creative',
+        };
+      });
     setAssets((prev) => [...mapped, ...prev.filter((a) => a.source !== 'generated')]);
   }, [creatives]);
 
@@ -334,13 +360,20 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     // Filtered by source rather than by product/lifestyle/banner/logo: that categorisation
     // is not stored for any asset, so three of those four buckets always read (0).
     { id: 'all', label: `All Assets (${assets.length})` },
+    // Saved to the Ad Library. Without this the library's assets were in the vault but
+    // indistinguishable from drafts, so there was no way to find what you had approved.
+    { id: 'ad_library', label: `Ad Library (${assets.filter(a => a.inAdLibrary).length})` },
     { id: 'generated', label: `Generated (${assets.filter(a => a.source === 'generated').length})` },
+    // Images harvested from the brand's own site. The bucket existed as a source but had
+    // no tab, so a harvest's results could only be found by scrolling All Assets.
+    { id: 'scraped', label: `Website (${assets.filter(a => a.source === 'scraped').length})` },
     { id: 'gdrive', label: `Google Drive (${assets.filter(a => a.source === 'gdrive').length})` },
     { id: 'device', label: `Uploaded (${assets.filter(a => a.source === 'device').length})` }
   ];
 
   const filteredAssets = assets.filter(item => {
-    const matchesCategory = activeCategory === 'all' || item.source === activeCategory;
+    const matchesCategory = activeCategory === 'all'
+      || (activeCategory === 'ad_library' ? !!item.inAdLibrary : item.source === activeCategory);
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.tag.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
@@ -652,7 +685,24 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
 
                 {/* Card Actions */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
-                  <span style={{ fontSize: '11px', color: '#FF6B00', fontWeight: 600 }}>{asset.tag}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    <span style={{ fontSize: '11px', color: '#FF6B00', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {asset.tag}
+                    </span>
+                    {/* Marks the ones that were saved to the Ad Library, which otherwise
+                        looked identical to drafts once they reached the vault. */}
+                    {asset.inAdLibrary && (
+                      <span
+                        title="Saved to the Ad Library"
+                        style={{ fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.03em',
+                                 color: 'var(--success)', background: 'rgba(0,230,118,0.14)',
+                                 border: '1px solid rgba(0,230,118,0.35)', padding: '1px 6px',
+                                 borderRadius: '100px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        LIBRARY
+                      </span>
+                    )}
+                  </span>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
                       onClick={() => handleCopyLink(asset)}

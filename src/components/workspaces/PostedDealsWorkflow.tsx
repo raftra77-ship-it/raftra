@@ -709,7 +709,16 @@ export const BrandPostedDealsView: React.FC<{
                 <div key={app.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <img src={app.creator_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'} alt="" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
+                      {/* An applicant with no avatar on file used to be shown as a stock
+                          Unsplash headshot, so a real creator was represented in the
+                          brand's shortlist by a photograph of a stranger. */}
+                      {app.creator_avatar ? (
+                        <img src={app.creator_avatar} alt="" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 800, color: '#7C75FF', flexShrink: 0 }}>
+                          {(app.creator_name || app.creator_handle || '?').replace('@', '').charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {app.creator_name} <span style={{ fontSize: '11px', color: '#00e676', background: 'rgba(0,230,118,0.1)', padding: '1px 6px', borderRadius: '4px' }}>{app.match_score}% Brand Fit</span>

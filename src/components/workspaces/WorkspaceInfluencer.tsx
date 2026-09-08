@@ -32,6 +32,25 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
   const [dealMsg, setDealMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const [mainSubTab, setMainSubTab] = useState<'discover' | 'posted_deals' | 'my_collaborations'>('discover');
+
+  /* Real count for the My Collaborations card badge. It read a literal "3 Active" for every
+     brand, so the card claimed three live collaborations while the panel underneath
+     correctly said there were none. Fetched here rather than reported up from the
+     collaborations view, because the badge has to be right before that tab is opened. */
+  const [activeCollabCount, setActiveCollabCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    if (!token) { setActiveCollabCount(null); return; }
+    let cancelled = false;
+    fetch(`/api/posted-deals/brand/${workspaceId}/collaborations`,
+          { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => { if (!cancelled) setActiveCollabCount(Array.isArray(d) ? d.length : 0); })
+      .catch(() => { if (!cancelled) setActiveCollabCount(null); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
   const [creators, setCreators] = useState<InfluencerItemExtended[]>([]);
   const [filterNiche, setFilterNiche] = useState('All');
   const [filterFollowers, setFilterFollowers] = useState('All');
@@ -609,7 +628,10 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
             <span style={{ fontSize: '18px', fontWeight: 800, color: mainSubTab === 'discover' ? '#fff' : 'rgba(255,255,255,0.85)', letterSpacing: '-0.02em' }}>
               Discover Creators
             </span>
-            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>29 Live</span>
+            {/* Was the literal "29 Live" regardless of how many creators had loaded. */}
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>
+              {creators.length} Live
+            </span>
           </div>
           <span style={{ fontSize: '13px', color: mainSubTab === 'discover' ? 'rgba(255,255,255,0.8)' : 'var(--text-secondary)', lineHeight: 1.4 }}>
             Browse verified profiles, pricing & engagement metrics.
@@ -669,8 +691,14 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
             <span style={{ fontSize: '18px', fontWeight: 800, color: mainSubTab === 'my_collaborations' ? '#fff' : 'rgba(255,255,255,0.85)', letterSpacing: '-0.02em' }}>
               My Collaborations
             </span>
+            {/* The count is hidden rather than shown as "0 Active" while it is unknown (the
+                request failed): a zero the app has not verified is its own wrong answer. */}
             {isLoggedIn ? (
-              <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>3 Active</span>
+              activeCollabCount !== null ? (
+                <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(0,230,118,0.15)', color: '#00e676' }}>
+                  {activeCollabCount} Active
+                </span>
+              ) : null
             ) : (
               <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', background: 'rgba(255, 75, 75, 0.2)', color: '#FF4B4B', border: '1px solid rgba(255,75,75,0.3)' }}>🔒 Locked</span>
             )}

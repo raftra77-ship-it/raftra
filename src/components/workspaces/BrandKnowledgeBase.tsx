@@ -38,21 +38,47 @@ interface BrandKnowledgeBaseProps {
   onSyncKnowledgeGraph?: () => void;
   syncing?: boolean;
   syncMessage?: { text: string; ok: boolean } | null;
+  /** Bumped by the parent when a re-index finishes, to pull the rebuilt kit back in.
+   *  Without it the screen kept showing the pre-sync content and assets, so a successful
+   *  "Knowledge base rebuilt." sat above data the sync had already replaced. */
+  reloadKey?: number;
   brand?: { name?: string; url?: string; tone?: string; colors?: string };
   workspaceId?: number | null;
 }
 
-/** Section ids and titles are the reference's, so the tab strip reads identically. */
-const SECTION_TITLES: { id: string; title: string }[] = [
-  { id: 'overview', title: 'Brand Overview' },
-  { id: 'usps', title: 'Unique Selling Points (USPs)' },
-  { id: 'features', title: 'Key Features & Benefits' },
-  { id: 'slogan', title: 'Brand Slogan & Mission' },
-  { id: 'personality', title: 'Brand Personality' },
-  { id: 'visual', title: 'Visual Design & Brand Identity' },
-  { id: 'competitive', title: 'Competitive Position' },
-  { id: 'tone', title: 'Tone of Voice' },
+/** How a field is stored, which decides how it is edited and saved.
+ *  - text    : a string inside the guidelines JSON
+ *  - list    : a string[] inside guidelines, edited one item per line
+ *  - profile : a string column on the brand profile itself, not inside guidelines */
+type SectionKind = 'text' | 'list' | 'profile';
+
+/** Section ids and titles. The first nine are the reference's, so the tab strip reads
+ *  identically; the rest are fields onboarding has always extracted but which had no way
+ *  to be corrected - they were displayed read-only, or not displayed at all. */
+const SECTION_TITLES: { id: string; title: string; kind: SectionKind; hint?: string }[] = [
+  { id: 'overview', title: 'Brand Overview', kind: 'text' },
+  { id: 'usps', title: 'Unique Selling Points (USPs)', kind: 'text' },
+  { id: 'features', title: 'Key Features & Benefits', kind: 'text' },
+  { id: 'slogan', title: 'Brand Slogan & Mission', kind: 'text' },
+  { id: 'personality', title: 'Brand Personality', kind: 'text' },
+  { id: 'visual', title: 'Visual Design & Brand Identity', kind: 'text' },
+  { id: 'competitive', title: 'Competitive Position', kind: 'text' },
+  // Onboarding has always extracted business_model, but no section rendered it, so it was
+  // stored and never shown. Added rather than dropped: it is one of the more useful things
+  // the crawl determines about a brand.
+  { id: 'business_model', title: 'Business Model', kind: 'text' },
+  { id: 'tone', title: 'Tone of Voice', kind: 'text' },
+  { id: 'target_audience', title: 'Target Audience', kind: 'profile',
+    hint: 'Who this brand sells to. Used by every agent that writes copy.' },
+  { id: 'categories', title: 'Product Categories', kind: 'list',
+    hint: 'One per line.' },
+  { id: 'key_messages', title: 'Key Messages', kind: 'list',
+    hint: 'One per line.' },
+  { id: 'markets', title: 'Markets', kind: 'text',
+    hint: 'Where the brand sells.' },
 ];
+
+const SECTION_BY_ID = Object.fromEntries(SECTION_TITLES.map(s => [s.id, s]));
 
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('token');
@@ -66,6 +92,7 @@ const COLOUR_ROLES = ['Key CTAs & highlights', 'Secondary surfaces', 'Accents', 
 
 export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
   onSyncKnowledgeGraph, syncing = false, syncMessage = null, brand, workspaceId = null,
+  reloadKey = 0,
 }) => {
   const [copiedColor, setCopiedColor] = useState<string | null>(null);
   const [activeKnowledgeTab, setActiveKnowledgeTab] = useState<string>('overview');
@@ -82,7 +109,9 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
       .then(r => (r.ok ? r.json() : []))
       .then(d => setAssets(Array.isArray(d) ? d.slice(-5).reverse() : []))
       .catch(() => {});
-  }, [workspaceId]);
+    // reloadKey re-runs this after a sync, so the rebuilt guidelines, palette, logos,
+    // typography and assets replace what was on screen before it ran.
+  }, [workspaceId, reloadKey]);
 
   const brandName = profile?.name || brand?.name || 'This brand';
   const brandUrl = profile?.url || brand?.url || '';
@@ -122,14 +151,24 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
   const rating = (guidelines.rating || null) as { value: number; count: number | null; scale: number } | null;
   const targetMessages = Array.isArray(guidelines.key_messages) ? (guidelines.key_messages as string[]) : [];
 
-  const knowledgeSections = SECTION_TITLES.map(s => ({
-    ...s,
+  /** The stored value for a section, rendered as the text the editor shows. A list is one
+   *  item per line, which is also how it is typed back in. */
+  const sectionContent = (s: { id: string; kind: SectionKind }): string => {
+    if (s.kind === 'profile') {
+      const v = (profile as Record<string, unknown> | null)?.[s.id];
+      return typeof v === 'string' ? v : '';
+    }
+    const raw = guidelines[s.id];
+    if (s.kind === 'list') {
+      return Array.isArray(raw) ? (raw as unknown[]).map(String).join('\n') : '';
+    }
+    if (typeof raw === 'string' && raw.trim()) return raw;
     // Brand Overview falls back to what onboarding wrote; the rest are only filled once
     // someone writes them, because a crawl cannot infer a slogan or a mission.
-    content: (typeof guidelines[s.id] === 'string' && (guidelines[s.id] as string).trim())
-      ? (guidelines[s.id] as string)
-      : (s.id === 'overview' ? (profile?.brand_guidelines_summary || '') : ''),
-  }));
+    return s.id === 'overview' ? (profile?.brand_guidelines_summary || '') : '';
+  };
+
+  const knowledgeSections = SECTION_TITLES.map(s => ({ ...s, content: sectionContent(s) }));
 
   // The reference's own "Add Key Message" control. Its state came from the fixture block
   // that was replaced; restored here so the button works rather than being deleted.
@@ -163,14 +202,28 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
     setSavingSection(true);
     setEditError(null);
     try {
-      // Merged over the existing guidelines object, never replacing it: the other seven
-      // sections and everything the crawl wrote (categories, personas, founded year) live
-      // in the same JSON column, and a PATCH that sent only this field would erase them.
-      const next = { ...guidelines, [editingSection]: editDraft };
+      const section = SECTION_BY_ID[editingSection];
+      let body: Record<string, unknown>;
+
+      if (section?.kind === 'profile') {
+        // A column on the profile rather than a key inside the guidelines JSON.
+        body = { [editingSection]: editDraft.trim() };
+      } else {
+        // A list is typed one item per line; blanks are dropped so a stray newline does
+        // not become an empty category.
+        const value = section?.kind === 'list'
+          ? editDraft.split('\n').map(v => v.trim()).filter(Boolean)
+          : editDraft;
+        // Merged over the existing guidelines object, never replacing it: the other
+        // sections and everything the crawl wrote (personas, founded year, accents) live
+        // in the same JSON column, and a PATCH that sent only this field would erase them.
+        body = { guidelines: { ...guidelines, [editingSection]: value } };
+      }
+
       const r = await fetch(`/api/workspaces/${workspaceId}/brand-profile`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ guidelines: next }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
@@ -569,6 +622,12 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
 
             {editingSection === activeKnowledgeTab ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Says how the field is stored, so a list is not typed as prose. */}
+                {SECTION_BY_ID[activeKnowledgeTab]?.hint && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {SECTION_BY_ID[activeKnowledgeTab].hint}
+                  </div>
+                )}
                 <textarea
                   value={editDraft}
                   onChange={e => setEditDraft(e.target.value)}

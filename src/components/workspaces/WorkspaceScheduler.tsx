@@ -27,9 +27,11 @@ import { GlowButton } from '../GlowButton';
  * (the backend computes next_run_at and records the outcome of each run) and
  * /api/workspaces/{id}/events for the dates a brand is planning around.
  *
- * Recurring execution needs SCHEDULER_TICK_SECRET set and a cron hitting POST
- * /api/schedules/tick; "Run now" works regardless, because it runs in-process. The banner
- * below says so rather than implying the calendar is ticking when it is not.
+ * Recurring execution is handled in-process by the API's scheduler; the banner below
+ * reports its real state from /api/schedules/runner-status rather than asserting one.
+ * That copy previously said unattended runs required SCHEDULER_TICK_SECRET and an
+ * external cron, which stopped being true when the in-process runner landed - so the
+ * screen was understating its own automation.
  */
 
 /** Agents with a real runner behind them. Kept in step with RUNNABLE_AGENTS in
@@ -76,14 +78,19 @@ interface BrandEvent {
   category: string | null;
 }
 
-/** Fixed Indian retail dates, shown as reference alongside whatever the brand adds. They
- *  are facts about the calendar rather than stored records, so they carry no id and cannot
- *  be deleted. */
-const REFERENCE_DATES = [
-  { name: 'Ganesh Chaturthi', date: '2026-09-14', category: 'Festival / festive shopping' },
-  { name: 'Navratri & Dussehra', date: '2026-10-11', category: 'Big festive blitz' },
-  { name: 'Diwali', date: '2026-11-08', category: 'Peak shopping season' },
-];
+/** One festival or retail moment from GET /api/retail-calendar. `lead_days` is how far
+ *  ahead campaigns should already be live - festive commerce is won in the run-up, so a
+ *  date on its own is not enough to plan from. */
+interface RetailDate {
+  name: string;
+  date: string;
+  category: string;
+  lead_days: number;
+  days_away: number;
+  /** The date creative should already be live by. */
+  campaign_start: string;
+  planning_urgency: 'overdue' | 'start_now' | 'upcoming';
+}
 
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('token');
@@ -154,6 +161,15 @@ export const WorkspaceScheduler: React.FC<{
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [prompt, setPrompt] = useState('');
 
+  const [retailDates, setRetailDates] = useState<RetailDate[]>([]);
+  const [coverage, setCoverage] = useState<{
+    last_transcribed_date: string; days_of_full_coverage_left: number; needs_top_up: boolean;
+  } | null>(null);
+  const [runner, setRunner] = useState<{
+    enabled: boolean; mode: string; interval_minutes: number | null;
+    external_tick_available: boolean;
+  } | null>(null);
+
   // New event
   const [evName, setEvName] = useState('');
   const [evDate, setEvDate] = useState('');
@@ -162,12 +178,23 @@ export const WorkspaceScheduler: React.FC<{
   const load = useCallback(async () => {
     if (!workspaceId) { setLoading(false); return; }
     try {
-      const [sr, er] = await Promise.all([
+      // The retail calendar is public reference data, so it loads alongside the tenant's
+      // own schedules and events. The component used to carry three festivals inline;
+      // this is the full year with the lead times the backend already computes.
+      const [sr, er, cr, rr] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/schedules`, { headers: authHeaders() }),
         fetch(`/api/workspaces/${workspaceId}/events`, { headers: authHeaders() }),
+        fetch('/api/retail-calendar?within_days=365'),
+        fetch('/api/schedules/runner-status'),
       ]);
+      if (rr.ok) setRunner(await rr.json());
       if (sr.ok) setSchedules(await sr.json());
       if (er.ok) setEvents(await er.json());
+      if (cr.ok) {
+        const d = await cr.json();
+        setRetailDates(Array.isArray(d?.upcoming) ? d.upcoming : []);
+        setCoverage(d?.coverage ?? null);
+      }
     } catch {
       setError('Could not reach the server.');
     }
@@ -351,8 +378,17 @@ export const WorkspaceScheduler: React.FC<{
   };
 
   const allDates = [
-    ...REFERENCE_DATES.map((r) => ({ id: null as number | null, name: r.name, event_date: r.date, category: r.category })),
-    ...events.map((e) => ({ id: e.id, name: e.name, event_date: e.event_date, category: e.category })),
+    // Reference dates carry no id: they are facts about the calendar, not stored records,
+    // so they cannot be deleted. Their lead time rides along for the planning hint.
+    ...retailDates.map((r) => ({
+      id: null as number | null, name: r.name, event_date: r.date, category: r.category,
+      campaignStart: r.campaign_start, daysAway: r.days_away, urgency: r.planning_urgency,
+    })),
+    ...events.map((e) => ({
+      id: e.id, name: e.name, event_date: e.event_date, category: e.category,
+      campaignStart: undefined as string | undefined, daysAway: undefined as number | undefined,
+      urgency: undefined as RetailDate['planning_urgency'] | undefined,
+    })),
   ].sort((a, b) => a.event_date.localeCompare(b.event_date));
 
   return (
@@ -522,11 +558,25 @@ export const WorkspaceScheduler: React.FC<{
           })}
         </div>
 
-        {/* Recurring runs need the cron; saying so beats a calendar that looks armed and is not. */}
-        {!!schedules.length && (
-          <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
-            Run now works immediately. Unattended runs at the times above need
-            SCHEDULER_TICK_SECRET set on the API and a cron calling /api/schedules/tick.
+        {/* The runner's actual state. A calendar that looks armed and is not is the worse
+            failure, but so is one that is armed and says it is not - which is what this
+            said before. */}
+        {!!schedules.length && runner && (
+          <p style={{ fontSize: '11.5px', margin: 0, lineHeight: 1.55,
+                      color: runner.enabled ? 'var(--text-muted)' : 'var(--warning)' }}>
+            {runner.enabled ? (
+              <>
+                <span style={{ color: 'var(--success)', fontWeight: 700 }}>Automatic runs are on.</span>
+                {' '}Due schedules are checked every {runner.interval_minutes} minutes by the API,
+                so the times above fire on their own. Run now triggers one immediately.
+              </>
+            ) : (
+              <>
+                Automatic runs are off (DISABLE_SCHEDULED_TASKS is set), so the times above will
+                not fire on their own. Run now still works.
+                {runner.external_tick_available && ' An external cron can call /api/schedules/tick.'}
+              </>
+            )}
           </p>
         )}
       </div>
@@ -574,6 +624,21 @@ export const WorkspaceScheduler: React.FC<{
                   <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
                     {prettyDate(ev.event_date)} · <span style={{ color: '#FFB300', fontWeight: 600 }}>{daysUntil(ev.event_date)}</span>
                   </div>
+                  {/* The date alone is not a plan: festive demand is won in the run-up, so
+                      the row says when creative has to be live and whether that has passed. */}
+                  {ev.campaignStart && (
+                    <div style={{
+                      fontSize: '11.5px', marginTop: '6px', fontWeight: 600,
+                      color: ev.urgency === 'overdue' ? '#FF4B4B'
+                           : ev.urgency === 'start_now' ? '#FFB300' : 'var(--text-muted)',
+                    }}>
+                      {ev.urgency === 'overdue'
+                        ? `Run-up started ${prettyDate(ev.campaignStart)} — campaigns should already be live`
+                        : ev.urgency === 'start_now'
+                          ? `Go live by ${prettyDate(ev.campaignStart)} — start now`
+                          : `Go live by ${prettyDate(ev.campaignStart)}`}
+                    </div>
+                  )}
                 </div>
                 {ev.id !== null && (
                   <button
@@ -606,8 +671,19 @@ export const WorkspaceScheduler: React.FC<{
         </div>
 
         <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: 0 }}>
-          Ganesh Chaturthi, Navratri and Diwali are fixed reference dates. Anything you add is
-          saved to this workspace.
+          {retailDates.length} festival and retail dates for the year ahead are reference data,
+          each showing when campaigns need to be live. The campaign agents plan around the same
+          calendar. Anything you add is saved to this workspace.
+          {coverage?.needs_top_up && (
+            <>
+              {' '}
+              <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+                Festival dates are transcribed per year and currently run to{' '}
+                {coverage.last_transcribed_date}. Beyond that only fixed dates (Christmas,
+                Black Friday and similar) appear until next year's are added.
+              </span>
+            </>
+          )}
         </p>
       </div>
 

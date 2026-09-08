@@ -22,9 +22,12 @@ from core import tenancy
 
 router = APIRouter(prefix="/api/workspaces", tags=["intelligence"])
 
-# The cadences the pipeline promises, used to show when a refresh is next due.
-AD_SYNC_DAYS = 14
-TREND_SYNC_DAYS = 28
+# The cadences the pipeline promises, used to show when a refresh is next due. These must
+# match the intervals registered in core/scheduler.py: market trends every 2 weeks,
+# competitor ads every 4. They were the other way round in both places, so the screen also
+# advertised the wrong refresh dates.
+TREND_SYNC_DAYS = 14
+AD_SYNC_DAYS = 28
 
 
 def _require_workspace(workspace_id: int, db: Session, current_user: models.User):
@@ -302,6 +305,7 @@ def list_assets(workspace_id: int, category: Optional[str] = None,
 
 @router.post("/{workspace_id}/assets/harvest")
 async def harvest_site_assets(workspace_id: int, max_images: int = 24,
+                              max_pages: int = 6,
                               db: Session = Depends(database.get_db),
                               current_user: models.User = Depends(auth.get_current_user)):
     """Pull every usable image off the workspace's own website into the vault.
@@ -319,7 +323,15 @@ async def harvest_site_assets(workspace_id: int, max_images: int = 24,
 
     from core import site_images
     try:
-        found = await site_images.harvest(ws.company_url, max_images=max_images)
+        found = await site_images.harvest(ws.company_url, max_images=max_images,
+                                          max_pages=max_pages)
+    except site_images.SiteUnreachable as e:
+        # Distinct from a harvest that ran and found nothing: the site blocked us or is
+        # down, which the user can check, rather than an image-size problem they cannot.
+        raise HTTPException(
+            status_code=502,
+            detail="Could not read %s - %s. If the site is behind bot protection it may be "
+                   "refusing automated requests." % (ws.company_url, e))
     except Exception as e:
         raise HTTPException(status_code=502, detail="Could not read the site: %s" % e)
 

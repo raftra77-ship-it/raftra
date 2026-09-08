@@ -550,6 +550,10 @@ export function BrandDashboard() {
   // Knowledge Base form then offered up for indexing. Re-indexing writes this URL back to
   // the workspace and rebuilds the vector store from it, so a placeholder here quietly
   // replaces a real brand's knowledge base with a stranger's website.
+  // Bumped when a Sync Knowledge Graph run completes, so the Brand Guidelines screen
+  // re-reads the rebuilt kit and assets instead of showing what it loaded at mount.
+  const [kbReloadKey, setKbReloadKey] = useState(0);
+
   const [brandProfile, setBrandProfile] = useState({
     url: '',
     name: '',
@@ -835,7 +839,7 @@ export function BrandDashboard() {
       .then(res => {
         if (res.status === 401) {
           // Token expired or invalid — clear and redirect to login
-          localStorage.removeItem('token');
+          localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');
           navigate('/');
           return null;
         }
@@ -960,7 +964,7 @@ export function BrandDashboard() {
   // the /onboarding route. The duplicate that lived here was never called.
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');
     setWorkspaceId(null);
     navigate('/');
   };
@@ -972,6 +976,27 @@ export function BrandDashboard() {
   // agent row rather than assuming it worked. The previous version dropped the spinner after
   // a fixed 3 seconds and reported only to the console, so a failed re-index was
   // indistinguishable from a finished one.
+  /** Re-reads the workspace's brand fields after a sync has rewritten them, so the header
+   *  and Settings show the crawl's result rather than what was loaded at mount. */
+  const refreshBrandProfile = async () => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/brand-profile`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      setBrandProfile(prev => ({
+        ...prev,
+        url: d.url || prev.url,
+        name: d.name || prev.name,
+        tone: d.brand_voice || prev.tone,
+        colors: d.brand_color || prev.colors,
+      }));
+    } catch { /* the sync still succeeded; the screen refreshes on next load */ }
+  };
+
   const handleReindex = async () => {
     if (!workspaceId) return;
 
@@ -1021,7 +1046,21 @@ export function BrandDashboard() {
         const isThisRun = !before || now.updated_at !== before.updated_at;
         if (!isThisRun || now.status === 'RUNNING') continue;
         if (now.status === 'COMPLETED') {
-          setReindexMsg({ ok: true, text: 'Knowledge base rebuilt.' });
+          // Pull the rebuilt kit back in. Only the activity feed was refreshed here, so
+          // "Knowledge base rebuilt." appeared above the pre-sync guidelines, palette,
+          // logos and assets, and the new content showed up only on a manual reload.
+          await refreshBrandProfile();
+          setKbReloadKey(k => k + 1);
+          // A run can complete with the brand kit rebuilt but search indexing unavailable.
+          // The kit is still real and now on screen, so it is reported as done - with the
+          // caveat, rather than an unqualified success that hides a degraded vector store.
+          const caveat = String(now.summary || '').includes('Search indexing unavailable');
+          setReindexMsg({
+            ok: !caveat,
+            text: caveat
+              ? `Brand kit and assets updated. ${now.summary}`
+              : 'Knowledge base rebuilt — brand kit and assets updated.',
+          });
         } else {
           setReindexMsg({ ok: false, text: `Re-indexing failed: ${now.summary || 'see the AI Agents tab for the reason'}` });
         }
@@ -1323,7 +1362,7 @@ export function BrandDashboard() {
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
         // The account is gone, so there is nothing to come back to.
-        localStorage.removeItem('token');
+        localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');
         navigate('/');
         return;
       }
@@ -1379,7 +1418,7 @@ export function BrandDashboard() {
         body: JSON.stringify({ purpose: 'topup', amount_inr: amountINR })
       });
       if (res.status === 401) {
-        localStorage.removeItem('token');
+        localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');
         navigate('/');
         throw new Error("Session expired. Please log in again.");
       }
@@ -2545,6 +2584,7 @@ export function BrandDashboard() {
               syncMessage={reindexMsg}
               brand={brandProfile}
               workspaceId={workspaceId}
+              reloadKey={kbReloadKey}
             />
           )}
 

@@ -47,8 +47,21 @@ def _html_to_text(html: str) -> str:
 
 
 # Shallow crawl config: homepage + up to (MAX-1) same-domain pages.
-_MAX_KB_PAGES = 5
+# Raised from 5. At 5 the page count, not the character caps, was what limited extraction
+# on content-rich sites: a brand with About, Products, Services, Pricing and FAQ pages had
+# no room left for any of them beyond the first few. Costs more Firecrawl credits and a
+# longer crawl, both of which are fine here because this runs as a background task after
+# the user is already inside the product.
+_MAX_KB_PAGES = 12
 _PER_PAGE_CHARS = 3000
+# Ceiling on what the synthesis step is handed. Must stay >= _MAX_KB_PAGES *
+# _PER_PAGE_CHARS plus the "[url]" header per page, or pages that were crawled get
+# silently dropped before the model reads them.
+_SYNTHESIS_CHARS = _MAX_KB_PAGES * _PER_PAGE_CHARS + 1000
+# Hard ceiling on how many extra pages the top-up will try when the crawl comes back short.
+# Each attempt is a scrape round trip, and on a site whose sub-routes all 404 every one of
+# them fails, so this bounds the worst case rather than the useful case.
+_MAX_TOPUP_ATTEMPTS = 20
 _UA = "Mozilla/5.0 (compatible; RaftraBot/1.0)"
 
 # A page has to be worth embedding. Error bodies are the trap: a crawler that renders
@@ -80,12 +93,97 @@ def _is_useful_page(text: str) -> bool:
     return True
 
 
-def _extract_internal_links(html: str, base_url: str, limit: int) -> list:
-    """Same-domain content links found on the page — used for a shallow crawl."""
+# What a page's path suggests it is worth to a brand kit. The crawl budget is only a
+# handful of pages, and taking them in the order they appear in the markup spent it on
+# whatever the header happened to link first - usually login, cart and legal - while the
+# pages that actually describe the brand were never opened.
+_LINK_PRIORITY = (
+    (100, r"/(about|about-us|our-story|company|who-we-are|mission|why-us)"),
+    (90,  r"/(product|products|shop|store|collection|catalog|catalogue|menu)"),
+    (85,  r"/(service|services|solution|solutions|what-we-do|features|platform)"),
+    (75,  r"/(pricing|plans|packages)"),
+    (60,  r"/(faq|faqs|help|support|how-it-works)"),
+    (45,  r"/(contact|contact-us|locations)"),
+    (30,  r"/(blog|resources|case-stud|customers|testimonial|press)"),
+)
+# Pages that are almost always boilerplate: they describe the internet, not the brand.
+_LINK_PENALTY = r"/(privacy|terms|cookie|legal|refund|shipping|returns|disclaimer|sitemap|" \
+                r"login|signin|sign-in|signup|register|account|cart|checkout|wishlist|" \
+                r"careers|jobs|unsubscribe|admin)"
+
+
+def _score_link(url: str) -> int:
+    """Higher is more worth crawling. Shallow paths win ties - a section index usually says
+    more about the brand than one deep item inside it."""
+    import re, urllib.parse
+    path = (urllib.parse.urlparse(url).path or "/").lower()
+    score = 10
+    for weight, pattern in _LINK_PRIORITY:
+        if re.search(pattern, path):
+            score = weight
+            break
+    if re.search(_LINK_PENALTY, path):
+        score -= 80
+    score -= min(len([s for s in path.split("/") if s]), 6) * 2
+    return score
+
+
+def _looks_like_error_page(text: str) -> bool:
+    """A short body that is really a server error page rather than brand content.
+
+    A status code catches most of these, but some sites serve a 200 with a "page not
+    found" body. Only short bodies are judged, so a real page that happens to mention an
+    error is never discarded.
+    """
+    import re
+    stripped = " ".join((text or "").split())
+    if len(stripped) > 600:
+        return False
+    return bool(re.search(
+        r"\b(not found|404|page (you|does not|doesn.t)|no longer exists|"
+        r"internal server error|503 service|forbidden|access denied)\b",
+        stripped, re.I))
+
+
+def _links_from_markdown(text: str, base_url: str) -> list:
+    """Same-domain links written as [label](href) in already-harvested page content.
+
+    On a client-rendered site the served HTML is an empty shell, so parsing it for hrefs
+    finds nothing - but the rendered markdown the scraper returns carries every link the
+    page shows. Without this, an SPA could only ever contribute its landing page.
+    """
     import re, urllib.parse
     base_host = (urllib.parse.urlparse(base_url).netloc or "").lower().replace("www.", "")
     base_norm = base_url.rstrip("/")
     seen, out = set(), []
+    for m in re.finditer(r"\]\(\s*([^)\s]+)", text or ""):
+        absu = urllib.parse.urljoin(base_url, m.group(1).strip())
+        pu = urllib.parse.urlparse(absu)
+        if pu.scheme not in ("http", "https"):
+            continue
+        if (pu.netloc or "").lower().replace("www.", "") != base_host:
+            continue
+        clean = pu._replace(fragment="").geturl()
+        if clean.rstrip("/") == base_norm or clean in seen:
+            continue
+        if re.search(r"\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|css|js|mp4|woff2?)(\?|$)", clean, re.I):
+            continue
+        seen.add(clean)
+        out.append(clean)
+    out.sort(key=lambda u: -_score_link(u))
+    return out
+
+
+def _extract_internal_links(html: str, base_url: str, limit: int) -> list:
+    """Same-domain content links found on the page, best-first — used for a shallow crawl.
+
+    Candidates are collected from the whole document and then ranked, rather than returning
+    the first `limit` in DOM order.
+    """
+    import re, urllib.parse
+    base_host = (urllib.parse.urlparse(base_url).netloc or "").lower().replace("www.", "")
+    base_norm = base_url.rstrip("/")
+    seen, candidates = set(), []
     for m in re.finditer(r'href=["\']([^"\']+)["\']', html or "", re.I):
         href = m.group(1).strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
@@ -102,10 +200,11 @@ def _extract_internal_links(html: str, base_url: str, limit: int) -> list:
         if re.search(r"\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|css|js|mp4|woff2?)(\?|$)", clean, re.I):
             continue
         seen.add(clean)
-        out.append(clean)
-        if len(out) >= limit:
-            break
-    return out
+        candidates.append(clean)
+
+    # Stable sort on the negated score keeps document order as the tie-breaker.
+    candidates.sort(key=lambda u: -_score_link(u))
+    return candidates[:limit]
 
 
 async def _firecrawl_crawl(client, url: str, limit: int, key: str) -> list:
@@ -202,9 +301,19 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
                     json={"url": target, "formats": ["markdown"]},
                 )
                 if fr.status_code == 200:
-                    md = fr.json().get("data", {}).get("markdown", "")
-                    if md:
+                    data = fr.json().get("data", {}) or {}
+                    md = data.get("markdown", "")
+                    # fr.status_code is Firecrawl's own API status - it is 200 whenever the
+                    # scrape ran, including when the page it fetched was a 404. The page's
+                    # real status is in metadata, and without checking it the body of an
+                    # error page ("Not Found") was accepted as this brand's content, and
+                    # could even overwrite good text the direct fetch had already found.
+                    page_status = (data.get("metadata") or {}).get("statusCode")
+                    ok = page_status is None or 200 <= int(page_status) < 300
+                    if md and ok and not _looks_like_error_page(md):
                         text = md  # prefer clean markdown for the stored content
+                    elif not ok:
+                        print(f"Firecrawl: {target} returned HTTP {page_status}, ignoring.")
             except Exception as e:
                 print(f"Firecrawl scrape failed for {target}: {e}")
         return text, html
@@ -220,20 +329,48 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
                 if pages:
                     await manager.broadcast_agent_log("Brand Intelligence", f"Firecrawl returned {len(pages)} page(s).", "thinking")
 
-            # 2) Fallback (no key, or Firecrawl returned nothing): fetch the homepage HTML and
-            #    follow up to (MAX-1) same-domain links directly (no JS rendering).
-            if not pages:
-                await manager.broadcast_agent_log("Brand Intelligence", f"Scraping {url} directly...", "thinking")
+            # 2) Top up directly whenever the crawl came back short of the page budget.
+            #    This used to run only when Firecrawl returned NOTHING, so a crawl that
+            #    returned a single page - which is what happens on a client-routed SPA,
+            #    where Firecrawl's discovered routes 404 on the server - left four of five
+            #    slots unused and the brand kit was synthesised from the homepage alone,
+            #    ignoring every section the homepage links to.
+            if len(pages) < _MAX_KB_PAGES:
+                have = {(p.get("url") or "").rstrip("/") for p in pages}
+                await manager.broadcast_agent_log(
+                    "Brand Intelligence",
+                    f"Have {len(pages)} page(s); looking for more on {url}...", "thinking")
                 home_text, home_html = await _fetch_text(client, url, want_html=True)
-                if home_text:
+                if home_text and url.rstrip("/") not in have:
                     pages.append({"url": url, "content": home_text[:_PER_PAGE_CHARS]})
-                links = _extract_internal_links(home_html, url, _MAX_KB_PAGES - 1)
-                if links:
-                    await manager.broadcast_agent_log("Brand Intelligence", f"Crawling {len(links)} more page(s) on the site...", "thinking")
+                    have.add(url.rstrip("/"))
+
+                # Ask for extra candidates: some will 404 or be near-empty, and stopping at
+                # exactly the remaining slot count would leave the budget unfilled again.
+                # Candidates come from the served HTML AND from the rendered content already
+                # harvested, because on a client-routed site only the latter has any links.
+                remaining = _MAX_KB_PAGES - len(pages)
+                candidates = _extract_internal_links(home_html, url, remaining * 3)
+                for p in list(pages):
+                    for l in _links_from_markdown(p.get("content", ""), url):
+                        if l not in candidates:
+                            candidates.append(l)
+                candidates.sort(key=lambda u: -_score_link(u))
+                links = [l for l in candidates
+                         if l.rstrip("/") not in have][:min(remaining * 3, _MAX_TOPUP_ATTEMPTS)]
+                if links and remaining > 0:
+                    await manager.broadcast_agent_log(
+                        "Brand Intelligence", f"Trying {len(links)} more page(s) on the site...", "thinking")
                 for link in links:
+                    if len(pages) >= _MAX_KB_PAGES:
+                        break
                     page_text, _ = await _fetch_text(client, link)
-                    if page_text and len(page_text.split()) > 20:  # skip near-empty pages
+                    # Near-empty pages, and error pages that are wordy enough to clear the
+                    # word threshold, must not take one of the limited page slots.
+                    if (page_text and len(page_text.split()) > 20
+                            and not _looks_like_error_page(page_text)):
                         pages.append({"url": link, "content": page_text[:_PER_PAGE_CHARS]})
+                        have.add(link.rstrip("/"))
 
             # 3) Optional external search context (Tavily) as one extra entry.
             if tavily_key:
@@ -259,7 +396,14 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
     await manager.broadcast_agent_log("Brand Intelligence", f"Extracted {len(pages)} page(s) into the knowledge base.", "completed")
     state["scraped_pages"] = pages
     # Aggregate for the LLM synthesis step (it reads scraped_content).
-    state["scraped_content"] = "\n\n".join(f"[{p['url']}]\n{p['content']}" for p in pages)[:8000]
+    #
+    # The budget here was 8000 characters while the crawl above gathers up to
+    # _MAX_KB_PAGES * _PER_PAGE_CHARS (5 x 3000 = 15000) and extract_brand_kit already
+    # accepts 12000 - so roughly half of every crawl was thrown away before the model saw
+    # it, and the last pages fetched were never read at all. _SYNTHESIS_CHARS is sized to
+    # the crawl instead, which is still only a few thousand tokens for the flash model.
+    state["scraped_content"] = "\n\n".join(
+        f"[{p['url']}]\n{p['content']}" for p in pages)[:_SYNTHESIS_CHARS]
     return state
 
 # Font stacks every site declares, which say nothing about the brand.
@@ -820,12 +964,24 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
                 payload={"workspace_id": state["workspace_id"], "content": content_to_embed, "type": "onboarding_scrape"},
             )]
         qdrant_client.upsert(collection_name=COLLECTION_NAME, points=points)
+        state["kb_error"] = ""
     except Exception as e:
-        # Previously this only printed, so onboarding reported success while the
-        # knowledge base stayed empty - and every later generation had no context.
+        # Two failures to keep apart. Printing only (the original behaviour) reported
+        # success while the knowledge base stayed empty, so later generations had no
+        # context. Raising (which replaced it) marks the whole run FAILED - but by this
+        # point the brand kit has already been written to Postgres and is correct, so the
+        # user was told their sync failed while the guidelines, palette and logos on screen
+        # had in fact just been rebuilt, and nothing refreshed to show them.
+        #
+        # The run is therefore reported as complete-with-a-caveat: the kit is real, and the
+        # caveat says retrieval is degraded until the vector store is reachable.
         print(f"Qdrant persist error: {e}")
-        await manager.broadcast_agent_log("System", f"Brand onboarding failed: could not save knowledge base ({e})", "failed")
-        raise
+        state["kb_error"] = str(e)
+        await manager.broadcast_agent_log(
+            "System",
+            f"Brand profile saved, but the searchable knowledge base could not be updated ({e}).",
+            "failed")
+        return state
 
     await manager.broadcast_agent_log("System", "Brand Onboarding Complete. Profile Cached.", "completed")
     return state
@@ -866,7 +1022,13 @@ async def run_onboarding_pipeline(workspace_id: int, brand_url: str, brand_logo:
     record_agent_task(workspace_id, "ONBOARDING", "RUNNING", f"Analyzing {brand_url}")
     try:
         result = await onboarding_graph.ainvoke(initial_state)
-        record_agent_task(workspace_id, "ONBOARDING", "COMPLETED", "Brand profile & knowledge base built")
+        # The brand kit is the primary output and is already committed by this point.
+        # A vector-store failure degrades retrieval but does not undo it, so it is reported
+        # as a caveat on a completed run rather than as a failed one.
+        kb_error = (result or {}).get("kb_error") or ""
+        summary = ("Brand profile & knowledge base built" if not kb_error
+                   else f"Brand profile rebuilt. Search indexing unavailable: {kb_error[:70]}")
+        record_agent_task(workspace_id, "ONBOARDING", "COMPLETED", summary)
         return result
     except Exception as e:
         record_agent_task(workspace_id, "ONBOARDING", "FAILED", str(e)[:120])

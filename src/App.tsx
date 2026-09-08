@@ -89,7 +89,10 @@ function RequireNotOnboarded({ children }: { children: React.ReactElement }) {
     return () => { cancelled = true; };
   }, [navigate]);
 
-  return state === 'allow' ? children : null;
+  // Was `null` while the check ran. The state call is a round trip to a remote database and
+  // routinely takes seconds, so an already-onboarded user clicking through to /onboarding
+  // sat on a blank white screen until the redirect fired, which reads as the app hanging.
+  return state === 'allow' ? children : <RouteFallback />;
 }
 
 function RequireAuth({ children, role }: { children: React.ReactElement; role?: 'brand' | 'creator' }) {
@@ -103,7 +106,7 @@ function RequireAuth({ children, role }: { children: React.ReactElement; role?: 
       // than to a login screen they don't need.
       navigate(payload.role === 'creator' ? '/creator-dashboard' : '/dashboard', { replace: true });
     } else if (!payload) {
-      localStorage.removeItem('token');   // clears expired/corrupt values
+      localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');   // clears expired/corrupt values
       navigate('/login', { replace: true });
     }
   }, [ok]);
@@ -133,7 +136,7 @@ export default function App() {
       }
     } catch {
       // Malformed token - clear it rather than leaving the app in a half-authed state.
-      localStorage.removeItem('token');
+      localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');
     }
   }, []);
 
@@ -154,6 +157,41 @@ export default function App() {
     navigate('/dashboard');
   };
 
+  /* The homepage CTA sent everyone to /login, so a user who was already signed in but had
+     not finished setup had to log in again to reach the wizard. Signed-in users now go
+     straight where they belong; anonymous visitors still have to authenticate first,
+     because /onboarding is behind RequireAuth and creating a workspace needs an account. */
+  const handleStartFree = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) { navigate('/login'); return; }
+
+    const payload = readToken();
+    if (payload?.role === 'creator') { navigate('/creator-dashboard'); return; }
+
+    // Login and the wizard both record this, so the common case navigates immediately
+    // instead of blocking on a round trip to a remote database. Being wrong is cheap and
+    // self-correcting: RequireNotOnboarded bounces a stale "onboarded" back to the
+    // dashboard, and the dashboard's own gate handles the reverse.
+    let cached: string | null = null;
+    try { cached = localStorage.getItem('raftra_onboarded'); } catch { /* private mode */ }
+    if (cached === '1') { navigate('/dashboard'); return; }
+    if (cached === '0') { navigate('/onboarding'); return; }
+
+    try {
+      const r = await fetch('/api/workspaces/onboarding-state', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) { navigate('/login'); return; }
+      const st = await r.json();
+      try { localStorage.setItem('raftra_onboarded', st.is_onboarded ? '1' : '0'); } catch { /* ignore */ }
+      navigate(st.is_onboarded ? '/dashboard' : '/onboarding');
+    } catch {
+      // Server unreachable - the wizard is the safe landing: it is idempotent and will not
+      // create a second workspace for an account that already has one.
+      navigate('/onboarding');
+    }
+  };
+
   return (
     <>
       <Suspense fallback={null}>
@@ -163,7 +201,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={
             <LandingPage
-              onStartFree={() => navigate('/login')}
+              onStartFree={handleStartFree}
               onBookDemo={() => alert('Demo booked! Aura integration specialist will contact you.')}
             />
           } />
@@ -230,7 +268,7 @@ export default function App() {
           <Route path="/creator-dashboard/*" element={
             <RequireAuth role="creator">
               <CreatorPortal onLogout={() => {
-                localStorage.removeItem('token');
+                localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');
                 navigate('/');
               }} />
             </RequireAuth>

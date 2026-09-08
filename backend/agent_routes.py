@@ -49,7 +49,18 @@ class InfluencerTrigger(BaseModel):
     creator_name: str
 
 @router.post("/onboard")
-async def trigger_onboarding(request: OnboardTrigger):
+async def trigger_onboarding(request: OnboardTrigger,
+                             current_user: models.User = Depends(auth.get_current_user)):
+    """Scrape a brand URL and return what was extracted, without storing it.
+
+    Every other agent route required a user; this one did not, leaving an unauthenticated
+    endpoint that runs a full crawl plus LLM extraction against any URL a caller supplies.
+
+    Note it passes workspace_id=0 deliberately - there is no workspace to attach to yet, so
+    the pipeline's own persistence writes nothing useful. The onboarding wizard no longer
+    waits on this call; it finishes through /api/workspaces/{id}/complete-onboarding, which
+    queues the same pipeline against the real workspace.
+    """
     try:
         # Await the execution inline so we can return the exact scraped brand data to the frontend
         result = await run_onboarding_pipeline(workspace_id=0, brand_url=request.brand_url)

@@ -321,6 +321,28 @@ def run_schedule(workspace_id: int, schedule_id: int, background_tasks: Backgrou
     return {"status": "success", "message": f"{s.name} started. Its result appears here when it finishes."}
 
 
+@router.get("/schedules/runner-status")
+def runner_status():
+    """Whether due schedules actually get run, and by what.
+
+    The Marketing Calendar told users that unattended runs required SCHEDULER_TICK_SECRET
+    and an external cron. That has not been true since the in-process runner landed: it
+    ticks every 5 minutes and is on unless DISABLE_SCHEDULED_TASKS is set. A screen that
+    understates its own automation is how a user ends up hand-running a schedule forever,
+    so the state is reported rather than described in static copy that can drift again.
+    """
+    from core.scheduler import schedules_enabled, SCHEDULE_TICK_MINUTES
+    in_process = schedules_enabled()
+    return {
+        "enabled": in_process,
+        "mode": "in_process" if in_process else "external_only",
+        "interval_minutes": SCHEDULE_TICK_MINUTES if in_process else None,
+        # The cron endpoint stays available for deployments that run the API without the
+        # scheduler (multiple workers, or a serverless host).
+        "external_tick_available": bool(os.getenv("SCHEDULER_TICK_SECRET", "")),
+    }
+
+
 @router.post("/schedules/tick")
 def tick(background_tasks: BackgroundTasks,
          x_scheduler_secret: str = Header(default=""),
@@ -387,6 +409,8 @@ def retail_calendar(within_days: int = 180):
         "region": "IN",
         "upcoming": rc.upcoming(within_days=within_days),
         "covered_years": rc.COVERED_YEARS,
+        # So the gap is visible before the lunar dates run out, rather than after.
+        "coverage": rc.coverage_status(),
     }
 
 

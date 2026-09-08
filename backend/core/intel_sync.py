@@ -1,8 +1,8 @@
 """
 The two scheduled external syncs, and the single place that writes their results.
 
-    competitor ads   every 2 weeks   Meta Ad Library (or Apify) -> competitor_ads
-    market trends    every 4 weeks   Google Trends + YouTube    -> market_trend_reports
+    market trends    every 2 weeks   Google Trends + YouTube    -> market_trend_reports
+    competitor ads   every 4 weeks   Meta Ad Library (or Apify) -> competitor_ads
 
 Both follow the same rules, and they are the rules that make this trustworthy rather than
 decorative:
@@ -134,10 +134,42 @@ async def sync_competitor_ads(workspace_id: int, country: str = None,
                      db.query(models.CompetitorReport)
                        .filter(models.CompetitorReport.workspace_id == workspace_id).all()
                      if (r.competitor or "").strip()]
-        if not names:
+        bp = (db.query(models.BrandProfile)
+                .filter(models.BrandProfile.workspace_id == workspace_id).first())
+        guidelines = (bp.guidelines if bp else None) or {}
+        categories = [str(c) for c in (guidelines.get("categories") or []) if str(c).strip()]
+        brand_context = " ".join(str(guidelines.get(k) or "")
+                                 for k in ("overview", "competitive", "business_model"))[:1500]
+
+    discovered: List[str] = []
+    if not names:
+        # A workspace onboarded from nothing but its URL has no competitors saved, and this
+        # used to skip on that basis - so the report the product promises stayed
+        # permanently empty unless someone knew to type rival names in by hand. Derive a
+        # starting list from what onboarding already learned about the brand.
+        from core import competitors as competitor_research
+        discovered = await competitor_research.discover_competitors(
+            brand_name, categories, DEFAULT_COUNTRY, brand_context)
+        names = discovered
+
+    if not names:
+        with SessionLocal() as db:
             _record(db, workspace_id, "competitor_ads", "skipped",
-                    "No competitors saved for this workspace yet.", 0, started)
-            return {"status": "skipped", "reason": "no competitors configured", "ads": 0}
+                    "No competitors saved, and none could be identified from the brand profile.",
+                    0, started)
+        return {"status": "skipped", "reason": "no competitors configured", "ads": 0}
+
+    if discovered:
+        # Saved as ordinary rows so they appear in Market Intelligence and can be corrected
+        # or removed, rather than being an invisible list only this job knows about.
+        with SessionLocal() as db:
+            existing = {(r.competitor or "").lower() for r in
+                        db.query(models.CompetitorReport)
+                          .filter(models.CompetitorReport.workspace_id == workspace_id).all()}
+            for n in discovered:
+                if n.lower() not in existing:
+                    db.add(models.CompetitorReport(workspace_id=workspace_id, competitor=n))
+            db.commit()
 
     llm = GeminiProvider()
     fetched: dict = {}

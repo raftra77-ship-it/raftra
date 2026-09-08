@@ -171,6 +171,95 @@ Rules:
 """
 
 
+_DISCOVERY_PROMPT = """Name the companies that compete with the brand described below.
+
+Return a single JSON object, no prose and no code fences:
+{"competitors": ["Brand A", "Brand B"]}
+
+Rules:
+- Real companies only, named as a customer would know them. No descriptions, no URLs.
+- They must sell to the same buyers in the same market as the brand described.
+- At most 6. Fewer is better than padding the list.
+- If the description is too thin to name anyone with confidence, return {"competitors": []}.
+  An empty list is a correct answer; a plausible-sounding guess is not.
+"""
+
+
+async def discover_competitors(brand_name: str, categories: Optional[list] = None,
+                               region: str = "", context: str = "",
+                               limit: int = 5) -> list:
+    """Candidate rival names for a brand that has not named any itself.
+
+    The competitor ad sync could only run for a workspace where someone had already typed
+    competitor names, so a brand that had onboarded from its URL and nothing else got a
+    permanently skipped report. This produces the starting list.
+
+    Search-grounded when TAVILY_API_KEY is set. Without it, the model is asked from the
+    brand's own profile text, which is weaker - so the caller is told which happened and the
+    names are stored as ordinary rows the user can correct or delete.
+
+    Returns [] rather than raising: no competitors is a reportable outcome, not an error.
+    """
+    from core.providers.llm_providers import GeminiProvider
+
+    brand_name = (brand_name or "").strip()
+    if not brand_name:
+        return []
+
+    cats = ", ".join(str(c) for c in (categories or [])[:8])
+    grounding = ""
+    key = os.getenv("TAVILY_API_KEY")
+    if key:
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT, headers={"User-Agent": _UA}) as client:
+                r = await client.post("https://api.tavily.com/search",
+                                      json={"api_key": key,
+                                            "query": "%s competitors alternatives %s %s"
+                                                     % (brand_name, cats, region),
+                                            "max_results": 6})
+                if r.status_code == 200:
+                    grounding = "\n".join(
+                        "%s - %s" % (x.get("title", ""), (x.get("content") or "")[:300])
+                        for x in (r.json().get("results") or []))
+        except Exception as e:
+            print("[competitors] discovery search failed for %s: %s" % (brand_name, e))
+
+    described = "Brand: %s\nCategories: %s\nMarket: %s\n%s" % (
+        brand_name, cats or "unknown", region or "unknown", (context or "")[:1500])
+    if grounding:
+        described += "\n\nSearch results about this brand's market:\n" + grounding[:4000]
+
+    try:
+        raw = await GeminiProvider().generate_text(
+            _DISCOVERY_PROMPT + described,
+            system_prompt="You are a market analyst. You output JSON only.",
+            # Generous for a list of six names because the 2.5 models' thinking tokens are
+            # drawn from this same budget: at 400 the answer came back truncated
+            # mid-array ('{"competitors": ["GeeksforGeeks", "LeetCode",'), which fails to
+            # parse and is indistinguishable from the model declining to name anyone.
+            max_output_tokens=1500)
+    except Exception as e:
+        print("[competitors] discovery failed for %s: %s" % (brand_name, e))
+        return []
+
+    try:
+        data = json.loads(re.sub(r"^```(?:json)?|```$", "", (raw or "").strip(), flags=re.M))
+    except Exception:
+        return []
+
+    out, seen = [], {brand_name.lower()}
+    for name in (data.get("competitors") or []):
+        n = str(name).strip()
+        # Guard against the model returning the brand itself, blanks or a sentence.
+        if not n or len(n) > 60 or n.lower() in seen:
+            continue
+        seen.add(n.lower())
+        out.append(n)
+        if len(out) >= limit:
+            break
+    return out
+
+
 async def analyze_competitor(competitor: str) -> dict:
     """Research one competitor. Raises ValueError when nothing readable could be found, so
     the caller can report that plainly instead of returning an empty shell."""

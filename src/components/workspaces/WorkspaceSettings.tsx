@@ -356,7 +356,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.detail || 'Could not delete the account.');
-      localStorage.removeItem('token');
+      localStorage.removeItem('token'); localStorage.removeItem('raftra_onboarded');
       window.location.href = '/';
     } catch (e: any) {
       setNotice({ ok: false, text: e.message || 'Could not reach the server.' });
