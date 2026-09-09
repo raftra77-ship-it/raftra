@@ -13,7 +13,7 @@ import os
 import datetime
 import jwt
 import httpx
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from fastapi.concurrency import run_in_threadpool
@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 import database, auth, models
 from core import search_console as gsc
+from core import google_drive as gdrive
 from core import github_connect as gh
 from core import meta_ads as meta
 from core import google_ads as gads
@@ -1423,6 +1424,257 @@ async def gads_disconnect(workspace_id: int, db: Session = Depends(database.get_
                     await client.post("https://oauth2.googleapis.com/revoke", data={"token": token})
             except Exception as e:
                 print(f"Google Ads token revoke failed (clearing locally anyway): {e}")
+        db.delete(conn)
+        db.commit()
+    return {"status": "success"}
+
+
+# ---------------------------------------------------------------- Google Drive
+#
+# Importing brand assets from Drive. This replaces a browser-side token flow whose grant
+# died with the tab and, worse, saved Google's `webViewLink` as the asset URL - an HTML
+# viewer page behind a login, so every imported asset was a broken image in the vault.
+# Here the server holds the grant and the import copies the bytes into our own storage.
+
+
+def _get_drive(workspace_id: int, db: Session):
+    return db.query(models.GoogleDriveConnection).filter(
+        models.GoogleDriveConnection.workspace_id == workspace_id).first()
+
+
+class DriveFolderSelect(BaseModel):
+    folder_id: Optional[str] = None
+    folder_name: Optional[str] = None
+
+
+class DriveImportBody(BaseModel):
+    file_ids: List[str]
+    category: Optional[str] = "lifestyle"
+
+
+@router.get("/gdrive/{workspace_id}/status")
+def drive_status(workspace_id: int, db: Session = Depends(database.get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_drive(workspace_id, db)
+    return {
+        "configured": gdrive.is_configured(),
+        "connected": bool(conn and conn.refresh_token),
+        "email": conn.connected_email if conn else None,
+        "folder_id": conn.default_folder_id if conn else None,
+        "folder_name": conn.default_folder_name if conn else None,
+        "last_import_at": conn.last_import_at.isoformat() if conn and conn.last_import_at else None,
+    }
+
+
+@router.get("/gdrive/{workspace_id}/authorize")
+def drive_authorize(workspace_id: int, db: Session = Depends(database.get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    if not gdrive.is_configured():
+        raise HTTPException(status_code=503, detail=(
+            "Google Drive is not configured on the server (GOOGLE_CLIENT_ID / "
+            "GOOGLE_CLIENT_SECRET missing)."))
+    state = jwt.encode({
+        "purpose": "gdrive_oauth",
+        "workspace_id": workspace_id,
+        "user_id": current_user.id,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=_STATE_TTL_MIN),
+    }, auth.SECRET_KEY, algorithm=auth.ALGORITHM)
+    return {"url": gdrive.build_authorize_url(state)}
+
+
+@router.get("/gdrive/callback")
+async def drive_callback(state: str, code: str = None, error: str = None,
+                         db: Session = Depends(database.get_db)):
+    """Public: Google redirects the browser here, so the workspace rides in the signed state."""
+    frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    if error or not code:
+        return RedirectResponse(f"{frontend}/dashboard?gdrive=error")
+    try:
+        payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        if payload.get("purpose") != "gdrive_oauth":
+            raise ValueError("bad purpose")
+        workspace_id = int(payload["workspace_id"])
+    except Exception:
+        return RedirectResponse(f"{frontend}/dashboard?gdrive=error")
+
+    try:
+        tokens = await gdrive.exchange_code(code)
+    except Exception as e:
+        print(f"Drive token exchange failed: {e}")
+        return RedirectResponse(f"{frontend}/dashboard?gdrive=error")
+
+    access_token = tokens.get("access_token")
+    email = (await gdrive.fetch_userinfo(access_token)).get("email") if access_token else None
+
+    conn = _get_drive(workspace_id, db)
+    if not conn:
+        conn = models.GoogleDriveConnection(workspace_id=workspace_id)
+        db.add(conn)
+    # Google returns a refresh_token only on first consent; keep the existing one otherwise.
+    if tokens.get("refresh_token"):
+        conn.refresh_token = tokens["refresh_token"]
+    conn.access_token = access_token
+    conn.token_expiry = datetime.datetime.utcnow() + datetime.timedelta(
+        seconds=int(tokens.get("expires_in", 3600)))
+    conn.connected_email = email
+    conn.scopes = " ".join(gdrive.SCOPES)
+    db.commit()
+    return RedirectResponse(f"{frontend}/dashboard?gdrive=connected&tab=assets")
+
+
+@router.get("/gdrive/{workspace_id}/folders")
+async def drive_folders(workspace_id: int, db: Session = Depends(database.get_db),
+                        current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_drive(workspace_id, db)
+    if not conn or not conn.refresh_token:
+        raise HTTPException(status_code=400, detail="Google Drive is not connected.")
+    try:
+        return {"folders": await gdrive.list_folders(conn, db)}
+    except gdrive.DriveError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get("/gdrive/{workspace_id}/files")
+async def drive_files(workspace_id: int, folder_id: Optional[str] = None,
+                      db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_drive(workspace_id, db)
+    if not conn or not conn.refresh_token:
+        raise HTTPException(status_code=400, detail="Google Drive is not connected.")
+    try:
+        return {"files": await gdrive.list_images(conn, db, folder_id=folder_id)}
+    except gdrive.DriveError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/gdrive/{workspace_id}/folder")
+def drive_set_folder(workspace_id: int, body: DriveFolderSelect,
+                     db: Session = Depends(database.get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    """Remember the folder being browsed, so the picker reopens where it was left."""
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_drive(workspace_id, db)
+    if not conn:
+        raise HTTPException(status_code=400, detail="Google Drive is not connected.")
+    conn.default_folder_id = body.folder_id
+    conn.default_folder_name = body.folder_name
+    db.commit()
+    return {"status": "success", "folder_id": conn.default_folder_id}
+
+
+@router.post("/gdrive/{workspace_id}/import")
+async def drive_import(workspace_id: int, body: DriveImportBody,
+                       db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Copy the chosen Drive images into this workspace's Asset Vault.
+
+    The bytes are downloaded and re-stored under our own storage prefix, and that URL is
+    what the MediaAsset row carries. Storing Drive's link instead - which is what happened
+    before - produced vault rows that rendered as broken images for everyone, including the
+    person who imported them, because the link needs a Google session to resolve.
+
+    Partial success is reported rather than swallowed: one unreadable file should not lose
+    the other nine, and the caller is told which ones did not come through.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_drive(workspace_id, db)
+    if not conn or not conn.refresh_token:
+        raise HTTPException(status_code=400, detail="Google Drive is not connected.")
+    if not body.file_ids:
+        return {"status": "success", "imported": 0, "skipped": 0, "failed": []}
+
+    from intelligence_routes import ASSET_CATEGORIES
+    import storage
+
+    category = body.category if body.category in ASSET_CATEGORIES else "lifestyle"
+
+    # Listed once so a chosen id can be matched to its real name, type and dimensions
+    # without a per-file metadata round trip.
+    try:
+        available = {f["id"]: f for f in await gdrive.list_images(conn, db, limit=200)}
+        if conn.default_folder_id:
+            available.update({f["id"]: f for f in await gdrive.list_images(
+                conn, db, folder_id=conn.default_folder_id, limit=200)})
+    except gdrive.DriveError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    existing = {a.source_url for a in
+                db.query(models.MediaAsset.source_url)
+                  .filter(models.MediaAsset.workspace_id == workspace_id,
+                          models.MediaAsset.source == "gdrive").all()}
+
+    imported = skipped = 0
+    failed = []
+    for fid in body.file_ids[:50]:
+        meta = available.get(fid)
+        if not meta or not meta.get("importable"):
+            failed.append({"id": fid, "reason": "Not an importable image."})
+            continue
+        # Drive's own file id is the identity, so re-importing a folder does not duplicate.
+        drive_ref = meta.get("web_view_link") or f"https://drive.google.com/file/d/{fid}/view"
+        if drive_ref in existing:
+            skipped += 1
+            continue
+        try:
+            content = await gdrive.download(conn, fid, db)
+            url = await run_in_threadpool(
+                storage.store_bytes, content, meta["name"], meta["mime_type"],
+                workspace_id, None, "assets")
+        except gdrive.DriveError as e:
+            failed.append({"id": fid, "name": meta.get("name"), "reason": str(e)})
+            continue
+        except HTTPException as e:
+            failed.append({"id": fid, "name": meta.get("name"), "reason": e.detail})
+            continue
+        except Exception as e:
+            failed.append({"id": fid, "name": meta.get("name"), "reason": str(e)})
+            continue
+
+        db.add(models.MediaAsset(
+            workspace_id=workspace_id,
+            category=category,
+            source="gdrive",
+            filename=meta["name"],
+            storage_url=url,
+            source_url=drive_ref,
+            alt_text=meta["name"].rsplit(".", 1)[0],
+            mime_type=meta["mime_type"],
+            file_format=meta.get("format"),
+            width=meta.get("width"),
+            height=meta.get("height"),
+            file_size_kb=round(meta["size_bytes"] / 1024) if meta.get("size_bytes") else None,
+            tags=[category, "google-drive"],
+        ))
+        existing.add(drive_ref)
+        imported += 1
+
+    conn.last_import_at = datetime.datetime.utcnow()
+    db.commit()
+    return {"status": "success", "imported": imported, "skipped": skipped, "failed": failed}
+
+
+@router.post("/gdrive/{workspace_id}/disconnect")
+async def drive_disconnect(workspace_id: int, db: Session = Depends(database.get_db),
+                           current_user: models.User = Depends(auth.get_current_user)):
+    """Revoke the grant with Google and drop the stored tokens.
+
+    Assets already imported stay: they are copies in our own storage, not links into Drive,
+    so disconnecting does not empty the vault.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    conn = _get_drive(workspace_id, db)
+    if conn:
+        token = conn.refresh_token or conn.access_token
+        if token:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post("https://oauth2.googleapis.com/revoke", data={"token": token})
+            except Exception as e:
+                print(f"Drive token revoke failed (clearing locally anyway): {e}")
         db.delete(conn)
         db.commit()
     return {"status": "success"}

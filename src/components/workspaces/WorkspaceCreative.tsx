@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Sparkles, Video, 
   ShieldCheck, CheckCircle2, TrendingUp, Zap, 
@@ -26,11 +26,10 @@ export type ProjectCard = {
   real?: boolean;
 };
 
-// Every product placeholder here used to point at Unsplash photo-1609592424074, which now
-// 404s — that one dead URL was the default for the Image ad, the Carousel, both Save
-// actions and the studio background, so the generated ad rendered as a broken image.
-const PRODUCT_IMG = 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80';
-const productImg = (w: number) => PRODUCT_IMG.replace('w=800', `w=${w}`);
+// The shared stock product photo that stood in for every missing image - the studio
+// background, the carousel cards, the AI "render" preview and the failed-ad fallback - is
+// gone. A picture of somebody else's product is not a neutral placeholder in an ad tool:
+// each of those slots now shows what is actually missing, or the workspace's own assets.
 
 export interface CreativeAsset {
   id: string;
@@ -50,6 +49,7 @@ interface WorkspaceCreativeProps {
   onOpenReview?: (assetId: string) => void;
   onGenerate?: (prompt: string, referenceAd?: any, config?: any) => void | Promise<any>;
   onAssetSaved?: (asset: CreativeAsset) => void;
+  onAssetRemoved?: (assetId: string) => void;
   workspaceId?: number;
   onNavigateTab?: (tab: string) => void;
   /** An asset handed over from the Media vault, used as the reference image. */
@@ -103,6 +103,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onGenerate,
   onAssetSaved,
   workspaceId,
+  onAssetRemoved,
   onNavigateTab,
   incomingReferenceImage = null,
   brands = [],
@@ -173,10 +174,17 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     visible?: boolean;
     locked?: boolean;
   }>>([
+    /* The blank document every workspace's editor opens on.
+       It used to open on a finished powerbank ad - a stock product photo behind "FLAT 30%
+       OFF • SPECIAL OFFER", "Unstoppable Power in Your Pocket ⚡" and "22.5W Power
+       Delivery" - so every brand's first canvas was someone else's advert, complete with a
+       discount they had not offered. The layers are the same; the content is now clearly
+       placeholder until real copy is loaded into it (opening any generated ad in the studio
+       replaces all of this). */
     {
       id: 'el_bg',
       type: 'image',
-      content: PRODUCT_IMG,
+      content: '',
       x: 0,
       y: 0,
       width: 100,
@@ -187,7 +195,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     {
       id: 'el_badge',
       type: 'badge',
-      content: '⚡ FLAT 30% OFF • SPECIAL OFFER',
+      content: 'YOUR OFFER HERE',
       x: 8,
       y: 8,
       width: 48,
@@ -206,7 +214,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     {
       id: 'el_headline',
       type: 'text',
-      content: 'Unstoppable Power in Your Pocket ⚡',
+      content: 'Your headline goes here',
       x: 8,
       y: 60,
       width: 84,
@@ -221,7 +229,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     {
       id: 'el_body',
       type: 'text',
-      content: 'Engineered with smart AI heat control and 22.5W Power Delivery.',
+      content: 'Your supporting line goes here.',
       x: 8,
       y: 75,
       width: 84,
@@ -236,7 +244,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     {
       id: 'el_button',
       type: 'button',
-      content: 'Claim 30% Off Now →',
+      content: 'Your CTA →',
       x: 8,
       y: 86,
       width: 45,
@@ -280,7 +288,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   const [aiPromptInstruction, setAiPromptInstruction] = useState<string>('');
   const [isProcessingStudioAi, setIsProcessingStudioAi] = useState<boolean>(false);
-  const [editorDocumentTitle, setEditorDocumentTitle] = useState<string>('Ambrane Powerbank — 1:1 Festive Campaign');
+  // Named for this workspace once its brand profile loads, rather than opening every
+  // brand's editor on "Ambrane Powerbank — 1:1 Festive Campaign".
+  const [editorDocumentTitle, setEditorDocumentTitle] = useState<string>('Untitled design');
+
+  useEffect(() => {
+    // Only while it is still the untouched default, so a title the user typed is never
+    // overwritten when the brand profile arrives a moment later.
+    if (brandName) setEditorDocumentTitle(t => (t === 'Untitled design' ? `${brandName} — Untitled design` : t));
+  }, [brandName]);
 
   // Canvas Interactive Mouse Drag State & Handlers
   const [isDraggingCanvasEl, setIsDraggingCanvasEl] = useState<boolean>(false);
@@ -472,12 +488,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [inputOption, setInputOption] = useState<'brand_kb' | 'upload_image' | 'ai_generate_image'>('brand_kb');
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [productPrompt, setProductPrompt] = useState('');
-  const [aiProductVisualRender, setAiProductVisualRender] = useState<string | null>(null);
+  /* The reference image the backend is actually given. It has to be a URL the server can
+     fetch: `uploadedImage` above is a `blob:` handle that only resolves inside this browser
+     tab, so an uploaded product photo used to be shown as "uploaded" and then dropped. */
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
+  const [uploadingReference, setUploadingReference] = useState(false);
 
   // "Use in Creative Studio" in the Media vault lands here: the asset becomes the reference
   // image the generator is given, which is what that button always claimed to do.
   useEffect(() => {
-    if (incomingReferenceImage) setAiProductVisualRender(incomingReferenceImage);
+    if (incomingReferenceImage) {
+      setReferenceImageUrl(incomingReferenceImage);
+      setUploadedImage(incomingReferenceImage);
+    }
   }, [incomingReferenceImage]);
 
   // Step 3 Ad Type & Settings
@@ -503,6 +526,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // Backend id of the ad currently on screen. Variations are asked for by creative id, so
   // only an ad that came from a real run can be varied.
   const [generatedCreativeId, setGeneratedCreativeId] = useState<number | null>(null);
+  const [generatedAdImageFailed, setGeneratedAdImageFailed] = useState(false);
   const [generatedAd, setGeneratedAd] = useState<{
     id: string;
     headline: string;
@@ -517,8 +541,174 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     cards?: { title: string; desc: string; img: string }[];
   } | null>(null);
 
-  // Competitor Intelligence State
-  const [selectedCompetitor, setSelectedCompetitor] = useState<'Boat' | 'Noise' | 'Realme'>('Boat');
+  /* Competitor Intelligence.
+     The tab was pinned to three hardcoded rivals (Boat / Noise / Realme) and showed three
+     invented ads per rival carrying "4.8x ROAS", "₹14.2L Spend" and "5.2% CTR" - none of
+     which is public for anyone else's ads, and none of which this schema stores. It read
+     as measured competitive intelligence and was fabricated.
+
+     The real vault is /competitor-ads: ads the Meta Ad Library actually returns, ordered
+     by days_active, which is the genuine signal - the longest-running ad is the one a
+     rival keeps paying for. */
+  interface CompetitorAd {
+    id: number;
+    title: string;
+    copy: string;
+    snapshot_url: string;
+    platforms: string[];
+    offers: Record<string, unknown>;
+    days_active: number | null;
+    country: string | null;
+    source: string | null;
+  }
+  interface CompetitorGroup {
+    competitor: string;
+    ads: CompetitorAd[];
+    strategy?: { summary?: string; hooks?: string[]; ctas?: string[] } | null;
+  }
+
+  /* The creator shortlist under "Hire Human Creator".
+     It was three invented people (Priya Sharma / Aarav Mehta / Neha Kapoor) with invented
+     rates, follower counts, ratings and stock headshots, sitting under a "500+ verified
+     creators" line and a Hire button. The marketplace those cards claimed to preview is the
+     Influencer tab, which reads /influencers - so this reads the same roster. */
+  interface MarketplaceCreator {
+    id: number;
+    name: string;
+    handle?: string | null;
+    platform?: string | null;
+    niche?: string | null;
+    base_rate?: number | null;
+    fit_score?: number | null;
+    status?: string | null;
+  }
+  const [marketCreators, setMarketCreators] = useState<MarketplaceCreator[]>([]);
+  const [marketCreatorsLoading, setMarketCreatorsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setMarketCreatorsLoading(false); return; }
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/influencers`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => { if (!cancelled) setMarketCreators(Array.isArray(d) ? d : []); })
+      .catch(() => { /* the shortlist shows its empty state */ })
+      .finally(() => { if (!cancelled) setMarketCreatorsLoading(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  /* The editor's media panel reads this workspace's own Asset Vault - the images onboarding
+     harvested from the brand's website plus anything imported - instead of the four stock
+     photos ("Neon Cyberpunk", "Minimal Marble") it used to offer as backdrops. This is the
+     "editor should sync with the rest of the platform" part: the same rows the Assets tab
+     shows, applied straight onto the canvas. */
+  const [vaultImages, setVaultImages] = useState<{ url: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/assets`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled) return;
+        const rows = Array.isArray(d?.assets) ? d.assets : [];
+        setVaultImages(rows
+          .filter((a: any) => a?.url && !String(a.format || '').match(/mp4|webm|mov/i))
+          .map((a: any) => ({ url: a.url, name: a.alt_text || a.filename || 'Asset' })));
+      })
+      .catch(() => { /* the panel shows its empty state */ });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const [adVault, setAdVault] = useState<CompetitorGroup[]>([]);
+  const [adVaultLoading, setAdVaultLoading] = useState(true);
+  const [selectedCompetitor, setSelectedCompetitor] = useState<string>('');
+
+  useEffect(() => {
+    if (!workspaceId) { setAdVaultLoading(false); return; }
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/competitor-ads`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled) return;
+        const groups: CompetitorGroup[] = Array.isArray(d?.competitors) ? d.competitors
+          : Array.isArray(d) ? d : [];
+        setAdVault(groups);
+        setSelectedCompetitor(prev => prev || groups[0]?.competitor || '');
+      })
+      .catch(() => { /* the tab shows its empty state */ })
+      .finally(() => { if (!cancelled) setAdVaultLoading(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const activeCompetitorAds =
+    adVault.find(g => g.competitor === selectedCompetitor)?.ads ?? [];
+
+  /* The hooks / headlines / offers vault, derived from those same synced ads.
+
+     Every row here used to be invented copy about a powerbank carrying an invented return
+     ("4.6x ROAS", "5.2x ROAS"). Nobody publishes a rival's return on ad spend and this
+     schema has no column for it, so those numbers could only ever have been made up. What
+     the Ad Library does give is the ad's own words and how long the rival has kept paying
+     to run them - which is the signal a strategist actually reads. */
+  const vaultRows = useMemo(() => {
+    const all = adVault.flatMap(g => g.ads.map(a => ({ ...a, competitor: g.competitor })));
+    const byRun = [...all].sort((a, b) => (b.days_active ?? 0) - (a.days_active ?? 0));
+
+    const runLabel = (d: number | null | undefined) =>
+      d === null || d === undefined ? 'run time not reported'
+        : d >= 45 ? `${d} days live · evergreen`
+        : `${d} days live`;
+
+    // The same ad runs across placements and rivals re-upload near-identical copy; showing
+    // it four times would pad the vault without adding an angle.
+    const dedupe = (rows: { text: string; tag: string; meta: string }[]) => {
+      const seen = new Set<string>();
+      return rows.filter(r => {
+        const k = r.text.trim().toLowerCase();
+        if (!k || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      }).slice(0, 8);
+    };
+
+    // A hook is the ad's opening line — the part that has to survive the scroll.
+    const hooks = dedupe(byRun.map(a => ({
+      text: ((a.copy || '').split(/\n|(?<=[.!?])\s/)[0] || '').trim(),
+      tag: a.competitor,
+      meta: runLabel(a.days_active),
+    })).filter(r => r.text.length > 15));
+
+    const headlines = dedupe(byRun.map(a => ({
+      text: (a.title || '').trim(),
+      tag: a.competitor,
+      meta: runLabel(a.days_active),
+    })).filter(r => r.text.length > 3));
+
+    /* Offers rather than CTAs. The Ad Library returns an ad's creative, not the CTA button
+       it renders, so a list of rivals' CTAs could only be fabricated. The offer terms are
+       parsed out of the copy itself and are the thing a brand has to answer in market. */
+    const offers = dedupe(byRun.flatMap(a => {
+      const o = (a.offers || {}) as {
+        code?: string; percent_off?: number | null; flat_off?: number | null; perks?: string[];
+      };
+      const bits: string[] = [];
+      if (o.percent_off) bits.push(`${o.percent_off}% off`);
+      if (o.flat_off) bits.push(`₹${o.flat_off} off`);
+      if (o.code) bits.push(`code ${o.code}`);
+      (o.perks || []).forEach(perk => bits.push(`free ${perk}`));
+      return bits.length
+        ? [{ text: bits.join('  +  '), tag: a.competitor, meta: runLabel(a.days_active) }]
+        : [];
+    }));
+
+    return { hooks, headlines, offers };
+  }, [adVault]);
 
   // Live competitor research. There is no lawful feed of a rival's commercial ads - Meta's Ad
   // Library API only returns political and social-issue ads outside the EU, and Google's
@@ -588,96 +778,68 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   // UGC State & Realistic Generation Flow
   const [ugcSubTab, setUgcSubTab] = useState<'ai_ugc' | 'hire_human'>('ai_ugc');
-  const [selectedAvatar, setSelectedAvatar] = useState('Aarav - Tech Reviewer');
+  /* The reel generator.
+
+     It used to offer three named AI presenters ("Aarav, Tech Reviewer, Male 24") and three
+     synthesised voices, run a 2.6-second scripted progress bar through "Rendering 9:16
+     Lipsync & Face Expression Animation", and then display an unrelated video already in
+     the workspace as the result. There is no avatar or text-to-speech provider anywhere in
+     the backend, so none of that could happen - but there IS a real video pipeline
+     (/api/creative/generate with type=video), and that is what this now runs. A presenter on
+     camera is what the Hire Creator tab beside it is for. */
   const [ugcScript, setUgcScript] = useState('');
   const [isGeneratingUgc, setIsGeneratingUgc] = useState(false);
   const [ugcStepText, setUgcStepText] = useState('');
   const [ugcProgress, setUgcProgress] = useState(0);
-  const [ugcVoice, setUgcVoice] = useState('Hinglish Energetic Natural Voice');
-  // One poster per avatar. The preview used to show the same stock photo for everyone,
-  // so picking "Aarav (Male 24)" rendered a woman.
-  const AI_AVATARS: Record<string, { poster: string; label: string }> = {
-    'Aarav - Tech Reviewer': { poster: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80', label: 'Aarav — Tech Reviewer' },
-    'Ananya - Lifestyle Creator': { poster: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80', label: 'Ananya — Lifestyle Creator' },
-    'Rohan - Fitness Enthusiast': { poster: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80', label: 'Rohan — Fitness Expert' },
-  };
+  const [ugcError, setUgcError] = useState<string | null>(null);
+  const [ugcLength, setUgcLength] = useState('15s');
+  const [ugcPlatform, setUgcPlatform] = useState<'Instagram' | 'Facebook' | 'Google'>('Instagram');
   const ugcVideoRef = useRef<HTMLVideoElement>(null);
   const [isUgcPlaying, setIsUgcPlaying] = useState(false);
   const [ugcVideoFailed, setUgcVideoFailed] = useState(false);
   const [generatedUgcReel, setGeneratedUgcReel] = useState<{
     id: string;
-    avatar: string;
-    // Empty when this workspace has no rendered video yet — the preview then falls back
-    // to the avatar poster instead of a dead player.
+    // What the pipeline actually returned for this run. `posterUrl` is the provider's own
+    // still for the render, not a stock portrait of an invented presenter.
     videoUrl: string;
     posterUrl: string;
     script: string;
-    voice: string;
+    platform: string;
+    length: string;
     status: string;
   } | null>(null);
 
-  // Multi-Card Carousel Ad Builder State
+  /* Multi-Card Carousel Ad Builder.
+     The three cards were seeded with another company's product claims ("20000mAh Powerbank
+     @ ₹1,499", "4.9/5 Rating by 45,000+ Buyers") and, worse, with live
+     https://ambrane.com/... destination URLs - so a carousel built here and published sent
+     the brand's own ad spend to a third party's website. The cards now open as empty
+     scaffolds, and their destination defaults to this workspace's own site. */
   const [carouselCards, setCarouselCards] = useState([
-    {
-      id: 'c1',
-      title: 'Card 1: High Hook Cover',
-      headline: '⚡ 20000mAh Powerbank @ ₹1,499',
-      description: '22.5W Fast Charging, Dual USB & Type-C Output.',
-      destinationUrl: 'https://ambrane.com/powerbank-festive-deal',
-      ctaAction: 'SHOP_NOW',
-      imageUrl: PRODUCT_IMG
-    },
-    {
-      id: 'c2',
-      title: 'Card 2: Feature Showcase',
-      headline: '🔋 Charges iPhone 15 Up To 4 Times',
-      description: 'Compact pocket design with BIS safety protection.',
-      destinationUrl: 'https://ambrane.com/powerbank-features',
-      ctaAction: 'SHOP_NOW',
-      imageUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80'
-    },
-    {
-      id: 'c3',
-      title: 'Card 3: Customer Proof',
-      headline: '⭐️ 4.9/5 Rating by 45,000+ Buyers',
-      description: 'Made in India with 180 Days doorstep warranty.',
-      destinationUrl: 'https://ambrane.com/reviews',
-      ctaAction: 'GET_OFFER',
-      imageUrl: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80'
-    }
+    { id: 'c1', title: 'Card 1: Hook Cover', headline: '', description: '', destinationUrl: '', ctaAction: 'SHOP_NOW', imageUrl: '' },
+    { id: 'c2', title: 'Card 2: Feature Showcase', headline: '', description: '', destinationUrl: '', ctaAction: 'SHOP_NOW', imageUrl: '' },
+    { id: 'c3', title: 'Card 3: Proof & Offer', headline: '', description: '', destinationUrl: '', ctaAction: 'GET_OFFER', imageUrl: '' }
   ]);
+
+  useEffect(() => {
+    const site = brandProfile?.url || brandUrl;
+    if (!site) return;
+    const withProtocol = /^https?:\/\//.test(site) ? site : `https://${site}`;
+    // Only fills a card whose destination is still blank; anything typed is left alone.
+    setCarouselCards(prev => prev.map(c => (c.destinationUrl ? c : { ...c, destinationUrl: withProtocol })));
+  }, [brandProfile?.url, brandUrl]);
   const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
 
-  // Video Storyboard & Timeline Editor State
+  /* Video Storyboard & Timeline Editor.
+     The four scenes carried finished copy for a powerbank ad ("Switch to Ambrane 22.5W
+     Ultra-Fast Powerbank!", "Claim 30% Diwali Discount Today") over stock clips of a phone,
+     so every brand's storyboard opened as somebody else's ad. What is genuinely reusable is
+     the four-beat structure, so that is all that is seeded; the copy is the user's. */
   const [videoScenes, setVideoScenes] = useState([
-    {
-      id: 'scene_1',
-      name: 'Scene 1: Visual Hook (0-3s)',
-      overlayText: 'Tired of phone dying mid-travel? 😱',
-      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-holding-a-smartphone-with-a-green-screen-41544-large.mp4',
-      duration: '3s'
-    },
-    {
-      id: 'scene_2',
-      name: 'Scene 2: Problem Painpoint (3-7s)',
-      overlayText: 'Slow chargers take 3 hours just for 50% battery!',
-      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-man-holding-a-smartphone-in-his-hands-41545-large.mp4',
-      duration: '4s'
-    },
-    {
-      id: 'scene_3',
-      name: 'Scene 3: Solution Showcase (7-12s)',
-      overlayText: 'Switch to Ambrane 22.5W Ultra-Fast Powerbank! ⚡',
-      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-holding-a-smartphone-with-green-screen-41546-large.mp4',
-      duration: '5s'
-    },
-    {
-      id: 'scene_4',
-      name: 'Scene 4: Call To Action (12-15s)',
-      overlayText: 'Claim 30% Diwali Discount Today 👇',
-      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-person-working-on-a-laptop-and-using-a-smartphone-41547-large.mp4',
-      duration: '3s'
-    }
+    { id: 'scene_1', name: 'Scene 1: Visual Hook (0-3s)', overlayText: '', videoUrl: '', duration: '3s' },
+    { id: 'scene_2', name: 'Scene 2: Problem / Pain Point (3-7s)', overlayText: '', videoUrl: '', duration: '4s' },
+    { id: 'scene_3', name: 'Scene 3: Solution Showcase (7-12s)', overlayText: '', videoUrl: '', duration: '5s' },
+    { id: 'scene_4', name: 'Scene 4: Call To Action (12-15s)', overlayText: '', videoUrl: '', duration: '3s' }
   ]);
   const [activeVideoSceneIndex, setActiveVideoSceneIndex] = useState(0);
   const [videoSubtitleStyle, setVideoSubtitleStyle] = useState<'viral_yellow' | 'capsule_white' | 'minimal'>('viral_yellow');
@@ -716,11 +878,39 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   // File Upload Handler
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /* Upload the product photo to the server, not just into this tab.
+     `URL.createObjectURL` returns a `blob:` handle that resolves nowhere outside this
+     browser, so the photo was shown as "Product Image Uploaded" and then silently dropped:
+     nothing was sent with the generation request. /api/media/upload is the real store, and
+     the URL it returns is what the generator is handed as its reference image. */
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setUploadedImage(url);
+      setReferenceImageUrl(null);
+      setUploadingReference(true);
+
+      const token = localStorage.getItem('token');
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        const res = await fetch('/api/media/upload', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: form,
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.url) {
+          throw new Error((data && data.detail) || `Upload failed (${res.status})`);
+        }
+        setReferenceImageUrl(data.url);
+      } catch (err: any) {
+        // Say so rather than leaving a photo on screen that the generator will never see.
+        triggerToast(err?.message || 'Could not upload that photo — generation will run without it.');
+      } finally {
+        setUploadingReference(false);
+      }
 
       const newImgId = `el_img_${Date.now()}`;
       setEditorCanvasElements(prev => [
@@ -762,6 +952,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     generationBaseline.current = new Set(assets.map(a => a.id));
     setGenerationError(null);
     setGeneratedAd(null);
+    setGeneratedAdImageFailed(false);
     setGenerationElapsed(0);
     setIsGenerating(true);
 
@@ -771,7 +962,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       format: selectedAdType,
       platform,
       ratio: aspectRatio,
-      reference_image: aiProductVisualRender || undefined,
+      reference_image: referenceImageUrl || undefined,
     })).catch(() => null);
 
     // A creative_id is the reliable way to follow the run: /api/creative/jobs reports
@@ -938,83 +1129,204 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   };
 
   // Apply Competitor Pattern to Ad Studio
+  /** Seeds the generator from the rival's longest-running ads.
+   *
+   *  The prompt was a fixed string about a "22.5W fast charge demonstration" - another
+   *  brand's product, sent to the generator no matter whose workspace was open. It now
+   *  summarises what this competitor is actually still paying to run. */
   const handleApplyCompetitorPattern = () => {
-    setSelectedAdType('Video');
-    setAspectRatio('9:16');
-    setVideoDuration('15s');
-    setProductPrompt(`${selectedCompetitor} 15s Reel Pattern: High retention 22.5W fast charge demonstration`);
+    const top = [...activeCompetitorAds]
+      .sort((a, b) => (b.days_active || 0) - (a.days_active || 0))
+      .slice(0, 3);
+    if (!top.length) {
+      triggerToast('No competitor ads collected yet — run the sync in Market Intelligence.');
+      return;
+    }
+    const summary = top
+      .map(a => `"${a.title}"${a.days_active ? ` (${a.days_active}d live)` : ''}`)
+      .join(', ');
+    setSelectedAdType('Image');
+    setAspectRatio('1:1');
+    setProductPrompt(
+      `Build an ad in the spirit of what ${selectedCompetitor} keeps running: ${summary}. ` +
+      `Match the angle, not the brand — this is for our own product.`);
     setActiveTab('create');
-    triggerToast(`Applied ${selectedCompetitor} 15s Reel pattern! Ready to generate.`);
+    triggerToast(`Applied ${selectedCompetitor}'s longest-running patterns to the prompt.`);
     handleGenerateAd();
   };
 
   // Apply Specific Individual Competitor Ad Pattern to Ad Studio
+  /** Seeds the generator from a real competitor ad in the vault.
+   *
+   *  Took a fixture shape before (with a `roas` string it quoted back at the user); a real
+   *  ad carries platforms, run time and its own copy, and no performance figures - those
+   *  are not published for anyone else's ads. Format and ratio are inferred from the
+   *  platforms it ran on rather than asserted. */
   const handleApplySingleCompetitorAdPattern = (ad: {
     title: string;
-    type: 'Image' | 'Video' | 'Carousel';
-    platform: 'Instagram' | 'Facebook' | 'Google' | 'Amazon' | 'Flipkart';
-    aspectRatio: '1:1' | '9:16' | '4:5' | '16:9';
-    headline: string;
-    bodyText: string;
-    cta: string;
-    roas: string;
+    copy?: string;
+    platforms?: string[];
+    days_active?: number | null;
   }) => {
-    setSelectedAdType(ad.type);
-    setPlatform(ad.platform);
-    setAspectRatio(ad.aspectRatio);
-    if (ad.type === 'Video') setVideoDuration('15s');
-    setProductPrompt(`Pattern derived from ${selectedCompetitor} winner "${ad.title}" (${ad.roas})`);
+    const platforms = (ad.platforms || []).map(p => String(p).toLowerCase());
+    const isInstagram = platforms.some(p => p.includes('instagram'));
+    const nextPlatform = isInstagram ? 'Instagram'
+      : platforms.some(p => p.includes('facebook')) ? 'Facebook' : 'Instagram';
+
+    setSelectedAdType('Image');
+    setPlatform(nextPlatform as typeof platform);
+    setAspectRatio(isInstagram ? '9:16' : '1:1');
+
+    const runFor = ad.days_active ? ` — running ${ad.days_active} days` : '';
+    setProductPrompt(
+      `Pattern derived from ${selectedCompetitor}'s ad "${ad.title}"${runFor}.` +
+      (ad.copy ? ` Their copy: ${ad.copy.slice(0, 300)}` : ''));
     setActiveTab('create');
-    triggerToast(`Applied "${ad.title}" pattern (${ad.roas}) to Ad Studio! Generating ad...`);
+    triggerToast(`Applied "${ad.title}" to the Ad Studio prompt.`);
     handleGenerateAd();
   };
 
   // AI Product Prompt Preset Click Handler
-  const handleSelectProductPromptPreset = (promptText: string, imgUrl: string) => {
+  /* A style preset writes the prompt. It used to do two other things, both wrong: it pasted
+     an Unsplash stock photo into the reference-image slot and toasted "Generated 4K AI
+     Product Visual Render!" - so the panel claimed a render that had not happened, and the
+     real generation that followed was handed a photo of someone else's product to work
+     from. The render is what Step 4's Generate button produces, through the actual
+     provider. */
+  const handleSelectProductPromptPreset = (promptText: string) => {
     setProductPrompt(promptText);
-    setAiProductVisualRender(imgUrl);
-    triggerToast('Generated 4K AI Product Visual Render!');
   };
 
+  /* Style presets built around this workspace's own product rather than "Ambrane powerbank",
+     which was baked into all four and reached the image provider verbatim for every brand. */
+  const promptSubject = (brandCategory ? brandCategory.split(/[,/]/)[0].trim() : '')
+    || (brandName ? `${brandName} product` : 'the product');
+  const productPromptPresets = [
+    { label: '🌌 Floating Metallic Neon', prompt: `Sleek ${promptSubject} floating over a dark obsidian desk lit with neon rim light` },
+    { label: '🏛️ Minimalist Marble Studio', prompt: `Minimalist studio shot of ${promptSubject} resting on smooth white marble with soft daylight` },
+    { label: '⚡ Cyberpunk Tech Setup', prompt: `${promptSubject} on a cyberpunk RGB desk setup, deep shadows and saturated accent light` },
+    { label: '💡 Softbox Studio Lighting', prompt: `Professional product photography of ${promptSubject}, studio softbox reflection on a seamless backdrop` },
+  ];
+
   // AI UGC Video Reel Generator Working Pipeline
-  const handleGenerateAiUgcReel = () => {
-    setIsGeneratingUgc(true);
-    setUgcProgress(20);
+  /* Runs the real video pipeline on the script.
+
+     The three setTimeouts this replaces narrated work that was not happening ("Synthesizing
+     AI Avatar Voiceover", "Rendering 9:16 Lipsync") and then handed back whichever video
+     already existed in the workspace, labelled as the reel just generated. The progress
+     shown below is now tied to the actual job: submitted, rendering, and whatever the
+     provider returns - including its failures. */
+  const handleGenerateAiUgcReel = async () => {
+    if (isGeneratingUgc) return;
+    const script = ugcScript.trim();
+    if (!script) {
+      setUgcError('Write the script first — it is what the video is generated from.');
+      return;
+    }
+    if (!onGenerate || !workspaceId) {
+      setUgcError('Generation is not connected in this view.');
+      return;
+    }
+
+    setUgcError(null);
+    setGeneratedUgcReel(null);
     setUgcVideoFailed(false);
     setIsUgcPlaying(false);
-    setUgcStepText('Synthesizing AI Avatar Voiceover (Hinglish Accent)...');
+    setIsGeneratingUgc(true);
+    setUgcProgress(10);
+    setUgcStepText('Planning the reel');
 
-    setTimeout(() => {
-      setUgcProgress(60);
-      setUgcStepText('Rendering 9:16 Lipsync & Face Expression Animation...');
-    }, 900);
+    const job = await Promise.resolve(onGenerate(script, undefined, {
+      format: 'Video',
+      platform: ugcPlatform,
+      ratio: '9:16',
+      length: ugcLength,
+    })).catch(() => null);
 
-    setTimeout(() => {
-      setUgcProgress(90);
-      setUgcStepText('Compiling Dynamic Subtitles & Background Beats...');
-    }, 1800);
+    if (!job || !job.creative_id) {
+      setIsGeneratingUgc(false);
+      setUgcProgress(0);
+      setUgcError('The video pipeline did not accept this script. Check the Creative agent in the AI Agents tab.');
+      return;
+    }
 
-    setTimeout(() => {
+    setUgcProgress(35);
+    setUgcStepText('Rendering 9:16 video');
+
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      // Creeps toward 90 while the render runs, and only reaches 100 when it really has.
+      setUgcProgress(p => Math.min(90, p + 1));
+      const d = await fetch(`/api/creative/jobs/${job.creative_id}?workspace_id=${workspaceId}`, { headers })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (!d || d.status === 'processing') continue;
+
+      if (d.status === 'failed' || (!d.video_url && !d.image_url)) {
+        setIsGeneratingUgc(false);
+        setUgcProgress(0);
+        setUgcError(d.error || 'The video provider returned no asset for this script.');
+        return;
+      }
+
       setUgcProgress(100);
       setIsGeneratingUgc(false);
-      // The preview used to be a still image behind a decorative play button, so nothing
-      // ever played. Use a real rendered video from this workspace when one exists —
-      // `assets` already carries them — and fall back to the avatar poster when it doesn't.
-      const renderedVideo = assets.find(a => a.videoUrl)?.videoUrl || '';
-      const avatarMeta = AI_AVATARS[selectedAvatar];
       setGeneratedUgcReel({
-        id: `ugc_${Date.now()}`,
-        avatar: selectedAvatar,
-        videoUrl: renderedVideo,
-        posterUrl: avatarMeta?.poster || AI_AVATARS['Aarav - Tech Reviewer'].poster,
-        script: ugcScript || "Hey guys! If you travel or commute daily, this Ambrane 20,000mAh powerbank is a total game changer. Charges my phone 4 times full without heating up!",
-        voice: ugcVoice,
-        status: 'Ready for Campaign'
+        id: String(d.creative_id),
+        videoUrl: d.video_url || '',
+        posterUrl: d.image_url || '',
+        script,
+        platform: d.platform || ugcPlatform,
+        length: ugcLength,
+        status: d.video_url ? 'Rendered' : 'Still frame only',
       });
-      triggerToast(renderedVideo
-        ? 'AI UGC Reel Video Generated Successfully! 🎬'
-        : 'UGC script and avatar ready — no rendered video in this workspace yet, showing the avatar still.');
-    }, 2600);
+      triggerToast(d.video_url ? 'Reel rendered 🎬' : 'The provider returned a still frame rather than video.');
+      return;
+    }
+
+    setIsGeneratingUgc(false);
+    setUgcProgress(0);
+    setUgcError('Still rendering after 3 minutes — check the Creative agent in the AI Agents tab.');
+  };
+
+  /* Remove an approved creative from the Ad Library.
+     A real asset is a row in ad_assets, so it goes through the delete endpoint; a draft made
+     in this session only exists locally and is dropped from state. Previously both paths did
+     the second thing, which meant "Remove from Library" appeared to work on real assets and
+     changed nothing. */
+  const [removingAssetId, setRemovingAssetId] = useState<string | null>(null);
+
+  const handleRemoveFromLibrary = async (proj: ProjectCard) => {
+    if (removingAssetId) return;
+    if (!proj.real) {
+      setProjectsList(prev => prev.filter(p => p.id !== proj.id));
+      triggerToast('Removed from Ad Library');
+      return;
+    }
+    if (!workspaceId) return;
+    setRemovingAssetId(proj.id);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/creatives/${proj.id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error((d && d.detail) || `Delete failed (${res.status})`);
+      }
+      // The dashboard owns `assets`, so it has to drop the row too or the card comes back
+      // on the next render.
+      onAssetRemoved && onAssetRemoved(proj.id);
+      triggerToast('Removed from Ad Library');
+    } catch (err: any) {
+      triggerToast(err?.message || 'Could not remove that asset.');
+    } finally {
+      setRemovingAssetId(null);
+    }
   };
 
   // Approve Project in Projects Tab
@@ -1053,7 +1365,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {
         id: 'el_bg',
         type: 'image',
-        content: adData.imageUrl || adData.img || PRODUCT_IMG,
+        // Empty rather than a stock photo: the canvas then shows an empty background slot
+        // instead of a product that has nothing to do with the ad being edited.
+        content: adData.imageUrl || adData.img || '',
         x: 0,
         y: 0,
         width: 100,
@@ -1482,11 +1796,27 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 {uploadedImage ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
                     <img src={uploadedImage} alt="Uploaded product" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '10px' }} />
+                    {/* Reports the upload's real state. It previously read "Background
+                        auto-removal active" the instant a file was picked - nothing removes
+                        backgrounds here, and nothing had been uploaded yet either. */}
                     <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontSize: '14px', color: '#fff', fontWeight: 600 }}>Product Image Uploaded</div>
-                      <div style={{ fontSize: '12px', color: 'var(--success)' }}>✔ Background auto-removal active</div>
+                      <div style={{ fontSize: '14px', color: '#fff', fontWeight: 600 }}>
+                        {uploadingReference ? 'Uploading product photo…'
+                          : referenceImageUrl ? 'Product photo uploaded'
+                          : 'Photo not uploaded'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: referenceImageUrl ? 'var(--success)' : 'var(--text-muted)' }}>
+                        {uploadingReference ? 'Sending it to your workspace…'
+                          : referenceImageUrl ? '✔ Will be used as the generator’s reference image'
+                          : 'Generation will run from the prompt alone'}
+                      </div>
                     </div>
-                    <button onClick={() => setUploadedImage(null)} style={{ background: 'none', border: 'none', color: '#ff4757', cursor: 'pointer' }}>Remove</button>
+                    <button
+                      onClick={() => { setUploadedImage(null); setReferenceImageUrl(null); }}
+                      style={{ background: 'none', border: 'none', color: '#ff4757', cursor: 'pointer' }}
+                    >
+                      Remove
+                    </button>
                   </div>
                 ) : (
                   <div onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }}>
@@ -1516,15 +1846,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <div>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>Select Studio Pattern Preset:</span>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {[
-                      { label: '🌌 Floating Metallic Neon', prompt: 'Sleek metallic 20000mAh Ambrane powerbank floating over dark obsidian neon desk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80' },
-                      { label: '🏛️ Minimalist Marble Studio', prompt: 'Minimalist studio shot of Ambrane powerbank resting on smooth white marble desk with soft sunlight', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80' },
-                      { label: '⚡ Cyberpunk Tech Setup', prompt: 'High performance Ambrane powerbank surrounded by RGB gaming tech setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80' },
-                      { label: '💡 Softbox Studio Lighting', prompt: 'Professional 4K product photography of Ambrane powerbank with studio softbox reflection', img: productImg(600) }
-                    ].map((pattern, idx) => (
+                    {productPromptPresets.map((pattern, idx) => (
                       <button
                         key={idx}
-                        onClick={() => handleSelectProductPromptPreset(pattern.prompt, pattern.img)}
+                        onClick={() => handleSelectProductPromptPreset(pattern.prompt)}
                         style={{ background: 'rgba(124,117,255,0.12)', border: '1px solid rgba(124,117,255,0.25)', color: '#fff', padding: '6px 14px', borderRadius: '100px', fontSize: '12px', cursor: 'pointer' }}
                       >
                         {pattern.label}
@@ -1533,13 +1858,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   </div>
                 </div>
 
-                {/* AI Visual Render Preview */}
-                {aiProductVisualRender && (
+                {/* The reference image the provider will actually be given, if one is set.
+                    This slot used to announce a "4K AI Product Render" over a stock photo
+                    that no model had produced. */}
+                {referenceImageUrl && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(0,0,0,0.4)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(0,230,118,0.3)' }}>
-                    <img src={aiProductVisualRender} alt="Product visual render" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />
+                    <img src={uploadedImage || referenceImageUrl} alt="Reference product" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />
                     <div>
-                      <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>4K AI Product Render Generated</div>
-                      <div style={{ fontSize: '11px', color: 'var(--success)' }}>✔ Ready for ad template compilation</div>
+                      <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>Reference image attached</div>
+                      <div style={{ fontSize: '11px', color: 'var(--success)' }}>✔ The generator will render from this product photo</div>
                     </div>
                   </div>
                 )}
@@ -1765,11 +2092,21 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 
                 <div>
                   <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#000' }}>
-                    {/* Last-resort guard: if the creative URL ever dies again, swap in the
-                        placeholder instead of leaving a broken-image icon in the ad preview. */}
-                    <img src={generatedAd.imageUrl} alt="Generated Ad"
-                      onError={e => { const i = e.currentTarget; if (i.src !== PRODUCT_IMG) i.src = PRODUCT_IMG; }}
-                      style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block' }} />
+                    {/* If the creative URL dies, say so. Swapping in a stock product photo -
+                        which is what happened here before - shows the user a picture that is
+                        not the ad they just generated. */}
+                    {generatedAdImageFailed ? (
+                      <div style={{ width: '100%', height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '12.5px', color: 'var(--warning)', lineHeight: 1.5 }}>
+                          The generated image could not be loaded.<br />
+                          Re-run the generation, or check the Creative agent in the AI Agents tab.
+                        </span>
+                      </div>
+                    ) : (
+                      <img src={generatedAd.imageUrl} alt="Generated Ad"
+                        onError={() => setGeneratedAdImageFailed(true)}
+                        style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block' }} />
+                    )}
                     {generatedAd.type === 'Video' && (
                       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(124,117,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                         <Play size={24} color="#fff" style={{ marginLeft: '4px' }} />
@@ -2010,17 +2347,40 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               Select Competitor Brand to Inspect Active Campaigns
             </div>
 
+            {!adVaultLoading && !adVault.length && (
+              <div style={{ padding: '22px', borderRadius: '16px', border: '1px dashed rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.02)' }}>
+                <p style={{ fontSize: '13.5px', color: '#fff', margin: '0 0 6px 0', fontWeight: 600 }}>
+                  No competitor ads collected yet
+                </p>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>
+                  The ad vault fills from the Meta Ad Library on the competitor sync. Add rivals
+                  in Market Intelligence, or run the sync there, and their live ads appear here
+                  ordered by how long each has been running.
+                </p>
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '16px' }}>
-              {[
-                { id: 'Boat', name: 'Boat Electronics', category: 'Audio & Wearables', activeAds: '14 Active Ads Tracked', engagement: '4.8% Avg Engagement', status: 'Market Leader' },
-                { id: 'Noise', name: 'Noise Audio & Smartwatches', category: 'Fitness & Smart Tech', activeAds: '18 Active Ads Tracked', engagement: '5.2% Avg Engagement', status: 'Scaling Fast' },
-                { id: 'Realme', name: 'Realme Tech & Power Accessories', category: 'Electronics & Power', activeAds: '11 Active Ads Tracked', engagement: '4.4% Avg Engagement', status: 'Consistent CTR' }
-              ].map(comp => {
+              {adVault.map(group => {
+                // Real, checkable figures only: how many ads were collected and how many
+                // have been running long enough to count as evergreen. Engagement rate and
+                // "Market Leader" style labels were invented - a rival's engagement is not
+                // public, and nothing here measured it.
+                const evergreen = group.ads.filter(a => (a.days_active || 0) >= 45).length;
+                const longest = group.ads.reduce((m, a) => Math.max(m, a.days_active || 0), 0);
+                const comp = {
+                  id: group.competitor,
+                  name: group.competitor,
+                  category: group.strategy?.summary ? 'Strategy analysed' : 'Ads tracked',
+                  activeAds: `${group.ads.length} ad${group.ads.length === 1 ? '' : 's'} in the vault`,
+                  engagement: longest ? `Longest running: ${longest} days` : 'Run time not reported',
+                  status: evergreen ? `${evergreen} evergreen` : 'No evergreen yet',
+                };
                 const isSelected = selectedCompetitor === comp.id;
                 return (
                   <div
                     key={comp.id}
-                    onClick={() => setSelectedCompetitor(comp.id as any)}
+                    onClick={() => setSelectedCompetitor(comp.id)}
                     style={{
                       background: isSelected ? 'linear-gradient(135deg, rgba(124,117,255,0.18) 0%, rgba(90,82,255,0.06) 100%)' : 'rgba(255,255,255,0.02)',
                       border: isSelected ? '2px solid #7C75FF' : '1px solid rgba(255,255,255,0.08)',
@@ -2059,20 +2419,22 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
                 WINNING AD PATTERN RECOGNITION
               </div>
+              {/* The strategy read the sync actually produced. This used to assert "+23%
+                  CTR" and an "ESTIMATED ROAS 4.2x" for applying a pattern - both invented,
+                  and neither derived from anything the vault stores. */}
               <h4 style={{ fontSize: '18px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>
-                Switch to 15s Video Ads for higher retention & +23% CTR
+                {selectedCompetitor ? `What ${selectedCompetitor} keeps paying to run` : 'Longest-running rival ads'}
               </h4>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                {selectedCompetitor}'s top 3 scaled ads are 15s Vertical Video Reels. Applying this pattern to Ambrane increases predicted ROAS to 4.2x.
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, maxWidth: '640px', lineHeight: 1.5 }}>
+                {adVault.find(g => g.competitor === selectedCompetitor)?.strategy?.summary
+                  || (activeCompetitorAds.length
+                      ? `${activeCompetitorAds.length} ads collected. The list below is ordered by how long each has been live — an ad still running after weeks is one they are choosing to keep funding.`
+                      : 'Run the competitor sync in Market Intelligence to collect this rival’s live ads.')}
               </p>
             </div>
 
             <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>ESTIMATED ROAS</span>
-                <strong style={{ fontSize: '24px', color: 'var(--success)' }}>4.2x</strong>
-              </div>
-              <GlowButton variant="glow" onClick={handleApplyCompetitorPattern}>
+              <GlowButton variant="glow" onClick={handleApplyCompetitorPattern} disabled={!activeCompetitorAds.length}>
                 Apply Pattern to Ad Studio
               </GlowButton>
             </div>
@@ -2083,18 +2445,18 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '16px' }}>
               <div>
                 <div style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '2px' }}>
-                  HIGH-CONVERTING AD VAULT
+                  COMPETITOR AD VAULT
                 </div>
                 <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
-                  Winning Hooks, Headlines & CTA Vault
+                  Hooks, Headlines & Offers From Their Live Ads
                 </h3>
               </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
                 {[
-                  { id: 'hooks', label: 'Winning Hooks' },
-                  { id: 'headlines', label: 'High-CTR Headlines' },
-                  { id: 'ctas', label: 'Conversion CTAs' }
+                  { id: 'hooks', label: 'Opening Hooks' },
+                  { id: 'headlines', label: 'Ad Headlines' },
+                  { id: 'ctas', label: 'Offers in Market' }
                 ].map(vTab => (
                   <button
                     key={vTab.id}
@@ -2118,17 +2480,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px' }}>
               
-              {vaultSubTab === 'hooks' && [
-                { text: 'Stop scrolling if your powerbank dies right when you need it most.', roas: '4.6x ROAS', tag: 'Visual Shock' },
-                { text: 'Why 90% of portable chargers ruin your phone battery health long-term.', roas: '4.2x ROAS', tag: 'Negative Curiosity' },
-                { text: 'I tested 5 powerbanks under ₹2,000 — here is the only one that survived 7 days of travel.', roas: '4.9x ROAS', tag: 'Social Proof' },
-                { text: 'If you travel or commute daily, this 22.5W metallic charger is a cheat code.', roas: '3.9x ROAS', tag: 'Aspiration' }
-              ].map((item, idx) => (
+              {vaultSubTab === 'hooks' && vaultRows.hooks.map((item, idx) => (
                 <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px', borderRadius: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                       <span style={{ fontSize: '10px', color: '#7C75FF', background: 'rgba(124,117,255,0.15)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{item.tag}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.roas}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.meta}</span>
                     </div>
                     <p style={{ fontSize: '14px', color: '#fff', margin: 0, fontWeight: 500, lineHeight: 1.4 }}>"{item.text}"</p>
                   </div>
@@ -2143,17 +2500,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
               ))}
 
-              {vaultSubTab === 'headlines' && [
-                { text: 'Unstoppable Power in Your Pocket ⚡', roas: '4.8x ROAS', tag: 'High Impact' },
-                { text: 'Charge 50% in 30 Mins — Built for High Performers', roas: '4.5x ROAS', tag: 'Benefit Driven' },
-                { text: 'FLAT 30% OFF — Aircraft Aluminum Powerbank', roas: '5.1x ROAS', tag: 'Urgency Offer' },
-                { text: 'Never Carry a Dead Phone Again (BIS Certified)', roas: '4.1x ROAS', tag: 'Trust & Safety' }
-              ].map((item, idx) => (
+              {vaultSubTab === 'headlines' && vaultRows.headlines.map((item, idx) => (
                 <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px', borderRadius: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                       <span style={{ fontSize: '10px', color: '#7C75FF', background: 'rgba(124,117,255,0.15)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{item.tag}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.roas}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.meta}</span>
                     </div>
                     <p style={{ fontSize: '15px', color: '#fff', margin: 0, fontWeight: 700, lineHeight: 1.3 }}>{item.text}</p>
                   </div>
@@ -2168,17 +2520,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
               ))}
 
-              {vaultSubTab === 'ctas' && [
-                { text: 'Claim 30% Discount Today', roas: '5.2x ROAS', tag: 'Direct Offer' },
-                { text: 'Shop Ambrane Powerbanks', roas: '4.3x ROAS', tag: 'Standard E-com' },
-                { text: 'Get Free Express Delivery', roas: '4.7x ROAS', tag: 'Perk Trigger' },
-                { text: 'Order Now & Save ₹500', roas: '4.9x ROAS', tag: 'Instant Savings' }
-              ].map((item, idx) => (
+              {vaultSubTab === 'ctas' && vaultRows.offers.map((item, idx) => (
                 <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px', borderRadius: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                       <span style={{ fontSize: '10px', color: '#7C75FF', background: 'rgba(124,117,255,0.15)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{item.tag}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.roas}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>{item.meta}</span>
                     </div>
                     <p style={{ fontSize: '14px', color: '#00E676', margin: 0, fontWeight: 700, lineHeight: 1.4 }}>"{item.text}"</p>
                   </div>
@@ -2193,6 +2540,21 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
               ))}
 
+              {/* Nothing is invented to fill this, so it says what would fill it. */}
+              {!vaultRows[vaultSubTab === 'ctas' ? 'offers' : vaultSubTab].length && (
+                <div style={{ gridColumn: '1 / -1', padding: '28px', textAlign: 'center', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '14px' }}>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
+                    {adVaultLoading
+                      ? 'Reading the ad vault…'
+                      : !adVault.length
+                        ? 'No competitor ads collected yet. Run the competitor sync in Market Intelligence and this vault fills from their live ads.'
+                        : vaultSubTab === 'ctas'
+                          ? 'None of the collected ads state a discount, code or free perk in their copy.'
+                          : 'The collected ads did not carry text in this field.'}
+                  </p>
+                </div>
+              )}
+
             </div>
           </div>
 
@@ -2201,10 +2563,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
                 <div style={{ fontSize: '11px', color: '#00E676', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '2px' }}>
-                  ACTIVE SCALING AD LIBRARY
+                  CURRENTLY RUNNING
                 </div>
                 <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
-                  Top Scaling Ads for {selectedCompetitor} (Individual Returns & Analysis)
+                  Longest-Running Ads for {selectedCompetitor || "this rival"}
                 </h3>
               </div>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -2213,107 +2575,55 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
-              {[
-                {
-                  id: 'comp_ad_1',
-                  title: `${selectedCompetitor} 15s Fast Charge Reel`,
-                  type: 'Video' as const,
-                  platform: 'Instagram' as const,
-                  aspectRatio: '9:16' as const,
-                  duration: '15s',
-                  statusBadge: 'Scaled 75+ Days',
-                  roas: '4.8x ROAS',
-                  spend: '₹14.2L Spend',
-                  impressions: '3.4M Impr.',
-                  ctr: '5.2% CTR',
-                  headline: 'Charge 50% in 20 Mins ⚡',
-                  bodyText: 'Never carry a dead phone again during travel or work.',
-                  cta: 'Buy Now - 50% Off',
-                  hook: '0-2s visual water splash & battery pulse animation drop',
-                  psychology: 'Fear of dead phone + Instant charging visual proof',
-                  targetAudience: '18-28 College, Travel & Tech Enthusiasts',
-                  img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80'
-                },
-                {
-                  id: 'comp_ad_2',
-                  title: `${selectedCompetitor} Metallic Power Carousel`,
-                  type: 'Carousel' as const,
-                  platform: 'Facebook' as const,
-                  aspectRatio: '1:1' as const,
-                  duration: '5 Slides',
-                  statusBadge: 'Scaled 45+ Days',
-                  roas: '4.5x ROAS',
-                  spend: '₹9.8L Spend',
-                  impressions: '2.1M Impr.',
-                  ctr: '4.7% CTR',
-                  headline: 'Aircraft Aluminum Metallic Finish',
-                  bodyText: '20,000mAh Lithium Polymer battery with 9 layers of protection.',
-                  cta: 'Shop Now',
-                  hook: 'Slide 1 high contrast metallic texture cutout with glowing specs',
-                  psychology: 'Premium aesthetics + BIS safety certification trust',
-                  targetAudience: '22-35 Working Professionals & Engineers',
-                  img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80'
-                },
-                {
-                  id: 'comp_ad_3',
-                  title: `${selectedCompetitor} Flash Sale & 30% Off Offer`,
-                  type: 'Image' as const,
-                  platform: 'Instagram' as const,
-                  aspectRatio: '4:5' as const,
-                  duration: 'Static Shot',
-                  statusBadge: 'Scaled 60+ Days',
-                  roas: '5.1x ROAS',
-                  spend: '₹18.4L Spend',
-                  impressions: '4.8M Impr.',
-                  ctr: '6.2% CTR',
-                  headline: 'FLAT 30% OFF — Limited Launch Stock',
-                  bodyText: 'Compact 22.5W Power Delivery charger with free express shipping.',
-                  cta: 'Claim Discount Today',
-                  hook: 'High contrast red discount badge with glowing price strike-through',
-                  psychology: 'Direct offer incentive + Impulse purchase urgency',
-                  targetAudience: '18-35 Price Sensitive E-commerce Buyers',
-                  img: productImg(600)
-                }
-              ].map(ad => (
+              {activeCompetitorAds.map(ad => (
                 <div key={ad.id} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
                   
                   <div>
-                    {/* Header Row */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      <span style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 600 }}>{ad.platform} • {ad.type} ({ad.duration})</span>
-                      <span style={{ fontSize: '11px', color: 'var(--success)', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.25)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-                        {ad.statusBadge}
+                    {/* Header Row. Platforms and run time are reported by the Ad Library;
+                        the old badges here ("Scaled 75+ Days" beside a 4.8x ROAS) mixed one
+                        real idea with three invented numbers. */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#7C75FF', fontWeight: 600 }}>
+                        {(ad.platforms || []).join(' • ') || 'Platform not reported'}
                       </span>
+                      {ad.days_active !== null && ad.days_active !== undefined && (
+                        <span style={{
+                          fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, whiteSpace: 'nowrap',
+                          color: ad.days_active >= 45 ? 'var(--success)' : 'var(--text-secondary)',
+                          background: ad.days_active >= 45 ? 'rgba(0,230,118,0.12)' : 'rgba(255,255,255,0.06)',
+                          border: ad.days_active >= 45 ? '1px solid rgba(0,230,118,0.25)' : '1px solid rgba(255,255,255,0.1)',
+                        }}>
+                          {ad.days_active >= 45 ? `Evergreen · ${ad.days_active}d` : `Running ${ad.days_active}d`}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Image & Key Return Metrics Overlay */}
-                    <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px' }}>
-                      <img src={ad.img} alt={ad.title} style={{ width: '100%', height: '170px', objectFit: 'cover', display: 'block' }} />
-                      
-                      {/* Metric Badges */}
-                      <div style={{ position: 'absolute', bottom: 10, left: 10, right: 10, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', padding: '8px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-                        <div>
-                          <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '9px' }}>RETURN</span>
-                          <strong style={{ color: 'var(--success)', fontSize: '14px' }}>{ad.roas}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '9px' }}>ACTIVE SPEND</span>
-                          <strong style={{ color: '#fff' }}>{ad.spend}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '9px' }}>CTR</span>
-                          <strong style={{ color: '#7C75FF' }}>{ad.ctr}</strong>
-                        </div>
-                      </div>
-                    </div>
+                    <h4 style={{ fontSize: '17px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>
+                      {ad.title || 'Untitled ad'}
+                    </h4>
 
-                    <h4 style={{ fontSize: '17px', color: '#fff', margin: '0 0 10px 0', fontFamily: 'var(--font-heading)' }}>{ad.title}</h4>
-
-                    {/* Deep Analysis Breakdown */}
+                    {/* The ad's own copy and any offer the sync parsed out of it. Return,
+                        spend and CTR are not published for anyone else's ads, so there is
+                        nothing honest to put in their place. */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                      <div><strong style={{ color: '#ccc' }}>Visual Hook:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.hook}</span></div>
-                      <div><strong style={{ color: '#ccc' }}>Psychology:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.psychology}</span></div>
-                      <div><strong style={{ color: '#ccc' }}>Audience:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ad.targetAudience}</span></div>
+                      {ad.copy && (
+                        <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5, maxHeight: '84px', overflow: 'hidden' }}>
+                          {ad.copy}
+                        </div>
+                      )}
+                      {!!Object.keys(ad.offers || {}).length && (
+                        <div><strong style={{ color: '#ccc' }}>Offer:</strong>{' '}
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {Object.values(ad.offers).filter(Boolean).map(String).join(' · ')}
+                          </span>
+                        </div>
+                      )}
+                      {ad.snapshot_url && (
+                        <a href={ad.snapshot_url} target="_blank" rel="noopener noreferrer"
+                           style={{ color: '#7C75FF', fontWeight: 700, fontSize: '11.5px', textDecoration: 'none' }}>
+                          View in the Meta Ad Library ↗
+                        </a>
+                      )}
                     </div>
                   </div>
 
@@ -2535,8 +2845,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   gap: '12px'
                 }}
               >
-                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden' }}>
-                  <img src={proj.img} alt={proj.title} style={{ width: '100%', height: '160px', objectFit: 'cover' }} />
+                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: 'rgba(255,255,255,0.04)' }}>
+                  {proj.img ? (
+                    <img src={proj.img} alt={proj.title} style={{ width: '100%', height: '160px', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Copy-only asset — no image
+                    </div>
+                  )}
                   <span style={{
                     position: 'absolute',
                     top: 10,
@@ -2555,18 +2871,31 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>"{proj.headline}"</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{proj.date}</span>
+                  {/* This only ever filtered the local draft list, so pressing it on a real
+                      asset removed the card until the next render and left the row in the
+                      database. Real rows now go through DELETE /creatives/{id}. */}
                   <button
-                    onClick={() => {
-                      setProjectsList(prev => prev.filter(p => p.id !== proj.id));
-                      triggerToast('Removed from Ad Library! 🗑️');
-                    }}
-                    style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '5px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    onClick={() => handleRemoveFromLibrary(proj)}
+                    disabled={removingAssetId === proj.id}
+                    style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '5px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: removingAssetId === proj.id ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
                   >
-                    <X size={11} /> Remove from Library
+                    <X size={11} /> {removingAssetId === proj.id ? 'Removing…' : 'Remove from Library'}
                   </button>
                 </div>
               </div>
             ))}
+
+            {!displayProjects.filter(p => p.status === 'Approved').length && (
+              <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '16px' }}>
+                <p style={{ margin: '0 0 6px 0', fontSize: '14px', color: '#fff', fontWeight: 600 }}>
+                  Nothing approved yet
+                </p>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Generate an ad, then approve it in Recent Projects — approved creatives land
+                  here ready to launch.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2665,52 +2994,59 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <div className="glow-card" style={{ padding: '28px', background: '#0c0c12', border: '1px solid var(--border)', borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  Create AI UGC Video Reel
-                  <PreviewBadge />
+                  Generate a UGC-Style Reel
                 </h3>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>Select an AI human avatar, voice model, and script topic to see how a UGC Reel would be assembled.</p>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Write the script and Raftra renders a vertical 9:16 video ad from it through the
+                  creative pipeline. There is no synthetic presenter or voiceover — for a person on
+                  camera, hire a creator in the tab beside this one.
+                </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>CHOOSE AI AVATAR</label>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>PLATFORM</label>
                     <select
-                      value={selectedAvatar}
-                      onChange={e => setSelectedAvatar(e.target.value)}
+                      value={ugcPlatform}
+                      onChange={e => setUgcPlatform(e.target.value as typeof ugcPlatform)}
                       style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}
                     >
-                      <option value="Aarav - Tech Reviewer">Aarav (Tech Reviewer - Male 24)</option>
-                      <option value="Ananya - Lifestyle Creator">Ananya (Lifestyle Creator - Female 22)</option>
-                      <option value="Rohan - Fitness Enthusiast">Rohan (Fitness Expert - Male 27)</option>
+                      <option value="Instagram">Instagram Reels</option>
+                      <option value="Facebook">Facebook Reels</option>
+                      <option value="Google">YouTube Shorts</option>
                     </select>
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>VOICE & LANGUAGE</label>
-                    {/* Was unbound, so the preview always claimed "Hinglish" whatever you picked. */}
-                    <select value={ugcVoice} onChange={e => setUgcVoice(e.target.value)}
+                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>REEL LENGTH</label>
+                    {/* Both selectors are passed to the render job, unlike the avatar and
+                        voice pickers they replace, which reached nothing. */}
+                    <select value={ugcLength} onChange={e => setUgcLength(e.target.value)}
                       style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}>
-                      <option>Hinglish Energetic Natural Voice</option>
-                      <option>Hindi Authentic Conversational</option>
-                      <option>Indian English Professional Accent</option>
+                      <option value="10s">10 seconds</option>
+                      <option value="15s">15 seconds</option>
+                      <option value="30s">30 seconds</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>SCRIPT TOPIC / PROMPT</label>
+                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>SCRIPT / PROMPT</label>
                   <textarea
                     rows={3}
-                    placeholder="e.g. 'Hey guys, I've been using this Ambrane powerbank for 2 weeks during travel and it charged my phone 4 times full!'"
+                    placeholder={brandName
+                      ? `e.g. 'Three reasons ${brandName} customers keep coming back — shot as a quick vertical reel.'`
+                      : "e.g. 'Three reasons customers keep coming back — shot as a quick vertical reel.'"}
                     value={ugcScript}
                     onChange={e => setUgcScript(e.target.value)}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff', outline: 'none' }}
                   />
                 </div>
 
-                <PreviewNote>
-                  Preview: this demonstrates the reel flow with a sample script and a still frame. No avatar, voiceover
-                  or video is rendered, and nothing is sent to a video provider.
-                </PreviewNote>
+                {ugcError && (
+                  <div style={{ background: 'rgba(255,71,87,0.1)', border: '1px solid rgba(255,71,87,0.35)', color: '#ff8b95', padding: '12px 14px', borderRadius: '10px', fontSize: '13px' }}>
+                    {ugcError}
+                  </div>
+                )}
 
                 <GlowButton
                   variant="glow"
@@ -2726,7 +3062,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   ) : (
                     <>
                       <Video size={18} />
-                      Generate AI UGC Reel Video
+                      Generate Reel
                     </>
                   )}
                 </GlowButton>
@@ -2739,19 +3075,23 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <CheckCircle2 size={20} color="var(--success)" />
                       <h4 style={{ fontSize: '18px', color: '#fff', margin: 0, fontFamily: 'var(--font-heading)' }}>
-                        Sample UGC Reel ({generatedUgcReel.avatar})
+                        Reel for {generatedUgcReel.platform} · {generatedUgcReel.length}
                       </h4>
-                      <PreviewBadge />
                     </div>
-                    <span style={{ fontSize: '11px', background: 'rgba(255,174,0,0.12)', color: 'var(--warning)', padding: '4px 12px', borderRadius: '100px', fontWeight: 700 }}>
-                      Still frame • no video rendered
+                    <span style={{
+                      fontSize: '11px',
+                      background: generatedUgcReel.videoUrl ? 'rgba(0,230,118,0.12)' : 'rgba(255,174,0,0.12)',
+                      color: generatedUgcReel.videoUrl ? 'var(--success)' : 'var(--warning)',
+                      padding: '4px 12px', borderRadius: '100px', fontWeight: 700
+                    }}>
+                      {generatedUgcReel.status}
                     </span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '24px' }}>
                     {/* Playable Video Card — a real <video> so the play button actually plays.
-                        Falls back to the avatar poster if there is no video, or if the one we
-                        picked fails to load, rather than leaving a black rectangle. */}
+                        Falls back to the render's own still if the provider returned no
+                        video, or if the file fails to load, rather than a black rectangle. */}
                     <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#000', maxHeight: '380px' }}>
                       {generatedUgcReel.videoUrl && !ugcVideoFailed ? (
                         <video
@@ -2767,8 +3107,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                           onError={() => { setUgcVideoFailed(true); setIsUgcPlaying(false); }}
                           style={{ width: '100%', height: '100%', maxHeight: '380px', objectFit: 'cover', display: 'block' }}
                         />
+                      ) : generatedUgcReel.posterUrl ? (
+                        <img src={generatedUgcReel.posterUrl} alt="Rendered still from this reel" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                       ) : (
-                        <img src={generatedUgcReel.posterUrl} alt={`${generatedUgcReel.avatar} avatar still`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <div style={{ width: '100%', height: '380px' }} />
                       )}
 
                       {/* Big play affordance only while paused — it would sit on top of the
@@ -2782,7 +3124,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
                       {(!generatedUgcReel.videoUrl || ugcVideoFailed) && (
                         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '86%', textAlign: 'center', background: 'rgba(0,0,0,0.78)', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '10px', padding: '12px', fontSize: '11.5px', color: '#ffae00', lineHeight: 1.5 }}>
-                          {ugcVideoFailed ? 'That video could not be loaded — showing the avatar still.' : 'No rendered video in this workspace yet — showing the avatar still.'}
+                          {ugcVideoFailed
+                            ? 'The rendered video could not be loaded — showing its still frame.'
+                            : 'The provider returned a still frame rather than video for this run.'}
                         </div>
                       )}
 
@@ -2790,7 +3134,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                           controls and the caption used to sit on top of them. */}
                       {!isUgcPlaying && (
                         <div style={{ position: 'absolute', top: 14, left: 14, maxWidth: 'calc(100% - 28px)', background: 'rgba(0,0,0,0.75)', padding: '7px 12px', borderRadius: '9px', fontSize: '11px', color: '#fff', pointerEvents: 'none' }}>
-                          🗣️ {generatedUgcReel.voice}
+                          🎬 {generatedUgcReel.platform} · 9:16 · {generatedUgcReel.length}
                         </div>
                       )}
                     </div>
@@ -2798,7 +3142,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     {/* Script Transcript & Actions */}
                     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
                       <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>GENERATED UGC TRANSCRIPT</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>SCRIPT THIS REEL WAS RENDERED FROM</span>
                         <p style={{ fontSize: '14px', color: '#ddd', margin: 0, lineHeight: 1.5 }}>"{generatedUgcReel.script}"</p>
                       </div>
 
@@ -2831,8 +3175,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   <h3 style={{ fontSize: '20px', color: '#fff', margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>
                     Raftra Influencer & Creator Marketplace
                   </h3>
+                  {/* The count is the roster's real size. It used to read "500+ verified
+                      Indian UGC creators" regardless of how many were actually registered. */}
                   <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
-                    Browse 500+ verified Indian UGC creators, check past performance metrics, and hire creators directly for your brand workspace.
+                    {marketCreatorsLoading
+                      ? 'Loading the creator roster…'
+                      : marketCreators.length
+                        ? `${marketCreators.length} creator${marketCreators.length === 1 ? '' : 's'} registered on Raftra. Open the marketplace to see rates, past collabs and reviews, or hire directly from here.`
+                        : 'No creators have registered on this marketplace yet. Once they do, they appear here and can be hired straight into this workspace.'}
                   </p>
                 </div>
                 <GlowButton
@@ -2845,23 +3195,33 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '20px' }}>
-                {[
-                  { name: 'Priya Sharma', niche: 'Tech & Gadgets', rate: '₹3,500/video', followers: '45k', rating: '4.9 ★', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80' },
-                  { name: 'Aarav Mehta', niche: 'Lifestyle & D2C', rate: '₹4,000/video', followers: '62k', rating: '4.8 ★', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80' },
-                  { name: 'Neha Kapoor', niche: 'Unboxing & Reviews', rate: '₹3,000/video', followers: '28k', rating: '5.0 ★', img: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80' }
-                ].map((creator, idx) => (
-                  <div key={idx} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {marketCreators.slice(0, 6).map(creator => (
+                  <div key={creator.id} className="glow-card" style={{ padding: '24px', background: '#0d0d14', border: '1px solid var(--border)', borderRadius: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <img src={creator.img} alt={creator.name} style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #7C75FF' }} />
-                      <div>
+                      {/* Creators register a name and a handle, not a headshot; an initial is
+                          honest where a stock portrait of an unrelated person was not. */}
+                      <div style={{ width: '60px', height: '60px', borderRadius: '50%', border: '2px solid #7C75FF', background: 'rgba(124,117,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                        {(creator.name || '?').trim().charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
                         <h4 style={{ fontSize: '17px', color: '#fff', margin: '0 0 2px 0' }}>{creator.name}</h4>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{creator.niche} • {creator.followers} Followers</div>
-                        <div style={{ fontSize: '11px', color: 'var(--success)', marginTop: '2px' }}>{creator.rating} Verified Creator</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {[creator.niche, creator.handle].filter(Boolean).join(' • ') || 'Niche not set'}
+                        </div>
+                        {typeof creator.fit_score === 'number' && creator.fit_score > 0 && (
+                          <div style={{ fontSize: '11px', color: 'var(--success)', marginTop: '2px' }}>
+                            {creator.fit_score}% brand fit
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
-                      <div style={{ fontSize: '16px', color: '#00E676', fontWeight: 700 }}>{creator.rate}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                      <div style={{ fontSize: creator.base_rate ? '16px' : '12px', color: creator.base_rate ? '#00E676' : 'var(--text-muted)', fontWeight: 700 }}>
+                        {creator.base_rate
+                          ? `₹${Number(creator.base_rate).toLocaleString('en-IN')}`
+                          : 'Rate on request'}
+                      </div>
                       <GlowButton
                         variant="glow"
                         onClick={() => onNavigateTab && onNavigateTab('influencer')}
@@ -2872,6 +3232,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     </div>
                   </div>
                 ))}
+
+                {!marketCreatorsLoading && !marketCreators.length && (
+                  <div style={{ gridColumn: '1 / -1', padding: '32px', textAlign: 'center', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '18px' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
+                      No creators to show yet. Creators who sign up through the Raftra creator
+                      portal appear here with their own rates and niches.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2976,11 +3345,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     const newCard = {
                       id: `c_${Date.now()}`,
                       title: `Card ${carouselCards.length + 1}: Custom Slide`,
-                      headline: `⚡ Exclusive Offer Slide ${carouselCards.length + 1}`,
-                      description: 'Special limited time bundle deal.',
-                      destinationUrl: 'https://ambrane.com/deal',
+                      headline: '',
+                      description: '',
+                      // The workspace's own site, not the ambrane.com deal page every added
+                      // card used to point at.
+                      destinationUrl: carouselCards[0]?.destinationUrl || '',
                       ctaAction: 'SHOP_NOW',
-                      imageUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80'
+                      imageUrl: ''
                     };
                     setCarouselCards(prev => [...prev, newCard]);
                     setActiveCarouselIndex(carouselCards.length);
@@ -3056,7 +3427,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       </div>
                       <input
                         type="text"
-                        placeholder="https://ambrane.com/card-specific-page"
+                        placeholder="https://your-site.com/product-page"
                         value={currentCard.destinationUrl}
                         onChange={e => {
                           const val = e.target.value;
@@ -3115,19 +3486,28 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 const activeCard = carouselCards[activeCarouselIndex] || carouselCards[0];
                 return (
                   <div style={{ width: '320px', background: '#0d0d15', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.8)' }}>
-                    <div style={{ width: '100%', height: '240px', position: 'relative' }}>
-                      <img src={activeCard.imageUrl} alt={activeCard.headline} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {/* An empty card shows an empty slot, not a broken image icon. */}
+                    <div style={{ width: '100%', height: '240px', position: 'relative', background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {activeCard.imageUrl ? (
+                        <img src={activeCard.imageUrl} alt={activeCard.headline} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>No image on this card yet</span>
+                      )}
                       <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '3px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 700 }}>
                         {activeCarouselIndex + 1} / {carouselCards.length}
                       </div>
                     </div>
 
                     <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <h4 style={{ fontSize: '14px', color: '#fff', margin: 0, fontWeight: 700 }}>{activeCard.headline}</h4>
-                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>{activeCard.description}</p>
-                      
+                      <h4 style={{ fontSize: '14px', color: activeCard.headline ? '#fff' : 'var(--text-muted)', margin: 0, fontWeight: 700 }}>
+                        {activeCard.headline || 'Headline'}
+                      </h4>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                        {activeCard.description || 'Card description'}
+                      </p>
+
                       <div style={{ fontSize: '10px', color: '#00E676', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        🔗 {activeCard.destinationUrl}
+                        🔗 {activeCard.destinationUrl || 'No destination URL set'}
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
@@ -3285,8 +3665,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       </span>
                       <div>
                         <div style={{ fontSize: '12.5px', color: '#fff', fontWeight: 700 }}>{scene.name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
-                          "{scene.overlayText}"
+                        <div style={{ fontSize: '11px', color: scene.overlayText ? 'var(--text-secondary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                          {scene.overlayText ? `"${scene.overlayText}"` : 'No overlay text yet'}
                         </div>
                       </div>
                     </div>
@@ -3366,13 +3746,24 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 return (
                   <div style={{ width: '260px', height: '440px', background: '#000', border: '2px solid rgba(255,255,255,0.2)', borderRadius: '24px', overflow: 'hidden', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.95)' }}>
                     
-                    <video
-                      src={currentScene.videoUrl}
-                      autoPlay
-                      loop
-                      muted
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
+                    {/* A scene with no footage yet shows the empty frame rather than a
+                        player pointed at nothing. */}
+                    {currentScene.videoUrl ? (
+                      <video
+                        src={currentScene.videoUrl}
+                        autoPlay
+                        loop
+                        muted
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                          No footage on this scene yet.<br />Add a clip below, or generate a
+                          reel from the AI UGC tab.
+                        </span>
+                      </div>
+                    )}
 
                     {/* LIVE BURNED SUBTITLE OVERLAY */}
                     <div style={{
@@ -3394,7 +3785,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                         lineHeight: 1.35
                       }}>
-                        {currentScene.overlayText}
+                        {currentScene.overlayText || 'Your subtitle overlay'}
                       </span>
                     </div>
 
@@ -3646,21 +4037,34 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     <div style={{ fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '6px', letterSpacing: '0.04em' }}>QUICK AI PRESET COMMANDS</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                       {[
-                        { label: '⚡ Add 30% Off Badge', action: () => {
-                          setEditorCanvasElements(prev => [...prev, { id: `el_${Date.now()}`, type: 'badge', content: '⚡ 30% OFF FESTIVE OFFER', x: 10, y: 15, width: 45, height: 8, color: '#00E676', bgColor: 'rgba(0,230,118,0.2)', borderColor: 'rgba(0,230,118,0.4)', borderWidth: 1, borderRadius: 100, fontSize: 11, fontWeight: 800, fontFamily: 'Inter', zIndex: 20, visible: true }]);
-                          triggerToast('Added 30% Off Badge!');
+                        /* These drop text into an ad the brand will publish, so none of them
+                           may invent a claim. "⚡ 30% OFF FESTIVE OFFER" and "★★★★★ 4.9/5
+                           (12,400+ Reviews)" did exactly that - a discount nobody had
+                           approved and a review count belonging to no one. They now insert
+                           an editable placeholder, or the brand's own rating when the vault
+                           actually holds one. */
+                        { label: '🏷️ Add Offer Badge', action: () => {
+                          setEditorCanvasElements(prev => [...prev, { id: `el_${Date.now()}`, type: 'badge', content: 'YOUR OFFER HERE', x: 10, y: 15, width: 45, height: 8, color: '#00E676', bgColor: 'rgba(0,230,118,0.2)', borderColor: 'rgba(0,230,118,0.4)', borderWidth: 1, borderRadius: 100, fontSize: 11, fontWeight: 800, fontFamily: 'Inter', zIndex: 20, visible: true }]);
+                          triggerToast('Offer badge added — edit its text in the layer panel');
                         }},
                         { label: '✨ Make Headline Gold', action: () => {
                           setEditorCanvasElements(prev => prev.map(el => el.id === 'el_headline' ? { ...el, color: '#FFBD2E' } : el));
                           triggerToast('Headline font changed to Gold!');
                         }},
-                        { label: '🌌 Obsidian Dark Backdrop', action: () => {
-                          setEditorCanvasElements(prev => prev.map(el => el.id === 'el_bg' ? { ...el, content: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80' } : el));
-                          triggerToast('Updated studio backdrop!');
+                        { label: '🖼️ Backdrop From Asset Vault', action: () => {
+                          const first = vaultImages[0];
+                          if (!first) {
+                            triggerToast('Your Asset Vault is empty — import your website images in the Assets tab first.');
+                            return;
+                          }
+                          setEditorCanvasElements(prev => prev.map(el => el.id === 'el_bg' ? { ...el, content: first.url } : el));
+                          triggerToast(`Backdrop set to ${first.name}`);
                         }},
-                        { label: '🏆 Add 5-Star Rating Pill', action: () => {
-                          setEditorCanvasElements(prev => [...prev, { id: `el_${Date.now()}`, type: 'badge', content: '★★★★★ 4.9/5 (12,400+ Reviews)', x: 10, y: 26, width: 50, height: 7, color: '#FFBD2E', bgColor: 'rgba(0,0,0,0.7)', borderColor: 'rgba(255,189,46,0.4)', borderWidth: 1, borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'Inter', zIndex: 18, visible: true }]);
-                          triggerToast('Added 5-Star Rating Pill!');
+                        { label: '🏆 Add Rating Pill', action: () => {
+                          // Nothing in the brand vault stores a review score, so this can
+                          // only ever be a slot for the brand's own verified number.
+                          setEditorCanvasElements(prev => [...prev, { id: `el_${Date.now()}`, type: 'badge', content: '★★★★★ YOUR RATING', x: 10, y: 26, width: 50, height: 7, color: '#FFBD2E', bgColor: 'rgba(0,0,0,0.7)', borderColor: 'rgba(255,189,46,0.4)', borderWidth: 1, borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'Inter', zIndex: 18, visible: true }]);
+                          triggerToast('Rating pill added — put your own verified rating in it');
                         }}
                       ].map((preset, idx) => (
                         <button
@@ -3751,29 +4155,33 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     <Upload size={14} /> Upload Photo from Computer
                   </button>
 
-                  <div style={{ fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginTop: '6px' }}>STOCK STUDIO BACKDROPS</div>
+                  <div style={{ fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginTop: '6px' }}>
+                    YOUR ASSET VAULT {vaultImages.length ? `(${vaultImages.length})` : ''}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {[
-                      { name: 'Metallic Dark', img: productImg(400) },
-                      { name: 'Neon Cyberpunk', img: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=400&q=80' },
-                      { name: 'Minimal Marble', img: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=400&q=80' },
-                      { name: 'Tech Setup', img: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80' }
-                    ].map((bg, idx) => (
+                    {vaultImages.slice(0, 12).map((bg, idx) => (
                       <div
                         key={idx}
                         onClick={() => {
-                          setEditorCanvasElements(prev => prev.map(el => el.id === 'el_bg' ? { ...el, content: bg.img } : el));
-                          triggerToast(`Applied ${bg.name} backdrop!`);
+                          setEditorCanvasElements(prev => prev.map(el => el.id === 'el_bg' ? { ...el, content: bg.url } : el));
+                          triggerToast(`Applied ${bg.name} as the canvas background`);
                         }}
+                        title={bg.name}
                         style={{ position: 'relative', borderRadius: '6px', overflow: 'hidden', height: '60px', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.15)' }}
                       >
-                        <img src={bg.img} alt={bg.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <span style={{ position: 'absolute', bottom: 3, left: 3, right: 3, background: 'rgba(0,0,0,0.8)', color: '#fff', fontSize: '9px', fontWeight: 600, padding: '1px 3px', borderRadius: '3px', textAlign: 'center' }}>
+                        <img src={bg.url} alt={bg.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <span style={{ position: 'absolute', bottom: 3, left: 3, right: 3, background: 'rgba(0,0,0,0.8)', color: '#fff', fontSize: '9px', fontWeight: 600, padding: '1px 3px', borderRadius: '3px', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {bg.name}
                         </span>
                       </div>
                     ))}
                   </div>
+                  {!vaultImages.length && (
+                    <p style={{ fontSize: '10.5px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                      Your Asset Vault is empty. Run “Import from website” in the Assets tab and
+                      your own brand images appear here to drop onto the canvas.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -3895,6 +4303,35 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   const isSelected = selectedElementId === el.id;
 
                   if (el.type === 'image') {
+                    // An image layer with no source is an empty slot, not a broken icon.
+                    if (!el.content) {
+                      return (
+                        <div
+                          key={el.id}
+                          onMouseDown={(e) => handleCanvasMouseDown(e, el.id)}
+                          style={{
+                            position: 'absolute',
+                            top: `${el.y}%`,
+                            left: `${el.x}%`,
+                            width: `${el.width}%`,
+                            height: `${el.height || 100}%`,
+                            zIndex: el.zIndex || 1,
+                            cursor: 'pointer',
+                            background: 'linear-gradient(160deg, #16161f 0%, #0b0b12 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: isSelected && el.id !== 'el_bg' ? '2px solid #00E676' : 'none'
+                          }}
+                        >
+                          {el.id === 'el_bg' && (
+                            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', textAlign: 'center', padding: '0 20px', lineHeight: 1.5 }}>
+                              Pick a background from Media → Your Asset Vault,<br />or upload a product shot.
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
                     return (
                       <img
                         key={el.id}
@@ -4091,7 +4528,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                           <label style={{ display: 'block', fontSize: '9.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '2px' }}>DESTINATION LANDING URL (META LINK)</label>
                           <input
                             type="text"
-                            placeholder="https://ambrane.com/diwali-offer"
+                            placeholder="https://your-site.com/offer"
                             value={(activeEl as any).targetUrl || ''}
                             onChange={e => {
                               const val = e.target.value;

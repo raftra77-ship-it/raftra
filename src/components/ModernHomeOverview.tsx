@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -36,24 +36,226 @@ import { GlowButton } from './GlowButton';
 interface ModernHomeOverviewProps {
   userName?: string;
   brandName?: string;
+  workspaceId?: number | null;
   onNavigateTab: (tab: string) => void;
   onOpenReview?: (itemTitle: string) => void;
 }
 
+/* The ad-account connectors this platform actually has.
+   The Connect modal used to list nine of them - ChatGPT Ads, Amazon Ads, Google Drive,
+   Slack, HubSpot among them - and every unlocked row called handleSimulateConnect, a 900ms
+   timer that flipped the page to "connected" without contacting any provider. Meta, Google
+   Ads, Search Console and GA4 have real OAuth connectors in backend/connector_routes.py;
+   the rest have no backend at all, so they are listed as unavailable rather than offered. */
+const HOME_CONNECTORS: {
+  key: string;
+  name: string;
+  desc: string;
+  tag: string;
+  statusPath: (ws: number) => string;
+  authorizePath?: (ws: number) => string;
+  read: (s: any) => { configured: boolean; connected: boolean; detail: string | null };
+  isAdAccount?: boolean;
+  unconfiguredHint: string;
+}[] = [
+  {
+    key: 'meta',
+    name: 'Meta Ads',
+    desc: 'Run and optimize ads across Facebook, Instagram, Threads, and more.',
+    tag: 'Ad Account',
+    isAdAccount: true,
+    statusPath: (ws) => `/api/connectors/meta/${ws}/status`,
+    authorizePath: (ws) => `/api/connectors/meta/${ws}/authorize`,
+    read: (s) => ({ configured: !!s.configured, connected: !!s.connected, detail: s.name || s.ad_account_id || null }),
+    unconfiguredHint: 'Server is missing META_APP_ID / META_APP_SECRET.',
+  },
+  {
+    key: 'google-ads',
+    name: 'Google Ads',
+    desc: 'Run and optimize ads across Search, YouTube, Maps, Gmail, and more.',
+    tag: 'Ad Account',
+    isAdAccount: true,
+    statusPath: (ws) => `/api/connectors/google-ads/${ws}/status`,
+    authorizePath: (ws) => `/api/connectors/google-ads/${ws}/authorize`,
+    read: (s) => ({ configured: !!s.configured, connected: !!s.connected, detail: s.email || s.customer_id || null }),
+    unconfiguredHint: 'Server is missing GOOGLE_ADS_CLIENT_ID / SECRET / DEVELOPER_TOKEN.',
+  },
+  {
+    key: 'gsc',
+    name: 'Google Search Console',
+    desc: 'Monitor organic search rankings, keyword impressions, CTR, and indexing health.',
+    tag: 'Analytics',
+    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    authorizePath: (ws) => `/api/connectors/search-console/${ws}/authorize`,
+    read: (s) => ({ configured: !!s.configured, connected: !!s.connected, detail: s.site_url || s.email || null }),
+    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
+  },
+  {
+    key: 'ga4',
+    name: 'Google Analytics 4',
+    desc: 'Pull traffic, event, and conversion data across your site and campaigns.',
+    tag: 'Analytics',
+    // GA4 rides on the Search Console grant and only counts once a property id is saved.
+    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    read: (s) => ({ configured: !!s.configured, connected: !!(s.connected && s.ga4_property_id), detail: s.ga4_property_id || null }),
+    unconfiguredHint: 'Connect Search Console first, then pick a GA4 property in SEO + GEO.',
+  },
+];
+
+// Listed so the roadmap stays visible, but with no Connect button, because there is nothing
+// behind them to connect to.
+const HOME_CONNECTORS_UNAVAILABLE = [
+  { name: 'ChatGPT Ads', desc: 'Run and optimize ads in ChatGPT conversations.' },
+  { name: 'Amazon Ads', desc: 'Run and optimize product ads on Amazon.' },
+  { name: 'Google Drive', desc: 'Sync brand assets, video footage, product catalogs, and creative guidelines.' },
+  { name: 'Slack', desc: 'Receive real-time campaign alerts and creative approval requests.' },
+  { name: 'HubSpot', desc: 'Sync leads, CRM contacts, deals, and attribution pipelines.' },
+];
+
 export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   userName = 'aryan070606',
   brandName = 'Demo Brand',
+  workspaceId = null,
   onNavigateTab,
   onOpenReview
 }) => {
-  // Brand Kit Review Modal State
+  /* Brand Kit Review Modal.
+     It said "Extracted from {brand} guidelines" over content that was extracted from
+     nothing: Raftra's own palette (#5A52FF "Electric Violet"), Raftra's own fonts, a generic
+     paragraph of brand voice, "28 Synced" assets illustrated with stock photos, and a fixed
+     "18–35, Delhi/Mumbai/Bengaluru" audience. Onboarding's crawl writes all of this for real
+     into brand_profiles, and /brand-profile serves it, so that is what it reads now. */
   const [showBrandKitModal, setShowBrandKitModal] = useState(false);
   const [activeBrandKitTab, setActiveBrandKitTab] = useState<'logo' | 'colors' | 'typography' | 'knowledge' | 'assets' | 'market'>('logo');
+  const [brandKit, setBrandKit] = useState<any | null>(null);
+  const [brandKitLoading, setBrandKitLoading] = useState(true);
+  const [vaultAssets, setVaultAssets] = useState<{ url: string; name: string }[]>([]);
 
-  // Ad Account Connection Modal State
+  /* Ad account connection.
+     `isAdAccountConnected` used to be plain local state, flipped either by a "Demo Mode
+     (Click to Toggle)" button or by a 900ms fake connect, and it gated whether this page
+     showed invented recommendations and invented creative performance as live account data.
+     It is now derived from the connectors' own status endpoints. */
   const [showConnectModal, setShowConnectModal] = useState(false);
-  const [isAdAccountConnected, setIsAdAccountConnected] = useState(false);
+  const [connectorStates, setConnectorStates] = useState<
+    Record<string, { configured: boolean; connected: boolean; detail: string | null } | 'error'>
+  >({});
+  const [connectorsLoading, setConnectorsLoading] = useState(true);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
+  const [connectNote, setConnectNote] = useState<string | null>(null);
+
+  const authHdrs = (): HeadersInit => {
+    const t = localStorage.getItem('token');
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  };
+
+  useEffect(() => {
+    if (!workspaceId) { setConnectorStates({}); setConnectorsLoading(false); return; }
+    let cancelled = false;
+    setConnectorsLoading(true);
+    Promise.all(HOME_CONNECTORS.map(c =>
+      fetch(c.statusPath(workspaceId), { headers: authHdrs() })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then(s => [c.key, c.read(s)] as const)
+        // 'error' is kept distinct from "not connected": a failed status call tells us
+        // nothing, and guessing in either direction is what produced the wrong badges.
+        .catch(() => [c.key, 'error' as const] as const)
+    )).then(entries => {
+      if (!cancelled) setConnectorStates(Object.fromEntries(entries));
+    }).finally(() => { if (!cancelled) setConnectorsLoading(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) { setBrandKitLoading(false); return; }
+    let cancelled = false;
+    setBrandKitLoading(true);
+    Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/brand-profile`, { headers: authHdrs() })
+        .then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch(`/api/workspaces/${workspaceId}/assets`, { headers: authHdrs() })
+        .then(r => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([bp, av]) => {
+      if (cancelled) return;
+      if (bp) setBrandKit(bp);
+      const rows = Array.isArray(av?.assets) ? av.assets : [];
+      setVaultAssets(rows
+        .filter((a: any) => a?.url && !String(a.format || '').match(/mp4|webm|mov/i))
+        .map((a: any) => ({ url: a.url, name: a.alt_text || a.filename || 'Asset' })));
+    }).finally(() => { if (!cancelled) setBrandKitLoading(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const bkGuidelines = (brandKit?.guidelines || {}) as Record<string, any>;
+  const bkLine = (v: any): string => Array.isArray(v) ? v.filter(Boolean).join(', ') : (v ? String(v) : '');
+  // One palette, whichever form the crawl managed to record.
+  const bkColors: { name: string; hex: string }[] =
+    (Array.isArray(brandKit?.color_tokens) && brandKit.color_tokens.length
+      ? brandKit.color_tokens.map((t: any) => ({ name: t?.name || t?.role || 'Brand colour', hex: t?.hex || t?.value || '' }))
+      : (brandKit?.color_palette || []).map((hex: any) => ({ name: 'Brand colour', hex: String(hex) }))
+    ).filter((c: any) => /^#[0-9a-f]{3,8}$/i.test(String(c.hex || '').trim()));
+
+  // 'error' means the status call failed and we know nothing — never treat it as a state.
+  const liveState = (key: string) => {
+    const s = connectorStates[key];
+    return s && s !== 'error' ? s : null;
+  };
+  const metaView = liveState('meta');
+  const googleAdsView = liveState('google-ads');
+  const metaConnected = !!metaView?.connected;
+  const googleAdsConnected = !!googleAdsView?.connected;
+  const isAdAccountConnected = metaConnected || googleAdsConnected;
+  const connectedAccountLabel = metaConnected && metaView?.detail ? `Meta · ${metaView.detail}`
+    : googleAdsConnected && googleAdsView?.detail ? `Google Ads · ${googleAdsView.detail}`
+    : null;
+
+  // Hands the browser to the provider's own consent screen — the same flow the Integrations
+  // Hub uses. Nothing here marks a connection as made; the callback and the status endpoint
+  // decide that.
+  const startConnect = async (c: typeof HOME_CONNECTORS[number]) => {
+    if (!workspaceId || !c.authorizePath) return;
+    setConnectingPlatform(c.key);
+    setConnectNote(null);
+    try {
+      const r = await fetch(c.authorizePath(workspaceId), { headers: authHdrs() });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.url) { window.location.href = d.url; return; }
+      setConnectNote(d.detail || `Could not start the ${c.name} connection.`);
+    } catch {
+      setConnectNote('Could not reach the server. Please try again.');
+    }
+    setConnectingPlatform(null);
+  };
+
+  /* The optimization feed and creative performance, from the ad account itself.
+     backend/core/campaign_optimizer.py computes these from real Meta insights — it is the
+     same feed the Campaign Manager reads — replacing two hardcoded arrays that quoted
+     "+₹18,000 weekly savings", "4.8x ROAS" and "₹14,500" spend to every workspace. */
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [creativePerf, setCreativePerf] = useState<any[]>([]);
+  const [perfLoading, setPerfLoading] = useState(false);
+  const [perfError, setPerfError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!workspaceId || !metaConnected) { setRecommendations([]); setCreativePerf([]); return; }
+    let cancelled = false;
+    setPerfLoading(true);
+    setPerfError(null);
+    Promise.all([
+      fetch(`/api/connectors/meta/${workspaceId}/recommendations`, { headers: authHdrs() })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+      fetch(`/api/connectors/meta/${workspaceId}/insights`, { headers: authHdrs() })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+    ]).then(([recs, ins]) => {
+      if (cancelled) return;
+      setRecommendations(Array.isArray(recs?.recommendations) ? recs.recommendations : []);
+      const rows = ins?.insights && typeof ins.insights === 'object' ? Object.values(ins.insights) : [];
+      setCreativePerf((rows as any[]).sort((a, b) => (b?.roas || 0) - (a?.roas || 0)));
+    }).catch(() => {
+      if (!cancelled) setPerfError('Could not read live performance from the ad account.');
+    }).finally(() => { if (!cancelled) setPerfLoading(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId, metaConnected]);
 
   // Recommendations Modal State
   const [showRecommendationsModal, setShowRecommendationsModal] = useState(false);
@@ -99,76 +301,6 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
     { id: 'market', label: 'Target Market', status: 'Ready', icon: <Target size={16} color="#A855F7" /> }
   ];
 
-  // Mock Top Performing Creatives (shown when connected or preview toggled)
-  const mockCreatives = [
-    {
-      id: 'cr_1',
-      title: '15s High-Hook UGC Video Reel',
-      type: 'Video Reel',
-      roas: '4.8x',
-      spend: '₹14,500',
-      ctr: '3.6%',
-      revenue: '₹69,600',
-      thumbnail: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=400&q=80',
-      tag: 'Scale Winner'
-    },
-    {
-      id: 'cr_2',
-      title: '3-Slide Value Carousel - Social Proof',
-      type: 'Carousel',
-      roas: '4.1x',
-      spend: '₹9,800',
-      ctr: '2.9%',
-      revenue: '₹40,180',
-      thumbnail: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=400&q=80',
-      tag: 'High CTR'
-    },
-    {
-      id: 'cr_3',
-      title: 'Feature Comparison Static Ad',
-      type: 'Static Post',
-      roas: '3.7x',
-      spend: '₹6,400',
-      ctr: '2.4%',
-      revenue: '₹23,680',
-      thumbnail: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80',
-      tag: 'Consistent'
-    }
-  ];
-
-  // Mock Recommendations
-  const mockRecommendations = [
-    {
-      id: 'rec_1',
-      title: 'Auto-Refresh Fatigued Creative in Ad Set #2',
-      desc: 'Creative CTR dropped by 22% over last 48h. Swap with new AI UGC Variation #3 to restore 4.2x ROAS.',
-      impact: '+₹18,000 weekly savings',
-      urgency: 'High Impact'
-    },
-    {
-      id: 'rec_2',
-      title: 'Scale Lookalike Top Converting Ad Set (+15%)',
-      desc: 'Campaign maintaining 4.8x ROAS with 68% headroom before CPA inflection.',
-      impact: '+34 new orders/day',
-      urgency: 'Growth Opportunity'
-    },
-    {
-      id: 'rec_3',
-      title: 'Enable Advantage+ Placements on Meta',
-      desc: 'AI detected 18% cheaper CPMs across Instagram Reels & Stories inventory.',
-      impact: '-14% Blended CPA',
-      urgency: 'Optimization'
-    }
-  ];
-
-  const handleSimulateConnect = (platform: string) => {
-    setConnectingPlatform(platform);
-    setTimeout(() => {
-      setConnectingPlatform(null);
-      setIsAdAccountConnected(true);
-      setShowConnectModal(false);
-    }, 900);
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -192,8 +324,12 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
 
         {/* Action controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Reports the connectors' real state and opens the connect flow. It used to be a
+              toggle labelled "Demo Mode (Click to Toggle)" that switched the page into
+              showing fabricated account data with one click. */}
           <button
-            onClick={() => setIsAdAccountConnected(!isAdAccountConnected)}
+            onClick={() => !isAdAccountConnected && setShowConnectModal(true)}
+            title={connectedAccountLabel || 'Connect a Meta or Google Ads account'}
             style={{
               background: isAdAccountConnected ? 'rgba(0, 230, 118, 0.12)' : 'rgba(255, 255, 255, 0.04)',
               border: isAdAccountConnected ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
@@ -202,7 +338,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
               borderRadius: '100px',
               fontSize: '13px',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: isAdAccountConnected ? 'default' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -210,7 +346,9 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
             }}
           >
             {isAdAccountConnected ? <CheckCircle2 size={14} color="#00E676" /> : <Link2 size={14} />}
-            {isAdAccountConnected ? 'Ad Account: Connected' : 'Demo Mode (Click to Toggle)'}
+            {connectorsLoading ? 'Checking ad account…'
+              : isAdAccountConnected ? `Ad Account: Connected${connectedAccountLabel ? ` · ${connectedAccountLabel}` : ''}`
+              : 'No ad account connected'}
           </button>
 
           <GlowButton variant="glow" onClick={() => onNavigateTab('studio')} style={{ fontSize: '13.5px', padding: '10px 20px' }}>
@@ -554,11 +692,23 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 </button>
               </div>
             ) : (
-              /* CONNECTED ACTIVE RECOMMENDATIONS PREVIEW */
+              /* The optimizer's own feed, computed from this account's insights. */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {mockRecommendations.slice(0, 2).map((rec) => (
+                {perfLoading && (
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: 0 }}>Reading your ad account…</p>
+                )}
+                {!perfLoading && perfError && (
+                  <p style={{ fontSize: '12.5px', color: 'var(--warning)', margin: 0 }}>{perfError}</p>
+                )}
+                {!perfLoading && !perfError && !recommendations.length && (
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                    No recommendations yet — the account has no campaigns with enough spend to
+                    judge. They appear here once there is signal to act on.
+                  </p>
+                )}
+                {recommendations.slice(0, 2).map((rec, i) => (
                   <div
-                    key={rec.id}
+                    key={rec.campaign_id || i}
                     style={{
                       background: 'rgba(255, 255, 255, 0.03)',
                       border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -569,14 +719,22 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                       gap: '6px'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', background: 'rgba(255, 179, 0, 0.15)', color: '#FFB300', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                        {rec.urgency}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        fontSize: '11px', padding: '2px 8px', borderRadius: '6px', fontWeight: 700,
+                        background: rec.severity === 'critical' ? 'rgba(255,71,87,0.15)'
+                          : rec.severity === 'good' ? 'rgba(0,230,118,0.15)' : 'rgba(255, 179, 0, 0.15)',
+                        color: rec.severity === 'critical' ? '#ff6b7a'
+                          : rec.severity === 'good' ? '#00E676' : '#FFB300',
+                      }}>
+                        {String(rec.signal || 'insight').replace('_', ' ')}
                       </span>
-                      <span style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 700 }}>{rec.impact}</span>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {rec.campaign_name}
+                      </span>
                     </div>
                     <h5 style={{ fontSize: '13.5px', color: '#fff', margin: 0, fontWeight: 700 }}>{rec.title}</h5>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>{rec.desc}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>{rec.detail}</p>
                   </div>
                 ))}
               </div>
@@ -676,11 +834,24 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 </button>
               </div>
             ) : (
-              /* CONNECTED ACTIVE CREATIVES PREVIEW */
+              /* Per-campaign performance straight from the Meta Insights API. The rows this
+                 replaces were four fixed entries with Unsplash thumbnails claiming "4.8x
+                 ROAS" on "₹14,500" spend for every workspace that flipped the demo toggle. */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {mockCreatives.map((cr) => (
+                {perfLoading && (
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: 0 }}>Reading campaign performance…</p>
+                )}
+                {!perfLoading && perfError && (
+                  <p style={{ fontSize: '12.5px', color: 'var(--warning)', margin: 0 }}>{perfError}</p>
+                )}
+                {!perfLoading && !perfError && !creativePerf.length && (
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                    The connected account has no campaign delivery in the last 7 days.
+                  </p>
+                )}
+                {creativePerf.slice(0, 4).map((cr, i) => (
                   <div
-                    key={cr.id}
+                    key={cr.campaign_id || i}
                     style={{
                       background: 'rgba(255, 255, 255, 0.03)',
                       border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -691,25 +862,22 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                       gap: '14px'
                     }}
                   >
-                    <img
-                      src={cr.thumbnail}
-                      alt={cr.title}
-                      style={{ width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
-                    />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '10px', background: 'rgba(0,230,118,0.15)', color: '#00E676', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                          {cr.tag}
-                        </span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{cr.type}</span>
-                      </div>
-                      <h5 style={{ fontSize: '13px', color: '#fff', margin: '2px 0 0 0', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {cr.title}
+                      <h5 style={{ fontSize: '13px', color: '#fff', margin: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {cr.campaign_name || 'Untitled campaign'}
                       </h5>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {cr.ctr ? `${Number(cr.ctr).toFixed(2)}% CTR` : 'CTR not reported'}
+                        {cr.purchases ? ` · ${cr.purchases} purchases` : ''}
+                      </span>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '14px', color: '#00E676', fontWeight: 800 }}>{cr.roas} ROAS</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Spend: {cr.spend}</div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '14px', color: '#00E676', fontWeight: 800 }}>
+                        {cr.roas ? `${Number(cr.roas).toFixed(2)}x ROAS` : '—'}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        Spend: ₹{Number(cr.spend || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -718,8 +886,12 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
           </div>
 
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--text-muted)' }}>
-            <span>Attribution: 7-day click, 1-day view</span>
-            <span style={{ color: '#7C75FF' }}>● Realtime Meta & Google Sync</span>
+            {/* Both lines used to assert live syncing regardless of whether anything was
+                connected. They now describe the account that is actually attached. */}
+            <span>{isAdAccountConnected ? 'Meta attribution: last 7 days' : 'No ad account connected'}</span>
+            <span style={{ color: metaConnected ? '#7C75FF' : 'var(--text-muted)' }}>
+              {metaConnected ? '● Meta Insights connected' : '○ Meta not connected'}
+            </span>
           </div>
         </div>
       </div>
@@ -916,56 +1088,75 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 {activeBrandKitTab === 'logo' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Extracted Brand Logos</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      <div style={{ background: '#000', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '24px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', color: '#fff', marginBottom: '8px' }}>
-                          {brandName.toUpperCase()}
-                        </div>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Dark Theme SVG Vector (Primary)</span>
+                    {/* The logo files onboarding found in the site's markup. The two panels
+                        this replaces just typeset the workspace name in a bold font and
+                        labelled it "Dark Theme SVG Vector (Primary)". */}
+                    {(brandKit?.logos || []).length ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+                        {(brandKit.logos as any[]).slice(0, 6).map((lg, i) => {
+                          const src = typeof lg === 'string' ? lg : (lg?.url || lg?.src || '');
+                          if (!src) return null;
+                          return (
+                            <div key={i} style={{ background: i % 2 ? '#ffffff' : '#000', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '24px', textAlign: 'center' }}>
+                              <img src={src} alt={`${brandName} logo`} style={{ maxWidth: '100%', maxHeight: '70px', objectFit: 'contain' }} />
+                              <span style={{ fontSize: '11px', color: i % 2 ? '#666' : 'var(--text-muted)', display: 'block', marginTop: '8px' }}>
+                                {i % 2 ? 'On light background' : 'On dark background'}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div style={{ background: '#ffffff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '24px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.04em', color: '#000000', marginBottom: '8px' }}>
-                          {brandName.toUpperCase()}
-                        </div>
-                        <span style={{ fontSize: '11px', color: '#666' }}>Light Background Monogram</span>
-                      </div>
-                    </div>
+                    ) : (
+                      <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                        {brandKitLoading ? 'Reading your brand vault…'
+                          : 'No logo files were found on your website. Re-run the sync from Brand Knowledge, or upload one there.'}
+                      </p>
+                    )}
                   </div>
                 )}
 
                 {activeBrandKitTab === 'colors' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Color Palette Tokens</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px' }}>
-                      {[
-                        { name: 'Electric Violet (Primary)', hex: '#5A52FF' },
-                        { name: 'Neon Emerald (Accent)', hex: '#00E676' },
-                        { name: 'Cyan Glow (Highlight)', hex: '#00D2FF' },
-                        { name: 'Obsidian Night (Surface)', hex: '#08080C' }
-                      ].map((col) => (
-                        <div key={col.hex} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '12px' }}>
-                          <div style={{ height: '56px', borderRadius: '8px', background: col.hex, marginBottom: '10px', border: '1px solid rgba(255,255,255,0.1)' }} />
-                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>{col.name}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{col.hex}</div>
-                        </div>
-                      ))}
-                    </div>
+                    {/* The palette lifted off the brand's own CSS. It used to print
+                        Raftra's four product colours as though they were the customer's. */}
+                    {bkColors.length ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px' }}>
+                        {bkColors.slice(0, 8).map((col, i) => (
+                          <div key={`${col.hex}-${i}`} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '12px' }}>
+                            <div style={{ height: '56px', borderRadius: '8px', background: col.hex, marginBottom: '10px', border: '1px solid rgba(255,255,255,0.1)' }} />
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>{col.name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{col.hex}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                        {brandKitLoading ? 'Reading your brand vault…'
+                          : 'No palette has been extracted from your website yet. Run the sync in Brand Knowledge.'}
+                      </p>
+                    )}
                   </div>
                 )}
 
                 {activeBrandKitTab === 'typography' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                     <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Typography Hierarchy</h4>
+                    {/* The fonts the crawl read off the site, not Raftra's own stack. */}
                     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '20px' }}>
-                      <div style={{ fontSize: '24px', fontWeight: 800, color: '#fff', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
-                        Heading Font: Outfit Display
-                      </div>
-                      <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-                        Body Font: Inter (Weights: 400, 500, 600, 700)
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#00E676', fontFamily: 'var(--font-mono)' }}>
-                        Monospace: JetBrains Mono for Metrics & Financials
-                      </div>
+                      {brandKit?.typography && Object.keys(brandKit.typography).length ? (
+                        Object.entries(brandKit.typography as Record<string, any>).map(([role, val]) => (
+                          <div key={role} style={{ marginBottom: '10px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{role.replace(/_/g, ' ')}</span>
+                            <div style={{ fontSize: '17px', fontWeight: 700, color: '#fff', marginTop: '2px' }}>{bkLine(val) || 'Not recorded'}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                          {brandKitLoading ? 'Reading your brand vault…'
+                            : 'No typography was extracted from your website yet. Run the sync in Brand Knowledge.'}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -973,53 +1164,77 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 {activeBrandKitTab === 'knowledge' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Extracted Brand Knowledge</h4>
+                    {/* What onboarding actually learned. The two paragraphs this replaces
+                        described Raftra's own pitch and were shown for every brand. */}
                     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div>
-                        <strong style={{ color: '#00E676', fontSize: '12px', textTransform: 'uppercase' }}>Brand Voice & Tone:</strong>
-                        <p style={{ color: '#fff', fontSize: '13.5px', margin: '4px 0 0 0' }}>
-                          Premium, visionary, performance-focused, and highly conversion-optimized with clean D2C aesthetics.
+                      {[
+                        { label: 'Brand voice & tone', color: '#00E676', value: bkLine(brandKit?.brand_voice) || bkLine(bkGuidelines.tone) || bkLine(bkGuidelines.personality) },
+                        { label: 'Value propositions', color: '#7C75FF', value: bkLine(bkGuidelines.usps) || bkLine(bkGuidelines.benefits) },
+                        { label: 'What they sell', color: '#00D2FF', value: bkLine(bkGuidelines.categories) },
+                        { label: 'Summary', color: '#FFB300', value: bkLine(brandKit?.brand_guidelines_summary) },
+                      ].filter(row => row.value).map((row, i) => (
+                        <div key={row.label} style={i ? { borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' } : undefined}>
+                          <strong style={{ color: row.color, fontSize: '12px', textTransform: 'uppercase' }}>{row.label}:</strong>
+                          <p style={{ color: '#fff', fontSize: '13.5px', margin: '4px 0 0 0', lineHeight: 1.5 }}>{row.value}</p>
+                        </div>
+                      ))}
+                      {!bkLine(brandKit?.brand_voice) && !bkLine(bkGuidelines.tone) && !bkLine(bkGuidelines.usps)
+                        && !bkLine(bkGuidelines.categories) && !bkLine(brandKit?.brand_guidelines_summary) && (
+                        <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                          {brandKitLoading ? 'Reading your brand vault…'
+                            : 'Nothing has been extracted from your website yet. Run the sync in Brand Knowledge and this fills in.'}
                         </p>
-                      </div>
-                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
-                        <strong style={{ color: '#7C75FF', fontSize: '12px', textTransform: 'uppercase' }}>Primary Value Propositions:</strong>
-                        <p style={{ color: '#fff', fontSize: '13.5px', margin: '4px 0 0 0' }}>
-                          10x faster creative turnaround, automated multi-channel ad scaling, and verified audience authenticity.
-                        </p>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {activeBrandKitTab === 'assets' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Media & Product Assets (28 Synced)</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
-                      {mockCreatives.map((c) => (
-                        <div key={c.id} style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                          <img src={c.thumbnail} alt={c.title} style={{ width: '100%', height: '100px', objectFit: 'cover' }} />
-                          <div style={{ padding: '6px', background: '#0d0d14', fontSize: '11px', color: '#fff', textAlign: 'center' }}>
-                            {c.type}
+                    {/* The workspace's real Asset Vault. The heading used to read "28
+                        Synced" over four stock photographs, whatever the vault held. */}
+                    <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>
+                      Media & Product Assets{vaultAssets.length ? ` (${vaultAssets.length})` : ''}
+                    </h4>
+                    {vaultAssets.length ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                        {vaultAssets.slice(0, 12).map((a, i) => (
+                          <div key={i} style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <img src={a.url} alt={a.name} style={{ width: '100%', height: '100px', objectFit: 'cover' }} />
+                            <div style={{ padding: '6px', background: '#0d0d14', fontSize: '11px', color: '#fff', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {a.name}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                        {brandKitLoading ? 'Reading your Asset Vault…'
+                          : 'Your Asset Vault is empty. Import your website images from the Assets tab.'}
+                      </p>
+                    )}
                   </div>
                 )}
 
                 {activeBrandKitTab === 'market' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <h4 style={{ fontSize: '16px', color: '#fff', margin: 0 }}>Target Market Demographics</h4>
+                    {/* The audience onboarding actually described, rather than a fixed
+                        "18 – 35 Years" and "Delhi, Mumbai, Bengaluru, Pune" for every brand. */}
                     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '20px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                        <div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Audience Age</span>
-                          <div style={{ fontSize: '16px', color: '#fff', fontWeight: 700, marginTop: '2px' }}>18 – 35 Years (Gen Z / Millennials)</div>
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Geography</span>
-                          <div style={{ fontSize: '16px', color: '#fff', fontWeight: 700, marginTop: '2px' }}>India (Delhi, Mumbai, Bengaluru, Pune)</div>
-                        </div>
-                      </div>
+                      {bkLine(brandKit?.target_audience) || bkLine(bkGuidelines.target_audiences) ? (
+                        <>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Target audience</span>
+                          <div style={{ fontSize: '15px', color: '#fff', fontWeight: 600, marginTop: '4px', lineHeight: 1.5 }}>
+                            {bkLine(brandKit?.target_audience) || bkLine(bkGuidelines.target_audiences)}
+                          </div>
+                        </>
+                      ) : (
+                        <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                          {brandKitLoading ? 'Reading your brand vault…'
+                            : 'No target audience has been extracted yet. Add it in Brand Knowledge so the agents plan against it.'}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1095,71 +1310,110 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 </button>
               </div>
 
+              {connectNote && (
+                <div style={{ padding: '10px 14px', borderRadius: '10px', fontSize: '12.5px', background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.3)', color: '#ff8b95' }}>
+                  {connectNote}
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '60vh', overflowY: 'auto', paddingRight: '4px' }}>
-                {[
-                  { id: 'meta', name: 'Meta Ads', desc: 'Run and optimize ads across Facebook, Instagram, Threads, and more.', tag: 'Ad Account', isLocked: false },
-                  { id: 'google', name: 'Google Ads', desc: 'Run and optimize ads across Search, YouTube, Maps, Gmail, and more.', tag: 'Ad Account', isLocked: false },
-                  { id: 'chatgpt', name: 'ChatGPT Ads', desc: 'Run and optimize ads in ChatGPT conversations.', tag: 'Coming Soon', isLocked: true },
-                  { id: 'amazon', name: 'Amazon Ads', desc: 'Run and optimize product ads on Amazon.', tag: 'Coming Soon', isLocked: true },
-                  { id: 'ga4', name: 'Google Analytics 4', desc: 'Pull traffic, event, and conversion data across your site and campaigns.', tag: 'Analytics', isLocked: false },
-                  { id: 'gsc', name: 'Google Search Console', desc: 'Monitor organic search rankings, keyword impressions, CTR, and indexing health.', tag: 'Analytics', isLocked: false },
-                  { id: 'drive', name: 'Google Drive', desc: 'Sync brand assets, video footage, product catalogs, and creative guidelines.', tag: 'Productivity', isLocked: false },
-                  { id: 'slack', name: 'Slack', desc: 'Receive real-time campaign alerts and creative approval requests.', tag: 'Team Alert', isLocked: false },
-                  { id: 'hubspot', name: 'HubSpot', desc: 'Sync leads, CRM contacts, deals, and attribution pipelines.', tag: 'CRM', isLocked: false }
-                ].map((plat) => (
+                {HOME_CONNECTORS.map((plat) => {
+                  const st = connectorStates[plat.key];
+                  const view = st && st !== 'error' ? st : null;
+                  const isConnected = !!view && view.connected;
+                  const label = connectorsLoading || !st ? 'Checking…'
+                    : st === 'error' ? 'Status unavailable'
+                    : isConnected ? `Connected${view?.detail ? ` · ${view.detail}` : ''}`
+                    : view?.configured ? 'Not connected'
+                    : 'Not configured on the server';
+
+                  return (
+                    <div
+                      key={plat.key}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '14px',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <div style={{ flex: 1, paddingRight: '12px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                          <span style={{ fontSize: '14.5px', color: '#fff', fontWeight: 700 }}>{plat.name}</span>
+                          <span style={{ fontSize: '10px', background: 'rgba(90,82,255,0.15)', color: '#7C75FF', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                            {plat.tag}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.35, display: 'block' }}>{plat.desc}</span>
+                        <span style={{ fontSize: '11px', color: isConnected ? '#00E676' : 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                          {label}
+                          {view && !view.configured && ` — ${plat.unconfiguredHint}`}
+                        </span>
+                      </div>
+
+                      {isConnected ? (
+                        <span style={{ fontSize: '11px', color: '#00E676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', padding: '5px 12px', borderRadius: '100px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          ✓ Connected
+                        </span>
+                      ) : plat.authorizePath && view?.configured ? (
+                        <button
+                          onClick={() => startConnect(plat)}
+                          disabled={Boolean(connectingPlatform)}
+                          style={{
+                            background: 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
+                            color: '#000000',
+                            border: 'none',
+                            borderRadius: '100px',
+                            padding: '8px 18px',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: connectingPlatform ? 'default' : 'pointer',
+                            whiteSpace: 'nowrap',
+                            opacity: connectingPlatform ? 0.6 : 1
+                          }}
+                        >
+                          {connectingPlatform === plat.key ? 'Opening…' : 'Connect'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { setShowConnectModal(false); onNavigateTab('integrations'); }}
+                          style={{ background: 'none', border: 'none', color: '#8B85FF', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', padding: 0 }}
+                        >
+                          Open Integrations →
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* No backend connector exists for these, so no Connect button is offered. */}
+                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.04em', marginTop: '6px' }}>
+                  NOT AVAILABLE YET
+                </div>
+                {HOME_CONNECTORS_UNAVAILABLE.map((plat) => (
                   <div
-                    key={plat.id}
+                    key={plat.name}
                     style={{
-                      background: plat.isLocked ? 'rgba(255, 255, 255, 0.015)' : 'rgba(255, 255, 255, 0.03)',
-                      border: plat.isLocked ? '1px dashed rgba(255, 255, 255, 0.1)' : '1px solid rgba(255, 255, 255, 0.08)',
+                      background: 'rgba(255, 255, 255, 0.015)',
+                      border: '1px dashed rgba(255, 255, 255, 0.1)',
                       borderRadius: '14px',
                       padding: '14px 16px',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      opacity: plat.isLocked ? 0.75 : 1
+                      opacity: 0.75
                     }}
                   >
                     <div style={{ flex: 1, paddingRight: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                        <span style={{ fontSize: '14.5px', color: '#fff', fontWeight: 700 }}>{plat.name}</span>
-                        <span style={{
-                          fontSize: '10px',
-                          background: plat.isLocked ? 'rgba(255, 179, 0, 0.15)' : 'rgba(90,82,255,0.15)',
-                          color: plat.isLocked ? '#FFB300' : '#7C75FF',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontWeight: 700
-                        }}>
-                          {plat.isLocked ? '🔒 Coming Soon' : plat.tag}
-                        </span>
-                      </div>
+                      <span style={{ fontSize: '14.5px', color: '#fff', fontWeight: 700, display: 'block', marginBottom: '2px' }}>{plat.name}</span>
                       <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.35 }}>{plat.desc}</span>
                     </div>
-
-                    {plat.isLocked ? (
-                      <span style={{ fontSize: '11px', color: '#FFB300', background: 'rgba(255,179,0,0.1)', border: '1px solid rgba(255,179,0,0.3)', padding: '5px 12px', borderRadius: '100px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        🔒 Locked
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => handleSimulateConnect(plat.id)}
-                        disabled={Boolean(connectingPlatform)}
-                        style={{
-                          background: 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
-                          color: '#000000',
-                          border: 'none',
-                          borderRadius: '100px',
-                          padding: '8px 18px',
-                          fontSize: '12px',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {connectingPlatform === plat.id ? 'Connecting...' : 'Connect'}
-                      </button>
-                    )}
+                    <span style={{ fontSize: '11px', color: '#FFB300', background: 'rgba(255,179,0,0.1)', border: '1px solid rgba(255,179,0,0.3)', padding: '5px 12px', borderRadius: '100px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      Not built yet
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1222,9 +1476,21 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {mockRecommendations.map((rec) => (
+                {!isAdAccountConnected && (
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                    No ad account is connected, so there is no performance data to compute
+                    recommendations from. Connect Meta or Google Ads to fill this in.
+                  </p>
+                )}
+                {isAdAccountConnected && !recommendations.length && (
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                    {perfLoading ? 'Reading your ad account…'
+                      : perfError || 'No campaign in the connected account has enough spend to make a call yet.'}
+                  </p>
+                )}
+                {recommendations.map((rec, i) => (
                   <div
-                    key={rec.id}
+                    key={rec.campaign_id || i}
                     style={{
                       background: 'rgba(255, 255, 255, 0.03)',
                       border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -1235,17 +1501,35 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                       gap: '8px'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', background: 'rgba(255, 179, 0, 0.15)', color: '#FFB300', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                        {rec.urgency}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        fontSize: '11px', padding: '2px 8px', borderRadius: '6px', fontWeight: 700,
+                        background: rec.severity === 'critical' ? 'rgba(255,71,87,0.15)'
+                          : rec.severity === 'good' ? 'rgba(0,230,118,0.15)' : 'rgba(255, 179, 0, 0.15)',
+                        color: rec.severity === 'critical' ? '#ff6b7a'
+                          : rec.severity === 'good' ? '#00E676' : '#FFB300',
+                      }}>
+                        {String(rec.signal || 'insight').replace('_', ' ')}
                       </span>
-                      <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>{rec.impact}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {rec.campaign_name}
+                      </span>
                     </div>
                     <h4 style={{ fontSize: '14px', color: '#fff', margin: 0, fontWeight: 700 }}>{rec.title}</h4>
-                    <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{rec.desc}</p>
+                    <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{rec.detail}</p>
+                    {rec.expected && (
+                      <p style={{ fontSize: '12px', color: '#00E676', margin: 0 }}>{rec.expected}</p>
+                    )}
+                    {/* Budget and pause changes are made in Campaign Manager, which has the
+                        confirm step and the real endpoints. The button this replaces was an
+                        alert() saying "Applied recommendation" and changed nothing at all. */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                      <GlowButton variant="glow" onClick={() => { alert(`Applied recommendation: ${rec.title}`); setShowRecommendationsModal(false); }} style={{ padding: '6px 16px', fontSize: '12px' }}>
-                        Apply 1-Click Optimization ⚡
+                      <GlowButton
+                        variant="glow"
+                        onClick={() => { setShowRecommendationsModal(false); onNavigateTab('campaign'); }}
+                        style={{ padding: '6px 16px', fontSize: '12px' }}
+                      >
+                        Act on this in Campaign Manager →
                       </GlowButton>
                     </div>
                   </div>

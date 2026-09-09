@@ -499,6 +499,29 @@ class SearchConsoleConnection(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class GoogleDriveConnection(Base):
+    """Per-workspace Google Drive grant, used to import brand assets into the vault.
+
+    Its own row rather than a column on SearchConsoleConnection: Drive needs the
+    drive.readonly scope, which the Search Console grant does not carry, and the two are
+    connected and revoked independently.
+    """
+    __tablename__ = "google_drive_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), unique=True)
+    connected_email = Column(String, nullable=True)
+    refresh_token = Column(EncryptedString, nullable=True)   # long-lived; mints access tokens
+    access_token = Column(EncryptedString, nullable=True)
+    token_expiry = Column(DateTime, nullable=True)
+    scopes = Column(String, nullable=True)
+    # The folder the user last browsed, so the picker reopens where they left off.
+    default_folder_id = Column(String, nullable=True)
+    default_folder_name = Column(String, nullable=True)
+    last_import_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class GitHubConnection(Base):
     """Per-workspace GitHub connection used to apply approved changes to the site's
     repo (commit content/SEO files as a pull request). One connection per workspace.

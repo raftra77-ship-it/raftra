@@ -588,6 +588,12 @@ export function BrandDashboard() {
     setCreativeAssets((prev) => [newAsset, ...prev]);
   };
 
+  // Creative Studio deletes the row server-side; this drops it from the list the studio,
+  // the Assets tab and the review flow all read, so the card does not reappear.
+  const handleAssetRemoved = (assetId: string) => {
+    setCreativeAssets((prev) => prev.filter((a) => a.id !== assetId));
+  };
+
   // Campaign items
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
 
@@ -2355,6 +2361,7 @@ export function BrandDashboard() {
               <ModernHomeOverview
                 userName={userName}
                 brandName={brandProfile?.name || 'Demo Brand'}
+                workspaceId={workspaceId}
                 onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
                 onOpenReview={handleOpenReview}
               />
@@ -2371,6 +2378,7 @@ export function BrandDashboard() {
                 onOpenReview={handleOpenReview}
                 onGenerate={handleGenerateCreative}
                 onAssetSaved={handleAssetSaved}
+                onAssetRemoved={handleAssetRemoved}
                 onNavigateTab={(tab: string) => setActiveTab(tab as NavigationTab)}
                 incomingReferenceImage={studioReferenceImage}
                 brands={allWorkspaces}
