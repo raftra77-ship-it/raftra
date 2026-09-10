@@ -25,17 +25,33 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 
 MAX_FILE_SIZE = 25 * 1024 * 1024
 
-# Extension -> the magic bytes that must actually be present. Trusting the extension, or the
-# client-supplied content type, lets "proof.png" contain anything at all. Mirrors the
-# allowlist in workspace_routes.upload_asset, plus PDF for documents.
+# Extension -> the magic bytes that must actually be present, as (offset, bytes). Trusting
+# the extension, or the client-supplied content type, lets "proof.png" contain anything at
+# all. Mirrors the allowlist in workspace_routes.upload_asset, plus PDF for documents.
+#
+# The offset exists for video: an MP4/MOV carries its `ftyp` box at byte 4, not byte 0, so
+# the previous startswith-only check could not express it. Video is allowed because the
+# Creative Studio storyboard had no way to attach footage to a scene — the tab wrote
+# videoScenes[].videoUrl and nothing could ever fill it, so a "video storyboard" could hold
+# only subtitles.
 _SIGNATURES = {
-    ".png":  [b"\x89PNG\r\n\x1a\n"],
-    ".jpg":  [b"\xff\xd8\xff"],
-    ".jpeg": [b"\xff\xd8\xff"],
-    ".webp": [b"RIFF"],
-    ".gif":  [b"GIF87a", b"GIF89a"],
-    ".pdf":  [b"%PDF-"],
+    ".png":  [(0, b"\x89PNG\r\n\x1a\n")],
+    ".jpg":  [(0, b"\xff\xd8\xff")],
+    ".jpeg": [(0, b"\xff\xd8\xff")],
+    ".webp": [(0, b"RIFF")],
+    ".gif":  [(0, b"GIF87a"), (0, b"GIF89a")],
+    ".pdf":  [(0, b"%PDF-")],
+    ".mp4":  [(4, b"ftyp")],
+    ".m4v":  [(4, b"ftyp")],
+    ".mov":  [(4, b"ftyp")],
+    ".webm": [(0, b"\x1a\x45\xdf\xa3")],
 }
+
+# Video files are an order of magnitude larger than a product photo, but the whole upload is
+# read into memory below, and the API runs on a 512MB instance — so this is a deliberate
+# compromise rather than a generous limit. A 15-second 9:16 scene clip fits comfortably.
+_VIDEO_EXTS = {".mp4", ".m4v", ".mov", ".webm"}
+MAX_VIDEO_SIZE = 60 * 1024 * 1024
 
 
 @router.post("/upload")
@@ -50,11 +66,12 @@ async def upload_media(file: UploadFile = File(...),
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="The uploaded file is empty.")
-    if len(content) > MAX_FILE_SIZE:
+    cap = MAX_VIDEO_SIZE if ext in _VIDEO_EXTS else MAX_FILE_SIZE
+    if len(content) > cap:
         raise HTTPException(status_code=413, detail=(
             f"File is {len(content) // 1024 // 1024}MB; the limit is "
-            f"{MAX_FILE_SIZE // 1024 // 1024}MB."))
-    if not any(content.startswith(sig) for sig in _SIGNATURES[ext]):
+            f"{cap // 1024 // 1024}MB."))
+    if not any(content[off:off + len(sig)] == sig for off, sig in _SIGNATURES[ext]):
         raise HTTPException(status_code=400, detail=(
             f"That file is not a valid {ext.lstrip('.').upper()} file - its contents do not "
             "match its extension."))

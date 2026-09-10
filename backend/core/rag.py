@@ -123,40 +123,28 @@ def format_brand_kit(facts: dict) -> str:
 def retrieve(workspace_id: int, query: str, kinds: List[str], limit: int = 5) -> List[dict]:
     """Semantic search within ONE workspace, restricted to the given payload kinds.
 
-    The workspace filter is built here and is not optional - a caller cannot pass a filter
-    that omits it, which is what keeps one tenant's ad vault out of another's answers.
+    The workspace filter is applied inside core.vector_store and is not a caller argument
+    that can be omitted, which is what keeps one tenant's ad vault out of another's answers.
     Returns [] rather than raising: an answer grounded in the brand kit alone still beats
-    a 500 when Qdrant is unreachable.
+    a 500 when the vector store is unreachable.
+
+    The store itself moved behind core.vector_store, which defaults to pgvector. Talking
+    straight to Qdrant from here meant retrieval only worked where Qdrant was running,
+    which was nowhere but a local docker-compose — see that module's header.
     """
     if not kinds:
         return []
-    try:
-        from database import qdrant_client
-        from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
-        from core.embeddings import embed_query, ensure_collection, COLLECTION_NAME
+    from core import vector_store
 
-        ensure_collection(qdrant_client)
-        resp = qdrant_client.query_points(
-            collection_name=COLLECTION_NAME,
-            query=embed_query(query),
-            query_filter=Filter(must=[
-                FieldCondition(key="workspace_id", match=MatchValue(value=workspace_id)),
-                FieldCondition(key="type", match=MatchAny(any=list(kinds))),
-            ]),
-            limit=limit,
-        )
-        out = []
-        for point in resp.points:
-            payload = point.payload or {}
-            if (payload.get("content") or "").strip():
-                out.append({"content": payload["content"], "type": payload.get("type", ""),
-                            "source_url": payload.get("source_url", ""),
-                            "competitor": payload.get("competitor", ""),
-                            "score": getattr(point, "score", None)})
-        return out
-    except Exception as e:
-        print("[rag] retrieval failed for workspace %s: %s" % (workspace_id, e))
-        return []
+    hits = vector_store.search(workspace_id, query, list(kinds), limit)
+    out = []
+    for h in hits:
+        if (h.get("content") or "").strip():
+            out.append({"content": h["content"], "type": h.get("type", ""),
+                        "source_url": h.get("source_url", ""),
+                        "competitor": h.get("competitor", ""),
+                        "score": h.get("score")})
+    return out
 
 
 def build_context(workspace_id: int, query: str, include_ads: bool = True,

@@ -16,7 +16,6 @@ decorative:
 """
 import asyncio
 import os
-import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -56,52 +55,19 @@ def _index(workspace_id: int, kind: str, texts: List[dict], replace: bool = True
 
     Returns how many points were written; never raises, because a vector store that is down
     must not lose the relational rows that were already committed.
+
+    Both semantics are implemented by core.vector_store, which owns the two backends. This
+    function used to talk to Qdrant directly, so the index was only ever written where
+    Qdrant was running — nowhere but a local docker-compose.
     """
     if not texts:
         return 0
-    try:
-        from database import qdrant_client
-        from qdrant_client.models import (PointStruct, Filter, FieldCondition, MatchValue)
-        from core.embeddings import embed_passage, ensure_collection, COLLECTION_NAME
+    from core import vector_store
 
-        from qdrant_client.models import Range
-
-        ensure_collection(qdrant_client)
-        scope = [
-            FieldCondition(key="workspace_id", match=MatchValue(value=workspace_id)),
-            FieldCondition(key="type", match=MatchValue(value=kind)),
-        ]
-        if replace:
-            qdrant_client.delete(collection_name=COLLECTION_NAME,
-                                 points_selector=Filter(must=scope))
-        elif retain_days:
-            # Keep history, but bounded: drop anything past the retention window rather
-            # than letting a four-weekly job grow the index without limit.
-            cutoff = int((datetime.utcnow() - timedelta(days=retain_days)).timestamp())
-            qdrant_client.delete(
-                collection_name=COLLECTION_NAME,
-                points_selector=Filter(must=scope + [
-                    FieldCondition(key="indexed_ts", range=Range(lt=cutoff))]),
-            )
-        # Every point carries WHEN it was written, in two forms. `indexed_at` is readable in
-        # a payload dump; `indexed_ts` is an integer epoch because Qdrant range filters and
-        # ordering need a number, not an ISO string. Without these a trend index answers
-        # "what is true about this market" but never "what changed since last month" - and
-        # a four-weekly sync exists precisely to make that question answerable.
-        now = datetime.utcnow()
-        stamp = {"indexed_at": now.isoformat(), "indexed_ts": int(now.timestamp())}
-        points = [
-            PointStruct(id=str(uuid.uuid4()), vector=embed_passage(t["content"]),
-                        payload={"workspace_id": workspace_id, "type": kind,
-                                 "content": t["content"], **stamp, **(t.get("meta") or {})})
-            for t in texts if (t.get("content") or "").strip()
-        ]
-        if points:
-            qdrant_client.upsert(collection_name=COLLECTION_NAME, points=points)
-        return len(points)
-    except Exception as e:
-        print("[intel_sync] vector index failed for workspace %s (%s): %s" % (workspace_id, kind, e))
-        return 0
+    # Timestamps are the store's job now: pgvector orders on a real `indexed_at` column, and
+    # the Qdrant path still writes the integer `indexed_ts` its range filters require.
+    return vector_store.upsert(workspace_id, kind, texts,
+                               replace=replace, retain_days=retain_days)
 
 
 # ------------------------------------------------------------- competitor ads

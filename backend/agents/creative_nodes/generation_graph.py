@@ -187,21 +187,14 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
     # Optional enrichment. Any failure here is expected in the current deployment and must
     # not discard the Postgres context gathered above.
     try:
-        from database import qdrant_client
-        from core.embeddings import embed_query, ensure_collection, COLLECTION_NAME
-        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        from core import vector_store
 
-        ensure_collection(qdrant_client)
         query_text = f"{state.get('prompt', '')} {state.get('strategy', '')}"
-        response = qdrant_client.query_points(
-            collection_name=COLLECTION_NAME,
-            query=embed_query(query_text),
-            query_filter=Filter(must=[
-                FieldCondition(key="workspace_id", match=MatchValue(value=state.get("workspace_id")))
-            ]),
-            limit=3,
-        )
-        hits = [r.payload.get("content", "") for r in response.points if r.payload.get("content")]
+        # kinds=[] means every kind this workspace has indexed — the brand scrape, the
+        # competitor ad vault and the trend reports are all fair context for a generation.
+        hits = [h.get("content", "") for h
+                in vector_store.search(state.get("workspace_id"), query_text, [], 3)
+                if h.get("content")]
         if hits:
             for idx, h in enumerate(hits):
                 context_parts.append(f"[RELATED {idx + 1}] {h}")
@@ -209,7 +202,7 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
     except Exception as e:
         # Logged, never surfaced into the prompt: an error string pasted in there reads to
         # the model as a fact about the brand.
-        print(f"Qdrant enrichment unavailable: {e}")
+        print(f"Knowledge-base enrichment unavailable: {e}")
 
     if context_parts:
         # Only attach the section when there is something in it. The old code always

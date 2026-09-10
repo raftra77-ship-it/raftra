@@ -70,8 +70,15 @@ async def preload_embedding_model():
 
     def _warm():
         try:
-            from core.embeddings import get_embedding_model
-            print("Pre-loading embedding model (bge-small-en-v1.5)...", flush=True)
+            from core.embeddings import (get_embedding_model, EMBEDDING_PROVIDER,
+                                         EMBEDDING_MODEL_NAME, COLLECTION_NAME)
+            # The hosted provider has nothing to load — say which one is active instead, so
+            # the log shows whether this instance can embed at all.
+            if EMBEDDING_PROVIDER != "local":
+                print(f"Embeddings: provider '{EMBEDDING_PROVIDER}' ({EMBEDDING_MODEL_NAME}), "
+                      f"collection '{COLLECTION_NAME}' — no local model to preload.", flush=True)
+                return
+            print(f"Pre-loading embedding model ({EMBEDDING_MODEL_NAME})...", flush=True)
             get_embedding_model()
             print("Embedding model ready.", flush=True)
         except Exception as e:
@@ -246,6 +253,20 @@ def _run_light_migrations():
         "UPDATE wordpress_connections SET auth_type = 'app_password' WHERE auth_type IS NULL",
         # Brand guidelines beyond the four scraped fields (BrandProfile.guidelines).
         "ALTER TABLE brand_profiles ADD COLUMN IF NOT EXISTS guidelines JSON",
+        # knowledge_chunks (core/vector_store.py) is the pgvector home of the RAG index.
+        # create_all() makes the table, but Supabase turns RLS ON for new tables and a table
+        # with RLS enabled and NO policy returns zero rows to every role that does not bypass
+        # it. That is fail-closed, so nothing leaks — but it also silently empties the
+        # knowledge base for any non-bypassing caller, and it leaves this as the one
+        # workspace-scoped table without the isolation policy all its siblings carry.
+        # Same predicate as ad_assets/seo_audits, so it inherits one definition of "mine".
+        # Vision-written descriptions for Asset Vault search (core/asset_tagging.py).
+        "ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS description TEXT",
+        "ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS tagged_at TIMESTAMP",
+        "ALTER TABLE knowledge_chunks ENABLE ROW LEVEL SECURITY",
+        "DROP POLICY IF EXISTS tenant_isolation ON knowledge_chunks",
+        "CREATE POLICY tenant_isolation ON knowledge_chunks FOR ALL "
+        "USING (workspace_id IN (SELECT app_my_workspace_ids()))",
     ]
     try:
         with database.engine.begin() as conn:

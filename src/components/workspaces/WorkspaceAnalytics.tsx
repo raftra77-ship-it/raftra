@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Search, BarChart3, Globe, Users, Award, Zap, Activity, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
-import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+// PieChart/Pie/Cell are gone with the donut — the budget split is a ranked horizontal bar
+// now, built from plain divs, because it is a magnitude comparison (see the 'pie' branch).
+// AreaChart/Area were never used on this screen.
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 import { GrowthAnalysisSection } from './GrowthAnalysisSection';
 import { Markdown } from '../Markdown';
@@ -151,7 +154,31 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   const organicConnected = Boolean(gscOverview);
   const geoScore = auditReport?.geo_score ?? null;
 
-  const pieColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#7C75FF', '#00E676'];
+/* Categorical series colours, assigned in this fixed order and never cycled.
+   What this replaces was `['#8884d8','#82ca9d','#ffc658','#ff8042','#7C75FF','#00E676']` —
+   recharts' stock demo colours with two brand tokens appended, indexed with `% length`, so
+   a seventh platform silently reused slot 1 and the same platform changed colour whenever a
+   filter changed the row count. Two of those entries were also the reserved status colours
+   (--success #00ff9d, and #ffc658 next to --warning), which have to stay reserved for
+   good/warning/critical or a green bar reads as "healthy" rather than "Google".
+
+   These five are the dataviz reference theme's dark slots, re-validated against THIS app's
+   card surface (#121217) rather than assumed:
+     Lightness band  PASS   all 5 within OKLCH L 0.48-0.67
+     Chroma floor    PASS   all 5 >= 0.1
+     CVD separation  PASS   worst adjacent pair dE 8.4 (protan), 8.7 (tritan)
+     Normal vision   PASS   worst adjacent pair dE 19.3
+     Contrast        PASS   all 5 >= 3:1 against the surface
+   Re-run before changing any of them:
+     node scripts/validate_palette.js "<hexes>" --mode dark --surface "#121217" */
+  const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
+  // Recessive chart furniture — grid and axes must not compete with the marks.
+  const AXIS = '#52525b';
+  const GRID = 'rgba(255,255,255,0.06)';
+  const TOOLTIP_STYLE = {
+    background: '#0a0a0c', border: '1px solid var(--border-color)',
+    borderRadius: '8px', color: '#fff', fontSize: '12px',
+  } as const;
 
   // Drafts have never spent anything, so they are excluded from every money figure below.
   const liveCampaigns = React.useMemo(
@@ -226,6 +253,42 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
     [metaInsights]
   );
 
+  /* The headline numbers, computed from the same rows the charts below use.
+     These are stat tiles rather than a chart on purpose: "what is my ROAS" is a single
+     magnitude, and the honest form for one number is the number. Previously the page opened
+     with a chat box and a reader had to scroll past three sections to reach any figure at
+     all — on an analytics page the summary belongs first.
+     Spend prefers Meta's reported spend and falls back to the entered budget, matching how
+     pieData and wasterRows already resolve it, so the tiles cannot disagree with the charts. */
+  const kpis = React.useMemo(() => {
+    const spentByCampaign = new Map<string, number>();
+    metaInsights.forEach(r => { if (r.campaign_name) spentByCampaign.set(r.campaign_name, Number(r.spend) || 0); });
+
+    let spend = 0, revenue = 0, purchases = 0, measured = 0;
+    liveCampaigns.forEach(c => {
+      const s = spentByCampaign.get(c.name) ?? (Number(c.budget) || 0);
+      spend += s;
+      const roas = Number(c.roas) || 0;
+      if (roas > 0) { revenue += roas * s; measured += 1; }
+    });
+    metaInsights.forEach(r => { purchases += Number(r.purchases) || 0; });
+
+    const inr = (v: number) =>
+      `₹${Math.round(v).toLocaleString('en-IN')}`;
+    return [
+      { key: 'spend', label: 'Ad Spend', value: spend > 0 ? inr(spend) : '—',
+        note: spend > 0 ? `${liveCampaigns.length} live campaign${liveCampaigns.length === 1 ? '' : 's'}` : 'no live campaigns' },
+      { key: 'revenue', label: 'Attributed Revenue', value: revenue > 0 ? inr(revenue) : '—',
+        note: measured ? `from ${measured} measured campaign${measured === 1 ? '' : 's'}` : 'no ROAS measured yet' },
+      { key: 'roas', label: 'Blended ROAS', value: spend > 0 && revenue > 0 ? `${(revenue / spend).toFixed(2)}×` : '—',
+        note: spend > 0 && revenue > 0 ? 'revenue ÷ spend' : 'needs spend and ROAS' },
+      { key: 'purchases', label: 'Purchases', value: purchases > 0 ? purchases.toLocaleString('en-IN') : '—',
+        note: purchases > 0 ? 'reported by Meta' : 'connect Meta to report' },
+      { key: 'cac', label: 'Cost per Purchase', value: purchases > 0 && spend > 0 ? inr(spend / purchases) : '—',
+        note: purchases > 0 && spend > 0 ? 'spend ÷ purchases' : 'needs purchases' },
+    ];
+  }, [liveCampaigns, metaInsights]);
+
   /** Shown in place of a chart when a workspace has nothing to plot yet. */
   const EmptyVisual: React.FC<{ title: string; hint: string; cta?: string; tab?: string }> = ({ title, hint, cta, tab }) => (
     <div style={{ marginTop: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '20px', textAlign: 'center' }}>
@@ -288,10 +351,10 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
         <div style={{ height: '180px', width: '100%', marginTop: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '12px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={roasBarData}>
-              <XAxis dataKey="platform" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-              <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+              <XAxis dataKey="platform" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={{ background: '#0a0a0c', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
-              <Bar dataKey="ROAS" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="ROAS" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={38} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -327,18 +390,34 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
       );
     }
     if (type === 'pie') {
+      /* A ranked horizontal bar, not the donut this used to be. The question is "which
+         platform takes most of the budget, and by how much" — a magnitude comparison, which
+         people read accurately from a common baseline and poorly from arc angles. Sorted
+         descending, one bar per platform, value labelled directly so no legend or colour
+         lookup is needed. Kept under the 'pie' key so the chat's visualType contract and
+         every caller stay unchanged. */
+      const total = pieData.reduce((t, d) => t + d.value, 0) || 1;
       return (
-        <div style={{ height: '180px', width: '100%', marginTop: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '12px' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} fill="#8884d8" paddingAngle={5} dataKey="value">
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ background: '#0a0a0c', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} />
-            </PieChart>
-          </ResponsiveContainer>
+        <div style={{ width: '100%', marginTop: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '14px 16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {pieData.map((d, i) => (
+              <div key={d.name}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#fff', fontWeight: 600 }}>{d.name}</span>
+                  <span style={{ color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                    ₹{d.value.toLocaleString('en-IN')} · {Math.round((d.value / total) * 100)}%
+                  </span>
+                </div>
+                {/* 8px track, 4px rounded data-end, anchored to a common left baseline. */}
+                <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${Math.max(2, (d.value / total) * 100)}%`, height: '100%',
+                    background: SERIES[i % SERIES.length], borderRadius: '4px',
+                  }} />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       );
     }
@@ -347,10 +426,10 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
         <div style={{ height: '180px', width: '100%', marginTop: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '12px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={cpaData}>
-              <XAxis dataKey="day" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} interval={0} angle={-12} textAnchor="end" height={40} />
-              <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+              <XAxis dataKey="day" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} interval={0} angle={-12} textAnchor="end" height={40} />
+              <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} />
               <Tooltip formatter={(v) => [`$${v}`, 'CPA'] as [string, string]} contentStyle={{ background: '#0a0a0c', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} />
-              <Line type="monotone" dataKey="CPA" stroke="#ff7300" strokeWidth={2} />
+              <Line type="monotone" dataKey="CPA" stroke={SERIES[1]} strokeWidth={2} dot={{ r: 4, strokeWidth: 0, fill: SERIES[1] }} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -376,7 +455,39 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px', paddingBottom: '40px' }}>
       <style>{`@keyframes analyst-blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }`}</style>
 
-      {/* 1. TOP SECTION: Claude MCP Query Engine */}
+      {/* 1. HEADLINE NUMBERS.
+          The page's summary, first — see the `kpis` memo for why these are tiles and not a
+          chart. Every tile shows an em dash and says what is missing rather than a zero: a
+          "₹0" and a "0.00x" are indistinguishable from a measured result of zero, and this
+          screen used to report exactly that for workspaces with nothing connected. */}
+      <div>
+        <h2 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 4px 0' }}>
+          Performance Summary
+        </h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 16px 0' }}>
+          Across this workspace's live campaigns. Drafts are excluded — they have never spent.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '14px' }}>
+          {kpis.map(k => (
+            <div key={k.key} className="glow-card" style={{ padding: '18px 20px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                {k.label}
+              </div>
+              <div style={{
+                fontSize: 'clamp(22px, 3vw, 30px)', fontWeight: 700, color: '#fff',
+                margin: '8px 0 4px', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1,
+              }}>
+                {k.value}
+              </div>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>{k.note}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
+
+      {/* 2. Claude MCP Query Engine */}
       <div>
         <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <MessageSquare size={24} color="var(--primary)" /> Claude MCP Intelligence Engine
@@ -521,7 +632,7 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
 
       <div style={{ height: '1px', background: 'var(--border)', margin: '10px 0' }} />
 
-      {/* 2. MIDDLE SECTION: SEO & GEO Dashboard */}
+      {/* 3. SEO & GEO PERFORMANCE */}
       <div>
         <h3 style={{ fontSize: '18px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
           <Globe size={20} color="var(--success)" /> SEO & GEO Performance
@@ -582,20 +693,20 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
                 <div style={{ width: '100%', height: '240px' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={seoGeoData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                      <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} minTickGap={24} />
-                      <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+                      <XAxis dataKey="name" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} minTickGap={24} />
+                      <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={{ background: '#0a0a0c', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} />
-                      <Line type="monotone" dataKey="Organic" stroke="#8884d8" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="Impressions" stroke="var(--success)" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="Organic" stroke={SERIES[0]} strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="Impressions" stroke={SERIES[2]} strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
                 <div style={{ display: 'flex', gap: '16px', fontSize: '11px', marginTop: '16px', justifyContent: 'center' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8884d8' }} /> Clicks
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: SERIES[0] }} /> Clicks
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)' }} /> Impressions
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: SERIES[2] }} /> Impressions
                   </span>
                 </div>
               </>
@@ -620,7 +731,7 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
 
       <div style={{ height: '1px', background: 'var(--border)', margin: '10px 0' }} />
 
-      {/* 3. BOTTOM SECTION: Upgraded Growth Analysis & Intelligence Engine */}
+      {/* 4. GROWTH ANALYSIS & INTELLIGENCE ENGINE */}
       {/* workspaceId was never passed, so the section fell back to `workspaceId = null`:
           its growth fetch never ran, its demo toggle defaulted ON, and every connector
           indicator and KPI rendered from the built-in sample set. It also gets the same

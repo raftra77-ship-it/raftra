@@ -19,6 +19,53 @@ class AgentMemory(Base):
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     workspace = relationship("Workspace")
 
+class KnowledgeChunk(Base):
+    """One retrievable passage of a workspace's brand knowledge.
+
+    This is the relational home of the vector index. Qdrant held it before, and still can
+    (VECTOR_BACKEND=qdrant), but Qdrant runs nowhere except a local docker-compose: the
+    deployed API pointed at http://localhost:6333, so every semantic retrieval failed and
+    `rag.retrieve()` swallowed the error. Competitor ads and trend reports were written to
+    Postgres and never actually searchable. Postgres is the one store that is always
+    present, and pgvector 0.8.2 is already installed on this project's Supabase instance
+    with the driver already in both requirements files.
+
+    `embedding` is deliberately an unconstrained `vector` rather than vector(N). The
+    embedding provider is selectable (bge-small at 384 dims locally, gemini-embedding-001
+    truncated to 768 in deploys), and pinning a width here would mean a schema migration
+    every time that changed. Correctness is kept by `model` instead: a search only ever
+    compares rows written by the same model it is querying with, so vectors of different
+    widths coexist in the table without ever being compared. That also makes a provider
+    switch a re-index rather than an ALTER.
+
+    No ANN index. At a few thousand chunks per workspace an exact scan behind the
+    workspace_id/kind/model filters is faster than maintaining HNSW, and an ANN index needs
+    the fixed width this column deliberately does not have. Add one per-width later if the
+    corpus grows enough to need it.
+    """
+    __tablename__ = "knowledge_chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    # Matches the Qdrant payload's `type`, and the `kinds` filter rag.retrieve() passes:
+    # brand_kit, competitor_ads, market_trends, ...
+    kind = Column(String, nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector())
+    # Which model produced `embedding`. The guard that keeps mismatched vectors apart.
+    model = Column(String, nullable=False, index=True)
+    dim = Column(Integer, nullable=False)
+    # Whatever the caller attached (competitor name, days_active, source URL). Kept as JSON
+    # so the retrieval payload matches what the Qdrant backend returned.
+    meta = Column(JSON, default=dict)
+    # Retention needs a real timestamp to compare against; the four-weekly trend sync drops
+    # anything past its window rather than growing the index forever.
+    indexed_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+    workspace = relationship("Workspace")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -959,6 +1006,17 @@ class MediaAsset(Base):
     file_size_kb = Column(Float, nullable=True)
 
     tags = Column(JSON, default=list)
+    # What a vision model sees in the picture, written for retrieval (see
+    # core/asset_tagging.py). This is how "show me our lifestyle desk setup shots" finds an
+    # image whose filename is IMG_4471.jpg and whose alt text is empty — which is most of
+    # them. A true CLIP image vector was the other option and is not viable here: it needs
+    # torch (~490MB) on a 512MB instance, and this project's Gemini key serves no multimodal
+    # embedding model. Describing the image and embedding the description gets the same
+    # question answered with the text embedder already in production.
+    description = Column(Text, nullable=True)
+    # When the description/tags were last generated, so re-indexing can skip work already
+    # done and a caller can tell a never-tagged asset from one tagged before a model change.
+    tagged_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
 

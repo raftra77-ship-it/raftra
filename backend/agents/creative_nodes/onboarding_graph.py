@@ -922,48 +922,29 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
         
     # Persist the brand context to the knowledge base so generation can retrieve it.
     try:
-        from database import qdrant_client
-        from qdrant_client.models import PointStruct
-        from core.embeddings import embed_passage, ensure_collection, COLLECTION_NAME
-        import uuid
-
-        ensure_collection(qdrant_client)
+        from core import vector_store
 
         content_to_embed = state.get("scraped_content", "")
         # Fallback to empty string if no content is scraped to avoid crash
         if not content_to_embed:
             content_to_embed = "Empty workspace context"
 
-        # Re-indexing should REPLACE this workspace's knowledge, not pile new points on
-        # top of stale ones (otherwise old "No content extracted" placeholders linger).
-        from qdrant_client.models import Filter, FieldCondition, MatchValue
-        try:
-            qdrant_client.delete(
-                collection_name=COLLECTION_NAME,
-                points_selector=Filter(must=[FieldCondition(key="workspace_id", match=MatchValue(value=state["workspace_id"]))]),
-            )
-        except Exception as del_err:
-            print(f"Qdrant cleanup (non-fatal): {del_err}")
-
-        # Store one vector PER crawled page (better retrieval than one giant blob).
+        # Store one passage PER crawled page (better retrieval than one giant blob).
         crawled = [p for p in (state.get("scraped_pages") or []) if (p.get("content") or "").strip()]
         if crawled:
-            points = [
-                PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=embed_passage(p["content"]),
-                    payload={"workspace_id": state["workspace_id"], "content": p["content"],
-                             "type": "onboarding_scrape", "source_url": p.get("url", "")},
-                )
-                for p in crawled
-            ]
+            texts = [{"content": p["content"], "meta": {"source_url": p.get("url", "")}}
+                     for p in crawled]
         else:
-            points = [PointStruct(
-                id=str(uuid.uuid4()),
-                vector=embed_passage(content_to_embed),
-                payload={"workspace_id": state["workspace_id"], "content": content_to_embed, "type": "onboarding_scrape"},
-            )]
-        qdrant_client.upsert(collection_name=COLLECTION_NAME, points=points)
+            texts = [{"content": content_to_embed}]
+
+        # replace=True: re-indexing REPLACES this workspace's onboarding scrape rather than
+        # piling new passages on stale ones, or old "No content extracted" placeholders
+        # linger and get retrieved. The store does the delete inside the same call, so a
+        # failure cannot leave the workspace with its knowledge deleted and not rewritten.
+        written = vector_store.upsert(state["workspace_id"], "onboarding_scrape", texts,
+                                      replace=True)
+        if not written:
+            raise RuntimeError("no passages were indexed")
         state["kb_error"] = ""
     except Exception as e:
         # Two failures to keep apart. Printing only (the original behaviour) reported

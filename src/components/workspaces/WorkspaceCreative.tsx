@@ -6,7 +6,6 @@ import {
   Play, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
-import { PreviewBadge, PreviewNote } from './PreviewMark';
 import { MarketTrendsCompetitorModal } from '../MarketTrendsCompetitorModal';
 
 // One card in the Recent Projects / Ad Library grids. `real` marks a row that came from
@@ -1045,6 +1044,94 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   const setActiveCardImage = (url: string) => {
     setCarouselCards(prev => prev.map((c, i) => (i === activeCarouselIndex ? { ...c, imageUrl: url } : c)));
+  };
+
+  /* Scene footage for the Video Storyboard tab.
+     videoScenes[].videoUrl existed from the start and nothing in the app could ever write
+     it: the tab had no file input and no vault picker, so a "storyboard editor" could hold
+     subtitles and nothing else, and persistStoryboard always saved image_url: null. These
+     three mirror the carousel's image flow exactly, including uploading to /api/media/upload
+     rather than keeping a `blob:` handle that resolves nowhere outside this tab. */
+  const videoSceneFileRef = useRef<HTMLInputElement>(null);
+  const [uploadingSceneMedia, setUploadingSceneMedia] = useState(false);
+
+  const setActiveSceneMedia = (url: string) => {
+    setVideoScenes(prev => prev.map((s, i) => (i === activeVideoSceneIndex ? { ...s, videoUrl: url } : s)));
+  };
+
+  /* AI copy for every slot of the carousel / storyboard at once.
+     Neither builder had any generation: the only "AI" route out of them was a Canva link,
+     so all card headlines and scene subtitles were typed by hand. POST /api/creative/copy
+     is grounded in this workspace's brand context, so the copy names the brand's real
+     categories and USPs instead of describing a generic product. Existing text is never
+     overwritten silently — the caller confirms first. */
+  const [generatingCopy, setGeneratingCopy] = useState(false);
+
+  const generateSlotCopy = async (kind: 'carousel' | 'storyboard') => {
+    if (generatingCopy) return;
+    if (!workspaceId) { triggerToast('Open a workspace first.'); return; }
+
+    const slots = kind === 'carousel' ? carouselCards.length : videoScenes.length;
+    const hasText = kind === 'carousel'
+      ? carouselCards.some(c => (c.headline || '').trim() || (c.description || '').trim())
+      : videoScenes.some(s => (s.overlayText || '').trim());
+    if (hasText && !window.confirm('This replaces the copy already written here. Continue?')) return;
+
+    setGeneratingCopy(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/creative/copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ workspace_id: workspaceId, kind, slots, brief: aiPromptInstruction || productPrompt || '' }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && data.detail) || `Generation failed (${res.status})`);
+      const items: any[] = data?.items || [];
+      if (!items.length) throw new Error('No copy came back.');
+
+      if (kind === 'carousel') {
+        setCarouselCards(prev => prev.map((c, i) => (items[i]
+          ? { ...c, headline: items[i].headline || c.headline, description: items[i].description || c.description }
+          : c)));
+      } else {
+        setVideoScenes(prev => prev.map((s, i) => (items[i]
+          ? { ...s, overlayText: items[i].overlay_text || s.overlayText }
+          : s)));
+      }
+      triggerToast(data?.brand_grounded
+        ? 'Copy written from your brand kit.'
+        : 'Copy generated (no brand kit on file, so it is generic).');
+    } catch (err: any) {
+      triggerToast(err?.message || 'Could not generate copy.');
+    } finally {
+      setGeneratingCopy(false);
+    }
+  };
+
+  const handleSceneMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';                       // so the same file can be picked again
+    if (!file) return;
+    setUploadingSceneMedia(true);
+    const token = localStorage.getItem('token');
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const res = await fetch('/api/media/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
+      setActiveSceneMedia(data.url);
+      triggerToast('Footage added to this scene.');
+    } catch (err: any) {
+      triggerToast(err?.message || 'Could not upload that file.');
+    } finally {
+      setUploadingSceneMedia(false);
+    }
   };
 
   const handleCarouselImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2566,9 +2653,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   RAFTRA AD INTELLIGENCE & META AD BENCHMARKS
                 </span>
               </div>
+              {/* The PREVIEW badge that used to sit here was stale. It dated from when this
+                  panel rendered a fixed set of invented brands and metrics; the vault now
+                  reads /competitor-ads, i.e. ads the Meta Ad Library actually returned for
+                  the rivals on this workspace. PreviewMark's own rule is that anything
+                  genuinely wired to the backend stays unmarked, and leaving the badge on was
+                  worse than cosmetic — it told users their real ad data was a demo. */}
               <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 Winning Competitor Ads & Psychological Vault
-                <PreviewBadge />
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
                 Analyze top scaling competitor ads, psychological hooks, and high-converting CTAs tracked across active market campaigns.
@@ -2673,10 +2765,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             )}
           </div>
 
-          <PreviewNote>
-            The brands, hooks and metrics below this line are an illustrative sample — they are not tracked from any ad
-            library. Use the panel above for real research.
-          </PreviewNote>
+          {/* A PreviewNote here declared everything below it "an illustrative sample … not
+              tracked from any ad library". That stopped being true: the brand cards read
+              `adVault` from /competitor-ads, the invented badges ("Scaled 75+ Days" beside a
+              4.8x ROAS) are gone, and an empty vault now says so rather than filling itself
+              with fiction. The note survived the rewrite and was the only thing still
+              claiming this data was fake. */}
 
           {/* COMPETITOR BRAND CARDS */}
           <div>
@@ -3632,6 +3726,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* LEFT ACTIONS: CANVA & FIGMA BUTTONS */}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {/* Writes every card's copy in one call, grounded in the brand kit. */}
+                <button
+                  onClick={() => generateSlotCopy('carousel')}
+                  disabled={generatingCopy}
+                  style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.45)', color: '#00E676', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: generatingCopy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <Wand2 size={13} /> {generatingCopy ? 'Writing…' : 'Write all cards'}
+                </button>
                 <button
                   onClick={() => handleOpenCanva('Carousel Ad Cards')}
                   style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
@@ -3982,6 +4084,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* LEFT ACTIONS: CANVA & FIGMA BUTTONS */}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {/* Writes every scene's subtitle in one call, grounded in the brand kit. */}
+                <button
+                  onClick={() => generateSlotCopy('storyboard')}
+                  disabled={generatingCopy}
+                  style={{ background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.45)', color: '#7C75FF', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: generatingCopy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <Wand2 size={13} /> {generatingCopy ? 'Writing…' : 'Write all scenes'}
+                </button>
                 <button
                   onClick={() => handleOpenCanva('Video Reel Storyboard')}
                   style={{ background: 'rgba(0, 196, 204, 0.15)', border: '1px solid rgba(0, 196, 204, 0.4)', color: '#00C4CC', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
@@ -4115,6 +4225,75 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                         }}
                         style={{ width: '100%', boxSizing: 'border-box', padding: '8px', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
                       />
+                    </div>
+
+                    {/* SCENE FOOTAGE — upload, or reuse something already in this workspace */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10.5px', color: '#8e8e9e', fontWeight: 700, marginBottom: '6px' }}>
+                        SCENE FOOTAGE {curScene.videoUrl ? '' : '(none yet)'}
+                      </label>
+
+                      {curScene.videoUrl && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                          {/\.(mp4|m4v|mov|webm)(\?|$)/i.test(curScene.videoUrl) ? (
+                            <video src={curScene.videoUrl} muted playsInline
+                                   style={{ width: '86px', height: '86px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(124,117,255,0.5)', background: '#000' }} />
+                          ) : (
+                            <img src={curScene.videoUrl} alt="scene still"
+                                 style={{ width: '86px', height: '86px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(124,117,255,0.5)' }} />
+                          )}
+                          <button
+                            onClick={() => setActiveSceneMedia('')}
+                            style={{ background: 'rgba(255,80,80,0.12)', border: '1px solid rgba(255,80,80,0.35)', color: '#ff8080', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      <input type="file" ref={videoSceneFileRef} onChange={handleSceneMediaUpload}
+                             accept="video/mp4,video/quicktime,video/webm,image/*" style={{ display: 'none' }} />
+                      <button
+                        onClick={() => videoSceneFileRef.current?.click()}
+                        disabled={uploadingSceneMedia}
+                        style={{ background: 'rgba(124,117,255,0.14)', border: '1px solid rgba(124,117,255,0.4)', color: '#7C75FF', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: uploadingSceneMedia ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                      >
+                        <Upload size={13} /> {uploadingSceneMedia ? 'Uploading…' : 'Upload clip or still'}
+                      </button>
+
+                      {/* Anything already generated or harvested for this brand. A still is a
+                          valid scene frame, so images are offered alongside rendered videos. */}
+                      {(assets.some(a => a.videoUrl || a.imageUrl) || vaultImages.length > 0) && (
+                        <>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.04em', margin: '10px 0 6px' }}>
+                            OR REUSE FROM THIS WORKSPACE
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {[
+                              ...assets.filter(a => a.videoUrl).slice(0, 6)
+                                .map(a => ({ url: a.videoUrl as string, name: a.headline || 'Generated video', isVideo: true })),
+                              ...assets.filter(a => a.imageUrl).slice(0, 6)
+                                .map(a => ({ url: a.imageUrl as string, name: a.headline || 'Generated image', isVideo: false })),
+                              ...vaultImages.slice(0, 8).map(v => ({ url: v.url, name: v.name, isVideo: false })),
+                            ].map((m, idx) => (
+                              <button
+                                key={`${m.url}-${idx}`}
+                                onClick={() => setActiveSceneMedia(m.url)}
+                                title={m.name}
+                                style={{
+                                  width: '54px', height: '54px', padding: 0, overflow: 'hidden', cursor: 'pointer',
+                                  borderRadius: '6px', background: '#000',
+                                  border: curScene.videoUrl === m.url ? '2px solid #7C75FF' : '1px solid rgba(255,255,255,0.15)',
+                                }}
+                              >
+                                {m.isVideo
+                                  ? <video src={m.url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                  : <img src={m.url} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>

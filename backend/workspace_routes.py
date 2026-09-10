@@ -340,14 +340,21 @@ _KB_TYPE_LABELS = {
 @router.get("/{workspace_id}/knowledge/stats")
 def knowledge_stats(workspace_id: int, db: Session = Depends(database.get_db),
                     current_user: models.User = Depends(auth.get_current_user)):
-    """Real vector-store stats for this workspace's knowledge base — actual point counts
-    from Qdrant, grouped by source type. Fails open (available=False) if Qdrant or the
-    collection isn't reachable, so the dashboard never crashes."""
+    """Real vector-store stats for this workspace's knowledge base — actual chunk counts
+    grouped by source type. Fails open (available=False) if the store isn't reachable, so
+    the dashboard never crashes.
+
+    Reads through core.vector_store rather than Qdrant directly: with pgvector as the
+    default backend, counting Qdrant here reported an empty knowledge base for a workspace
+    whose chunks were sitting in Postgres.
+    """
     _require_workspace(workspace_id, db, current_user)
 
     from core.embeddings import COLLECTION_NAME, EMBEDDING_MODEL_NAME, EMBEDDING_DIM
+    from core import vector_store
     base = {
         "available": False,
+        "backend": vector_store.BACKEND,
         "collection": COLLECTION_NAME,
         "embedding_model": EMBEDDING_MODEL_NAME,
         "dimensions": EMBEDDING_DIM,
@@ -355,49 +362,32 @@ def knowledge_stats(workspace_id: int, db: Session = Depends(database.get_db),
         "stores": [],
     }
     try:
-        from database import qdrant_client
-        from qdrant_client.models import Filter, FieldCondition, MatchValue
-
-        # Collection may not exist yet (no one has indexed anything).
-        names = {c.name for c in qdrant_client.get_collections().collections}
-        if COLLECTION_NAME not in names:
-            base["available"] = True
-            return base
-
-        ws_filter = Filter(must=[FieldCondition(key="workspace_id", match=MatchValue(value=workspace_id))])
-        total = qdrant_client.count(collection_name=COLLECTION_NAME, count_filter=ws_filter, exact=True).count
-
-        # Tally points by their `type` payload, and collect each page's source URL
-        # (scroll payload only — no vectors pulled).
-        by_type: dict[str, int] = {}
+        st = vector_store.stats(workspace_id)
+        by_type = st.get("by_kind") or {}
         srcs_by_type: dict[str, list] = {}
-        next_page = None
-        for _ in range(50):  # safety cap: up to 50 * 256 points
-            points, next_page = qdrant_client.scroll(
-                collection_name=COLLECTION_NAME, scroll_filter=ws_filter,
-                with_payload=["type", "source_url"], with_vectors=False, limit=256, offset=next_page,
-            )
-            for p in points:
-                pl = p.payload or {}
-                t = pl.get("type") or "other"
-                by_type[t] = by_type.get(t, 0) + 1
-                su = pl.get("source_url")
+
+        # Source URLs, for the "what pages are indexed" list. Only the pgvector backend can
+        # answer this cheaply (a grouped read of the meta column); the Qdrant path leaves
+        # the lists empty rather than scrolling the whole collection for them.
+        if vector_store.BACKEND == "pgvector":
+            rows = (db.query(models.KnowledgeChunk.kind, models.KnowledgeChunk.meta)
+                      .filter(models.KnowledgeChunk.workspace_id == workspace_id).all())
+            for kind, meta in rows:
+                su = (meta or {}).get("source_url")
                 if su:
-                    lst = srcs_by_type.setdefault(t, [])
+                    lst = srcs_by_type.setdefault(kind, [])
                     if su not in lst:
                         lst.append(su)
-            if not next_page:
-                break
 
         stores = [
             {"type": t, "name": _KB_TYPE_LABELS.get(t, t.replace("_", " ").title()),
              "vectors": n, "sources": srcs_by_type.get(t, [])[:25]}
             for t, n in sorted(by_type.items(), key=lambda kv: -kv[1])
         ]
-        base.update({"available": True, "total_vectors": total, "stores": stores})
+        base.update({"available": True, "total_vectors": st.get("total", 0), "stores": stores})
         return base
     except Exception as e:
-        print(f"knowledge_stats: Qdrant unavailable for ws {workspace_id}: {e}")
+        print(f"knowledge_stats: vector store unavailable for ws {workspace_id}: {e}")
         return base
 
 

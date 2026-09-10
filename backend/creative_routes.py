@@ -53,6 +53,22 @@ class VariationBody(BaseModel):
     kind: str = "minimal"                     # luxury | minimal | energetic | ugc | ...
 
 
+class CopyBody(BaseModel):
+    """Structured multi-slot ad copy for the Carousel and Storyboard builders.
+
+    Those two tabs had no generation of any kind: every card headline and every scene
+    subtitle had to be typed by hand, and the only "AI" route out of them was a link to
+    Canva. The existing generation endpoints could not fill the gap — /creative/generate
+    renders ONE piece of media, and /agents/{id}/creative is a fire-and-forget pipeline that
+    produces a finished single ad. Neither returns N sets of copy for N slots, which is the
+    actual shape a carousel or a storyboard needs.
+    """
+    workspace_id: int
+    kind: str = "carousel"                    # carousel | storyboard
+    slots: int = Field(default=3, ge=1, le=10)
+    brief: str = Field(default="", max_length=_MAX_PROMPT_CHARS)
+
+
 def _media_type(value: str) -> str:
     v = (value or "image").strip().lower()
     return "video" if v.startswith("video") else "image"
@@ -205,6 +221,96 @@ def job_status(creative_id: int, workspace_id: int, db: Session = Depends(databa
     if not data:
         raise HTTPException(status_code=404, detail="Creative not found.")
     return {"success": True, **data}
+
+
+@router.post("/copy")
+async def generate_copy(body: CopyBody, db: Session = Depends(database.get_db),
+                        current_user: models.User = Depends(auth.get_current_user)):
+    """Generate copy for every slot of a carousel or a video storyboard, in one call.
+
+    Grounded in this workspace's own brand context (core.brand_context, which reads the
+    brand kit plus the RAG index), so the copy names the brand's real categories and USPs
+    rather than describing a generic product. That grounding is the whole reason this is a
+    server route and not a prompt typed in the browser.
+    """
+    _require_workspace(body.workspace_id, db, current_user)
+    kind = (body.kind or "carousel").strip().lower()
+    if kind not in ("carousel", "storyboard"):
+        raise HTTPException(status_code=400, detail="kind must be 'carousel' or 'storyboard'.")
+
+    from core.brand_context import get_brand_context
+    from core.providers.llm_providers import GeminiProvider
+    import json as _json
+    import re as _re
+
+    try:
+        brand = get_brand_context(body.workspace_id, query=body.brief or "ad copy positioning")
+    except Exception as e:
+        print(f"[creative/copy] brand context unavailable: {e}")
+        brand = ""
+
+    n = body.slots
+    if kind == "carousel":
+        shape = ('[{"headline": "...", "description": "..."}]  '
+                 f'exactly {n} objects, one per carousel card, in the order a viewer swipes '
+                 'them. Card 1 is the hook, the middle cards carry features or proof, the '
+                 'last card is the offer or call to action. headline <= 40 chars, '
+                 'description <= 90 chars.')
+    else:
+        shape = ('[{"overlay_text": "..."}]  '
+                 f'exactly {n} objects, one per scene of a short vertical video, in order. '
+                 'Scene 1 is a visual hook, then the problem, then the product as the '
+                 'answer, ending on a call to action. Each overlay_text is on-screen '
+                 'subtitle text: <= 60 characters, no hashtags, no emoji.')
+
+    prompt = f"""Write ad copy for this brand.
+
+BRAND CONTEXT (use its real categories, audience and USPs; invent no facts, no prices,
+no statistics and no awards that are not stated here):
+{brand or '(no brand kit on file — keep the copy generic rather than inventing specifics)'}
+
+BRIEF FROM THE USER: {body.brief or '(none given — use the brand context)'}
+
+Return ONLY a JSON array, no prose and no code fences:
+{shape}"""
+
+    try:
+        raw = await GeminiProvider().generate_text(prompt, max_output_tokens=1600)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Copy generation failed: {e}")
+
+    s = _re.sub(r"^```(?:json)?|```$", "", (raw or "").strip(), flags=_re.M).strip()
+    # Try the whole response first, then the outermost [...] in case the model wrapped it in
+    # a sentence. Anything else is a failed generation, not something to paper over.
+    candidates = [s]
+    bracket = _re.search(r"\[.*\]", s, _re.S)
+    if bracket:
+        candidates.append(bracket.group(0))
+    items = None
+    for candidate in candidates:
+        try:
+            parsed = _json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, list) and parsed:
+            items = parsed
+            break
+    if not items:
+        raise HTTPException(status_code=502,
+                            detail="The model did not return usable JSON. Try again or shorten the brief.")
+
+    # Normalise to exactly `slots` entries with the expected keys, so the client can map
+    # them straight onto its cards or scenes without defensive checks.
+    out = []
+    for i in range(n):
+        src = items[i] if i < len(items) and isinstance(items[i], dict) else {}
+        if kind == "carousel":
+            out.append({"headline": str(src.get("headline", "")).strip()[:80],
+                        "description": str(src.get("description", "")).strip()[:200]})
+        else:
+            out.append({"overlay_text": str(src.get("overlay_text", "")).strip()[:120]})
+    return {"status": "success", "kind": kind, "slots": n, "items": out,
+            "brand_grounded": bool(brand)}
 
 
 @router.post("/{creative_id}/variation")

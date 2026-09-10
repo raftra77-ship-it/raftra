@@ -11,11 +11,21 @@ except ImportError:
 # Gemini's free tier limits requests PER DAY, PER MODEL. When the selected model hits
 # its daily cap (429), a *different* model still has its own quota on the same key - so
 # we fall through this list rather than failing the whole pipeline.
+# Every id below was checked against ListModels on this project's key. Two entries that
+# used to be here — gemini-2.0-flash and gemini-2.0-flash-lite — have been retired by
+# Google and now 404 ("no longer available"). That silently shortened the chain from five
+# models to three: a vision run over five images described one and skipped four, because
+# 2.5-flash was rate-limited, flash-latest timed out, and the remaining two no longer
+# exist. Ordered newest-stable first for capability, then the lite variants, which have
+# their own separate daily quota. Deliberately no `-preview` ids: they move without notice
+# and this list is on the hot path for creative, SEO, social and campaign generation.
 _GEMINI_FALLBACK_MODELS = [
     "gemini-flash-latest",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
     "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
     "gemini-2.5-flash",
 ]
 

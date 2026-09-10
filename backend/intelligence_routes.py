@@ -270,6 +270,9 @@ def _asset_json(a) -> dict:
         "url": a.storage_url,
         "source_url": a.source_url,
         "alt_text": a.alt_text or "",
+        # Vision-written, from core/asset_tagging.py. Empty until the asset is indexed.
+        "description": getattr(a, "description", None) or "",
+        "tagged_at": _iso(getattr(a, "tagged_at", None)),
         "format": a.file_format,
         "width": a.width,
         "height": a.height,
@@ -301,6 +304,55 @@ def list_assets(workspace_id: int, category: Optional[str] = None,
             counts[a.category] += 1
 
     return {"assets": [_asset_json(a) for a in rows], "counts": counts, "total": len(rows)}
+
+
+@router.post("/{workspace_id}/assets/index")
+async def index_assets(workspace_id: int, limit: int = 40, retag: bool = False,
+                       db: Session = Depends(database.get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Describe this workspace's vault images with a vision model and index them for search.
+
+    Idempotent by default: only assets with no description yet cost a vision call, so this
+    is safe to call straight after a harvest or a Drive import.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    from core import asset_tagging
+    result = await asset_tagging.index_workspace_assets(workspace_id, limit=limit, retag=retag)
+    return {"status": "success", **result}
+
+
+@router.get("/{workspace_id}/assets/search")
+def search_assets(workspace_id: int, q: str, limit: int = 12,
+                  db: Session = Depends(database.get_db),
+                  current_user: models.User = Depends(auth.get_current_user)):
+    """Natural-language search over the Asset Vault ("lifestyle desk setup shots").
+
+    Returns full asset rows in the same shape as GET /assets, ordered by relevance, each
+    carrying the score and the passage it matched on. Assets that have never been indexed
+    cannot match — `unindexed` says how many those are, so the UI can offer to index them
+    rather than implying the vault is empty.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    from core import asset_tagging
+
+    hits = asset_tagging.search_assets(workspace_id, q, limit)
+    by_id = {h["asset_id"]: h for h in hits}
+    rows = []
+    if by_id:
+        found = (db.query(models.MediaAsset)
+                   .filter(models.MediaAsset.workspace_id == workspace_id,
+                           models.MediaAsset.id.in_(list(by_id.keys()))).all())
+        # Ranking comes from the vector store, not the database's row order.
+        found.sort(key=lambda a: -(by_id[a.id].get("score") or 0))
+        for a in found:
+            rows.append({**_asset_json(a),
+                         "score": by_id[a.id].get("score"),
+                         "matched_on": by_id[a.id].get("matched_on", "")})
+
+    unindexed = (db.query(models.MediaAsset)
+                   .filter(models.MediaAsset.workspace_id == workspace_id,
+                           models.MediaAsset.description.is_(None)).count())
+    return {"query": q, "assets": rows, "total": len(rows), "unindexed": unindexed}
 
 
 @router.post("/{workspace_id}/assets/harvest")
