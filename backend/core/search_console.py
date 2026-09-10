@@ -200,12 +200,24 @@ def fetch_overview(conn, days: int = 28, row_limit: int = 10) -> dict:
             print(f"[gsc] {name} breakdown failed for {conn.site_url}: {ex}")
             breakdowns[name] = []
 
+    # Daily clicks/impressions for the organic-traffic trend chart. Fetched separately
+    # from the breakdowns above because it needs one row per day rather than the top-N
+    # cut, and it is sorted oldest-first so a chart can plot it without reordering.
+    # A failure here empties the series rather than blanking the whole overview.
+    try:
+        day_rows = _query_by(svc, conn.site_url, s, e, "date", days + 1)
+        timeseries = sorted((_row_view(r) for r in day_rows), key=lambda x: x["key"])
+    except Exception as ex:
+        print(f"[gsc] date breakdown failed for {conn.site_url}: {ex}")
+        timeseries = []
+
     return {
         "site_url": conn.site_url,
         "range_days": days,
         "start_date": s,
         "end_date": e,
         "totals": totals,
+        "timeseries": timeseries,
         **breakdowns,
     }
 

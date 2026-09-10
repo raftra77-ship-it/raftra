@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Search, BarChart3, TrendingUp, Globe, Users, Award, Zap, Activity, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
+import { Send, Search, BarChart3, Globe, Users, Award, Zap, Activity, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -42,6 +42,22 @@ interface MetaInsightRow {
   clicks?: number;
 }
 
+/** Search Console overview for the connected property (see backend core/search_console.py). */
+interface GscOverview {
+  site_url?: string;
+  range_days?: number;
+  totals?: { clicks?: number; impressions?: number; ctr?: number; position?: number };
+  /** One row per day, oldest first — `key` is the ISO date. */
+  timeseries?: { key: string; clicks: number; impressions: number }[];
+}
+
+/** Combined SEO + GEO audit read model from /seo/audit-report. */
+interface AuditReport {
+  geo_score?: number | null;
+  seo_score?: number | null;
+  generated_at?: string | null;
+}
+
 export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   chatHistory,
   onSendMessage,
@@ -60,6 +76,13 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   const [metaInsights, setMetaInsights] = useState<MetaInsightRow[]>([]);
   const [sources, setSources] = useState({ meta: false, googleAds: false, gsc: false, ga4: false });
   const [dataLoading, setDataLoading] = useState(true);
+  /* The SEO & GEO block below used to report a flat 42,890 organic sessions, 1,402 answer
+     engine mentions and a 94/100 citation score for every workspace, with a five-week
+     curve to match — none of it measured. Organic numbers now come from this workspace's
+     Search Console property and the GEO score from its own latest GEO audit; when neither
+     has been set up the tiles say so instead of showing a number. */
+  const [gscOverview, setGscOverview] = useState<GscOverview | null>(null);
+  const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
 
   useEffect(() => {
     if (!workspaceId) { setDataLoading(false); return; }
@@ -90,6 +113,16 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
         const ins = await get(`/api/connectors/meta/${workspaceId}/insights?date_preset=last_7d`);
         if (!cancelled && ins?.insights) setMetaInsights(Object.values(ins.insights) as MetaInsightRow[]);
       }
+      // Organic figures need both a Google grant and a chosen property; the endpoint 400s
+      // without them, so only ask once the status row says both are in place.
+      if (gsc?.connected && gsc?.site_url) {
+        const ov = await get(`/api/connectors/search-console/${workspaceId}/overview?days=28`);
+        if (!cancelled && ov) setGscOverview(ov as GscOverview);
+      }
+      // The GEO score is independent of any connector — it comes from this workspace's
+      // own audit history, so it is worth asking for even with nothing linked.
+      const rep = await get(`/api/workspaces/${workspaceId}/seo/audit-report`);
+      if (!cancelled && rep) setAuditReport(rep as AuditReport);
     }).finally(() => { if (!cancelled) setDataLoading(false); });
 
     return () => { cancelled = true; };
@@ -100,25 +133,23 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory]);
 
-  const growthData = [
-    { name: 'Oct', MetaSpend: 3100, GoogleSpend: 2100, Revenue: 18000 },
-    { name: 'Nov', MetaSpend: 3800, GoogleSpend: 2900, Revenue: 24000 },
-    { name: 'Dec', MetaSpend: 4200, GoogleSpend: 3500, Revenue: 29000 },
-    { name: 'Jan', MetaSpend: 4000, GoogleSpend: 2400, Revenue: 21000 },
-    { name: 'Feb', MetaSpend: 3000, GoogleSpend: 1398, Revenue: 18000 },
-    { name: 'Mar', MetaSpend: 2000, GoogleSpend: 9800, Revenue: 35000 },
-    { name: 'Apr', MetaSpend: 2780, GoogleSpend: 3908, Revenue: 29000 },
-    { name: 'May', MetaSpend: 1890, GoogleSpend: 4800, Revenue: 28000 },
-    { name: 'Jun', MetaSpend: 2390, GoogleSpend: 3800, Revenue: 34000 },
-  ];
+  /* Daily organic clicks and impressions for this workspace's Search Console property.
+     Empty until the property is connected — the chart renders an explanatory panel in
+     that case rather than a drawn curve. There is deliberately no second "answer engine
+     mentions" series: nothing in the product measures that per day, and the old one was
+     invented. */
+  const seoGeoData = React.useMemo(
+    () => (gscOverview?.timeseries || []).map(d => ({
+      name: new Date(d.key).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      Organic: d.clicks,
+      Impressions: d.impressions,
+    })),
+    [gscOverview]
+  );
 
-  const seoGeoData = [
-    { name: 'W1', Organic: 1200, AEMentions: 40 },
-    { name: 'W2', Organic: 1300, AEMentions: 80 },
-    { name: 'W3', Organic: 1100, AEMentions: 150 },
-    { name: 'W4', Organic: 1700, AEMentions: 300 },
-    { name: 'W5', Organic: 1900, AEMentions: 450 },
-  ];
+  const gscTotals = gscOverview?.totals;
+  const organicConnected = Boolean(gscOverview);
+  const geoScore = auditReport?.geo_score ?? null;
 
   const pieColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#7C75FF', '#00E676'];
 
@@ -499,44 +530,90 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="glow-card" style={{ padding: '20px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Organic Traffic (30d)</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                42,890 <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center' }}><TrendingUp size={12} style={{ marginRight: '4px' }} /> +12%</span>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                Organic Clicks ({gscOverview?.range_days ?? 28}d)
               </div>
+              {organicConnected ? (
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>
+                  {(gscTotals?.clicks ?? 0).toLocaleString()}
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, marginLeft: '10px' }}>
+                    {(gscTotals?.impressions ?? 0).toLocaleString()} impressions
+                  </span>
+                </div>
+              ) : (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Connect Search Console and pick a property to report organic traffic.
+                </div>
+              )}
             </div>
             <div className="glow-card" style={{ padding: '20px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>LLM Answer Engine Mentions</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                1,402 <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center' }}><TrendingUp size={12} style={{ marginRight: '4px' }} /> +340%</span>
-              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Average Search Position</div>
+              {organicConnected ? (
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>
+                  {gscTotals?.position ? gscTotals.position.toFixed(1) : '—'}
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, marginLeft: '10px' }}>
+                    {(gscTotals?.ctr ?? 0).toFixed(1)}% CTR
+                  </span>
+                </div>
+              ) : (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Available once Search Console is linked.
+                </div>
+              )}
             </div>
             <div className="glow-card" style={{ padding: '20px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Citation Health Score</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>94/100</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>GEO Score (latest audit)</div>
+              {geoScore != null ? (
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>{geoScore}/100</div>
+              ) : (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  No GEO audit has been run for this workspace yet.
+                </div>
+              )}
             </div>
           </div>
 
           <div className="glow-card" style={{ padding: '24px' }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', fontFamily: 'var(--font-mono)' }}>TRADITIONAL VS GENERATIVE SEARCH GROWTH</h4>
-            <div style={{ width: '100%', height: '240px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={seoGeoData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: '#0a0a0c', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} />
-                  <Line type="monotone" dataKey="Organic" stroke="#8884d8" strokeWidth={2} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="AEMentions" stroke="var(--success)" strokeWidth={2} dot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '11px', marginTop: '16px', justifyContent: 'center' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8884d8' }} /> Organic Search Traffic
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)' }} /> Answer Engine Mentions (GEO)
-              </span>
-            </div>
+            <h4 style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', fontFamily: 'var(--font-mono)' }}>
+              ORGANIC SEARCH PERFORMANCE{gscOverview?.site_url ? ` · ${gscOverview.site_url}` : ''}
+            </h4>
+            {seoGeoData.length > 0 ? (
+              <>
+                <div style={{ width: '100%', height: '240px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={seoGeoData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} minTickGap={24} />
+                      <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={{ background: '#0a0a0c', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} />
+                      <Line type="monotone" dataKey="Organic" stroke="#8884d8" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="Impressions" stroke="var(--success)" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ display: 'flex', gap: '16px', fontSize: '11px', marginTop: '16px', justifyContent: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8884d8' }} /> Clicks
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)' }} /> Impressions
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div style={{ height: '240px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', textAlign: 'center' }}>
+                <Globe size={26} style={{ opacity: 0.25 }} />
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '340px', lineHeight: 1.6 }}>
+                  {organicConnected
+                    ? 'Search Console is connected but has not reported any impressions for this property in the last 28 days.'
+                    : 'Connect Google Search Console under Integrations and select a property to chart this site’s organic clicks and impressions.'}
+                </div>
+                {!organicConnected && onNavigateTab && (
+                  <button onClick={() => onNavigateTab('settings')} className="btn btn-primary" style={{ fontSize: '12px', padding: '8px 16px' }}>
+                    Open Integrations
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

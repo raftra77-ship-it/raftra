@@ -24,15 +24,14 @@ import {
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import {
-  isDriveConfigured,
-  hasValidToken,
-  getAccessToken,
+  getStatus as getDriveStatus,
+  getAuthorizeUrl,
   disconnectDrive,
   listFolders,
   listImageFiles,
-  fetchFileObjectUrl,
+  setDefaultFolder,
+  importFiles,
   formatBytes,
-  mimeToFormat,
   DriveError,
   type DriveFolder,
   type DriveFile
@@ -90,33 +89,70 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Real Google Drive state ──────────────────────────────────────────────
+  /* ── Google Drive ────────────────────────────────────────────────────────
+     The connection lives on the server now (/api/connectors/gdrive), so it survives a
+     reload and a new browser, and the import copies the file's bytes into our own storage
+     instead of saving Drive's viewer link — which is why imported assets used to render as
+     broken images everywhere the vault was read. */
   const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'loading' | 'ready' | 'error'>('idle');
   const [driveError, setDriveError] = useState<string>('');
+  const [driveConfigured, setDriveConfigured] = useState<boolean>(true);
+  const [driveEmail, setDriveEmail] = useState<string | null>(null);
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | undefined>(undefined);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importNote, setImportNote] = useState<string>('');
 
-  // A token survives a reload, so restore the real connection state.
-  useEffect(() => {
-    if (!isDriveConfigured() || !hasValidToken()) return;
-    setIsDriveConnected(true);
+  /** Loads the folder list and the current folder's files. */
+  const loadDriveContents = React.useCallback(async (folderId?: string) => {
+    if (!workspaceId) return;
     setDriveStatus('loading');
-    (async () => {
-      try {
-        const token = await getAccessToken();
-        const [folders, files] = await Promise.all([listFolders(token), listImageFiles(token)]);
-        setDriveFolders(folders);
-        setDriveFiles(files);
-        setDriveStatus('ready');
-      } catch {
-        // Token was revoked server-side — fall back to disconnected.
-        setIsDriveConnected(false);
-        setDriveStatus('idle');
-      }
-    })();
+    setDriveError('');
+    try {
+      const [folders, files] = await Promise.all([
+        listFolders(workspaceId),
+        listImageFiles(workspaceId, folderId),
+      ]);
+      setDriveFolders(folders);
+      setDriveFiles(files);
+      setDriveStatus('ready');
+    } catch (err) {
+      setDriveError(err instanceof DriveError ? err.message : 'Could not read your Drive.');
+      setDriveStatus('error');
+    }
+  }, [workspaceId]);
+
+  // The connection is a server record, so ask for it rather than looking in this tab.
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+    getDriveStatus(workspaceId)
+      .then(s => {
+        if (cancelled) return;
+        setDriveConfigured(s.configured);
+        setIsDriveConnected(s.connected);
+        setDriveEmail(s.email);
+        if (s.folder_id) setActiveFolderId(s.folder_id);
+        if (s.connected) loadDriveContents(s.folder_id || undefined);
+      })
+      .catch(() => { /* the panel shows its disconnected state */ });
+    return () => { cancelled = true; };
+  }, [workspaceId, loadDriveContents]);
+
+  // Returning from Google's consent screen lands on ?gdrive=connected. Open the picker
+  // straight away rather than making the user find their way back to it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('gdrive');
+    if (!result) return;
+    if (result === 'connected') setShowDriveModal(true);
+    if (result === 'error') setDriveError('Google did not complete the connection. Please try again.');
+    // Clear it so a later reload does not reopen the modal.
+    params.delete('gdrive');
+    const rest = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
   }, []);
 
   // Scraped brand images and cloud assets
@@ -249,37 +285,27 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     setUploadNote(`${files.length} file${files.length > 1 ? 's' : ''} added for this session. They are not uploaded, so they will be gone if you refresh.`);
   };
 
-  /** Real OAuth + Drive listing. Opens Google's consent screen. */
+  /** Hands the browser to Google's consent screen; the connector stores the grant. */
   const handleAuthorizeDrive = async () => {
+    if (!workspaceId) return;
     setDriveError('');
     setDriveStatus('connecting');
     try {
-      const token = await getAccessToken();
-      setDriveStatus('loading');
-      const [folders, files] = await Promise.all([listFolders(token), listImageFiles(token)]);
-      setDriveFolders(folders);
-      setDriveFiles(files);
-      setIsDriveConnected(true);
-      setDriveStatus('ready');
+      window.location.href = await getAuthorizeUrl(workspaceId);
     } catch (err) {
       setDriveError(err instanceof DriveError ? err.message : 'Could not connect to Google Drive.');
       setDriveStatus('error');
-      setIsDriveConnected(false);
     }
   };
 
-  /** Re-lists files when a real folder is chosen. */
+  /** Re-lists files when a folder is chosen, and remembers it for next time. */
   const handleSelectFolder = async (folderId?: string) => {
     setActiveFolderId(folderId);
-    setDriveError('');
-    setDriveStatus('loading');
-    try {
-      const token = await getAccessToken();
-      setDriveFiles(await listImageFiles(token, folderId));
-      setDriveStatus('ready');
-    } catch (err) {
-      setDriveError(err instanceof DriveError ? err.message : 'Could not list files.');
-      setDriveStatus('error');
+    setSelectedFileIds([]);
+    await loadDriveContents(folderId);
+    if (workspaceId) {
+      const name = driveFolders.find(f => f.id === folderId)?.name;
+      setDefaultFolder(workspaceId, folderId, name).catch(() => { /* cosmetic */ });
     }
   };
 
@@ -287,57 +313,34 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     setSelectedFileIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   };
 
-  /** Downloads the chosen Drive files and adds them as real assets. */
+  /** Imports the chosen Drive files into the vault, server-side.
+   *
+   *  The old version downloaded each file into a `blob:` object URL for display and posted
+   *  Drive's `webViewLink` to the import endpoint. The blob was meaningless outside the tab
+   *  that made it, and the webViewLink is a Google login page rather than an image, so the
+   *  row that survived the refresh was always a broken picture. The connector now stores
+   *  the bytes and returns assets that render like any other. */
   const handleImportSelected = async () => {
-    if (selectedFileIds.length === 0) return;
+    if (!workspaceId || selectedFileIds.length === 0) return;
     setIsImporting(true);
     setDriveError('');
+    setImportNote('');
     try {
-      const token = await getAccessToken();
-      const chosen = driveFiles.filter(f => selectedFileIds.includes(f.id));
-
-      const imported: AssetItem[] = await Promise.all(
-        chosen.map(async file => ({
-          id: `gdrive-${file.id}`,
-          title: file.name.replace(/\.[^.]+$/, ''),
-          category: 'product' as const,
-          url: await fetchFileObjectUrl(file.id, token),
-          dimensions: file.width && file.height ? `${file.width} × ${file.height}` : 'Unknown',
-          format: mimeToFormat(file.mimeType),
-          size: formatBytes(file.sizeBytes),
-          source: 'gdrive' as const,
-          sourceUrl: file.webViewLink,
-          tag: 'Google Drive Sync'
-        }))
-      );
-
-      // Persist them. Drive imports previously only ever reached React state, so they were
-      // gone on refresh - which is why imported assets "did not appear correctly" in the
-      // vault. The webViewLink is stored rather than the blob: URL, because an object URL
-      // is meaningless outside the tab that created it.
-      if (workspaceId) {
-        try {
-          await fetch(`/api/workspaces/${workspaceId}/assets/import`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-            body: JSON.stringify(chosen.map(f => ({
-              filename: f.name,
-              url: f.webViewLink,
-              category: 'lifestyle',
-              source: 'gdrive',
-              mime_type: f.mimeType,
-              file_format: mimeToFormat(f.mimeType),
-              size_kb: f.sizeBytes ? Math.round(f.sizeBytes / 1024) : null,
-            }))),
-          });
-          loadVault();
-        } catch { /* the session copy below still shows them */ }
-      }
-
-      // Replace any re-imported file rather than duplicating it.
-      setAssets(prev => [...imported, ...prev.filter(a => !imported.some(i => i.id === a.id))]);
+      const result = await importFiles(workspaceId, selectedFileIds);
+      loadVault();
       setSelectedFileIds([]);
-      setShowDriveModal(false);
+
+      // Partial failures are reported, not swallowed: one unreadable file should not make
+      // the other nine look like they failed, or like they worked.
+      const bits = [`${result.imported} imported`];
+      if (result.skipped) bits.push(`${result.skipped} already in the vault`);
+      if (result.failed?.length) bits.push(`${result.failed.length} could not be read`);
+      setImportNote(bits.join(' · '));
+      if (result.failed?.length) {
+        setDriveError(result.failed.map(f => `${f.name || f.id}: ${f.reason}`).join('  •  '));
+      } else {
+        setShowDriveModal(false);
+      }
     } catch (err) {
       setDriveError(err instanceof DriveError ? err.message : 'Import failed.');
     } finally {
@@ -345,15 +348,24 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     }
   };
 
-  const handleDisconnectDrive = () => {
-    disconnectDrive();
+  /** Revokes the grant with Google. Assets already imported stay: they are copies in our
+   *  own storage, not links into Drive, so this does not empty the vault. The old handler
+   *  deleted every gdrive asset from the list, which lost the user's imports. */
+  const handleDisconnectDrive = async () => {
+    if (!workspaceId) return;
+    try {
+      await disconnectDrive(workspaceId);
+    } catch (err) {
+      setDriveError(err instanceof DriveError ? err.message : 'Could not disconnect.');
+      return;
+    }
     setIsDriveConnected(false);
+    setDriveEmail(null);
     setDriveStatus('idle');
     setDriveFolders([]);
     setDriveFiles([]);
     setSelectedFileIds([]);
     setActiveFolderId(undefined);
-    setAssets(prev => prev.filter(a => a.source !== 'gdrive'));
   };
 
   const categories = [
@@ -946,21 +958,37 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                 </button>
               </div>
 
-              {!isDriveConfigured() ? (
+              {/* The credentials now live on the server, so the setup note names the server
+                  variables rather than VITE_GOOGLE_CLIENT_ID, which no longer does anything
+                  for Drive. */}
+              {!driveConfigured ? (
                 <div style={{ background: 'rgba(255,193,7,0.08)', border: '1px solid rgba(255,193,7,0.35)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#FFC107' }}>Setup required</span>
                   <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    Add a Google OAuth client ID to your <code style={{ color: '#fff' }}>.env</code> file as{' '}
-                    <code style={{ color: '#fff' }}>VITE_GOOGLE_CLIENT_ID</code>, then restart the dev server.
-                    Create one in the Google Cloud Console under APIs &amp; Services → Credentials, enable the
-                    Drive API, and add this app's origin to the authorized JavaScript origins.
+                    The server is missing <code style={{ color: '#fff' }}>GOOGLE_CLIENT_ID</code> and{' '}
+                    <code style={{ color: '#fff' }}>GOOGLE_CLIENT_SECRET</code>. Create an OAuth client in the
+                    Google Cloud Console under APIs &amp; Services → Credentials, enable the Drive API, add the
+                    <code style={{ color: '#fff' }}> drive.readonly</code> scope, and register{' '}
+                    <code style={{ color: '#fff' }}>/api/connectors/gdrive/callback</code> as a redirect URI.
                   </span>
                 </div>
+              ) : isDriveConnected ? (
+                <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                  Connected{driveEmail ? ` as ${driveEmail}` : ''}. Pick a folder and choose the images to copy
+                  into your Asset Vault — the files are stored in your workspace, so they keep working if you
+                  later disconnect Drive.
+                </p>
               ) : (
                 <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
                   Connect your brand's Google Drive to import real product photos, packaging vectors and
                   designer assets straight from your folders.
                 </p>
+              )}
+
+              {importNote && (
+                <div style={{ background: 'rgba(52,168,83,0.1)', border: '1px solid rgba(52,168,83,0.35)', borderRadius: '12px', padding: '12px 14px', fontSize: '12.5px', color: '#8ee6a8' }}>
+                  {importNote}
+                </div>
               )}
 
               {driveError && (
@@ -986,7 +1014,7 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                       onClick={() => handleSelectFolder(folder.id)}
                       style={{ background: activeFolderId === folder.id ? 'rgba(52,168,83,0.15)' : 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#fff', padding: '6px 8px', borderRadius: '8px' }}
                     >
-                      <FolderOpen size={14} color="#34A853" /> {folder.path}
+                      <FolderOpen size={14} color="#34A853" /> {folder.name}
                     </button>
                   ))}
                   {driveFolders.length === 0 && driveStatus === 'ready' && (
@@ -1013,7 +1041,7 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                           <span style={{ flex: 1, fontSize: '12.5px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {file.name}
                           </span>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatBytes(file.sizeBytes)}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatBytes(file.size_bytes)}</span>
                         </button>
                       );
                     })}
@@ -1042,14 +1070,14 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                 <button
                   onClick={isDriveConnected ? handleImportSelected : handleAuthorizeDrive}
                   disabled={
-                    !isDriveConfigured() ||
+                    !driveConfigured ||
                     driveStatus === 'connecting' ||
                     isImporting ||
                     (isDriveConnected && selectedFileIds.length === 0)
                   }
                   style={{
                     background:
-                      !isDriveConfigured() || (isDriveConnected && selectedFileIds.length === 0) || isImporting
+                      !driveConfigured || (isDriveConnected && selectedFileIds.length === 0) || isImporting
                         ? 'rgba(255,255,255,0.12)'
                         : 'linear-gradient(135deg, #34A853 0%, #2E7D32 100%)',
                     color: '#ffffff',
@@ -1059,7 +1087,7 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                     fontSize: '13px',
                     fontWeight: 800,
                     cursor:
-                      !isDriveConfigured() || (isDriveConnected && selectedFileIds.length === 0) || isImporting
+                      !driveConfigured || (isDriveConnected && selectedFileIds.length === 0) || isImporting
                         ? 'not-allowed'
                         : 'pointer',
                     boxShadow: '0 4px 14px rgba(52,168,83,0.35)'

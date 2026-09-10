@@ -34,6 +34,47 @@ def _money(v: float) -> str:
         return f"₹{v}"
 
 
+def _retail_window(today=None) -> List[dict]:
+    """Indian retail dates whose campaign lead time has ALREADY started — i.e. creative for
+    them should be live right now.
+
+    The calendar (core.retail_calendar) was reaching the creative and scheduling agents but
+    not this engine, so budget advice was blind to the single biggest driver of Indian ad
+    performance: where you are standing relative to the festive run-up. Advising a brand to
+    pause a campaign eight days before Dhanteras is very different advice from the same call
+    in a flat week, and the engine could not tell the two apart.
+
+    Failure here is non-fatal: no window simply means no timing note is added.
+    """
+    try:
+        from core.retail_calendar import upcoming
+        return [e for e in upcoming(within_days=45, today=today)
+                if e.get("planning_urgency") in ("overdue", "start_now")]
+    except Exception as e:      # calendar exhausted for the year, import problem, bad date
+        print(f"[optimizer] retail calendar unavailable, continuing without it: {e}")
+        return []
+
+
+def _timing_note(window: List[dict], kind: str) -> str:
+    """A factual, dated sentence about the nearest live retail window.
+
+    Deliberately states only what is known — the festival, its date, how far away it is —
+    and what the proposed action would mean for that window. It makes no claim about how
+    this account will perform, because nothing here has measured that.
+    """
+    if not window:
+        return ""
+    e = min(window, key=lambda x: x["days_away"])
+    head = f" Timing: {e['name']} ({e['date']}, {e['category']}) is {e['days_away']} days away"
+    if kind == "pause":
+        return head + " and its buying window is already open — pausing now also takes this campaign out of that run-up."
+    if kind == "trim":
+        return head + " and its buying window is already open — consider trimming after the date rather than during the run-up."
+    if kind == "scale":
+        return head + " — scaling now places the extra budget inside its buying window."
+    return head + "."
+
+
 def _rec(campaign, signal, severity, title, detail, evidence, action, expected):
     return {
         "campaign_id": campaign.get("campaign_id"),
@@ -58,6 +99,8 @@ def analyze(insights: Dict[str, dict],
     current_budgets = current_budgets or {}
     target = cfg["target_roas"]
     recs: List[dict] = []
+    # Where this account is standing in the Indian retail year. Computed once per call.
+    window = _retail_window()
 
     total_spend = 0.0
     total_purchase_value = 0.0
@@ -97,7 +140,8 @@ def analyze(insights: Dict[str, dict],
                 + (f" ({purchases} purchases)." if purchases else ".")
                 + (f" Raising daily budget by {int(cfg['scale_step']*100)}% "
                    f"({_money(cur_budget)} → {_money(new_budget)}) presses the advantage."
-                   if new_budget else " Consider raising its budget."),
+                   if new_budget else " Consider raising its budget.")
+                + _timing_note(window, "scale"),
                 {"roas": roas, "spend": spend, "purchases": purchases},
                 ({"kind": "scale_budget", "campaign_id": cid, "new_daily_budget": new_budget,
                   "label": f"Scale budget +{int(cfg['scale_step']*100)}%"}
@@ -128,7 +172,8 @@ def analyze(insights: Dict[str, dict],
                 "Kill this — it's wasting spend",
                 (f"ROAS is only {roas:.2f}× against a {target:.1f}× target after {_money(spend)} spent"
                  + (f" with {purchases} purchases." if purchases else " with no purchases.")
-                 + " Pausing it stops the bleed and frees budget for the winners."),
+                 + " Pausing it stops the bleed and frees budget for the winners."
+                 + _timing_note(window, "pause")),
                 {"roas": roas, "spend": spend, "purchases": purchases},
                 {"kind": "pause", "campaign_id": cid, "label": "Kill ad (pause)"},
                 f"Stops ~{_money(spend)}/period of unprofitable spend.",
@@ -150,7 +195,8 @@ def analyze(insights: Dict[str, dict],
         recs.append(_rec(
             m, "underperforming", "warn",
             "Switch this strategy",
-            f"ROAS {roas:.2f}× is below your {target:.1f}× target on {_money(spend)} spend. {lever}",
+            f"ROAS {roas:.2f}× is below your {target:.1f}× target on {_money(spend)} spend. {lever}"
+            + _timing_note(window, "trim"),
             {"roas": roas, "spend": spend, "ctr": ctr, "frequency": freq, "purchases": purchases},
             ({"kind": "scale_budget", "campaign_id": cid, "new_daily_budget": new_budget,
               "label": f"Trim budget -{int(cfg['trim_step']*100)}%"}
@@ -173,6 +219,13 @@ def analyze(insights: Dict[str, dict],
             "working": working,
             "underperforming": under,
             "wasting": wasting,
+            # Indian retail dates whose lead time is already running, nearest first, so the
+            # UI can show what the timing notes above are referring to. Empty in a flat week.
+            "retail_window": [
+                {"name": e["name"], "date": e["date"], "category": e["category"],
+                 "days_away": e["days_away"], "campaign_start": e["campaign_start"]}
+                for e in sorted(window, key=lambda x: x["days_away"])[:3]
+            ],
         },
         "recommendations": recs,
     }

@@ -1468,6 +1468,57 @@ async def upload_asset(workspace_id: int, file: UploadFile = File(...), db: Sess
             "url": f"/api/generated/uploads/{workspace_id}/{stored_name}",
             "filename": file.filename, "size": len(content)}
 
+class CreativeReview(_CompetitorBase):
+    """approve | reject | reset — plus optional copy edits applied at the same time."""
+    action: str
+    headline: Optional[str] = None
+    body_text: Optional[str] = None
+    cta: Optional[str] = None
+
+
+@router.post("/{workspace_id}/creatives/{asset_id}/review", response_model=schemas.AdAssetResponse)
+def review_creative(workspace_id: int, asset_id: int, req: CreativeReview,
+                    db: Session = Depends(database.get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    """Human review of a generated creative: approve it into the Ad Library, or reject it.
+
+    Nothing could do this before. `AdAsset.status` was written only by /creatives/save at
+    insert time, so the ONLY way a creative reached the Ad Library was the Studio editor's
+    "Save to Ad Library" - a generated ad sitting in Recent Projects could never be approved,
+    however many times the button was pressed. The Ad Library filters on status == approved
+    and celery_app.py schedules on it too, so this is the write that both were waiting for.
+
+    Copy edits ride along because approving is exactly when a reviewer fixes a headline, and
+    a separate PATCH would let the edit and the approval disagree.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    asset = (db.query(models.AdAsset)
+               .filter(models.AdAsset.id == asset_id,
+                       models.AdAsset.workspace_id == workspace_id).first())
+    if not asset:
+        # 404 rather than 403 for another workspace's asset, so the endpoint does not
+        # confirm that an id exists elsewhere - same rule as /creative/jobs.
+        raise HTTPException(status_code=404, detail="Creative not found")
+
+    mapping = {"approve": "approved", "reject": "rejected", "reset": "pending_review"}
+    action = (req.action or "").lower()
+    if action not in mapping:
+        raise HTTPException(status_code=400,
+                            detail="action must be approve, reject or reset")
+
+    if req.headline is not None and req.headline.strip():
+        asset.headline = req.headline.strip()[:255]
+    if req.body_text is not None:
+        asset.body_text = req.body_text
+    if req.cta is not None:
+        asset.cta = req.cta
+
+    asset.status = mapping[action]
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
 @router.delete("/{workspace_id}/creatives/{asset_id}")
 def delete_creative(workspace_id: int, asset_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     ws = db.query(models.Workspace).filter(models.Workspace.id == workspace_id, tenancy.visible_workspace(current_user)).first()

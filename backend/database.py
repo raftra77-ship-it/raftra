@@ -13,13 +13,24 @@ if not DATABASE_URL:
 
 try:
     # Supabase uses connection pooling, sometimes requires SSL
+    #
+    # pool_pre_ping is deliberately OFF. It issues a liveness round trip on every single
+    # checkout, and against a remote Supabase that measured 245ms per request - on a
+    # dashboard load that fires ~14 requests, roughly 3.4 seconds of doing nothing but
+    # asking "are you still there?".
+    #
+    # What replaces it is a much shorter pool_recycle: connections are discarded after five
+    # minutes rather than thirty, which is comfortably under the idle timeouts Supabase's
+    # pooler and Postgres apply, so a connection is very unlikely to go stale while parked.
+    # Set DB_PRE_PING=true to put the check back if a deployment ever needs it.
+    _PRE_PING = os.getenv("DB_PRE_PING", "false").strip().lower() in ("1", "true", "yes", "on")
     engine = create_engine(
-        DATABASE_URL, 
-        pool_pre_ping=True, 
-        pool_size=20, 
+        DATABASE_URL,
+        pool_pre_ping=_PRE_PING,
+        pool_size=20,
         max_overflow=40,
         pool_timeout=30,
-        pool_recycle=1800
+        pool_recycle=int(os.getenv("DB_POOL_RECYCLE_SEC", "300")),
     )
     print("Connected to PostgreSQL (Supabase) successfully.")
 except Exception as e:

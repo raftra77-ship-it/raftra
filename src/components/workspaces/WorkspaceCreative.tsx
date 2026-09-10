@@ -50,6 +50,8 @@ interface WorkspaceCreativeProps {
   onGenerate?: (prompt: string, referenceAd?: any, config?: any) => void | Promise<any>;
   onAssetSaved?: (asset: CreativeAsset) => void;
   onAssetRemoved?: (assetId: string) => void;
+  /** A creative whose stored row changed (approve / reject), so the dashboard can refresh it. */
+  onAssetUpdated?: (asset: CreativeAsset) => void;
   workspaceId?: number;
   onNavigateTab?: (tab: string) => void;
   /** An asset handed over from the Media vault, used as the reference image. */
@@ -104,6 +106,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   onAssetSaved,
   workspaceId,
   onAssetRemoved,
+  onAssetUpdated,
   onNavigateTab,
   incomingReferenceImage = null,
   brands = [],
@@ -354,7 +357,17 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     }
 
     const label = status === 'approved' ? 'Ad Library' : 'Drafts';
+    setIsSavingDesign(true);
+    triggerToast('Rendering your design…');
     try {
+      /* The rendered canvas IS the creative. Falling back to the raw background URL keeps a
+         picture on the row when the canvas cannot be rasterised, rather than saving nothing.
+
+         Saved at half size as JPEG, not the 4K PNG the download produces: image_url is a
+         text column and a 4K PNG lands in Postgres as several megabytes of base64 on every
+         click. The Download button still exports at full resolution. */
+      const rendered = await renderCanvasToDataUrl(0.5, 'image/jpeg');
+
       const token = localStorage.getItem('token');
       const res = await fetch(`/api/workspaces/${workspaceId}/creatives/save`, {
         method: 'POST',
@@ -364,7 +377,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           body_text: (bodyEl?.content || '').trim(),
           cta: (ctaEl?.content || '').trim(),
           type: editorDocumentTitle?.trim() || 'Studio design',
-          image_url: bgEl?.content || null,
+          image_url: rendered || bgEl?.content || null,
           status,
         }),
       });
@@ -388,100 +401,227 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       triggerToast(`Saved to ${label}.`);
     } catch (e) {
       triggerToast(`Could not save: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setIsSavingDesign(false);
     }
   };
 
   const handleSaveAsDraft = () => persistEditorDesign('pending_review');
   const handleSaveToVault = () => persistEditorDesign('approved');
 
-  // Export active Canvas to 4K PNG file download
-  const handleExport4KPng = () => {
+  /** Saves the Carousel tab's own cards.
+   *
+   *  Both save buttons in that tab called persistEditorDesign, which reads
+   *  `editorCanvasElements` — the IMAGE editor's canvas. So saving from the Carousel tab
+   *  silently stored the image editor's placeholder text and none of the carousel: the
+   *  user's cards were never persisted anywhere. A carousel is several creatives, and
+   *  AdAsset is one row per creative, so each card becomes its own row.
+   */
+  const persistCarousel = async (status: 'approved' | 'pending_review') => {
+    if (!workspaceId) { triggerToast('Open a workspace before saving.'); return; }
+    const filled = carouselCards.filter(c => (c.headline || '').trim());
+    if (!filled.length) {
+      triggerToast('Add a headline to at least one card before saving.');
+      return;
+    }
+
+    const label = status === 'approved' ? 'Ad Library' : 'Drafts';
+    setIsSavingDesign(true);
+    const token = localStorage.getItem('token');
+    let saved = 0;
     try {
-      const canvasWidth = canvasAspectRatio === '1:1' ? 2160 : canvasAspectRatio === '9:16' ? 2160 : canvasAspectRatio === '4:5' ? 2160 : 3840;
-      const canvasHeight = canvasAspectRatio === '1:1' ? 2160 : canvasAspectRatio === '9:16' ? 3840 : canvasAspectRatio === '4:5' ? 2700 : 2160;
+      for (let i = 0; i < filled.length; i++) {
+        const card = filled[i];
+        const res = await fetch(`/api/workspaces/${workspaceId}/creatives/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({
+            headline: card.headline.trim(),
+            body_text: (card.description || '').trim(),
+            cta: (card.ctaAction || '').replace('_', ' '),
+            type: `Carousel Ad — card ${i + 1} of ${filled.length}`,
+            image_url: card.imageUrl || null,
+            status,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.detail || `Save failed on card ${i + 1} (${res.status})`);
+        }
+        const row = await res.json();
+        onAssetSaved?.({
+          id: String(row.id), headline: row.headline, bodyText: row.body_text,
+          cta: row.cta, type: row.type, imageUrl: row.image_url, status: row.status,
+        } as CreativeAsset);
+        saved++;
+      }
+      triggerToast(`Saved ${saved} carousel card${saved === 1 ? '' : 's'} to ${label}.`);
+    } catch (e) {
+      triggerToast(`${saved} card(s) saved, then: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setIsSavingDesign(false);
+    }
+  };
+
+  /** Saves the Video tab's storyboard.
+   *
+   *  Same defect as the carousel: these buttons were persisting the image editor's canvas.
+   *  A storyboard has no rendered video until the reel is generated, so what is saved is the
+   *  script — the scene overlays in order — which is the work the user actually did here.
+   */
+  const persistStoryboard = async (status: 'approved' | 'pending_review') => {
+    if (!workspaceId) { triggerToast('Open a workspace before saving.'); return; }
+    const written = videoScenes.filter(s => (s.overlayText || '').trim());
+    if (!written.length) {
+      triggerToast('Write at least one scene overlay before saving.');
+      return;
+    }
+
+    const label = status === 'approved' ? 'Ad Library' : 'Drafts';
+    setIsSavingDesign(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/workspaces/${workspaceId}/creatives/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          headline: written[0].overlayText.trim().slice(0, 255),
+          body_text: written.map((s, i) => `${i + 1}. [${s.duration}] ${s.overlayText.trim()}`).join('\n'),
+          cta: '',
+          type: `Video storyboard — ${written.length} scene${written.length === 1 ? '' : 's'}`,
+          // The first scene that actually has footage stands in as the thumbnail.
+          image_url: videoScenes.find(s => s.videoUrl)?.videoUrl || null,
+          status,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || `Save failed (${res.status})`);
+      }
+      const row = await res.json();
+      onAssetSaved?.({
+        id: String(row.id), headline: row.headline, bodyText: row.body_text,
+        cta: row.cta, type: row.type, imageUrl: row.image_url, status: row.status,
+      } as CreativeAsset);
+      triggerToast(`Storyboard saved to ${label}.`);
+    } catch (e) {
+      triggerToast(`Could not save: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setIsSavingDesign(false);
+    }
+  };
+
+  /** Draws the editor canvas and resolves a PNG data URL.
+   *
+   *  Extracted from the 4K export so that Save can persist the design too. Saving used to
+   *  send four text fields and `el_bg`'s URL, which meant everything the user actually did
+   *  in the editor - the layout, the badges, the colours, the type - was thrown away, and
+   *  an untouched canvas saved a row with no image at all. Whatever the export draws is now
+   *  what the Ad Library stores.
+   *
+   *  Resolves null rather than throwing: a cross-origin background without CORS headers
+   *  taints the canvas and makes toDataURL raise, and losing the copy as well as the raster
+   *  would be worse than saving the copy alone.
+   */
+  const renderCanvasToDataUrl = (scale = 1, mime: 'image/png' | 'image/jpeg' = 'image/png'): Promise<string | null> => new Promise(resolve => {
+    try {
+      const baseW = canvasAspectRatio === '1:1' ? 2160 : canvasAspectRatio === '9:16' ? 2160 : canvasAspectRatio === '4:5' ? 2160 : 3840;
+      const baseH = canvasAspectRatio === '1:1' ? 2160 : canvasAspectRatio === '9:16' ? 3840 : canvasAspectRatio === '4:5' ? 2700 : 2160;
+      const canvasWidth = Math.round(baseW * scale);
+      const canvasHeight = Math.round(baseH * scale);
 
       const exportCanvas = document.createElement('canvas');
       exportCanvas.width = canvasWidth;
       exportCanvas.height = canvasHeight;
       const ctx = exportCanvas.getContext('2d');
-      if (!ctx) {
-        triggerToast('Exported 4K High-Res PNG Ad file! 🎨');
-        return;
-      }
+      if (!ctx) return resolve(null);
 
       ctx.fillStyle = '#06060c';
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-      const sortedEls = editorCanvasElements.slice().sort((a,b) => (a.zIndex || 0) - (b.zIndex || 0));
-      let loadedImagesCount = 0;
-      const imageEls = sortedEls.filter(el => el.type === 'image');
+      const sortedEls = editorCanvasElements
+        .filter(el => el.visible !== false)
+        .slice()
+        .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      const imageEls = sortedEls.filter(el => el.type === 'image' && el.content);
+      let loaded = 0;
 
-      const triggerDownload = () => {
+      const paintTextAndFinish = () => {
         sortedEls.forEach(el => {
           const posX = (el.x / 100) * canvasWidth;
           const posY = (el.y / 100) * canvasHeight;
 
+          // Type metrics were tuned against the full-size canvas, so they scale with it —
+          // otherwise a half-size render comes out with double-size lettering.
+          const k = 3.5 * scale;
+
           if (el.type === 'badge' || el.type === 'button') {
             ctx.fillStyle = el.bgColor || '#00E676';
-            const boxW = (el.width / 100) * canvasWidth || 450;
-            const boxH = 95;
+            const boxW = (el.width / 100) * canvasWidth || 450 * scale;
+            const boxH = 95 * scale;
             ctx.fillRect(posX, posY, boxW, boxH);
 
             if (el.borderColor && el.borderWidth) {
               ctx.strokeStyle = el.borderColor;
-              ctx.lineWidth = (el.borderWidth || 1) * 3;
+              ctx.lineWidth = (el.borderWidth || 1) * 3 * scale;
               ctx.strokeRect(posX, posY, boxW, boxH);
             }
 
             ctx.fillStyle = el.color || '#000000';
-            ctx.font = `bold ${(el.fontSize || 13) * 3.5}px Inter, sans-serif`;
-            ctx.fillText(el.content, posX + 30, posY + 62);
+            ctx.font = `bold ${(el.fontSize || 13) * k}px Inter, sans-serif`;
+            ctx.fillText(el.content, posX + 30 * scale, posY + 62 * scale);
           } else if (el.type === 'text') {
             ctx.fillStyle = el.color || '#ffffff';
-            ctx.font = `${el.fontWeight || 700} ${(el.fontSize || 18) * 3.5}px ${el.fontFamily || 'Inter'}, sans-serif`;
-            ctx.fillText(el.content, posX, posY + 65);
+            ctx.font = `${el.fontWeight || 700} ${(el.fontSize || 18) * k}px ${el.fontFamily || 'Inter'}, sans-serif`;
+            ctx.fillText(el.content, posX, posY + 65 * scale);
           }
         });
 
-        const dataUrl = exportCanvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = `Raftra_4K_Ad_${Date.now()}.png`;
-        link.href = dataUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        triggerToast('Downloaded 4K High-Res PNG Ad file to your computer! 🚀');
+        try {
+          resolve(mime === 'image/jpeg'
+            ? exportCanvas.toDataURL('image/jpeg', 0.86)
+            : exportCanvas.toDataURL('image/png'));
+        } catch {
+          resolve(null);   // tainted by a cross-origin image
+        }
       };
 
-      if (imageEls.length === 0) {
-        triggerDownload();
-      } else {
-        imageEls.forEach(el => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            const posX = (el.x / 100) * canvasWidth;
-            const posY = (el.y / 100) * canvasHeight;
-            const width = (el.width / 100) * canvasWidth;
-            const height = ((el.height || 100) / 100) * canvasHeight;
-            ctx.drawImage(img, posX, posY, width, height);
-            loadedImagesCount++;
-            if (loadedImagesCount >= imageEls.length) {
-              triggerDownload();
-            }
-          };
-          img.onerror = () => {
-            loadedImagesCount++;
-            if (loadedImagesCount >= imageEls.length) {
-              triggerDownload();
-            }
-          };
-          img.src = el.content;
-        });
-      }
-    } catch (err) {
-      triggerToast('Exported 4K High-Res PNG Ad file! 🎨');
+      if (imageEls.length === 0) return paintTextAndFinish();
+
+      imageEls.forEach(el => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const done = () => { loaded++; if (loaded >= imageEls.length) paintTextAndFinish(); };
+        img.onload = () => {
+          ctx.drawImage(img,
+            (el.x / 100) * canvasWidth, (el.y / 100) * canvasHeight,
+            (el.width / 100) * canvasWidth, ((el.height || 100) / 100) * canvasHeight);
+          done();
+        };
+        img.onerror = done;
+        img.src = el.content;
+      });
+    } catch {
+      resolve(null);
     }
+  });
+
+  // Export active Canvas to 4K PNG file download
+  const handleExport4KPng = async () => {
+    const dataUrl = await renderCanvasToDataUrl();
+    if (!dataUrl) {
+      // Was "Exported 4K High-Res PNG Ad file! 🎨" on every failure path, so a failed
+      // export was announced as a success and no file appeared.
+      triggerToast('Could not export the canvas — a background image blocked it.');
+      return;
+    }
+    const link = document.createElement('a');
+    link.download = `Raftra_4K_Ad_${Date.now()}.png`;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast('Downloaded 4K High-Res PNG Ad file to your computer! 🚀');
   };
 
   // Step 2 Input Method
@@ -507,14 +647,17 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [selectedAdType, setSelectedAdType] = useState<'Image' | 'Video' | 'Carousel'>('Image');
   const [platform, setPlatform] = useState<'Instagram' | 'Facebook' | 'Google' | 'Amazon' | 'Flipkart'>('Instagram');
   const [aspectRatio, setAspectRatio] = useState<'1:1' | '9:16' | '4:5' | '16:9'>('1:1');
-  const [aiModel, setAiModel] = useState('Gemini 2.5 Flash');
+  // `aiModel` and `videoVoice` lived here and were never read by anything — see the note on
+  // the removed selectors in Step 3. Duration is passed to the generator.
   const [videoDuration, setVideoDuration] = useState<'15s' | '30s' | '60s'>('15s');
-  const [videoVoice, setVideoVoice] = useState('Hindi Warm Male');
 
   // Interactive Custom Ad Editor State
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [isApplyingInstruction, setIsApplyingInstruction] = useState(false);
   const [copyToast, setCopyToast] = useState<string | null>(null);
+  // Disables the save buttons while a save is in flight, so a slow render cannot be
+  // double-submitted into two rows.
+  const [isSavingDesign, setIsSavingDesign] = useState(false);
 
   // Generation & Output State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -523,6 +666,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // Asset ids present when Generate was pressed, so the one that arrives afterwards can be
   // recognised as this run's output.
   const generationBaseline = useRef<Set<string>>(new Set());
+  // True only when Generate was pressed in this session, so the WebSocket-adoption effect
+  // below can tell a fresh run from one resumed after a page refresh.
+  const generationStartedHere = useRef(false);
   // Backend id of the ad currently on screen. Variations are asked for by creative id, so
   // only an ad that came from a real run can be varied.
   const [generatedCreativeId, setGeneratedCreativeId] = useState<number | null>(null);
@@ -535,6 +681,14 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     description: string;
     hashtags: string;
     imageUrl: string;
+    /** The rendered video, when the run produced one.
+     *
+     *  There was no such field. A video generation returns BOTH a still and a video, and
+     *  the preview stored `image_url || video_url` into `imageUrl` and drew it in an <img>
+     *  — so the video was thrown away, and on the runs where only a video came back the
+     *  <img> failed to load and the panel reported "The generated image could not be
+     *  loaded". Either way there was no way to play a generated video ad. */
+    videoUrl: string;
     type: string;
     platform: string;
     aspectRatio: string;
@@ -878,6 +1032,47 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
   // File Upload Handler
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* Getting a picture onto a carousel card.
+     ------------------------------------------------------------------
+     The card editor offered one control for this: a bare "CARD IMAGE GRAPHIC URL" text box.
+     Nothing in the product produces a URL to paste into it, so in practice no card ever got
+     an image and every preview read "No image on this card yet" — which is most of why this
+     builder felt broken. The three real sources of a picture are the workspace's own Asset
+     Vault, an ad it has already generated, and the user's disk; all three are wired here. */
+  const carouselFileRef = useRef<HTMLInputElement>(null);
+  const [uploadingCardImage, setUploadingCardImage] = useState(false);
+
+  const setActiveCardImage = (url: string) => {
+    setCarouselCards(prev => prev.map((c, i) => (i === activeCarouselIndex ? { ...c, imageUrl: url } : c)));
+  };
+
+  const handleCarouselImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';                       // so the same file can be picked again
+    if (!file) return;
+    setUploadingCardImage(true);
+    const token = localStorage.getItem('token');
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const res = await fetch('/api/media/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
+      // The stored URL, never a blob: handle — a card is published to Meta, and an object
+      // URL resolves nowhere outside this tab.
+      setActiveCardImage(data.url);
+      triggerToast('Image added to this card.');
+    } catch (err: any) {
+      triggerToast(err?.message || 'Could not upload that image.');
+    } finally {
+      setUploadingCardImage(false);
+    }
+  };
   /* Upload the product photo to the server, not just into this tab.
      `URL.createObjectURL` returns a `blob:` handle that resolves nowhere outside this
      browser, so the photo was shown as "Product Image Uploaded" and then silently dropped:
@@ -950,6 +1145,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       return;
     }
     generationBaseline.current = new Set(assets.map(a => a.id));
+    generationStartedHere.current = true;
     setGenerationError(null);
     setGeneratedAd(null);
     setGeneratedAdImageFailed(false);
@@ -963,6 +1159,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       platform,
       ratio: aspectRatio,
       reference_image: referenceImageUrl || undefined,
+      // The backend already honours this (service.plan -> spec.video.duration); the
+      // selector just was not being passed, so every video rendered at the default length
+      // whatever the user picked.
+      length: videoDuration,
     })).catch(() => null);
 
     // A creative_id is the reliable way to follow the run: /api/creative/jobs reports
@@ -971,12 +1171,60 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     // instead, which the effect below handles.
     if (!job || !job.creative_id || !workspaceId) return;
 
+    // Remember it immediately, not on completion: a render takes 20-90s, and a refresh in
+    // the middle used to throw the whole run away even though the backend kept going.
+    rememberCreative(workspaceId, job.creative_id);
+    await followCreativeJob(job.creative_id, workspaceId);
+  };
+
+  /* Surviving a refresh.
+     ------------------------------------------------------------------
+     `generatedAd` was local state and nothing else, so reloading the page lost the creative
+     you were looking at — you had to generate again to see anything, which made the studio
+     impossible to test or to come back to. The row was in the database the whole time; the
+     screen just had no way to find it again.
+
+     The id of the last creative is kept per workspace, and on mount it is fetched back from
+     /api/creative/jobs. If it is still rendering, polling picks up where it left off. */
+  const lastCreativeKey = (ws: number) => `raftra_last_creative_ws${ws}`;
+
+  const rememberCreative = (ws: number, creativeId: number) => {
+    try { localStorage.setItem(lastCreativeKey(ws), String(creativeId)); } catch { /* private mode */ }
+  };
+
+  const forgetCreative = (ws: number) => {
+    try { localStorage.removeItem(lastCreativeKey(ws)); } catch { /* private mode */ }
+  };
+
+  /** Puts a finished job on screen. */
+  const adoptCreativeJob = (d: any) => {
+    setGeneratedAd({
+      id: String(d.creative_id),
+      headline: d.headline || '',
+      bodyText: d.primary_text || '',
+      cta: d.cta || '',
+      description: d.optimized_prompt || '',
+      hashtags: '',
+      imageUrl: d.image_url || '',
+      videoUrl: d.video_url || '',
+      type: d.type === 'video' ? 'Video' : selectedAdType,
+      platform: d.platform || platform,
+      aspectRatio: d.aspect_ratio || aspectRatio,
+    });
+    setGeneratedCreativeId(d.creative_id);
+    setGeneratedAdImageFailed(false);
+    setIsGenerating(false);
+  };
+
+  /** Follows one generation to completion. Shared by a fresh Generate and by the resume
+   *  effect below, so both behave identically. */
+  const followCreativeJob = async (creativeId: number, ws: number) => {
     const token = localStorage.getItem('token');
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
 
     for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 3000));
-      const d = await fetch(`/api/creative/jobs/${job.creative_id}?workspace_id=${workspaceId}`, { headers })
+      const d = await fetch(`/api/creative/jobs/${creativeId}?workspace_id=${ws}`, { headers })
         .then(r => (r.ok ? r.json() : null))
         .catch(() => null);
       if (!d || d.status === 'processing') continue;
@@ -984,23 +1232,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       if (d.status === 'failed' || (!d.image_url && !d.video_url)) {
         setIsGenerating(false);
         setGenerationError(d.error || 'The image provider returned no asset for this prompt.');
+        forgetCreative(ws);
         return;
       }
 
-      setGeneratedAd({
-        id: String(d.creative_id),
-        headline: d.headline || '',
-        bodyText: d.primary_text || '',
-        cta: d.cta || '',
-        description: d.optimized_prompt || '',
-        hashtags: '',
-        imageUrl: d.image_url || d.video_url || '',
-        type: d.type === 'video' ? 'Video' : selectedAdType,
-        platform: d.platform || platform,
-        aspectRatio: d.aspect_ratio || aspectRatio,
-      });
-      setGeneratedCreativeId(d.creative_id);
-      setIsGenerating(false);
+      adoptCreativeJob(d);
       return;
     }
 
@@ -1008,9 +1244,48 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setGenerationError('Still rendering after 3 minutes — check the Creative agent in the AI Agents tab.');
   };
 
-  // Adopt the first asset that was not already present when this run started.
   useEffect(() => {
-    if (!isGenerating) return;
+    if (!workspaceId) return;
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(lastCreativeKey(workspaceId)); } catch { return; }
+    const creativeId = Number(stored);
+    if (!stored || !Number.isFinite(creativeId) || creativeId <= 0) return;
+
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`/api/creative/jobs/${creativeId}?workspace_id=${workspaceId}`, { headers })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled || !d) {
+          // 404 means it was deleted, or belongs to another workspace — stop pointing at it.
+          if (!cancelled) forgetCreative(workspaceId);
+          return;
+        }
+        if (d.status === 'processing') {
+          // The backend never stopped working; rejoin it.
+          setIsGenerating(true);
+          setGenerationElapsed(0);
+          followCreativeJob(creativeId, workspaceId);
+          return;
+        }
+        if (d.image_url || d.video_url) adoptCreativeJob(d);
+        else forgetCreative(workspaceId);
+      })
+      .catch(() => { /* offline — leave the panel empty rather than showing a stale guess */ });
+    return () => { cancelled = true; };
+    // Deliberately only on workspace change: this restores once, and must not re-run and
+    // overwrite an ad the user is editing in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
+
+  /* Adopt the first asset that was not already present when this run started.
+     Only for a run started by the button in this session: the baseline is the set of assets
+     that existed at that moment. A generation RESUMED after a refresh has an empty baseline,
+     so without this guard every existing asset would look "new" and the panel would adopt an
+     arbitrary old one instead of the creative actually being rendered. */
+  useEffect(() => {
+    if (!isGenerating || !generationStartedHere.current) return;
     const fresh = assets.find(a => !generationBaseline.current.has(a.id));
     if (!fresh) return;
     setGeneratedAd({
@@ -1021,12 +1296,17 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       description: '',
       hashtags: '',
       imageUrl: fresh.imageUrl || '',
+      videoUrl: fresh.videoUrl || '',
       type: fresh.type || selectedAdType,
       platform,
       aspectRatio,
     });
+    setGeneratedCreativeId(Number(fresh.id) || null);
+    // Remember it here too — this path bypasses the job poller, and without it a refresh
+    // would lose an ad that arrived over the WebSocket.
+    if (workspaceId && Number(fresh.id)) rememberCreative(workspaceId, Number(fresh.id));
     setIsGenerating(false);
-  }, [assets, isGenerating, selectedAdType, platform, aspectRatio]);
+  }, [assets, isGenerating, selectedAdType, platform, aspectRatio, workspaceId]);
 
   // A failed run produces no asset and no message on this channel, so cap the wait rather
   // than spin forever. The pipeline reports its own errors in the AI Agents tab.
@@ -1094,7 +1374,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           cta: d.cta || '',
           description: d.optimized_prompt || '',
           hashtags: '',
-          imageUrl: d.image_url || d.video_url || '',
+          imageUrl: d.image_url || '',
+          videoUrl: d.video_url || '',
           type: d.type === 'video' ? 'Video' : selectedAdType,
           platform: d.platform || platform,
           aspectRatio: d.aspect_ratio || aspectRatio,
@@ -1299,11 +1580,49 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      changed nothing. */
   const [removingAssetId, setRemovingAssetId] = useState<string | null>(null);
 
+  /** Approve or reject a creative from the card you are already looking at.
+   *
+   *  The only route to this before was: open the project modal, press "Open in Review",
+   *  which closed the modal and opened a drawer owned by the dashboard, and approve there.
+   *  Two clicks, a component away, behind a button that does not say "approve" — which is
+   *  why the control was impossible to find. The drawer still exists for editing copy
+   *  during review; this is the direct decision. */
+  const [reviewingAssetId, setReviewingAssetId] = useState<string | null>(null);
+
+  const handleReviewCreative = async (proj: ProjectCard, action: 'approve' | 'reject') => {
+    if (!workspaceId || reviewingAssetId) return;
+    setReviewingAssetId(proj.id);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/creatives/${proj.id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action }),
+      });
+      const row = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((row && row.detail) || `Review failed (${res.status})`);
+      // Tell the dashboard so Recent Projects and the Ad Library both reflect the new state
+      // without a reload — they read the same `assets` list.
+      onAssetUpdated?.({
+        id: String(row.id), headline: row.headline, bodyText: row.body_text,
+        cta: row.cta, type: row.type, imageUrl: row.image_url, status: row.status,
+      } as CreativeAsset);
+      setSelectedProjectModal(null);
+      triggerToast(action === 'approve'
+        ? 'Approved — it is now in your Ad Library.'
+        : 'Rejected.');
+    } catch (e) {
+      triggerToast(`Could not save that review: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setReviewingAssetId(null);
+    }
+  };
+
   const handleRemoveFromLibrary = async (proj: ProjectCard) => {
     if (removingAssetId) return;
     if (!proj.real) {
       setProjectsList(prev => prev.filter(p => p.id !== proj.id));
-      triggerToast('Removed from Ad Library');
+      triggerToast('Creative deleted.');
       return;
     }
     if (!workspaceId) return;
@@ -1321,7 +1640,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       // The dashboard owns `assets`, so it has to drop the row too or the card comes back
       // on the next render.
       onAssetRemoved && onAssetRemoved(proj.id);
-      triggerToast('Removed from Ad Library');
+      triggerToast('Creative deleted.');
     } catch (err: any) {
       triggerToast(err?.message || 'Could not remove that asset.');
     } finally {
@@ -1940,46 +2259,36 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </select>
               </div>
 
+              {/* An "AI GENERATION ENGINE" picker (Gemini 2.5 Flash / Imagen 3 Ultra /
+                  Claude 3.5 Sonnet) and a "VOICEOVER" picker used to sit here. Neither was
+                  ever read: the image provider is chosen server-side by
+                  router_decision_engine() from what is actually configured, and there is no
+                  text-to-speech provider anywhere in the backend, so no voice could be
+                  produced whatever was selected. Showing the real engine beats offering a
+                  choice that changes nothing. */}
               <div>
-                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>AI GENERATION ENGINE</label>
-                <select
-                  value={aiModel}
-                  onChange={e => setAiModel(e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', outline: 'none' }}
-                >
-                  <option value="Gemini 2.5 Flash">Gemini 2.5 Flash (Ultra Fast)</option>
-                  <option value="Imagen 3 Ultra">Imagen 3 Ultra (4K Studio Visuals)</option>
-                  <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet (High CTR Copy)</option>
-                </select>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>GENERATION ENGINE</label>
+                <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  Chosen automatically
+                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Best configured image model for this brief
+                  </span>
+                </div>
               </div>
 
               {selectedAdType === 'Video' && (
-                <>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>VIDEO DURATION</label>
-                    <select
-                      value={videoDuration}
-                      onChange={e => setVideoDuration(e.target.value as any)}
-                      style={{ width: '100%', padding: '10px 14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', outline: 'none' }}
-                    >
-                      <option value="15s">15 Seconds (High Retention)</option>
-                      <option value="30s">30 Seconds (Standard Reel)</option>
-                      <option value="60s">60 Seconds (Detailed Showcase)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>VOICEOVER</label>
-                    <select
-                      value={videoVoice}
-                      onChange={e => setVideoVoice(e.target.value)}
-                      style={{ width: '100%', padding: '10px 14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', outline: 'none' }}
-                    >
-                      <option value="Hindi Warm Male">Hindi Warm Male Voice</option>
-                      <option value="Indian English Female">Indian English Female Voice</option>
-                      <option value="Energetic Youth">Energetic Youth Accent</option>
-                    </select>
-                  </div>
-                </>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600 }}>VIDEO DURATION</label>
+                  <select
+                    value={videoDuration}
+                    onChange={e => setVideoDuration(e.target.value as any)}
+                    style={{ width: '100%', padding: '10px 14px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', outline: 'none' }}
+                  >
+                    <option value="15s">15 Seconds (High Retention)</option>
+                    <option value="30s">30 Seconds (Standard Reel)</option>
+                    <option value="60s">60 Seconds (Detailed Showcase)</option>
+                  </select>
+                </div>
               )}
 
             </div>
@@ -2059,7 +2368,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.55 }}>
                   Each style re-renders the same product through the stored creative spec, so the subject stays put and
-                  only the look changes. {generatedCreativeId ? '' : 'Available on ads generated in this session.'}
+                  {/* No longer session-bound: the creative id is restored on load, so
+                      variations still work after a refresh. */}
+                  only the look changes. {generatedCreativeId ? '' : 'Generate an ad first.'}
                 </p>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -2095,21 +2406,47 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     {/* If the creative URL dies, say so. Swapping in a stock product photo -
                         which is what happened here before - shows the user a picture that is
                         not the ad they just generated. */}
-                    {generatedAdImageFailed ? (
+                    {/* A rendered video plays here, in a real <video> with native controls.
+                        It used to be drawn in an <img> — which cannot play an mp4 — under a
+                        decorative Play circle that was a plain <div> with no onClick. So a
+                        generated video ad could never be watched, and when the run returned
+                        no still the <img> failed and the panel claimed the image was
+                        broken. */}
+                    {generatedAd.videoUrl && !generatedAdImageFailed ? (
+                      <video
+                        src={generatedAd.videoUrl}
+                        poster={generatedAd.imageUrl || undefined}
+                        controls
+                        playsInline
+                        loop
+                        preload="metadata"
+                        onError={() => setGeneratedAdImageFailed(true)}
+                        style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block', background: '#000' }}
+                      />
+                    ) : generatedAdImageFailed ? (
                       <div style={{ width: '100%', height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
                         <span style={{ fontSize: '12.5px', color: 'var(--warning)', lineHeight: 1.5 }}>
-                          The generated image could not be loaded.<br />
+                          The generated {generatedAd.videoUrl ? 'video' : 'image'} could not be loaded.<br />
                           Re-run the generation, or check the Creative agent in the AI Agents tab.
                         </span>
                       </div>
-                    ) : (
+                    ) : generatedAd.imageUrl ? (
                       <img src={generatedAd.imageUrl} alt="Generated Ad"
                         onError={() => setGeneratedAdImageFailed(true)}
                         style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                          This creative has no image or video attached.
+                        </span>
+                      </div>
                     )}
-                    {generatedAd.type === 'Video' && (
-                      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(124,117,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                        <Play size={24} color="#fff" style={{ marginLeft: '4px' }} />
+
+                    {/* Only meaningful when a video ad produced no video to play. */}
+                    {generatedAd.type === 'Video' && !generatedAd.videoUrl && !generatedAdImageFailed && (
+                      <div title="No video was rendered for this run — the still is shown instead"
+                        style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(255,174,0,0.15)', border: '1px solid rgba(255,174,0,0.4)', color: '#ffae00', padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 700 }}>
+                        Still only — no video rendered
                       </div>
                     )}
                     <span style={{ position: 'absolute', top: 16, left: 16, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600 }}>
@@ -2761,22 +3098,48 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
                 {/* MODAL ACTION BUTTONS */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
-                  {/* Remove: demo cards only. A real asset lives in the database, and dropping
-                      it from local state would look like a delete while changing nothing. */}
-                  {!selectedProjectModal.real && (
+                  {/* Deletes for real. This was hidden for real assets, because dropping a
+                      database row from local state would have looked like a delete while
+                      changing nothing — the card returned on the next refresh. It now goes
+                      through DELETE /creatives/{id}, which already existed and was only
+                      being used by the Ad Library tab. */}
+                  <button
+                    onClick={() => {
+                      const target = selectedProjectModal;
+                      setSelectedProjectModal(null);
+                      handleRemoveFromLibrary(target);
+                    }}
+                    disabled={removingAssetId === selectedProjectModal.id}
+                    style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: removingAssetId === selectedProjectModal.id ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
+                  >
+                    <X size={14} /> {removingAssetId === selectedProjectModal.id ? 'Deleting…' : 'Delete project'}
+                  </button>
+
+                  {/* The decision, right here on the card being looked at. */}
+                  {selectedProjectModal.real && selectedProjectModal.status !== 'Approved' && (
                     <button
-                      onClick={() => {
-                        setProjectsList(prev => prev.filter(p => p.id !== selectedProjectModal.id));
-                        setSelectedProjectModal(null);
-                        triggerToast('Removed from Recent Projects! 🗑️');
-                      }}
-                      style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
+                      onClick={() => handleReviewCreative(selectedProjectModal, 'approve')}
+                      disabled={reviewingAssetId === selectedProjectModal.id}
+                      title="Approve this creative into the Ad Library"
+                      style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.5)', color: '#00E676', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: reviewingAssetId === selectedProjectModal.id ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
                     >
-                      <X size={14} /> Remove from Projects
+                      <Check size={14} /> {reviewingAssetId === selectedProjectModal.id ? 'Saving…' : 'Approve'}
                     </button>
                   )}
 
-                  {/* Real assets go through the review drawer, which approves against the API. */}
+                  {selectedProjectModal.real && selectedProjectModal.status !== 'Draft' && (
+                    <button
+                      onClick={() => handleReviewCreative(selectedProjectModal, 'reject')}
+                      disabled={reviewingAssetId === selectedProjectModal.id}
+                      title="Reject this creative"
+                      style={{ background: 'rgba(255,183,77,0.12)', border: '1px solid rgba(255,183,77,0.45)', color: '#FFB74D', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: reviewingAssetId === selectedProjectModal.id ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
+                    >
+                      <X size={14} /> Reject
+                    </button>
+                  )}
+
+                  {/* The drawer stays for the fuller flow — it lets the copy be edited as
+                      part of approving, which the two buttons above deliberately do not. */}
                   {selectedProjectModal.real && onOpenReview && (
                     <button
                       onClick={() => {
@@ -2785,7 +3148,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       }}
                       style={{ background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.5)', color: '#8B85FF', padding: '12px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}
                     >
-                      <Check size={14} /> Open in Review
+                      <Edit3 size={14} /> Edit copy & review
                     </button>
                   )}
 
@@ -2879,7 +3242,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     disabled={removingAssetId === proj.id}
                     style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.5)', color: '#f87171', padding: '5px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: removingAssetId === proj.id ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
                   >
-                    <X size={11} /> {removingAssetId === proj.id ? 'Removing…' : 'Remove from Library'}
+                    {/* Says what it does: this deletes the creative, it does not merely
+                        un-approve it out of the library listing. */}
+                    <X size={11} /> {removingAssetId === proj.id ? 'Deleting…' : 'Delete creative'}
                   </button>
                 </div>
               </div>
@@ -3288,7 +3653,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* 1. SAVE IN DRAFT → goes to Recent Projects as Draft */}
               <button 
-                onClick={handleSaveAsDraft}
+                onClick={() => persistCarousel('pending_review')} disabled={isSavingDesign}
                 style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <Save size={14} /> Save in Draft 💾
@@ -3296,7 +3661,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* 2. SAVE TO AD LIBRARY → goes to Ad Library as Approved */}
               <button 
-                onClick={handleSaveToVault}
+                onClick={() => persistCarousel('approved')} disabled={isSavingDesign}
                 style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <FolderPlus size={14} /> Save to Ad Library 🏛️
@@ -3458,9 +3823,61 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>CARD IMAGE GRAPHIC URL</label>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#8e8e9e', fontWeight: 700, marginBottom: '4px' }}>CARD IMAGE</label>
+
+                      {/* Upload, or pick something the workspace already has. The URL box
+                          below still works for an external image, but it is no longer the
+                          only way in. */}
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                        <input type="file" ref={carouselFileRef} onChange={handleCarouselImageUpload} accept="image/*" style={{ display: 'none' }} />
+                        <button
+                          onClick={() => carouselFileRef.current?.click()}
+                          disabled={uploadingCardImage}
+                          style={{ background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.35)', color: '#00E676', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: uploadingCardImage ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                        >
+                          <Upload size={13} /> {uploadingCardImage ? 'Uploading…' : 'Upload image'}
+                        </button>
+                        {currentCard.imageUrl && (
+                          <button
+                            onClick={() => setActiveCardImage('')}
+                            style={{ background: 'rgba(255,71,87,0.1)', border: '1px solid rgba(255,71,87,0.3)', color: '#ff8b95', padding: '7px 12px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Remove image
+                          </button>
+                        )}
+                      </div>
+
+                      {(vaultImages.length > 0 || assets.some(a => a.imageUrl)) && (
+                        <>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, display: 'block', marginBottom: '6px' }}>
+                            OR PICK FROM THIS WORKSPACE
+                          </span>
+                          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px', marginBottom: '8px' }}>
+                            {[
+                              ...assets.filter(a => a.imageUrl).slice(0, 8)
+                                .map(a => ({ url: a.imageUrl as string, name: a.headline || 'Generated ad' })),
+                              ...vaultImages.slice(0, 12),
+                            ].map((img, idx) => (
+                              <button
+                                key={`${img.url}-${idx}`}
+                                onClick={() => setActiveCardImage(img.url)}
+                                title={img.name}
+                                style={{
+                                  flexShrink: 0, width: '54px', height: '54px', padding: 0, borderRadius: '6px',
+                                  overflow: 'hidden', cursor: 'pointer', background: '#0a0a10',
+                                  border: currentCard.imageUrl === img.url ? '2px solid #00E676' : '1px solid rgba(255,255,255,0.15)',
+                                }}
+                              >
+                                <img src={img.url} alt={img.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
                       <input
                         type="text"
+                        placeholder="…or paste an image URL"
                         value={currentCard.imageUrl}
                         onChange={e => {
                           const val = e.target.value;
@@ -3586,7 +4003,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* 1. SAVE IN DRAFT → goes to Recent Projects as Draft */}
               <button 
-                onClick={handleSaveAsDraft}
+                onClick={() => persistStoryboard('pending_review')} disabled={isSavingDesign}
                 style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <Save size={14} /> Save in Draft 💾
@@ -3594,7 +4011,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* 2. SAVE TO AD LIBRARY → goes to Ad Library as Approved */}
               <button 
-                onClick={handleSaveToVault}
+                onClick={() => persistStoryboard('approved')} disabled={isSavingDesign}
                 style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <FolderPlus size={14} /> Save to Ad Library 🏛️
@@ -3901,7 +4318,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
               {/* 1. SAVE IN DRAFT → goes to Recent Projects as Draft */}
               <button 
-                onClick={handleSaveAsDraft}
+                onClick={handleSaveAsDraft} disabled={isSavingDesign}
                 style={{ background: 'rgba(255,183,77,0.15)', border: '1px solid #FFB74D', color: '#FFB74D', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <Save size={14} /> Save in Draft 💾
@@ -3909,7 +4326,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* 2. SAVE TO AD LIBRARY → goes to Ad Library as Approved */}
               <button 
-                onClick={handleSaveToVault}
+                onClick={handleSaveToVault} disabled={isSavingDesign}
                 style={{ background: 'rgba(0,230,118,0.15)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '7px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <FolderPlus size={14} /> Save to Ad Library 🏛️

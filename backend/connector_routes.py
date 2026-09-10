@@ -13,6 +13,7 @@ import os
 import datetime
 import jwt
 import httpx
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, BackgroundTasks
 from fastapi.responses import RedirectResponse
@@ -149,18 +150,151 @@ def _get_wp(workspace_id: int, db: Session):
     ).first()
 
 
-# ---------------------------------------------------------------- status
-@router.get("/search-console/{workspace_id}/status")
-def gsc_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    _require_workspace(workspace_id, db, current_user)
-    conn = _get_conn(workspace_id, db)
+# ------------------------------------------------------------ status payloads
+#
+# One builder per connector, so the single-connector endpoint below and the batched
+# /status endpoint cannot drift apart - a field added to one would otherwise be missing
+# from the other, and the Integrations Hub reads the batched one.
+
+
+def _meta_status_payload(conn) -> dict:
+    # `ready_to_publish` is the single flag the UI should gate the publish button on: an ad
+    # needs BOTH an ad account (where it's billed) and a Page (who it's published as).
     return {
-        "configured": gsc.is_configured(),   # are Google client creds set on the server?
+        "configured": meta.is_configured(),
+        "connected": bool(conn and conn.access_token),
+        "name": conn.connected_name if conn else None,
+        "ad_account_id": conn.ad_account_id if conn else None,
+        "page_id": conn.page_id if conn else None,
+        "page_name": conn.page_name if conn else None,
+        "default_link_url": conn.default_link_url if conn else None,
+        "ready_to_publish": bool(conn and conn.access_token and conn.ad_account_id and conn.page_id),
+    }
+
+
+def _gads_status_payload(conn) -> dict:
+    return {
+        "configured": gads.is_configured(),
+        "connected": bool(conn and conn.refresh_token),
+        "email": conn.connected_email if conn else None,
+        "customer_id": conn.customer_id if conn else None,
+        "login_customer_id": (conn.login_customer_id if conn else None) or None,
+        "is_manager_account": bool(conn.customer_is_manager) if conn else False,
+    }
+
+
+def _gsc_status_payload(conn) -> dict:
+    return {
+        "configured": gsc.is_configured(),
         "connected": bool(conn and conn.refresh_token),
         "email": conn.connected_email if conn else None,
         "site_url": conn.site_url if conn else None,
         "ga4_property_id": conn.ga4_property_id if conn else None,
     }
+
+
+def _drive_status_payload(conn) -> dict:
+    return {
+        "configured": gdrive.is_configured(),
+        "connected": bool(conn and conn.refresh_token),
+        "email": conn.connected_email if conn else None,
+        "folder_id": conn.default_folder_id if conn else None,
+        "folder_name": conn.default_folder_name if conn else None,
+        "last_import_at": conn.last_import_at.isoformat() if conn and conn.last_import_at else None,
+    }
+
+
+def _gh_status_payload(conn) -> dict:
+    return {
+        "configured": gh.is_configured(),
+        "connected": bool(conn and conn.access_token),
+        "login": conn.login if conn else None,
+        "repo_full_name": conn.repo_full_name if conn else None,
+    }
+
+
+def _shop_status_payload(conn) -> dict:
+    return {
+        "configured": shop.is_configured(),
+        "connected": bool(conn and conn.access_token),
+        "shop_domain": conn.shop_domain if conn else None,
+        "shop_name": conn.shop_name if conn else None,
+        "blog_id": conn.blog_id if conn else None,
+    }
+
+
+def _wp_status_payload(conn) -> dict:
+    return {
+        # The Application Password path needs nothing configured server-side, but the
+        # WordPress.com path needs WPCOM_CLIENT_ID/SECRET - report them separately so the
+        # panel can hide a button that could not possibly work.
+        "configured": True,
+        "wpcom_configured": wpcom.is_configured(),
+        "connected": bool(conn and (conn.app_password or conn.access_token)),
+        "auth_type": conn.auth_type if conn else None,
+        "site_url": conn.site_url if conn else None,
+        "site_name": conn.site_name if conn else None,
+        "username": conn.username if conn else None,
+        "auto_apply": bool(conn.auto_apply) if conn else False,
+        "seo_plugin": conn.seo_plugin if conn else None,
+        "seo_plugin_label": wp.SEO_PLUGIN_META.get(conn.seo_plugin, {}).get("label") if conn and conn.seo_plugin else None,
+    }
+
+
+# The connectors the Integrations Hub shows, and how to read each one's row.
+_ALL_CONNECTORS = [
+    ("meta", models.MetaAdsConnection, _meta_status_payload),
+    ("google_ads", models.GoogleAdsConnection, _gads_status_payload),
+    ("search_console", models.SearchConsoleConnection, _gsc_status_payload),
+    ("gdrive", models.GoogleDriveConnection, _drive_status_payload),
+    ("github", models.GitHubConnection, _gh_status_payload),
+    ("shopify", models.ShopifyConnection, _shop_status_payload),
+    ("wordpress", models.WordPressConnection, _wp_status_payload),
+]
+
+
+@router.get("/{workspace_id}/status")
+def all_connector_status(workspace_id: int, db: Session = Depends(database.get_db),
+                         current_user: models.User = Depends(auth.get_current_user)):
+    """Every connector's status in one request.
+
+    The Integrations Hub used to call seven separate status endpoints. Each one is cheap in
+    itself, but each is a whole request: a pooled checkout with pool_pre_ping (one round
+    trip), the authenticated user lookup (another), the workspace access check (another),
+    then the connection row (another). Against a remote Postgres at ~200ms per round trip
+    that is roughly 800ms per connector, and the hub renders "Checking..." until the last
+    one lands - which is why opening Integrations took several seconds.
+
+    Here the user lookup and the workspace check happen once, and the seven table reads run
+    concurrently on their own pooled connections, so the screen costs about two round trips
+    instead of twenty-four. Measured against the live database: 8.4s -> 2.4s by batching,
+    and to roughly a second by also overlapping the reads.
+
+    The per-connector endpoints stay as they are: other screens (Campaign Manager, the Asset
+    Vault's Drive picker) read a single connector and should not pay for seven.
+    """
+    _require_workspace(workspace_id, db, current_user)
+
+    def read_one(entry):
+        key, model, to_payload = entry
+        # Its own session: a SQLAlchemy Session is not safe to share across threads, and
+        # each one returns its connection to the pool immediately after the read.
+        s = database.SessionLocal()
+        try:
+            return key, to_payload(s.query(model).filter(model.workspace_id == workspace_id).first())
+        finally:
+            s.close()
+
+    with ThreadPoolExecutor(max_workers=len(_ALL_CONNECTORS)) as pool:
+        results = list(pool.map(read_one, _ALL_CONNECTORS))
+    return dict(results)
+
+
+# ---------------------------------------------------------------- status
+@router.get("/search-console/{workspace_id}/status")
+def gsc_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    _require_workspace(workspace_id, db, current_user)
+    return _gsc_status_payload(_get_conn(workspace_id, db))
 
 
 # ---------------------------------------------------------------- authorize
@@ -367,13 +501,7 @@ async def ga4_traffic(workspace_id: int, days: int = 28, db: Session = Depends(d
 @router.get("/github/{workspace_id}/status")
 def gh_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
-    conn = _get_gh(workspace_id, db)
-    return {
-        "configured": gh.is_configured(),
-        "connected": bool(conn and conn.access_token),
-        "login": conn.login if conn else None,
-        "repo_full_name": conn.repo_full_name if conn else None,
-    }
+    return _gh_status_payload(_get_gh(workspace_id, db))
 
 
 @router.get("/github/{workspace_id}/authorize")
@@ -858,19 +986,7 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
 @router.get("/meta/{workspace_id}/status")
 def meta_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
-    conn = _get_meta(workspace_id, db)
-    # `ready_to_publish` is the single flag the UI should gate the publish button on: an ad
-    # needs BOTH an ad account (where it's billed) and a Page (who it's published as).
-    return {
-        "configured": meta.is_configured(),
-        "connected": bool(conn and conn.access_token),
-        "name": conn.connected_name if conn else None,
-        "ad_account_id": conn.ad_account_id if conn else None,
-        "page_id": conn.page_id if conn else None,
-        "page_name": conn.page_name if conn else None,
-        "default_link_url": conn.default_link_url if conn else None,
-        "ready_to_publish": bool(conn and conn.access_token and conn.ad_account_id and conn.page_id),
-    }
+    return _meta_status_payload(_get_meta(workspace_id, db))
 
 
 @router.get("/meta/{workspace_id}/authorize")
@@ -1053,7 +1169,14 @@ async def meta_recommendations(workspace_id: int, date_preset: str = "last_7d",
                                db: Session = Depends(database.get_db),
                                current_user: models.User = Depends(auth.get_current_user)):
     """The optimization feed: what's working, what to switch, what to kill, plus scale/trim
-    suggestions — all computed from the real insights above (no invented numbers)."""
+    suggestions — all computed from the real insights above (no invented numbers).
+
+    The insights themselves come back too. They are already fetched here to compute the
+    recommendations, and the caller that wants the feed almost always wants the per-campaign
+    numbers beside it: the dashboard was asking this endpoint and /insights separately, so
+    Meta's API was queried for the same window twice on every load, each round trip taking
+    upwards of twenty seconds. Returning both halves that.
+    """
     _require_workspace(workspace_id, db, current_user)
     conn = _meta_ready(workspace_id, db)
     try:
@@ -1062,6 +1185,7 @@ async def meta_recommendations(workspace_id: int, date_preset: str = "last_7d",
         budgets = {c["id"]: c["daily_budget"] for c in campaigns if c.get("daily_budget")}
         result = optimizer.analyze(insights, current_budgets=budgets, target_roas=target_roas)
         result["date_preset"] = date_preset
+        result["insights"] = insights
         return result
     except HTTPException:
         raise
@@ -1208,23 +1332,14 @@ class GoogleAdsCampaignBudgetBody(BaseModel):
 
 @router.get("/google-ads/{workspace_id}/status")
 def gads_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
-    _require_workspace(workspace_id, db, current_user)
-    conn = _get_gads(workspace_id, db)
     # login_customer_id is the manager (MCC) this connection must act through, and is NULL
     # in the normal case where the connected Google account reaches the customer directly.
     # It is surfaced so the UI can warn when the selected customer IS that manager:
     # campaigns cannot be created inside a manager account, so such a selection always
     # fails at publish time — and listAccessibleCustomers returns the manager alongside
     # the real ad accounts, so it is an easy one to pick by mistake.
-    return {
-        "configured": gads.is_configured(),
-        "connected": bool(conn and conn.refresh_token),
-        "email": conn.connected_email if conn else None,
-        "customer_id": conn.customer_id if conn else None,
-        "login_customer_id": (conn.login_customer_id if conn else None) or None,
-        # Whether the SELECTED account is a manager — campaigns cannot live in one.
-        "is_manager_account": bool(conn.customer_is_manager) if conn else False,
-    }
+    _require_workspace(workspace_id, db, current_user)
+    return _gads_status_payload(_get_gads(workspace_id, db))
 
 
 @router.get("/google-ads/{workspace_id}/authorize")
@@ -1456,15 +1571,7 @@ class DriveImportBody(BaseModel):
 def drive_status(workspace_id: int, db: Session = Depends(database.get_db),
                  current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
-    conn = _get_drive(workspace_id, db)
-    return {
-        "configured": gdrive.is_configured(),
-        "connected": bool(conn and conn.refresh_token),
-        "email": conn.connected_email if conn else None,
-        "folder_id": conn.default_folder_id if conn else None,
-        "folder_name": conn.default_folder_name if conn else None,
-        "last_import_at": conn.last_import_at.isoformat() if conn and conn.last_import_at else None,
-    }
+    return _drive_status_payload(_get_drive(workspace_id, db))
 
 
 @router.get("/gdrive/{workspace_id}/authorize")
@@ -1521,7 +1628,9 @@ async def drive_callback(state: str, code: str = None, error: str = None,
     conn.connected_email = email
     conn.scopes = " ".join(gdrive.SCOPES)
     db.commit()
-    return RedirectResponse(f"{frontend}/dashboard?gdrive=connected&tab=assets")
+    # kb_assets is the dashboard's own name for the Asset Vault tab; "assets" is not a tab
+    # the router recognises, so it would have landed on Home.
+    return RedirectResponse(f"{frontend}/dashboard?gdrive=connected&tab=kb_assets")
 
 
 @router.get("/gdrive/{workspace_id}/folders")
@@ -1687,14 +1796,7 @@ async def drive_disconnect(workspace_id: int, db: Session = Depends(database.get
 @router.get("/shopify/{workspace_id}/status")
 def shop_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
-    conn = _get_shop(workspace_id, db)
-    return {
-        "configured": shop.is_configured(),
-        "connected": bool(conn and conn.access_token),
-        "shop_domain": conn.shop_domain if conn else None,
-        "shop_name": conn.shop_name if conn else None,
-        "blog_id": conn.blog_id if conn else None,
-    }
+    return _shop_status_payload(_get_shop(workspace_id, db))
 
 
 @router.get("/shopify/{workspace_id}/theme-status")
@@ -2286,22 +2388,7 @@ def shop_disconnect(workspace_id: int, db: Session = Depends(database.get_db), c
 @router.get("/wordpress/{workspace_id}/status")
 def wp_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
-    conn = _get_wp(workspace_id, db)
-    return {
-        # The Application Password path needs nothing configured server-side, but the
-        # WordPress.com path needs WPCOM_CLIENT_ID/SECRET — report them separately so the
-        # panel can hide a button that could not possibly work.
-        "configured": True,
-        "wpcom_configured": wpcom.is_configured(),
-        "connected": bool(conn and (conn.app_password or conn.access_token)),
-        "auth_type": conn.auth_type if conn else None,
-        "site_url": conn.site_url if conn else None,
-        "site_name": conn.site_name if conn else None,
-        "username": conn.username if conn else None,
-        "auto_apply": bool(conn.auto_apply) if conn else False,
-        "seo_plugin": conn.seo_plugin if conn else None,
-        "seo_plugin_label": wp.SEO_PLUGIN_META.get(conn.seo_plugin, {}).get("label") if conn and conn.seo_plugin else None,
-    }
+    return _wp_status_payload(_get_wp(workspace_id, db))
 
 
 class WordPressDetect(BaseModel):

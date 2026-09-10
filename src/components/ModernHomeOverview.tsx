@@ -37,6 +37,9 @@ interface ModernHomeOverviewProps {
   userName?: string;
   brandName?: string;
   workspaceId?: number | null;
+  /** Every connector's status, fetched once by the dashboard. Null while it is in flight. */
+  connectorStatus?: Record<string, any> | null;
+  connectorStatusFailed?: boolean;
   onNavigateTab: (tab: string) => void;
   onOpenReview?: (itemTitle: string) => void;
 }
@@ -52,7 +55,7 @@ const HOME_CONNECTORS: {
   name: string;
   desc: string;
   tag: string;
-  statusPath: (ws: number) => string;
+  batchKey: string;
   authorizePath?: (ws: number) => string;
   read: (s: any) => { configured: boolean; connected: boolean; detail: string | null };
   isAdAccount?: boolean;
@@ -64,7 +67,7 @@ const HOME_CONNECTORS: {
     desc: 'Run and optimize ads across Facebook, Instagram, Threads, and more.',
     tag: 'Ad Account',
     isAdAccount: true,
-    statusPath: (ws) => `/api/connectors/meta/${ws}/status`,
+    batchKey: 'meta',
     authorizePath: (ws) => `/api/connectors/meta/${ws}/authorize`,
     read: (s) => ({ configured: !!s.configured, connected: !!s.connected, detail: s.name || s.ad_account_id || null }),
     unconfiguredHint: 'Server is missing META_APP_ID / META_APP_SECRET.',
@@ -75,7 +78,7 @@ const HOME_CONNECTORS: {
     desc: 'Run and optimize ads across Search, YouTube, Maps, Gmail, and more.',
     tag: 'Ad Account',
     isAdAccount: true,
-    statusPath: (ws) => `/api/connectors/google-ads/${ws}/status`,
+    batchKey: 'google_ads',
     authorizePath: (ws) => `/api/connectors/google-ads/${ws}/authorize`,
     read: (s) => ({ configured: !!s.configured, connected: !!s.connected, detail: s.email || s.customer_id || null }),
     unconfiguredHint: 'Server is missing GOOGLE_ADS_CLIENT_ID / SECRET / DEVELOPER_TOKEN.',
@@ -85,9 +88,19 @@ const HOME_CONNECTORS: {
     name: 'Google Search Console',
     desc: 'Monitor organic search rankings, keyword impressions, CTR, and indexing health.',
     tag: 'Analytics',
-    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    batchKey: 'search_console',
     authorizePath: (ws) => `/api/connectors/search-console/${ws}/authorize`,
     read: (s) => ({ configured: !!s.configured, connected: !!s.connected, detail: s.site_url || s.email || null }),
+    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
+  },
+  {
+    key: 'gdrive',
+    name: 'Google Drive',
+    desc: 'Import brand assets, product photos and creative guidelines into your Asset Vault.',
+    tag: 'Assets',
+    batchKey: 'gdrive',
+    authorizePath: (ws) => `/api/connectors/gdrive/${ws}/authorize`,
+    read: (s) => ({ configured: !!s.configured, connected: !!s.connected, detail: s.email || null }),
     unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
   },
   {
@@ -96,7 +109,7 @@ const HOME_CONNECTORS: {
     desc: 'Pull traffic, event, and conversion data across your site and campaigns.',
     tag: 'Analytics',
     // GA4 rides on the Search Console grant and only counts once a property id is saved.
-    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    batchKey: 'search_console',
     read: (s) => ({ configured: !!s.configured, connected: !!(s.connected && s.ga4_property_id), detail: s.ga4_property_id || null }),
     unconfiguredHint: 'Connect Search Console first, then pick a GA4 property in SEO + GEO.',
   },
@@ -107,7 +120,6 @@ const HOME_CONNECTORS: {
 const HOME_CONNECTORS_UNAVAILABLE = [
   { name: 'ChatGPT Ads', desc: 'Run and optimize ads in ChatGPT conversations.' },
   { name: 'Amazon Ads', desc: 'Run and optimize product ads on Amazon.' },
-  { name: 'Google Drive', desc: 'Sync brand assets, video footage, product catalogs, and creative guidelines.' },
   { name: 'Slack', desc: 'Receive real-time campaign alerts and creative approval requests.' },
   { name: 'HubSpot', desc: 'Sync leads, CRM contacts, deals, and attribution pipelines.' },
 ];
@@ -116,6 +128,8 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   userName = 'aryan070606',
   brandName = 'Demo Brand',
   workspaceId = null,
+  connectorStatus = null,
+  connectorStatusFailed = false,
   onNavigateTab,
   onOpenReview
 }) => {
@@ -149,22 +163,29 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
     return t ? { Authorization: `Bearer ${t}` } : {};
   };
 
+  /* Nothing is fetched here any more: the dashboard loads every connector's status once and
+     hands it down, so opening Home and then Integrations costs one request between them
+     rather than one each — they were previously firing the same call twice, and the second
+     queued behind the first for database connections (measured: 2.5s, then 4.6s). */
   useEffect(() => {
     if (!workspaceId) { setConnectorStates({}); setConnectorsLoading(false); return; }
-    let cancelled = false;
-    setConnectorsLoading(true);
-    Promise.all(HOME_CONNECTORS.map(c =>
-      fetch(c.statusPath(workspaceId), { headers: authHdrs() })
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-        .then(s => [c.key, c.read(s)] as const)
-        // 'error' is kept distinct from "not connected": a failed status call tells us
-        // nothing, and guessing in either direction is what produced the wrong badges.
-        .catch(() => [c.key, 'error' as const] as const)
-    )).then(entries => {
-      if (!cancelled) setConnectorStates(Object.fromEntries(entries));
-    }).finally(() => { if (!cancelled) setConnectorsLoading(false); });
-    return () => { cancelled = true; };
-  }, [workspaceId]);
+    if (!connectorStatus) {
+      // 'error' is kept distinct from "not connected": a failed status call tells us
+      // nothing, and guessing in either direction is what produced the wrong badges.
+      if (connectorStatusFailed) {
+        setConnectorStates(Object.fromEntries(HOME_CONNECTORS.map(c => [c.key, 'error' as const])));
+        setConnectorsLoading(false);
+      } else {
+        setConnectorsLoading(true);
+      }
+      return;
+    }
+    setConnectorStates(Object.fromEntries(HOME_CONNECTORS.map(c => {
+      const payload = connectorStatus[c.batchKey];
+      return [c.key, payload ? c.read(payload) : ('error' as const)] as const;
+    })));
+    setConnectorsLoading(false);
+  }, [workspaceId, connectorStatus, connectorStatusFailed]);
 
   useEffect(() => {
     if (!workspaceId) { setBrandKitLoading(false); return; }
@@ -241,19 +262,21 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
     let cancelled = false;
     setPerfLoading(true);
     setPerfError(null);
-    Promise.all([
-      fetch(`/api/connectors/meta/${workspaceId}/recommendations`, { headers: authHdrs() })
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
-      fetch(`/api/connectors/meta/${workspaceId}/insights`, { headers: authHdrs() })
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
-    ]).then(([recs, ins]) => {
-      if (cancelled) return;
-      setRecommendations(Array.isArray(recs?.recommendations) ? recs.recommendations : []);
-      const rows = ins?.insights && typeof ins.insights === 'object' ? Object.values(ins.insights) : [];
-      setCreativePerf((rows as any[]).sort((a, b) => (b?.roas || 0) - (a?.roas || 0)));
-    }).catch(() => {
-      if (!cancelled) setPerfError('Could not read live performance from the ad account.');
-    }).finally(() => { if (!cancelled) setPerfLoading(false); });
+    /* One call, not two. /recommendations already fetches the insights it reasons over, so
+       asking /insights as well queried Meta's API twice for the same window — and each of
+       those round trips was taking over twenty seconds, measured in the browser. */
+    fetch(`/api/connectors/meta/${workspaceId}/recommendations`, { headers: authHdrs() })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(d => {
+        if (cancelled) return;
+        setRecommendations(Array.isArray(d?.recommendations) ? d.recommendations : []);
+        const rows = d?.insights && typeof d.insights === 'object' ? Object.values(d.insights) : [];
+        setCreativePerf((rows as any[]).sort((a, b) => (b?.roas || 0) - (a?.roas || 0)));
+      })
+      .catch(() => {
+        if (!cancelled) setPerfError('Could not read live performance from the ad account.');
+      })
+      .finally(() => { if (!cancelled) setPerfLoading(false); });
     return () => { cancelled = true; };
   }, [workspaceId, metaConnected]);
 

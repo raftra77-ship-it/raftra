@@ -337,6 +337,14 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 18px', fontSize: '13px', whiteSpace: 'nowrap' }}>
             Login
           </GlowButton>
+          {/* Creator Marketplace sits last so it lands at the extreme right edge of the
+              bar. Swap it above <GlowButton> if Login should stay the final item. */}
+          <button
+            onClick={() => navigate('/influencer-marketplace')}
+            className="creator-portal-btn"
+          >
+            Creator Marketplace
+          </button>
         </motion.div>
 
         {/* Mobile Hamburger Toggle Button */}

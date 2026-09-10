@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRazorpay } from 'react-razorpay';
 import type { LogLine } from '../components/TerminalFeed';
@@ -69,6 +69,14 @@ import {
   Calendar,
   ExternalLink,
 } from 'lucide-react';
+
+/** The same names as NavigationTab, but readable at runtime so a `?tab=` value coming in
+ *  from the URL can be validated instead of trusted. */
+const VALID_TABS = [
+  'control', 'studio', 'campaign', 'seo', 'analytics', 'social', 'influencer',
+  'agents', 'reports', 'scheduler', 'kb', 'kb_brands', 'kb_assets',
+  'integrations', 'settings',
+] as const;
 
 type NavigationTab =
   | 'control'
@@ -177,7 +185,9 @@ type IntegrationView = {
 const INTEGRATIONS: {
   key: string;
   name: string;
-  statusPath: (ws: number) => string;
+  /** Which key of GET /api/connectors/{ws}/status carries this connector's payload.
+   *  Two rows can share one (GA4 rides on the Search Console grant). */
+  batchKey: string;
   read: (s: any) => IntegrationView;
   connectTab: NavigationTab;
   connectLabel: string;
@@ -198,7 +208,7 @@ const INTEGRATIONS: {
     disconnectMethod: 'POST',
     disconnectWarning: 'Raftra loses access to this ad account. Campaigns already created in Meta keep running.',
     name: 'Meta Ads',
-    statusPath: (ws) => `/api/connectors/meta/${ws}/status`,
+    batchKey: 'meta',
     read: (s) => ({
       configured: !!s.configured,
       connected: !!s.connected,
@@ -218,7 +228,7 @@ const INTEGRATIONS: {
     disconnectMethod: 'DELETE',
     disconnectWarning: 'Revokes the grant with Google. Campaigns already created keep running.',
     name: 'Google Ads',
-    statusPath: (ws) => `/api/connectors/google-ads/${ws}/status`,
+    batchKey: 'google_ads',
     read: (s) => ({
       configured: !!s.configured,
       connected: !!s.connected,
@@ -236,7 +246,7 @@ const INTEGRATIONS: {
     disconnectMethod: 'POST',
     disconnectWarning: 'Revokes the grant with Google. Google Analytics uses the same grant, so it disconnects too.',
     name: 'Google Search Console',
-    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    batchKey: 'search_console',
     read: (s) => ({
       configured: !!s.configured,
       connected: !!s.connected,
@@ -252,7 +262,7 @@ const INTEGRATIONS: {
     name: 'Google Analytics 4',
     // GA4 rides on the Search Console OAuth grant, so it shares that status payload. It only
     // counts as connected once a property id is saved too - the same gate the GA4 panel uses.
-    statusPath: (ws) => `/api/connectors/search-console/${ws}/status`,
+    batchKey: 'search_console',
     read: (s) => ({
       configured: !!s.configured,
       connected: !!s.connected,
@@ -264,9 +274,37 @@ const INTEGRATIONS: {
     unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
   },
   {
+    key: 'gdrive',
+    // Drive was missing from this hub entirely, even though the Assets tab has always had a
+    // Drive picker — so there was no place to see whether it was connected, and no way to
+    // disconnect it. It is its own OAuth grant (drive.readonly), separate from the Search
+    // Console one, hence a separate row rather than a detail on that connection.
+    authorizePath: (ws) => `/api/connectors/gdrive/${ws}/authorize`,
+    disconnectPath: (ws) => `/api/connectors/gdrive/${ws}/disconnect`,
+    disconnectMethod: 'POST',
+    disconnectWarning: 'Assets you already imported stay in the vault — they are copies stored here, not links into Drive.',
+    name: 'Google Drive',
+    batchKey: 'gdrive',
+    read: (s) => ({
+      configured: !!s.configured,
+      connected: !!s.connected,
+      detail: s.email || s.folder_name || null,
+      incomplete: null,
+    }),
+    connectTab: 'kb_assets',
+    connectLabel: 'Asset Vault',
+    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
+  },
+  {
     key: 'wordpress',
     name: 'WordPress',
-    statusPath: (ws) => `/api/connectors/wordpress/${ws}/status`,
+    batchKey: 'wordpress',
+    // DELETE /connectors/wordpress/{ws} has always existed; this row just never referenced
+    // it, so a connected WordPress showed no button at all — nothing to press, and no way
+    // to disconnect it from the hub.
+    disconnectPath: (ws) => `/api/connectors/wordpress/${ws}`,
+    disconnectMethod: 'DELETE',
+    disconnectWarning: 'Raftra loses access to the site. Published posts stay published.',
     read: (s) => ({
       configured: !!s.configured,
       connected: !!s.connected,
@@ -280,7 +318,10 @@ const INTEGRATIONS: {
   {
     key: 'shopify',
     name: 'Shopify',
-    statusPath: (ws) => `/api/connectors/shopify/${ws}/status`,
+    batchKey: 'shopify',
+    disconnectPath: (ws) => `/api/connectors/shopify/${ws}`,
+    disconnectMethod: 'DELETE',
+    disconnectWarning: 'Raftra loses access to the store. Published content stays published.',
     read: (s) => ({
       configured: !!s.configured,
       connected: !!s.connected,
@@ -298,7 +339,7 @@ const INTEGRATIONS: {
     disconnectMethod: 'DELETE',
     disconnectWarning: 'Raftra can no longer read or open pull requests on your repository.',
     name: 'GitHub',
-    statusPath: (ws) => `/api/connectors/github/${ws}/status`,
+    batchKey: 'github',
     read: (s) => ({
       configured: !!s.configured,
       connected: !!s.connected,
@@ -311,34 +352,33 @@ const INTEGRATIONS: {
   },
 ];
 
-function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | null; onConnect: (tab: NavigationTab) => void }) {
-  // 'error' is kept distinct from "not connected": a status call that failed tells us
-  // nothing, and guessing in either direction is what produced the old wrong badges.
-  const [states, setStates] = useState<Record<string, IntegrationView | 'error'>>({});
-  const [loading, setLoading] = useState(true);
+function IntegrationsHub({ workspaceId, onConnect, status, statusFailed, onRefresh }: {
+  workspaceId: number | null;
+  onConnect: (tab: NavigationTab) => void;
+  /** All connectors' status, fetched once by the dashboard. Null while it is in flight. */
+  status: Record<string, any> | null;
+  statusFailed: boolean;
+  /** Re-fetches it, so a disconnect is reflected without a reload. */
+  onRefresh: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  // Bumping this re-runs the status effect, so a disconnect is reflected without a reload.
-  const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    if (!workspaceId) { setStates({}); setLoading(false); return; }
-    let cancelled = false;
-    setLoading(true);
-    const token = localStorage.getItem('token');
-    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-    Promise.all(INTEGRATIONS.map((i) =>
-      fetch(i.statusPath(workspaceId), { headers })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-        .then((s) => [i.key, i.read(s)] as [string, IntegrationView | 'error'])
-        .catch(() => [i.key, 'error'] as [string, IntegrationView | 'error'])
-    )).then((entries) => {
-      if (!cancelled) setStates(Object.fromEntries(entries));
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [workspaceId, reloadKey]);
+  const loading = !status && !statusFailed;
+
+  /* Derived, not fetched. Each row used to be its own status request — eight of them,
+     every time this tab opened — and this component then fetched the batched endpoint a
+     second time on top of the copy the Home overview had already loaded.
+
+     'error' stays distinct from "not connected": a status call that failed tells us
+     nothing, and guessing in either direction is what produced the old wrong badges. */
+  const states: Record<string, IntegrationView | 'error'> = useMemo(() => {
+    if (!status) return {};
+    return Object.fromEntries(INTEGRATIONS.map((i) => {
+      const payload = status[i.batchKey];
+      return [i.key, payload ? i.read(payload) : 'error'] as [string, IntegrationView | 'error'];
+    }));
+  }, [status]);
 
   const authHdrs = (): HeadersInit => {
     const t = localStorage.getItem('token');
@@ -371,7 +411,7 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
       });
       const d = await r.json().catch(() => ({}));
       setNote(r.ok ? `${i.name} disconnected.` : (d.detail || `Could not disconnect ${i.name}.`));
-      if (r.ok) setReloadKey((k) => k + 1);
+      if (r.ok) onRefresh();
     } catch {
       setNote('Could not reach the server. Please try again.');
     }
@@ -442,6 +482,19 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
                 )
               )}
 
+              {/* A connector whose setup is unfinished needs a route to finish it. Shopify
+                  sits in exactly this state ("Blog not selected yet"): it counts as
+                  connected, so the Connect branch above is hidden, and before this there was
+                  nothing on the card to press. */}
+              {view && view.connected && view.incomplete && (
+                <button
+                  onClick={() => onConnect(i.connectTab)}
+                  style={{ marginTop: '6px', display: 'block', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
+                >
+                  Finish setup in {i.connectLabel} →
+                </button>
+              )}
+
               {view && view.connected && i.disconnectPath && (
                 <button
                   onClick={() => doDisconnect(i)}
@@ -449,6 +502,18 @@ function IntegrationsHub({ workspaceId, onConnect }: { workspaceId: number | nul
                   style={{ marginTop: '8px', background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.35)', borderRadius: '6px', padding: '4px 10px', cursor: busy === i.key ? 'default' : 'pointer', fontSize: '11px', fontWeight: 600, color: '#ff4757', opacity: busy === i.key ? 0.6 : 1 }}
                 >
                   {busy === i.key ? 'Working…' : 'Disconnect'}
+                </button>
+              )}
+
+              {/* GA4 has no grant of its own — it rides on the Search Console OAuth — so it
+                  has no disconnect endpoint to offer. Without this the card was connected
+                  with no control on it whatsoever. */}
+              {view && view.connected && !i.disconnectPath && (
+                <button
+                  onClick={() => onConnect(i.connectTab)}
+                  style={{ marginTop: '8px', display: 'block', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
+                >
+                  Manage in {i.connectLabel} →
                 </button>
               )}
             </div>
@@ -499,7 +564,89 @@ const WS_URL =
 export function BrandDashboard() {
   const navigate = useNavigate();
   const { Razorpay } = useRazorpay();
-  const [activeTab, setActiveTab] = useState<NavigationTab>('control');
+  /* Which tab you are on lives in the URL.
+     ------------------------------------------------------------------
+     It was plain component state, so every refresh dropped you back on Home no matter what
+     you had open — and then the tab you wanted had to load its chunk and its data all over
+     again. With it in the query string, a reload restores the tab, the browser's back
+     button walks the tabs, and a link to a tab can be shared.
+
+     `replace` rather than push on change, so switching tabs does not stack up history
+     entries that Back has to chew through one at a time. */
+  const [activeTab, setActiveTabState] = useState<NavigationTab>(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get('tab');
+      return t && (VALID_TABS as readonly string[]).includes(t) ? (t as NavigationTab) : 'control';
+    } catch {
+      return 'control';
+    }
+  });
+
+  const setActiveTab = useCallback((tab: NavigationTab) => {
+    setActiveTabState(tab);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url);
+    } catch { /* history unavailable — the tab still switches */ }
+  }, []);
+
+  // Back/forward should move between tabs, not silently leave the URL disagreeing with
+  // what is on screen.
+  useEffect(() => {
+    const onPop = () => {
+      try {
+        const t = new URLSearchParams(window.location.search).get('tab');
+        if (t && (VALID_TABS as readonly string[]).includes(t)) setActiveTabState(t as NavigationTab);
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  /* Warm the tab chunks once the page is idle.
+     ------------------------------------------------------------------
+     Every workspace tab is a lazy() import, so the FIRST click on one waits for its
+     JavaScript to download before anything can render — which is the pause you get when
+     opening Creative Studio. Fetching them in the background after the dashboard has
+     settled means the chunk is already in the module cache by the time it is clicked.
+
+     Ordered by how likely each is to be opened, and started one at a time, so warming
+     never competes with the data the visible tab is still loading. Vite resolves these to
+     the same modules as the lazy() calls above, so nothing is downloaded twice. */
+  useEffect(() => {
+    let cancelled = false;
+    const warm = [
+      () => import('../components/workspaces/WorkspaceCreative'),
+      () => import('../components/workspaces/WorkspaceCampaign'),
+      () => import('../components/workspaces/WorkspaceAssets'),
+      () => import('../components/workspaces/BrandKnowledgeBase'),
+      () => import('../components/workspaces/WorkspaceSocial'),
+      () => import('../components/workspaces/WorkspaceInfluencer'),
+      () => import('../components/workspaces/WorkspaceScheduler'),
+      () => import('../components/workspaces/WorkspaceSEO'),
+      () => import('../components/workspaces/WorkspaceReports'),
+      () => import('../components/workspaces/WorkspaceSettings'),
+      // Analytics last: it carries recharts and is by far the heaviest chunk.
+      () => import('../components/workspaces/WorkspaceAnalytics'),
+    ];
+
+    const next = (i: number) => {
+      if (cancelled || i >= warm.length) return;
+      warm[i]().catch(() => { /* a failed prefetch just means a normal lazy load later */ })
+        .finally(() => { if (!cancelled) next(i + 1); });
+    };
+
+    const idle: (cb: () => void) => number =
+      (window as any).requestIdleCallback || ((cb: () => void) => window.setTimeout(cb, 1500));
+    const handle = idle(() => next(0));
+
+    return () => {
+      cancelled = true;
+      const cancelIdle = (window as any).cancelIdleCallback;
+      if (cancelIdle) cancelIdle(handle); else window.clearTimeout(handle);
+    };
+  }, []);
 
   // User details extracted from JWT
   const [userName, setUserName] = useState<string>('User');
@@ -592,6 +739,13 @@ export function BrandDashboard() {
   // the Assets tab and the review flow all read, so the card does not reappear.
   const handleAssetRemoved = (assetId: string) => {
     setCreativeAssets((prev) => prev.filter((a) => a.id !== assetId));
+  };
+
+  // Approving or rejecting from the project modal changes a row that already exists —
+  // replace it rather than prepending, which is what handleAssetSaved does and would
+  // produce a duplicate card.
+  const handleAssetUpdated = (updated: CreativeAsset) => {
+    setCreativeAssets((prev) => prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a)));
   };
 
   // Campaign items
@@ -692,6 +846,33 @@ export function BrandDashboard() {
   // workspace; the previous code kept data[0] and dropped the rest, which is why the
   // switcher in the header had a chevron but nothing to open.
   const [allWorkspaces, setAllWorkspaces] = useState<{ id: number; name: string; company_url?: string; brand_color?: string; brand_voice?: string }[]>([]);
+  /* Every connector's status, fetched once per workspace and shared.
+     The Home overview and the Integrations Hub both need it, and each was fetching it
+     itself — so switching to Integrations fired a second copy of the same request, which
+     then queued behind the first for database connections and took twice as long
+     (measured in the browser: 2.5s, then 4.6s). Fetched here, the hub renders from data
+     that is already in hand. */
+  const [connectorStatus, setConnectorStatus] = useState<Record<string, any> | null>(null);
+  const [connectorStatusFailed, setConnectorStatusFailed] = useState(false);
+  const [connectorReloadKey, setConnectorReloadKey] = useState(0);
+  const refreshConnectorStatus = useCallback(() => setConnectorReloadKey((k) => k + 1), []);
+
+  useEffect(() => {
+    if (!workspaceId) { setConnectorStatus(null); return; }
+    let cancelled = false;
+    setConnectorStatus(null);
+    setConnectorStatusFailed(false);
+    const token = localStorage.getItem('token');
+    fetch(`/api/connectors/${workspaceId}/status`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => { if (!cancelled) setConnectorStatus(d); })
+      // A failed call is not "disconnected" — the screens below show "Status unavailable".
+      .catch(() => { if (!cancelled) setConnectorStatusFailed(true); });
+    return () => { cancelled = true; };
+  }, [workspaceId, connectorReloadKey]);
+
   const [isBrandDropdownOpen, setIsBrandDropdownOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
@@ -1223,6 +1404,32 @@ export function BrandDashboard() {
   const handleOpenReview = (itemId: string) => {
     let reviewItem: ReviewItem | null = null;
 
+    /* A real generated creative is matched by identity, before any of the keyword branches
+       below get a look in.
+
+       Those branches test for substrings — 'ROAS', 'cp-', 'Creative', 'fatigue', 'GEO',
+       'Blog' — but a real AdAsset id is a plain number like "1523", so nothing matched,
+       `reviewItem` stayed null and the drawer never opened. "Open in Review" in Recent
+       Projects was a no-op for every actual creative. The old 'Creative' branch also built
+       a fixed headline ("Replace fatiguing ad copies immediately.") rather than showing the
+       asset's own copy, so even a match would have reviewed the wrong text. */
+    const creative = creativeAssets.find((a) => a.id === itemId);
+    if (creative) {
+      setActiveReviewItem({
+        id: creative.id,
+        type: 'creative',
+        title: 'Review creative before it goes to the Ad Library',
+        description: 'Edit the copy if it needs it, then approve. Approved creatives appear in the Ad Library.',
+        data: {
+          headline: creative.headline || '',
+          bodyText: creative.bodyText || '',
+          cta: creative.cta || '',
+        },
+      });
+      setIsReviewOpen(true);
+      return;
+    }
+
     if (itemId.includes('ROAS') || itemId.includes('cp-')) {
       reviewItem = {
         id: 'cp-2',
@@ -1632,8 +1839,50 @@ export function BrandDashboard() {
     );
   };
 
+  /** Approving a real creative writes to the database.
+   *
+   *  This used to be local state only, keyed on an `id.startsWith('cr-')` prefix that no
+   *  real asset has — so even when the drawer did open, approving changed nothing that
+   *  survived a refresh, and there was no endpoint to change it with. The Ad Library filters
+   *  on status === approved, so a creative could never get there from Recent Projects. */
+  const approveCreativeOnServer = async (id: string, updatedData: any, action: 'approve' | 'reject') => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/creatives/${id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          action,
+          headline: updatedData?.headline,
+          body_text: updatedData?.bodyText,
+          cta: updatedData?.cta,
+        }),
+      });
+      const saved = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((saved && saved.detail) || `Review failed (${res.status})`);
+      // Reflect the row the server actually stored, not what we hoped it stored.
+      setCreativeAssets((prev) => prev.map((a) => (a.id === id ? {
+        ...a,
+        headline: saved.headline,
+        bodyText: saved.body_text,
+        cta: saved.cta,
+        status: saved.status,
+      } : a)));
+      setApproveToast(action === 'approve'
+        ? 'Creative approved — it is now in your Ad Library.'
+        : 'Creative rejected.');
+    } catch (err: any) {
+      setApproveToast(err?.message || 'Could not save that review.');
+    }
+  };
+
   const handleApprove = (id: string, updatedData: any) => {
-    if (id.startsWith('cr-')) {
+    // Identity first: a real creative id is a plain number, which matches none of the
+    // prefix branches below.
+    if (creativeAssets.some((a) => a.id === id)) {
+      approveCreativeOnServer(id, updatedData, 'approve');
+    } else if (id.startsWith('cr-')) {
       setCreativeAssets((prev) =>
         prev.map((asset) =>
           asset.id === id
@@ -1733,6 +1982,11 @@ export function BrandDashboard() {
 
   const handleReject = (id: string) => {
     setIsReviewOpen(false);
+    // A rejected creative is a real state change too, not just a log line — otherwise the
+    // asset stays "In Review" forever and comes back on the next refresh.
+    if (creativeAssets.some((a) => a.id === id)) {
+      approveCreativeOnServer(id, null, 'reject');
+    }
     const timeStr = new Date().toLocaleTimeString();
     setLogs((prev) => [
       ...prev,
@@ -2362,6 +2616,8 @@ export function BrandDashboard() {
                 userName={userName}
                 brandName={brandProfile?.name || 'Demo Brand'}
                 workspaceId={workspaceId}
+                connectorStatus={connectorStatus}
+                connectorStatusFailed={connectorStatusFailed}
                 onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
                 onOpenReview={handleOpenReview}
               />
@@ -2379,6 +2635,7 @@ export function BrandDashboard() {
                 onGenerate={handleGenerateCreative}
                 onAssetSaved={handleAssetSaved}
                 onAssetRemoved={handleAssetRemoved}
+                onAssetUpdated={handleAssetUpdated}
                 onNavigateTab={(tab: string) => setActiveTab(tab as NavigationTab)}
                 incomingReferenceImage={studioReferenceImage}
                 brands={allWorkspaces}
@@ -2612,7 +2869,13 @@ export function BrandDashboard() {
                   Live connection status for every platform this workspace can publish to or pull data from.
                 </p>
               </div>
-              <IntegrationsHub workspaceId={workspaceId} onConnect={setActiveTab} />
+              <IntegrationsHub
+                workspaceId={workspaceId}
+                onConnect={setActiveTab}
+                status={connectorStatus}
+                statusFailed={connectorStatusFailed}
+                onRefresh={refreshConnectorStatus}
+              />
             </div>
           )}
 
