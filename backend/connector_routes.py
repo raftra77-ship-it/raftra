@@ -1092,16 +1092,57 @@ async def meta_callback(state: str, code: str = None, error: str = None, db: Ses
     return RedirectResponse(f"{frontend}/dashboard?meta=connected")
 
 
+import time as _time
+
+# The lists the account/Page pickers read. Meta's /me/adaccounts takes 5-9 seconds to answer
+# (measured) and /me/accounts 1.5-2, and the pickers called them on every open — so choosing
+# an ad account meant watching a spinner each time, even reopening the same dropdown.
+#
+# These lists change rarely (a person's ad accounts and Pages), so they are cached briefly in
+# process. The key includes the token, not just the workspace: reconnecting as a different
+# Meta user must never be served the previous user's accounts. `?refresh=1` forces a read,
+# which is what the "Refresh" affordance in the picker should call after someone creates a
+# new ad account in Meta.
+_LIST_TTL_SEC = 600
+_list_cache: dict = {}
+
+
+def _list_cache_key(kind: str, workspace_id: int, token: str) -> tuple:
+    return (kind, workspace_id, (token or "")[-16:])
+
+
+def _list_cache_get(key):
+    hit = _list_cache.get(key)
+    if not hit:
+        return None
+    ts, value = hit
+    if _time.time() - ts > _LIST_TTL_SEC:
+        _list_cache.pop(key, None)
+        return None
+    return value
+
+
+def _list_cache_put(key, value):
+    _list_cache[key] = (_time.time(), value)
+    return value
+
+
 @router.get("/meta/{workspace_id}/ad-accounts")
-async def meta_ad_accounts(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def meta_ad_accounts(workspace_id: int, refresh: bool = False, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _get_meta(workspace_id, db)
     if not conn or not conn.access_token:
         raise HTTPException(status_code=400, detail="Meta is not connected for this workspace.")
+    key = _list_cache_key("meta_ad_accounts", workspace_id, conn.access_token)
+    if not refresh:
+        cached = _list_cache_get(key)
+        if cached is not None:
+            return {"ad_accounts": cached, "cached": True}
     try:
-        return {"ad_accounts": await meta.list_ad_accounts(conn.access_token)}
+        data = await meta.list_ad_accounts(conn.access_token)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not list ad accounts: {e}")
+    return {"ad_accounts": _list_cache_put(key, data), "cached": False}
 
 
 @router.post("/meta/{workspace_id}/account")
@@ -1251,7 +1292,18 @@ async def meta_recommendations(workspace_id: int, date_preset: str = "last_7d",
         insights = await meta.fetch_insights(conn, date_preset=date_preset)
         campaigns = await meta.list_campaigns(conn)
         budgets = {c["id"]: c["daily_budget"] for c in campaigns if c.get("daily_budget")}
-        result = optimizer.analyze(insights, current_budgets=budgets, target_roas=target_roas)
+        # Each campaign's own Optimization Rules, keyed the way the insights are (Meta's
+        # campaign id). Until now these were written by the rules editor and read by
+        # nothing, so a user's CPA limit had no effect on the advice they were shown.
+        rules_by_meta_id = {}
+        for row in (db.query(models.Campaign)
+                      .filter(models.Campaign.workspace_id == workspace_id,
+                              models.Campaign.meta_campaign_id.isnot(None)).all()):
+            rules = ((row.metrics or {}).get("optimization")) or {}
+            if rules:
+                rules_by_meta_id[str(row.meta_campaign_id)] = rules
+        result = optimizer.analyze(insights, current_budgets=budgets, target_roas=target_roas,
+                                   per_campaign=rules_by_meta_id)
         result["date_preset"] = date_preset
         result["insights"] = insights
         return result
@@ -1292,14 +1344,20 @@ async def meta_set_budget(workspace_id: int, campaign_id: str, body: CampaignBud
 
 
 @router.get("/meta/{workspace_id}/pages")
-async def meta_pages(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def meta_pages(workspace_id: int, refresh: bool = False, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     """Facebook Pages the user manages (a Page is required to run an ad)."""
     _require_workspace(workspace_id, db, current_user)
     conn = _meta_ready(workspace_id, db, need_account=False)
+    key = _list_cache_key("meta_pages", workspace_id, conn.access_token)
+    if not refresh:
+        cached = _list_cache_get(key)
+        if cached is not None:
+            return {"pages": cached, "cached": True}
     try:
-        return {"pages": await meta.list_pages(conn)}
+        data = await meta.list_pages(conn)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not list pages: {e}")
+    return {"pages": _list_cache_put(key, data), "cached": False}
 
 
 @router.post("/meta/{workspace_id}/upload-image")
@@ -1488,15 +1546,22 @@ def _gads_ready(workspace_id: int, db: Session, need_account: bool = True) -> "m
 
 
 @router.get("/google-ads/{workspace_id}/accounts")
-async def gads_accounts(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def gads_accounts(workspace_id: int, refresh: bool = False, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _gads_ready(workspace_id, db, need_account=False)
+    # Cached like the Meta lists: listAccessibleCustomers plus a details lookup per customer
+    # is several round trips to Google, and the picker paid them on every open.
+    key = _list_cache_key("gads_accounts", workspace_id, conn.refresh_token)
+    if not refresh:
+        cached = _list_cache_get(key)
+        if cached is not None:
+            return {"accounts": cached, "cached": True}
     try:
         accounts = await gads.list_accessible_customers(conn)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not list accessible customers: {e}")
     db.commit()  # persist any access-token refresh from the calls above
-    return {"accounts": accounts}
+    return {"accounts": _list_cache_put(key, accounts), "cached": False}
 
 
 @router.post("/google-ads/{workspace_id}/account")

@@ -40,11 +40,46 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+
+# What a user is shown when the database cannot be reached at all. A 503 (not a 500): the
+# request was fine, the dependency is down, and it is worth retrying.
+_DB_UNAVAILABLE_DETAIL = (
+    "We couldn't reach the database, so this didn't go through. This is usually temporary — "
+    "please try again in a moment. If it keeps happening, the database may be paused and "
+    "needs to be resumed."
+)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    print(f"Global Exception: {exc}")
+    """Log everything; tell the client only what is safe and useful.
+
+    This used to return `str(exc)` verbatim. On a database outage that meant the browser
+    received the raw driver error — including the DSN host name — as the login page's error
+    text, and on any other failure it could just as easily carry SQL, table names or server
+    file paths. The full exception still goes to the server log, where it belongs.
+    """
+    print(f"Global Exception on {request.method} {request.url.path}: {exc}")
     traceback.print_exc()
-    return JSONResponse(status_code=500, content={"message": "Internal Server Error", "detail": str(exc)})
+
+    # Connectivity failures (DNS, refused, dropped mid-query) rather than bad SQL, which is a
+    # bug and stays a 500.
+    is_db_down = isinstance(exc, (OperationalError, InterfaceError)) or (
+        isinstance(exc, DBAPIError) and getattr(exc, "connection_invalidated", False))
+    if is_db_down:
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "30"},
+            content={"message": "Database unavailable", "code": "database_unavailable",
+                     "detail": _DB_UNAVAILABLE_DETAIL},
+        )
+
+    return JSONResponse(status_code=500, content={
+        "message": "Internal Server Error", "code": "internal_error",
+        "detail": "Something went wrong on our side. The details have been recorded in the "
+                  "server log.",
+    })
 
 @app.get("/")
 def read_root():

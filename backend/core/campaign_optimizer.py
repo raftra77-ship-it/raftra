@@ -89,13 +89,50 @@ def _rec(campaign, signal, severity, title, detail, evidence, action, expected):
     }
 
 
+def rule_breaches(m: dict, rules: dict, min_spend: float = None) -> List[str]:
+    """Which of a campaign's OWN Optimization Rules its live numbers break, in plain words.
+
+    One definition with two callers: analyze() turns a breach into a critical
+    recommendation, and core.rule_enforcer pauses the campaign on exactly the same
+    condition. Keeping it in one place is what stops the screen and the automatic action
+    from ever disagreeing about whether a rule was broken.
+
+    Rules come from metrics["optimization"] as the UI saves them: cpa_limit,
+    frequency_limit, auto_kill. Below min_spend nothing is judged — acting on two clicks of
+    delivery would kill ads on noise.
+    """
+    if not rules:
+        return []
+    spend = float(m.get("spend", 0) or 0)
+    floor = DEFAULTS["min_spend"] if min_spend is None else float(min_spend)
+    if spend < floor:
+        return []
+    out: List[str] = []
+    purchases = int(m.get("purchases", 0) or 0)
+    cpa_limit = rules.get("cpa_limit")
+    if cpa_limit and purchases > 0:
+        cpa = spend / purchases
+        if cpa > float(cpa_limit):
+            out.append(f"cost per purchase is {_money(cpa)} against your {_money(float(cpa_limit))} limit")
+    freq_limit = rules.get("frequency_limit")
+    freq = float(m.get("frequency", 0) or 0)
+    if freq_limit and freq > float(freq_limit):
+        out.append(f"frequency is {freq:.1f} against your {float(freq_limit):.1f} limit")
+    return out
+
+
 def analyze(insights: Dict[str, dict],
             current_budgets: Dict[str, float] = None,
+            per_campaign: Dict[str, dict] = None,
             **overrides) -> Dict[str, Any]:
     """insights: {campaign_id: {metrics...}} from meta_ads.fetch_insights.
        current_budgets: {campaign_id: daily_budget} so scale actions can suggest a real number.
+       per_campaign: {campaign_id: optimization rules} — the limits the user set on that
+         campaign. Previously nothing read those rules at all, so the feed judged every
+         campaign by the account-wide defaults and a user's own CPA limit changed nothing.
        Returns {summary, recommendations[]}."""
     cfg = {**DEFAULTS, **{k: v for k, v in overrides.items() if v is not None}}
+    per_campaign = per_campaign or {}
     current_budgets = current_budgets or {}
     target = cfg["target_roas"]
     recs: List[dict] = []
@@ -116,6 +153,23 @@ def analyze(insights: Dict[str, dict],
         total_purchase_value += roas * spend
 
         cur_budget = current_budgets.get(cid)
+
+        # The user's own limits come first: a campaign breaking a rule they set themselves
+        # should not be described as "still gathering data" or "working well" further down.
+        breaches = rule_breaches(m, per_campaign.get(cid) or {}, cfg["min_spend"])
+        if breaches:
+            recs.append(_rec(
+                m, "rule_breach", "critical",
+                "Your own rule says stop this",
+                "This campaign breaks a limit you set in Campaign Optimization Rules: "
+                + "; ".join(breaches) + "."
+                + _timing_note(window, "pause"),
+                {"spend": spend, "roas": roas, "frequency": freq, "purchases": purchases},
+                {"kind": "pause", "campaign_id": cid, "label": "Pause (breaks your rule)"},
+                "Stops spend that breaks a limit you set.",
+            ))
+            wasting += 1
+            continue
 
         # Not enough spend to judge yet — say so, don't guess.
         if spend < cfg["min_spend"]:

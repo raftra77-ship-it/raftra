@@ -331,12 +331,20 @@ def runner_status():
     understates its own automation is how a user ends up hand-running a schedule forever,
     so the state is reported rather than described in static copy that can drift again.
     """
-    from core.scheduler import schedules_enabled, SCHEDULE_TICK_MINUTES
+    from core.scheduler import (schedules_enabled, SCHEDULE_TICK_MINUTES,
+                                rule_enforcement_enabled, RULE_ENFORCEMENT_MINUTES)
     in_process = schedules_enabled()
     return {
         "enabled": in_process,
         "mode": "in_process" if in_process else "external_only",
         "interval_minutes": SCHEDULE_TICK_MINUTES if in_process else None,
+        # Campaign Optimization Rules: whether anything actually enforces them here. The
+        # rules editor used to claim "Configured" regardless, which is how a user ends up
+        # trusting a spend guardrail that does not exist.
+        "rule_enforcement": {
+            "enabled": rule_enforcement_enabled(),
+            "interval_minutes": RULE_ENFORCEMENT_MINUTES if rule_enforcement_enabled() else None,
+        },
         # The cron endpoint stays available for deployments that run the API without the
         # scheduler (multiple workers, or a serverless host).
         "external_tick_available": bool(os.getenv("SCHEDULER_TICK_SECRET", "")),

@@ -30,6 +30,15 @@ _scheduler: AsyncIOScheduler | None = None
 _DELAY_BETWEEN_WORKSPACES_SEC = 20
 
 
+RULE_ENFORCEMENT_MINUTES = int(os.getenv("RULE_ENFORCEMENT_MINUTES", "30"))
+
+
+def rule_enforcement_enabled() -> bool:
+    """Whether saved Optimization Rules actually pause campaigns. Opt-in: see
+    core/rule_enforcer.py for why unattended pausing is not on by default."""
+    return os.getenv("ENABLE_RULE_ENFORCEMENT", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
 def is_enabled() -> bool:
     """Unattended audits are opt-in. Anything other than an explicit truthy value
     keeps the "only runs when the user clicks" guarantee."""
@@ -229,6 +238,29 @@ def start_scheduler():
         )
         print("[scheduler] Intelligence syncs started (market trends every 2 weeks, "
               "competitor ads every 4 weeks; first run ~1h from boot).")
+
+    # Campaign Optimization Rules enforcement. Opt-in for the same reason the audits are:
+    # this one PAUSES live advertising without the user present, so it must be a deliberate
+    # decision per deployment rather than something a dev machine does to production data.
+    if rule_enforcement_enabled():
+        from core.rule_enforcer import run_rule_enforcement
+
+        _scheduler.add_job(
+            run_rule_enforcement,
+            IntervalTrigger(minutes=RULE_ENFORCEMENT_MINUTES,
+                            start_date=datetime.utcnow() + timedelta(minutes=2)),
+            id="campaign_rule_enforcement",
+            replace_existing=True,
+            misfire_grace_time=600,
+            coalesce=True,
+            max_instances=1,
+        )
+        print("[scheduler] Campaign rule enforcement is ACTIVE (every %d minutes). Campaigns "
+              "started from this app whose own auto-kill limits are breached will be paused."
+              % RULE_ENFORCEMENT_MINUTES)
+    else:
+        print("[scheduler] Campaign rule enforcement is DISABLED (ENABLE_RULE_ENFORCEMENT is "
+              "not set). Optimization Rules are saved but nothing pauses an ad automatically.")
 
     _scheduler.start()
     return _scheduler

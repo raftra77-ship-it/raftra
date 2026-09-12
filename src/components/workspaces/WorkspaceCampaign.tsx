@@ -588,13 +588,17 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [metaPickerOpen, setMetaPickerOpen] = useState(false);
   const [metaPickerBusy, setMetaPickerBusy] = useState(false);
 
-  const loadMetaAdAccounts = useCallback(async () => {
+  /* `silent` warms the lists in the background (no spinner, no error toast for something
+     nobody asked for); `force` bypasses the server's cache, which is what Refresh wants
+     after someone has just created an ad account in Meta. */
+  const loadMetaAdAccounts = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
     if (!workspaceId) return;
-    setMetaPickerBusy(true);
+    const q = opts?.force ? '?refresh=1' : '';
+    if (!opts?.silent) setMetaPickerBusy(true);
     try {
       const [accRes, pageRes] = await Promise.all([
-        fetch(`/api/connectors/meta/${workspaceId}/ad-accounts`, { headers: authHeaders() }),
-        fetch(`/api/connectors/meta/${workspaceId}/pages`, { headers: authHeaders() }),
+        fetch(`/api/connectors/meta/${workspaceId}/ad-accounts${q}`, { headers: authHeaders() }),
+        fetch(`/api/connectors/meta/${workspaceId}/pages${q}`, { headers: authHeaders() }),
       ]);
       const accData = await accRes.json().catch(() => ({}));
       const pageData = await pageRes.json().catch(() => ({}));
@@ -602,8 +606,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       else flash(accData.detail || 'Could not load Meta ad accounts.', false);
       if (pageRes.ok) setMetaPages(pageData.pages || []);
       else flash(pageData.detail || 'Could not load Facebook Pages.', false);
-    } catch { flash('Could not reach Meta to load ad accounts / Pages.', false); }
-    setMetaPickerBusy(false);
+    } catch { if (!opts?.silent) flash('Could not reach Meta to load ad accounts / Pages.', false); }
+    if (!opts?.silent) setMetaPickerBusy(false);
   }, [workspaceId]);
 
   const selectAdAccount = async (accountId: string) => {
@@ -701,12 +705,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const [googlePickerBusy, setGooglePickerBusy] = useState(false);
   const [googleAccountsError, setGoogleAccountsError] = useState<string | null>(null);
 
-  const loadGoogleAdAccounts = useCallback(async () => {
+  // Same options as the Meta loader: `silent` for the background warm-up, `force` to skip
+  // the server's cache after the user has changed something in Google Ads itself.
+  const loadGoogleAdAccounts = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
     if (!workspaceId) return;
-    setGooglePickerBusy(true);
+    if (!opts?.silent) setGooglePickerBusy(true);
     setGoogleAccountsError(null);
     try {
-      const r = await fetch(`/api/connectors/google-ads/${workspaceId}/accounts`, { headers: authHeaders() });
+      const r = await fetch(`/api/connectors/google-ads/${workspaceId}/accounts${opts?.force ? '?refresh=1' : ''}`, { headers: authHeaders() });
       const d = await r.json().catch(() => ({}));
       if (r.ok) setGoogleAdAccounts(d.accounts || []);
       else {
@@ -716,14 +722,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         // them to a toast that disappears leaves the user staring at an empty dropdown.
         const msg = d.detail || 'Could not load Google Ads accounts.';
         setGoogleAccountsError(msg);
-        flash(msg, false);
+        if (!opts?.silent) flash(msg, false);
       }
     } catch {
       const msg = 'Could not reach Google Ads to load accounts.';
       setGoogleAccountsError(msg);
-      flash(msg, false);
+      if (!opts?.silent) flash(msg, false);
     }
-    setGooglePickerBusy(false);
+    if (!opts?.silent) setGooglePickerBusy(false);
   }, [workspaceId]);
 
   const selectGoogleAccount = async (customerId: string) => {
@@ -757,20 +763,27 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
      prefetching one costs nothing and commits to nothing — a user who never clicks simply
      never uses it. */
   const [connecting, setConnecting] = useState<'meta' | 'google' | null>(null);
-  const authUrlCache = useRef<{ meta?: string; google?: string }>({});
+  /* The cache now carries WHEN each URL was fetched. Its signed state parameter is only
+     valid for _STATE_TTL_MIN (15 minutes), and the old cache never expired — so a URL warmed
+     once and clicked long afterwards would be rejected at the callback and the connection
+     would just fail. Anything older than 10 minutes is refetched instead. */
+  const AUTH_URL_TTL_MS = 10 * 60 * 1000;
+  const authUrlCache = useRef<{ meta?: { url: string; at: number }; google?: { url: string; at: number } }>({});
+  const isFresh = (hit?: { url: string; at: number }) => !!hit && Date.now() - hit.at < AUTH_URL_TTL_MS;
 
   const fetchAuthUrl = async (provider: 'meta' | 'google'): Promise<string | null> => {
-    if (authUrlCache.current[provider]) return authUrlCache.current[provider]!;
+    const hit = authUrlCache.current[provider];
+    if (isFresh(hit)) return hit!.url;
     const path = provider === 'meta' ? 'meta' : 'google-ads';
     const r = await fetch(`/api/connectors/${path}/${workspaceId}/authorize`, { headers: authHeaders() });
     const d = await r.json().catch(() => ({}));
-    if (r.ok && d.url) { authUrlCache.current[provider] = d.url; return d.url; }
+    if (r.ok && d.url) { authUrlCache.current[provider] = { url: d.url, at: Date.now() }; return d.url; }
     throw new Error(d.detail || '');
   };
 
   /** Warms the URL without navigating. Failures are ignored — the click path reports them. */
   const prefetchAuthUrl = (provider: 'meta' | 'google') => {
-    if (!workspaceId || authUrlCache.current[provider]) return;
+    if (!workspaceId || isFresh(authUrlCache.current[provider])) return;
     fetchAuthUrl(provider).catch(() => {});
   };
 
@@ -789,6 +802,45 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   };
 
   const connectGoogleAds = () => startConnect('google');
+
+  /* Whether saved Optimization Rules are actually enforced on this deployment.
+     The rules card used to show a "Configured" pill and promise limits "applied once ads
+     are live" no matter what — while metrics["optimization"] was written by the editor and
+     read by nothing at all. The server now reports the real state (ENABLE_RULE_ENFORCEMENT
+     plus the scheduler job), so the card can say which it is instead of assuming. */
+  const [rulesEnforced, setRulesEnforced] = useState(false);
+  useEffect(() => {
+    fetch('/api/schedules/runner-status', { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setRulesEnforced(!!d?.rule_enforcement?.enabled))
+      .catch(() => {});
+  }, []);
+
+  /* Warm both authorize URLs when the tab opens, rather than waiting for hover.
+     Measured against this API: /authorize needs two Supabase round trips (the user, then the
+     workspace) and its latency swings between roughly 0.6s and 3s depending on how warm the
+     connection pool is. Hover only bought the fraction of a second before the click landed,
+     so a click still sat there with the button already pressed. Warming on open means the
+     URL is normally cached by the time anyone clicks, and the click just redirects.
+
+     Delayed slightly so it does not compete with the tab's own initial loads, skipped for a
+     provider that is already connected, and re-run when the workspace changes. */
+  useEffect(() => {
+    if (!workspaceId) return;
+    const t = setTimeout(() => {
+      if (!metaAccount.connected) prefetchAuthUrl('meta');
+      if (!googleAccount.connected) prefetchAuthUrl('google');
+      // And warm the picker lists once connected. Meta's ad-account list takes 5-9s on a
+      // cold call and the picker fetched it on first open, so opening the dropdown was a
+      // long spinner. Silent: nothing is shown as busy and a failure here is not toasted,
+      // because the user did not ask for it — opening the picker reports errors properly.
+      // Meta only: Google's list is already warmed by the status effect below, which calls
+      // loadGoogleAdAccounts as soon as the connection reports connected. Warming it here
+      // as well would just fetch the same list twice.
+      if (metaAccount.connected && !metaAdAccounts) loadMetaAdAccounts({ silent: true });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [workspaceId, metaAccount.connected, googleAccount.connected, metaAdAccounts, loadMetaAdAccounts]);
 
   // The single approved creative that flows into the platform reviews, plus any
   // images the user uploads, plus a manual override of the Google campaign type.
@@ -1031,7 +1083,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         // discoverable by calling the API — so probe it once here rather than waiting for
         // the user to open the account picker. Without this the publish banner defaults to
         // the optimistic wording and promises a campaign Google will reject.
-        if (d.connected) loadGoogleAdAccounts();
+        // Silent: this is a background warm-up nobody asked for, so it should not show the
+        // picker as busy or toast an error. Opening the picker reports failures properly.
+        if (d.connected) loadGoogleAdAccounts({ silent: true });
       })
       .catch(() => {});
   }, [workspaceId, loadGoogleAdAccounts]);
@@ -1553,7 +1607,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                         </p>
                       )}
                       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                        <button onClick={loadMetaAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
+                        <button onClick={() => loadMetaAdAccounts({ force: true })} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
                         <button onClick={() => disconnectPlatform('meta')} disabled={metaPickerBusy}
                           style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
                           Disconnect
@@ -1644,7 +1698,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                         on in Google Ads.
                       </p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                        <button onClick={loadGoogleAdAccounts} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
+                        <button onClick={() => loadGoogleAdAccounts({ force: true })} style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px' }}><RefreshCw size={12} /> Refresh list</button>
                         <button onClick={() => disconnectPlatform('google')} disabled={metaPickerBusy}
                           style={{ ...btnGhost, flex: 1, padding: '7px', fontSize: '12px', color: '#ff5c5c', borderColor: 'rgba(255,92,92,0.3)' }}>
                           Disconnect
@@ -2313,13 +2367,32 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
           <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
               <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Campaign Optimization Rules</h3>
-              <Pill status="Configured" />
+              {/* The pill said "Configured" and the hint promised limits "applied once ads
+                  are live". Neither was true: metrics["optimization"] was written here and
+                  read by nothing — no job compared a CPA to this limit and no code path
+                  paused anything. Saying so plainly matters more than usual now that the
+                  Start button really does spend money. Enforcement is opt-in per deployment
+                  (ENABLE_RULE_ENFORCEMENT); this reflects whichever state is actually on. */}
+              <Pill status={rulesEnforced ? 'Enforced' : 'Not enforced'} />
             </div>
-            <p style={{ ...sectionHint, marginBottom: '14px' }}>Safety limits applied once ads are live, so a bad ad gets stopped early.</p>
+            <p style={{ ...sectionHint, marginBottom: '14px' }}>
+              {rulesEnforced
+                ? 'Checked against live Meta performance every 30 minutes. A campaign that breaches a limit you switched on is paused automatically, and the reason is recorded in its activity.'
+                : 'Saved with the campaign, but not enforced on this deployment — nothing pauses an ad automatically yet. Use them to guide your own checks, and watch spend in Ads Manager.'}
+            </p>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}><XCircle size={15} color="#ffae00" /> Auto-kill bad ads</span>
-              <label className="toggle-switch"><input type="checkbox" checked={smart.killAds} onChange={e => setSmart(s => ({ ...s, killAds: e.target.checked }))} /><span className="slider" /></label>
+              {/* The state is written out, not just coloured. A green track tells you the
+                  state only if you already know green means on — and these two decide
+                  whether an ad gets paused automatically, which is too consequential to
+                  leave to a colour someone has to interpret. */}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                <span style={{ fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.03em', minWidth: '24px', textAlign: 'right', color: smart.killAds ? 'var(--success)' : 'var(--text-muted)' }}>
+                  {smart.killAds ? 'On' : 'Off'}
+                </span>
+                <label className="toggle-switch"><input type="checkbox" aria-label="Auto-kill bad ads" checked={smart.killAds} onChange={e => setSmart(s => ({ ...s, killAds: e.target.checked }))} /><span className="slider" /></label>
+              </span>
             </div>
             {smart.killAds && (<>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -2334,7 +2407,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', marginTop: '4px' }}>
               <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}><RefreshCw size={15} color="var(--primary)" /> Smart creative rotation</span>
-              <label className="toggle-switch"><input type="checkbox" checked={smart.autoRotate} onChange={e => setSmart(s => ({ ...s, autoRotate: e.target.checked }))} /><span className="slider" /></label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                <span style={{ fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.03em', minWidth: '24px', textAlign: 'right', color: smart.autoRotate ? 'var(--success)' : 'var(--text-muted)' }}>
+                  {smart.autoRotate ? 'On' : 'Off'}
+                </span>
+                <label className="toggle-switch"><input type="checkbox" aria-label="Smart creative rotation" checked={smart.autoRotate} onChange={e => setSmart(s => ({ ...s, autoRotate: e.target.checked }))} /><span className="slider" /></label>
+              </span>
             </div>
             {smart.autoRotate && (<>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -2888,14 +2966,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         </div>
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .toggle-switch { position: relative; display: inline-block; width: 38px; height: 21px; }
-        .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border, #333); transition: .2s; border-radius: 34px; }
-        .slider:before { position: absolute; content: ""; height: 15px; width: 15px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
-        input:checked + .slider { background-color: var(--primary); }
-        input:checked + .slider:before { transform: translateX(17px); }
-      `}} />
+      {/* The toggle styles that lived here are now in App.css, scoped under .toggle-switch.
+          Two reasons for moving them. The "on" colour was `var(--primary)` with no fallback
+          and this project defines no --primary token (it has --accent, --success,
+          --border-color), so that declaration was invalid and the track fell back to
+          transparent — switching a rule on looked like nothing had happened. And `.slider`
+          was declared unscoped from inside one component, which is a global rule waiting to
+          catch any other element that uses that very common class name. */}
     </div>
   );
 };
