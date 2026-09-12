@@ -2,11 +2,14 @@
  * Campaign Manager service layer.
  *
  * Single source of truth for every Campaign-Manager API call and its TypeScript types.
- * Components never talk to fetch() directly — they call these typed functions, so when the
- * real Meta Ads API / Google Ads API replace today's DEMO endpoints, only this file changes.
+ * Components never talk to fetch() directly — they call these typed functions.
  *
- * DEMO MODE: publishing, account connections, campaign IDs and analytics are all simulated
- * server-side. The shapes below already match what the real integrations will return.
+ * The DEMO-MODE note that stood here is no longer true and was worth removing rather than
+ * softening: publishing creates real (paused) objects through the Meta and Google Ads APIs,
+ * account connections are real OAuth connections, and analytics is the platforms' own
+ * reporting. What remains simulated is one narrow fallback — publishing a campaign for a
+ * platform with no connected account still mints a MOCK- id, and that path is now unreachable
+ * from the UI because ad setup refuses to mark a platform ready without a live account.
  */
 
 // ─────────────────────────────────────────────────────────────── types
@@ -115,6 +118,11 @@ export interface AdSetupState {
 
 export interface ActivityEntry { label: string; at: string; }
 
+/** What the ad platforms reported for one campaign. Never synthesised: when nothing ran, or
+ *  nothing has delivered yet, `has_data` is false and `reason` says which — so a caller can
+ *  tell "no spend" apart from "no campaign", and neither is rendered as a row of zeroes.
+ *  `totals` is therefore nullable, and every per-platform block is absent rather than zeroed
+ *  when that platform did not report. */
 export interface Analytics {
   campaign_id: number;
   name: string;
@@ -122,17 +130,38 @@ export interface Analytics {
   status: string;
   published: boolean;
   demo: boolean;
+  has_data: boolean;
+  reason: string | null;
+  /** Partial failures — one platform unreachable while the other reported. */
+  errors: string[];
   budget: number;
+  date_preset: string;
   platforms: PlatformKey[];
+  /** The real Meta / Google campaign ids these numbers came from. */
+  platform_campaign_ids: Partial<Record<PlatformKey, string>>;
   totals: {
     impressions: number; reach: number; clicks: number; ctr: number;
     conversions: number; cpa: number; spend: number; roas: number; revenue: number;
-  };
-  meta_performance: { spend: number; conversions: number; roas: number } | null;
-  google_performance: { spend: number; conversions: number; roas: number } | null;
-  top_keywords: { keyword: string; clicks: number; ctr: number; conversions: number }[];
-  best_creative: { image_url: string | null; ctr: number; label: string };
-  recommendations: { action: string; why: string; severity: 'good' | 'warn' | 'critical' }[];
+  } | null;
+  meta_performance: {
+    spend: number; conversions: number; roas: number;
+    impressions: number; clicks: number; ctr: number; frequency: number;
+  } | null;
+  google_performance: {
+    spend: number; conversions: number; roas: number;
+    impressions: number; clicks: number; ctr: number;
+  } | null;
+  /** Google Search only — Meta has no keyword concept, so this is empty for a Meta-only campaign. */
+  top_keywords: {
+    keyword: string; match_type: string | null; clicks: number;
+    impressions: number; ctr: number; conversions: number; cost: number;
+  }[];
+  best_creative: { image_url: string | null; label: string } | null;
+  recommendations: {
+    action: string; why: string;
+    severity: 'good' | 'warn' | 'critical' | 'neutral';
+    signal?: string; evidence?: string; expected?: string;
+  }[];
 }
 
 // ─────────────────────────────────────────────────────────────── http

@@ -183,6 +183,9 @@ const Pill: React.FC<{ status: string; label?: string }> = ({ status, label }) =
     DEMO: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     REAL: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
     SAMPLE: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
+    // Marked ready, but the server never confirmed it against the real ad account — either
+    // an older API that could not, or a record predating that check.
+    Unverified: { c: '#ffae00', b: 'rgba(255,174,0,0.14)' },
     LIVE: { c: '#00e676', b: 'rgba(0,230,118,0.12)' },
   };
   const s = map[status] || map.Pending;
@@ -768,6 +771,18 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
      once and clicked long afterwards would be rejected at the callback and the connection
      would just fail. Anything older than 10 minutes is refetched instead. */
   const AUTH_URL_TTL_MS = 10 * 60 * 1000;
+  /* How long to wait after the tab opens before warming the authorize URLs.
+     This was 1500ms, to keep the warm-up from competing with the tab's own initial loads.
+     But /authorize itself measures ~830ms against this database (two round trips to the
+     Supabase pooler in ap-northeast-1), so the URL was not cached until ~2.3s in — and a
+     click before that still sat waiting with the button already pressed, which is exactly
+     the delay being reported.
+
+     300ms is enough to let the tab's first render settle, and the reason competing no
+     longer matters is that the connection pool was asking for 60 connections against a
+     pooler that allows 15; requests were queueing for a free connection. With the pool
+     sized to the cap (see backend/database.py) there is room for this one extra call. */
+  const PREFETCH_DELAY_MS = 300;
   const authUrlCache = useRef<{ meta?: { url: string; at: number }; google?: { url: string; at: number } }>({});
   const isFresh = (hit?: { url: string; at: number }) => !!hit && Date.now() - hit.at < AUTH_URL_TTL_MS;
 
@@ -838,7 +853,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       // loadGoogleAdAccounts as soon as the connection reports connected. Warming it here
       // as well would just fetch the same list twice.
       if (metaAccount.connected && !metaAdAccounts) loadMetaAdAccounts({ silent: true });
-    }, 1500);
+    }, PREFETCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [workspaceId, metaAccount.connected, googleAccount.connected, metaAdAccounts, loadMetaAdAccounts]);
 
@@ -863,6 +878,26 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const publishedForReal = String(status || '').toUpperCase() === 'PUBLISHED';
   const metaSetup = spec.meta_setup || {};
   const googleSetup = spec.google_setup || {};
+  // Two separate questions, because the API this talks to may be older than this bundle.
+  //
+  // `setupReady` gates the flow and asks only what every version of the server agrees on:
+  // was this platform marked ready. It deliberately does NOT require mock:false. The server
+  // deployed today still writes mock:true on every ad-setup call, so requiring it here would
+  // leave "Mark as Ready" doing nothing visible — the user clicks, the record comes back
+  // mock:true, the card stays Pending, and the campaign can never be published from the UI.
+  //
+  // `setupVerified` is the stronger claim — the account was actually checked against the
+  // workspace's real connection — and it only drives what the card SAYS. Against the older
+  // server nothing is verified, so the card reads Unverified and still works; against the
+  // newer one a legacy record reads Unverified until it is marked ready again, which
+  // re-checks it. Either way the publish gate on the server is the thing that decides, and
+  // a stale record is refused there with a reason rather than silently published.
+  const setupReady = (s: any) => !!s?.launched;
+  const setupVerified = (s: any) => !!s?.launched && s?.mock !== true;
+  const metaReady = setupReady(metaSetup);
+  const googleReady = setupReady(googleSetup);
+  const metaVerified = setupVerified(metaSetup);
+  const googleVerified = setupVerified(googleSetup);
   // Mirrors exactly what the publish route requires before it will create a real Google
   // campaign: workspace_routes.py checks `gads_conn.refresh_token and gads_conn.customer_id`,
   // and the status endpoint reports `connected = bool(conn and conn.refresh_token)`. The
@@ -1146,13 +1181,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
       if (r.ok) {
         await refresh(campaign.id);
         const P = platform === 'meta' ? 'Meta' : 'Google';
-        log(`${P} Ads ${action === 'connect' ? 'connected' : 'launched'} (mock)`);
-        // "Mark as Ready" only flips a local readiness flag — nothing reaches the ad
-        // platform until Publish — so say that rather than the old blanket MOCK note,
-        // which now contradicts a genuinely connected (REAL) Meta account.
+        // Both messages used to claim MOCK mode. The step now reads the workspace's real
+        // connection and refuses when it could not publish, so reaching this branch means
+        // the account was genuinely checked — saying otherwise understated it, and
+        // contradicted the REAL pill on the same card.
+        log(`${P} Ads ${action === 'connect' ? 'linked to this campaign' : 'checked and marked ready'}`);
+        const acct = d?.setup?.account ? ` (${d.setup.account})` : '';
         if (!silent) flash(action === 'launch'
-          ? `${P} marked as ready. Nothing is sent to ${P} until you publish.`
-          : `${P} ${action} done in MOCK mode — no real ad account was touched.`);
+          ? `${P} account${acct} checked and marked as ready. Nothing is sent to ${P} until you publish.`
+          : `${P} account${acct} linked to this campaign.`);
         ok = true;
       } else flash(d.detail || 'Action failed.', false);
     } catch { flash('Action failed.', false); }
@@ -1163,7 +1200,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   // The ad account is connected once, from the header. The per-platform cards used to
   // carry their own "Connect account" button, which read as a second, competing
   // connection — so they now go straight to "Mark as Ready". The backend still gates
-  // `launch` behind a `connect`, so that mock step is done silently here.
+  // `launch` behind a `connect`, so that binding step is done silently here; its failures
+  // are not silent, because `adSetup` flashes a refusal whatever the silent flag says —
+  // which is the whole point now that a refusal names a real, fixable problem.
   const markPlatformReady = async (platform: 'meta' | 'google') => {
     const setup = platform === 'meta' ? metaSetup : googleSetup;
     if (!setup.connected && !(await adSetup(platform, 'connect', true))) return;
@@ -1396,7 +1435,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   // Which platforms are actually in play, and whether each one's ads are reviewed & ready.
   const chosen: ('meta' | 'google')[] = (['meta', 'google'] as const).filter(p => platforms[p]);
   const setupOf = (p: 'meta' | 'google') => (p === 'meta' ? metaSetup : googleSetup);
-  const platformsReady = chosen.length > 0 && chosen.every(p => setupOf(p).launched);
+  const platformsReady = chosen.length > 0 && chosen.every(p => setupReady(setupOf(p)));
   const publishedList: string[] = spec.published_platforms || [];
 
   const steps = [
@@ -2186,7 +2225,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   Meta Ads Review <Pill status={metaAccount.ready_to_publish && !metaBlockers.length ? 'REAL' : 'MOCK'} />
                 </h3>
-                <Pill status={metaBlockers.length ? 'Blocked' : metaSetup.launched ? 'Ready' : 'Pending'} />
+                <Pill status={metaBlockers.length ? 'Blocked' : !metaReady ? 'Pending' : metaVerified ? 'Ready' : 'Unverified'} />
               </div>
               <p style={{ ...sectionHint, marginTop: '-8px', marginBottom: '12px' }}>
                 What will run on Facebook and Instagram. The ad account is connected in the header above.
@@ -2251,7 +2290,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '8px', marginTop: '15px', flexWrap: 'wrap' }}>
-                {!metaSetup.launched ? (
+                {!metaReady ? (
                   <button onClick={() => markPlatformReady('meta')} disabled={!!busy?.startsWith('meta-')} className="btn btn-primary" style={{ ...btnPrimary, flex: 1, padding: '10px' }}>
                     <Check size={14} /> {busy?.startsWith('meta-') ? 'Marking…' : 'Mark as Ready'}
                   </button>
@@ -2269,7 +2308,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
                 <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>Google Ads Review <Pill status={googleReadyToPublish && !googleBlockers.length ? 'REAL' : 'MOCK'} /></h3>
-                <Pill status={googleBlockers.length ? 'Blocked' : googleSetup.launched ? 'Ready' : 'Pending'} />
+                <Pill status={googleBlockers.length ? 'Blocked' : !googleReady ? 'Pending' : googleVerified ? 'Ready' : 'Unverified'} />
               </div>
               <p style={{ ...sectionHint, marginTop: '-8px', marginBottom: '12px' }}>
                 {googleReadyToPublish
@@ -2348,7 +2387,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               {gShow.signals && <Row k="Audience signals" v={chips(g.audience_signals || [])} stack />}
               {gShow.images && <Row k="CTA" v={g.cta || (rec.cta && rec.cta.value) || '—'} />}
               <div style={{ display: 'flex', gap: '8px', marginTop: '15px', flexWrap: 'wrap' }}>
-                {!googleSetup.launched ? (
+                {!googleReady ? (
                   <button onClick={() => markPlatformReady('google')} disabled={!!busy?.startsWith('google-')} className="btn btn-primary" style={{ ...btnPrimary, flex: 1, padding: '10px' }}>
                     <Check size={14} /> {busy?.startsWith('google-') ? 'Marking…' : 'Mark as Ready'}
                   </button>
@@ -2445,8 +2484,8 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             {[
               { n: 'Strategy', d: approved ? 'Approved' : 'Not approved', ok: approved },
               { n: 'Creative assets', d: selectedImage ? '1 image approved' : 'None selected', ok: !!selectedImage },
-              ...(platforms.meta ? [{ n: 'Meta Ads', d: metaSetup.launched ? money(split.meta?.amount) : 'Not ready', ok: !!metaSetup.launched }] : []),
-              ...(platforms.google ? [{ n: 'Google Ads', d: googleSetup.launched ? money(split.google?.amount) : 'Not ready', ok: !!googleSetup.launched }] : []),
+              ...(platforms.meta ? [{ n: 'Meta Ads', d: metaReady ? money(split.meta?.amount) : 'Not ready', ok: !!metaReady }] : []),
+              ...(platforms.google ? [{ n: 'Google Ads', d: googleReady ? money(split.google?.amount) : 'Not ready', ok: !!googleReady }] : []),
               { n: 'Optimization rules', d: smart.killAds || smart.autoRotate ? 'Configured' : 'Off', ok: true },
             ].map(s => (
               <div key={s.n} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
@@ -2472,14 +2511,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <button onClick={() => { setConfirmed(false); flash('Unlocked — edit anything above, then confirm again.'); }} style={btnGhost}>Back to edit</button>
             <div style={{ flex: 1 }} />
             {platforms.meta && (
-              <button onClick={() => attemptPublish(['meta'])} disabled={!canPublish || !metaSetup.launched || busy?.startsWith('publish')}
-                style={{ ...btnGhost, opacity: canPublish && metaSetup.launched ? 1 : 0.45, cursor: canPublish && metaSetup.launched ? 'pointer' : 'not-allowed' }}>
+              <button onClick={() => attemptPublish(['meta'])} disabled={!canPublish || !metaReady || busy?.startsWith('publish')}
+                style={{ ...btnGhost, opacity: canPublish && metaReady ? 1 : 0.45, cursor: canPublish && metaReady ? 'pointer' : 'not-allowed' }}>
                 Publish to Meta only
               </button>
             )}
             {platforms.google && (
-              <button onClick={() => publish(['google'])} disabled={!canPublish || !googleSetup.launched || busy?.startsWith('publish')}
-                style={{ ...btnGhost, opacity: canPublish && googleSetup.launched ? 1 : 0.45, cursor: canPublish && googleSetup.launched ? 'pointer' : 'not-allowed' }}>
+              <button onClick={() => publish(['google'])} disabled={!canPublish || !googleReady || busy?.startsWith('publish')}
+                style={{ ...btnGhost, opacity: canPublish && googleReady ? 1 : 0.45, cursor: canPublish && googleReady ? 'pointer' : 'not-allowed' }}>
                 Publish to Google only
               </button>
             )}
@@ -2865,7 +2904,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                 {chosen.length === 0 && <p style={sectionHint}>No platform selected.</p>}
                 {chosen.map(p => (
                   <Row key={p} k={p === 'meta' ? 'Meta Ads' : 'Google Ads'}
-                    v={setupOf(p).launched ? <span style={{ color: '#00e676' }}>Ready</span> : <span style={{ color: '#ffae00' }}>Not ready</span>} />
+                    v={setupReady(setupOf(p)) ? <span style={{ color: '#00e676' }}>Ready</span> : <span style={{ color: '#ffae00' }}>Not ready</span>} />
                 ))}
               </div>
               <div>
@@ -2887,74 +2926,144 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         </div>
       )}
 
-      {/* ── analytics modal (mock, demo) ── */}
+      {/* ── analytics modal ──
+          Reads Meta's and Google's own reporting. It used to render numbers the server
+          invented from a seeded RNG, so the DEMO pill and the "mock figures" caption that
+          sat here have gone with them; what replaces both is an explicit empty state,
+          because the honest answer for a campaign that never ran is "nothing to report",
+          not a grid of plausible-looking zeros. */}
       {analyticsView && (() => {
         const a = analyticsView; const t = a.totals || {};
+        // The API this bundle talks to may predate the change that made these numbers real.
+        // That older endpoint answers with populated `totals` and no `has_data` field at all,
+        // so treating a missing flag as "data is fine" would paint invented figures with the
+        // green LIVE pill — strictly worse than the DEMO label they already carried. An
+        // absent `has_data` is therefore read as "this is the old, generated payload", and
+        // the modal keeps labelling it exactly as it used to until the API catches up.
+        const legacy = a.has_data === undefined;
+        const hasData = !legacy && a.has_data !== false && !!a.totals;
+        const showTiles = legacy || hasData;
+        const n = (v: any) => Number(v || 0).toLocaleString('en-IN');
         const tiles = [
-          { k: 'Impressions', v: (t.impressions || 0).toLocaleString('en-IN') },
-          { k: 'Reach', v: (t.reach || 0).toLocaleString('en-IN') },
-          { k: 'Clicks', v: (t.clicks || 0).toLocaleString('en-IN') },
-          { k: 'CTR', v: `${t.ctr}%` },
-          { k: 'Conversions', v: t.conversions },
-          { k: 'CPA', v: money(t.cpa) },
+          { k: 'Impressions', v: n(t.impressions) },
+          // Reach is Meta-only; Google reports no equivalent, so it is shown as unavailable
+          // rather than as a cross-platform number that silently excludes half the spend.
+          { k: 'Reach', v: a.meta_performance ? n(t.reach) : '—' },
+          { k: 'Clicks', v: n(t.clicks) },
+          { k: 'CTR', v: `${t.ctr ?? 0}%` },
+          { k: 'Conversions', v: n(t.conversions) },
+          { k: 'CPA', v: t.conversions ? money(t.cpa) : '—' },
           { k: 'Spend', v: money(t.spend) },
-          { k: 'ROAS', v: `${t.roas}×`, hot: (t.roas || 0) >= 2 },
+          { k: 'ROAS', v: t.spend ? `${t.roas}×` : '—', hot: (t.roas || 0) >= 2 },
         ];
-        const sevColor: Record<string, string> = { good: '#00e676', warn: '#ffae00', critical: '#ff5c5c' };
+        const sevColor: Record<string, string> = { good: '#00e676', warn: '#ffae00', critical: '#ff5c5c', neutral: '#8f8f9b' };
+        const windowLabel = String(a.date_preset || 'last_7d').replace('last_', 'last ').replace('_', ' ');
         return (
           <div onClick={() => setAnalyticsView(null)} style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
             <div onClick={e => e.stopPropagation()} style={{ ...card, width: '100%', maxWidth: '760px', maxHeight: '88vh', overflowY: 'auto', background: 'rgba(18,20,28,0.99)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '4px' }}>
                 <h3 style={{ ...sectionTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
-                  <BarChart3 size={18} color="var(--primary)" /> {a.name || 'Campaign'} — Analytics <Pill status="DEMO" />
+                  <BarChart3 size={18} color="var(--primary)" /> {a.name || 'Campaign'} — Analytics
+                  {legacy ? <Pill status="DEMO" /> : hasData && <Pill status="LIVE" />}
                 </h3>
                 <button onClick={() => setAnalyticsView(null)} style={{ ...btnGhost, padding: '6px 12px', fontSize: '12px' }}>Close</button>
               </div>
-              <p style={{ ...sectionHint, marginBottom: '16px' }}>v{a.version} · {(a.platforms || []).map((p: string) => p === 'meta' ? 'Meta' : 'Google').join(' & ')} · {a.status === 'PUBLISHED_DEMO' ? 'Published (demo)' : a.status}. Mock figures — real Meta/Google insights plug in later.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(120px, 100%), 1fr))', gap: '10px', marginBottom: '18px' }}>
-                {tiles.map(x => (
-                  <div key={x.k} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '12px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{x.k}</div>
-                    <div style={{ fontSize: '17px', fontWeight: 700, color: (x as any).hot ? '#00e676' : '#fff' }}>{x.v}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '14px', marginBottom: '18px' }}>
-                {a.meta_performance && (
-                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF', marginBottom: '8px' }}>Meta Performance</div>
-                    <Row k="Spend" v={money(a.meta_performance.spend)} /><Row k="Conversions" v={a.meta_performance.conversions} /><Row k="ROAS" v={`${a.meta_performance.roas}×`} />
-                  </div>
-                )}
-                {a.google_performance && (
-                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF', marginBottom: '8px' }}>Google Performance</div>
-                    <Row k="Spend" v={money(a.google_performance.spend)} /><Row k="Conversions" v={a.google_performance.conversions} /><Row k="ROAS" v={`${a.google_performance.roas}×`} />
-                  </div>
-                )}
-              </div>
-              {a.top_keywords?.length > 0 && (
-                <div style={{ marginBottom: '18px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>TOP KEYWORDS</div>
-                  {a.top_keywords.map((kw: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <span>{kw.keyword}</span>
-                      <span style={{ color: 'var(--text-secondary)' }}>{kw.clicks} clicks · {kw.ctr}% CTR · {kw.conversions} conv</span>
-                    </div>
+              <p style={{ ...sectionHint, marginBottom: '16px' }}>
+                v{a.version} · {(a.platforms || []).length
+                  ? (a.platforms || []).map((p: string) => p === 'meta' ? 'Meta' : 'Google').join(' & ')
+                  : 'No platform'} · {a.status === 'PUBLISHED_DEMO' ? 'Published (demo)' : a.status}
+                {legacy
+                  ? '. Simulated figures — this workspace is still on the API version that generates them. Real Meta/Google reporting appears once the API update ships.'
+                  : hasData && ` · reported by the ad platforms for the ${windowLabel}`}
+              </p>
+
+              {/* Partial failures are named rather than folded into the totals: a missing
+                  Google figure has to look different from a genuine zero. */}
+              {(a.errors || []).length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '16px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)' }}>
+                  {a.errors.map((e: string, i: number) => (
+                    <span key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', fontSize: '12px', color: 'var(--warning)', lineHeight: 1.5 }}>
+                      <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '2px' }} /> {e}
+                    </span>
                   ))}
                 </div>
               )}
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>AI RECOMMENDATIONS</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {(a.recommendations || []).map((r: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: 'rgba(255,255,255,0.03)', border: `1px solid ${sevColor[r.severity] || '#888'}44`, borderRadius: '9px', padding: '10px 12px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: sevColor[r.severity] || '#fff', whiteSpace: 'nowrap' }}>{r.action}</span>
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{r.why}</span>
-                    </div>
-                  ))}
+
+              {!showTiles ? (
+                <div style={{ textAlign: 'center', padding: '30px 20px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px dashed var(--border, var(--border-color))' }}>
+                  <BarChart3 size={26} color="var(--text-muted)" />
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff', margin: '10px 0 6px' }}>No performance data yet</div>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '440px', margin: '0 auto' }}>
+                    {a.reason || 'The ad platforms have not reported any delivery for this campaign.'}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(120px, 100%), 1fr))', gap: '10px', marginBottom: '18px' }}>
+                    {tiles.map(x => (
+                      <div key={x.k} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '12px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{x.k}</div>
+                        <div style={{ fontSize: '17px', fontWeight: 700, color: (x as any).hot ? '#00e676' : '#fff' }}>{x.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '14px', marginBottom: '18px' }}>
+                    {a.meta_performance && (
+                      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF', marginBottom: '8px' }}>Meta Performance</div>
+                        <Row k="Spend" v={money(a.meta_performance.spend)} />
+                        <Row k="Impressions" v={n(a.meta_performance.impressions)} />
+                        <Row k="Clicks" v={n(a.meta_performance.clicks)} />
+                        <Row k="CTR" v={`${a.meta_performance.ctr ?? 0}%`} />
+                        <Row k="Conversions" v={a.meta_performance.conversions} />
+                        <Row k="ROAS" v={`${a.meta_performance.roas}×`} />
+                        {!!a.meta_performance.frequency && <Row k="Frequency" v={`${a.meta_performance.frequency}×`} />}
+                      </div>
+                    )}
+                    {a.google_performance && (
+                      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#8B85FF', marginBottom: '8px' }}>Google Performance</div>
+                        <Row k="Spend" v={money(a.google_performance.spend)} />
+                        <Row k="Impressions" v={n(a.google_performance.impressions)} />
+                        <Row k="Clicks" v={n(a.google_performance.clicks)} />
+                        <Row k="CTR" v={`${a.google_performance.ctr ?? 0}%`} />
+                        <Row k="Conversions" v={a.google_performance.conversions} />
+                        <Row k="ROAS" v={`${a.google_performance.roas}×`} />
+                      </div>
+                    )}
+                  </div>
+                  {a.top_keywords?.length > 0 && (
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>TOP KEYWORDS</div>
+                      {a.top_keywords.map((kw: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <span>{kw.keyword}{kw.match_type && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> · {String(kw.match_type).toLowerCase()}</span>}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{kw.clicks} clicks · {kw.ctr}% CTR · {kw.conversions} conv</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '.4px', color: 'var(--primary)', marginBottom: '9px' }}>AI RECOMMENDATIONS</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {(a.recommendations || []).length === 0 && (
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          Not enough delivery yet for the optimiser to draw a conclusion.
+                        </span>
+                      )}
+                      {(a.recommendations || []).map((r: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: 'rgba(255,255,255,0.03)', border: `1px solid ${sevColor[r.severity] || '#888'}44`, borderRadius: '9px', padding: '10px 12px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: sevColor[r.severity] || '#fff', whiteSpace: 'nowrap' }}>{r.action}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            {r.why}
+                            {r.evidence && <span style={{ display: 'block', color: 'var(--text-muted)', marginTop: '3px' }}>{r.evidence}</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         );
