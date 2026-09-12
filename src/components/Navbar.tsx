@@ -84,13 +84,29 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           setHoverResources(false);
         }}
         initial={false}
+        /* These five numbers are the deployed build's, read out of the shipped bundle at
+           raftra-nine.vercel.app rather than estimated from a screenshot:
+             width  calc(100% - 48px)   maxWidth 1024   padding 24   left calc(50% - 105px)
+           The 105px offset is the alignment that was missing. The bar is not centred on the
+           viewport — it is nudged left so the Creator Marketplace pill pinned to the right
+           edge sits in the gap it leaves, which is what makes the two read as one row. Local
+           had it at a plain 50% and 1240 wide, so the bar ran too wide and too far right. */
         animate={{
-          width: isCollapsed ? 78 : 'calc(100% - 32px)',
-          maxWidth: isCollapsed ? 78 : 1240,
+          width: isCollapsed ? 78 : 'calc(100% - 48px)',
+          /* 1120, not the deployed build's 1024. Everything else here is copied from it, but
+             this branch's bar has to hold more: logo 102 + links 669 + actions 275, the 24px
+             margin before the actions, and 48 of padding — 1118 in total, where the deployed
+             build's equivalents fit in 1024 because its base typography differs. Holding
+             1024 here pushed Login 55px outside the pill, which is the bug this fixes. */
+          maxWidth: isCollapsed ? 78 : 1120,
           height: isCollapsed ? 46 : 52,
-          paddingLeft: isCollapsed ? 12 : 20,
-          paddingRight: isCollapsed ? 12 : 20,
-          left: isScrolled && window.innerWidth > 960 ? 'max(24px, calc(50% - 620px))' : '50%',
+          paddingLeft: isCollapsed ? 12 : 24,
+          paddingRight: isCollapsed ? 12 : 24,
+          // The >960 guard is kept from this branch's mobile pass: below that the bar stays
+          // centred, because a 105px nudge on a phone pushes it off the screen edge.
+          left: isScrolled && window.innerWidth > 960
+            ? 'max(24px, calc(50% - 620px))'
+            : window.innerWidth > 960 ? 'calc(50% - 105px)' : '50%',
           x: isScrolled && window.innerWidth > 960 ? '0%' : '-50%'
         }}
         transition={{
@@ -160,7 +176,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
             pointerEvents: isCollapsed ? 'none' : 'auto'
           }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', flex: '2 1 0%', whiteSpace: 'nowrap' }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', flex: '2 1 0%', whiteSpace: 'nowrap' }}
         >
           <button onClick={handleScrollToFriction} className="nav-link-btn">
             The Friction
@@ -324,7 +340,13 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
             pointerEvents: isCollapsed ? 'none' : 'auto'
           }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px', flex: '0 0 auto', whiteSpace: 'nowrap' }}
+          /* flex '1 1 0%', not '0 0 auto' — this is why Login sat outside the pill.
+             '0 0 auto' makes this group rigid: it contributes its full content width and
+             refuses to shrink, so logo + links + actions came to 1054px inside a 1024px bar
+             and the overflow spilled past the rounded edge. With a 0 basis it shares the
+             leftover space with the links group instead of forcing the bar wider than it is.
+             gap and marginLeft also match the deployed build. */
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '14px', flex: '1 1 0%', whiteSpace: 'nowrap', marginLeft: '24px' }}
         >
           <button 
             onClick={() => {
@@ -337,14 +359,11 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           <GlowButton variant="glow" onClick={() => navigate('/login')} style={{ padding: '8px 18px', fontSize: '13px', whiteSpace: 'nowrap' }}>
             Login
           </GlowButton>
-          {/* Creator Marketplace sits last so it lands at the extreme right edge of the
-              bar. Swap it above <GlowButton> if Login should stay the final item. */}
-          <button
-            onClick={() => navigate('/influencer-marketplace')}
-            className="creator-portal-btn"
-          >
-            Creator Marketplace
-          </button>
+          {/* Login ends the bar, matching the deployed build — its bundle contains exactly
+              one "Creator Marketplace", the floating pill LandingPage pins to the top-right.
+              A second copy used to sit here, and at the reference width of 1024px it pushed
+              the bar's natural content to 1244px: a 220px overflow that squashed the links
+              and clipped the label against the floating pill. */}
         </motion.div>
 
         {/* Mobile Hamburger Toggle Button */}

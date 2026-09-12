@@ -91,6 +91,26 @@ async def fetch_user_email(access_token: str) -> str:
     return r.json().get("email", "") if r.status_code == 200 else ""
 
 
+def _set_auth_error(conn, message) -> None:
+    """Record (or clear, with None) a connection-level auth failure and COMMIT it.
+
+    Committed here, not left to the caller, because the caller is a route that turns the
+    failure into an HTTPException — it never reaches its own db.commit(), so a flag set on
+    the ORM object would be thrown away with the request and the next status call would
+    report the dead connection as Connected again.
+    """
+    if getattr(conn, "auth_error", None) == message:
+        return
+    try:
+        from sqlalchemy.orm import object_session
+        conn.auth_error = message
+        sess = object_session(conn)
+        if sess is not None:
+            sess.commit()
+    except Exception as e:      # recording the flag must never mask the real error
+        print(f"[google_ads] could not record auth state: {e}")
+
+
 async def _ensure_access_token(conn) -> str:
     """Refresh the access token if missing/near-expiry, persisting the new token + expiry onto
     the connection object. Caller (the route handler) is responsible for db.commit()."""
@@ -107,10 +127,19 @@ async def _ensure_access_token(conn) -> str:
             "grant_type": "refresh_token",
         })
     if r.status_code != 200:
+        # invalid_grant is permanent: the refresh token was revoked, or expired (Google
+        # expires every refresh token from an OAuth app still in "Testing" mode after 7
+        # days). Only a reconnect fixes it, so remember it rather than rediscovering it on
+        # every call. Other failures (5xx, network) are transient and are not recorded.
+        if "invalid_grant" in r.text:
+            _set_auth_error(conn, "Google revoked or expired this connection's access. "
+                                  "Reconnect Google Ads to continue.")
         raise RuntimeError(f"Could not refresh Google Ads token: {r.status_code} {r.text[:300]}")
     data = r.json()
     conn.access_token = data["access_token"]
     conn.token_expiry = datetime.datetime.utcnow() + datetime.timedelta(seconds=int(data.get("expires_in", 3600)))
+    if getattr(conn, "auth_error", None):
+        conn.auth_error = None      # a successful refresh proves the grant is alive again
     return conn.access_token
 
 

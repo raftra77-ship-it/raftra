@@ -215,7 +215,12 @@ const INTEGRATIONS: {
       detail: s.name || s.ad_account_id || null,
       // Publishing needs BOTH an ad account and a Page - the backend folds that into
       // ready_to_publish, so a token alone is not a finished connection.
-      incomplete: s.connected && !s.ready_to_publish ? 'Ad account and Page not selected yet' : null,
+      incomplete: s.connected && !s.ready_to_publish ? 'Ad account and Page not selected yet'
+        // Meta cannot renew the token, so warn before it lapses rather than after.
+        : s.connected && s.token_expiring_soon ? `Connection expires in ${s.token_expires_in_days} day(s) — reconnect to keep publishing`
+        // "Ready" only means a paused campaign can be created; this is whether it can run.
+        : s.connected && s.can_spend === false ? 'No payment method on the ad account — ads won’t run'
+        : null,
     }),
     connectTab: 'campaign',
     connectLabel: 'Campaign Manager',
@@ -233,7 +238,10 @@ const INTEGRATIONS: {
       configured: !!s.configured,
       connected: !!s.connected,
       detail: s.email || s.customer_id || null,
-      incomplete: s.connected && !s.customer_id ? 'Ads account not selected yet' : null,
+      incomplete: s.connected && !s.customer_id ? 'Ads account not selected yet'
+        // Campaigns can't be created inside a manager account; the server now refuses it too.
+        : s.connected && s.is_manager_account ? 'Manager (MCC) account selected — pick a client ad account'
+        : null,
     }),
     connectTab: 'campaign',
     connectLabel: 'Campaign Manager',

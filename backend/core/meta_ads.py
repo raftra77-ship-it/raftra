@@ -207,6 +207,44 @@ async def fetch_user_name(token: str) -> str:
     return r.json().get("name", "") if r.status_code == 200 else ""
 
 
+async def check_funding(conn) -> dict:
+    """Can the selected ad account actually spend?
+
+    `ready_to_publish` only ever meant "token + ad account + Page", which is enough to CREATE
+    a (paused) campaign but not to run one: an account with no payment method accepts the
+    campaign and then never delivers a single impression. This asks the account itself.
+
+    Returns {"ok": True|False|None, "detail": str, "token_invalid": bool}. ok=None means we
+    could not tell (network, permissions) and must not be shown as either answer.
+    """
+    if not (conn and conn.access_token and conn.ad_account_id):
+        return {"ok": None, "detail": "No ad account selected.", "token_invalid": False}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(f"{GRAPH}/act_{conn.ad_account_id}", params={
+                "fields": "account_status,disable_reason,funding_source,funding_source_details",
+                **_auth(conn.access_token)})
+        d = r.json() if r.content else {}
+    except Exception as e:
+        return {"ok": None, "detail": f"Could not reach Meta: {e}", "token_invalid": False}
+
+    if r.status_code != 200:
+        err = d.get("error") or {}
+        # 190 = the access token is expired or revoked. Only a reconnect fixes that.
+        return {"ok": None, "detail": err.get("message") or f"Meta returned HTTP {r.status_code}",
+                "token_invalid": err.get("code") == 190}
+
+    if d.get("account_status") not in (1, None):
+        return {"ok": False, "token_invalid": False,
+                "detail": f"The ad account is not active (status {d.get('account_status')}, "
+                          f"reason {d.get('disable_reason')}). Resolve it in Meta Ads Manager."}
+    if not (d.get("funding_source") or d.get("funding_source_details")):
+        return {"ok": False, "token_invalid": False,
+                "detail": "The ad account has no payment method, so campaigns can be created "
+                          "but will never deliver. Add one in Meta Billing & payments."}
+    return {"ok": True, "detail": "Payment method on file.", "token_invalid": False}
+
+
 async def list_ad_accounts(token: str) -> list:
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.get(f"{GRAPH}/me/adaccounts", params={

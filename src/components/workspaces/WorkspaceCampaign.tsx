@@ -107,9 +107,16 @@ const AnchoredPanel: React.FC<{
     };
   }, [anchorRef, width]);
 
+  /* 900/901, not 40/50.
+     The panel is position:fixed and correctly placed, but it was painting UNDERNEATH the
+     dashboard chrome: .sidebar and .dashboard-header are both z-index 100 (App.css), so as
+     soon as the dropdown extended over either one it was covered — which looks exactly like
+     the panel being cut off. 900/901 is the tier this app already uses for its other
+     dropdowns (the profile and notification menus in BrandDashboard), so it clears the
+     sidebar and header while still sitting below full-screen modals at 1000. */
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 900 }} />
       <div style={{
         position: 'fixed',
         left: pos ? `${pos.left}px` : '-9999px',
@@ -118,7 +125,7 @@ const AnchoredPanel: React.FC<{
         maxHeight: pos ? `${pos.maxH}px` : undefined,
         overflowY: 'auto',
         overscrollBehavior: 'contain',
-        zIndex: 50,
+        zIndex: 901,
         background: '#14161e',
         border: '1px solid var(--border, var(--border-color))',
         borderRadius: '10px',
@@ -551,6 +558,10 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     configured?: boolean; connected?: boolean; name?: string;
     ad_account_id?: string | null; page_id?: string | null; page_name?: string | null;
     default_link_url?: string | null; ready_to_publish?: boolean;
+    // can_spend: the ad account has a payment method (null = not checked yet). Distinct
+    // from ready_to_publish, which only means a paused campaign can be CREATED.
+    can_spend?: boolean | null; needs_reconnect?: boolean; auth_error?: string | null;
+    token_expires_in_days?: number | null; token_expiring_soon?: boolean;
   }>({});
   // The workspace's site URL. Both publish routes fall back to it for the ad's
   // destination, so the pre-flight checks below must know about it too — otherwise they
@@ -684,7 +695,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   };
 
   // Real Google Ads connection (mirrors the Meta picker above exactly) + its account picker.
-  const [googleAccount, setGoogleAccount] = useState<{ configured?: boolean; connected?: boolean; email?: string; customer_id?: string | null; login_customer_id?: string | null; is_manager_account?: boolean }>({});
+  const [googleAccount, setGoogleAccount] = useState<{ configured?: boolean; connected?: boolean; email?: string; customer_id?: string | null; login_customer_id?: string | null; is_manager_account?: boolean; needs_reconnect?: boolean; auth_error?: string | null }>({});
   const [googleAdAccounts, setGoogleAdAccounts] = useState<{ customer_id: string; name: string; manager?: boolean }[] | null>(null);
   const [googlePickerOpen, setGooglePickerOpen] = useState(false);
   const [googlePickerBusy, setGooglePickerBusy] = useState(false);
@@ -734,14 +745,50 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     if (!googleAdAccounts && !googlePickerOpen) loadGoogleAdAccounts();
   };
 
-  const connectGoogleAds = async () => {
-    try {
-      const r = await fetch(`/api/connectors/google-ads/${workspaceId}/authorize`, { headers: authHeaders() });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.url) { window.location.href = d.url; return; }
-      flash(d.detail || 'Google Ads login isn’t configured on the server yet.', false);
-    } catch { flash('Could not start Google Ads connection.', false); }
+  /* Starting an OAuth connection.
+     ------------------------------------------------------------------
+     Both connect buttons used to be a bare fetch-then-redirect with no busy state, so a
+     click did nothing visible until the round trip came back — against a remote database
+     that is roughly a second of a button that looks dead, and it read as the app hanging.
+
+     Two changes. The button reports itself immediately, and the authorize URL is fetched on
+     hover/focus so the click usually has it already and redirects with no wait at all. The
+     URL is just a signed state parameter valid for _STATE_TTL_MIN (15 minutes), so
+     prefetching one costs nothing and commits to nothing — a user who never clicks simply
+     never uses it. */
+  const [connecting, setConnecting] = useState<'meta' | 'google' | null>(null);
+  const authUrlCache = useRef<{ meta?: string; google?: string }>({});
+
+  const fetchAuthUrl = async (provider: 'meta' | 'google'): Promise<string | null> => {
+    if (authUrlCache.current[provider]) return authUrlCache.current[provider]!;
+    const path = provider === 'meta' ? 'meta' : 'google-ads';
+    const r = await fetch(`/api/connectors/${path}/${workspaceId}/authorize`, { headers: authHeaders() });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.url) { authUrlCache.current[provider] = d.url; return d.url; }
+    throw new Error(d.detail || '');
   };
+
+  /** Warms the URL without navigating. Failures are ignored — the click path reports them. */
+  const prefetchAuthUrl = (provider: 'meta' | 'google') => {
+    if (!workspaceId || authUrlCache.current[provider]) return;
+    fetchAuthUrl(provider).catch(() => {});
+  };
+
+  const startConnect = async (provider: 'meta' | 'google') => {
+    if (connecting) return;
+    setConnecting(provider);
+    const label = provider === 'meta' ? 'Meta' : 'Google Ads';
+    try {
+      const url = await fetchAuthUrl(provider);
+      if (url) { window.location.href = url; return; }
+      flash(`${label} login isn’t configured on the server yet.`, false);
+    } catch (e: any) {
+      flash(e?.message || `Could not start the ${label} connection.`, false);
+    }
+    setConnecting(null);
+  };
+
+  const connectGoogleAds = () => startConnect('google');
 
   // The single approved creative that flows into the platform reviews, plus any
   // images the user uploads, plus a manual override of the Google campaign type.
@@ -828,6 +875,13 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   // Google needs none of these, so a mixed publish can half-succeed — which is exactly
   // the confusing outcome this pre-flight exists to prevent.
   const metaBlockers: { label: string; fix: string }[] = [
+    // First: with an expired or revoked token every Meta call fails, so nothing below is
+    // worth fixing until the account is reconnected. A missing payment method deliberately
+    // does NOT block — a paused campaign can still be created; the checklist warns instead.
+    !!metaAccount.needs_reconnect && {
+      label: 'Meta connection expired',
+      fix: metaAccount.auth_error || 'Reconnect Meta Ads above — Meta does not let apps renew the connection automatically.',
+    },
     !selectedImage && {
       label: 'No creative image selected',
       fix: 'Pick one below, upload your own, or generate a new one — Meta ads cannot be text-only.',
@@ -864,6 +918,12 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   const googleBudget = Number(spec.total_budget || campaign?.budget || 0);
 
   const googleBlockers: { label: string; fix: string }[] = [
+    // First, because nothing below matters with a dead token: every Google call would fail
+    // with invalid_grant. The server records this the first time Google refuses the token.
+    !!googleAccount.needs_reconnect && {
+      label: 'Google Ads connection expired',
+      fix: googleAccount.auth_error || 'Google revoked this connection. Reconnect Google Ads above.',
+    },
     !googleAccount.customer_id && {
       label: 'No Google Ads account selected',
       fix: 'Connect Google Ads and choose the account to publish into.',
@@ -1170,15 +1230,9 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [smart, campaign?.id, approved, published]);
 
-  // Start a real Meta connection (OAuth). Falls back to a message when the server is in mock mode.
-  const connectMeta = async () => {
-    try {
-      const r = await fetch(`/api/connectors/meta/${workspaceId}/authorize`, { headers: authHeaders() });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.url) { window.location.href = d.url; return; }
-      flash(d.detail || 'Meta login isn’t configured on the server yet (mock mode). You can still publish in demo mode.', false);
-    } catch { flash('Could not start Meta connection.', false); }
-  };
+  // Start a real Meta connection (OAuth) — see startConnect above for the busy state and
+  // the hover prefetch that make the click immediate.
+  const connectMeta = () => startConnect('meta');
 
   // Publish entry point: if a Meta account is connected (or Meta isn't a target) publish directly;
   // otherwise show the connect-or-publish popup.
@@ -1432,6 +1486,14 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                           { ok: !!metaAccount.ad_account_id, label: 'Ad account selected' },
                           { ok: !!metaAccount.page_id, label: 'Facebook Page selected' },
                           { ok: !!metaAccount.ready_to_publish, label: 'Ready to publish' },
+                          // Its own row, because "ready" and "can spend" differ: a paused
+                          // campaign can be created with no payment method, but it can never
+                          // deliver. The server checks the ad account itself for this.
+                          { ok: metaAccount.can_spend === true,
+                            label: metaAccount.can_spend === false
+                              ? 'No payment method on the ad account — ads can be created but won’t run'
+                              : metaAccount.can_spend === true ? 'Payment method on the ad account'
+                              : 'Payment method not checked yet' },
                           // The two Meta needs that Google does not, checked against the
                           // approved strategy rather than the connection.
                           { ok: !!selectedImage, label: 'Creative image selected' },
@@ -1443,6 +1505,23 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                           </div>
                         ))}
                       </div>
+                      {/* Meta will not renew a long-lived token (re-exchanging one returns the
+                          same expiry), so the only fix is connecting again — say so a week
+                          ahead instead of letting publishing fail on the day it lapses. */}
+                      {(metaAccount.needs_reconnect || metaAccount.token_expiring_soon) && (
+                        <div style={{
+                          marginTop: '10px', padding: '10px 12px', borderRadius: 'var(--radius-md, 10px)',
+                          background: 'rgba(255,71,87,0.07)', border: '1px solid rgba(255,71,87,0.3)',
+                          fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5,
+                        }}>
+                          <b style={{ color: '#ff8b95' }}>
+                            {metaAccount.needs_reconnect
+                              ? 'Meta connection expired.'
+                              : `Meta connection expires in ${metaAccount.token_expires_in_days} day${metaAccount.token_expires_in_days === 1 ? '' : 's'}.`}
+                          </b>{' '}
+                          {metaAccount.auth_error || 'Meta doesn’t let apps renew this connection automatically — reconnect Meta to keep publishing.'}
+                        </div>
+                      )}
                       {/* Say precisely what is missing and how to fix it. Meta rejects an ad
                           with no image or no destination, while Google accepts the same
                           strategy happily — so without this a mixed publish half-succeeds
@@ -1487,8 +1566,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               )}
             </div>
           ) : (
-            <button onClick={connectMeta} style={{ ...btnGhost, color: '#8B85FF', borderColor: 'rgba(90,82,255,0.4)' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ffae00', display: 'inline-block' }} /> Connect Meta account
+            <button
+              onClick={connectMeta}
+              onMouseEnter={() => prefetchAuthUrl('meta')}
+              onFocus={() => prefetchAuthUrl('meta')}
+              disabled={connecting === 'meta'}
+              style={{ ...btnGhost, color: '#8B85FF', borderColor: 'rgba(90,82,255,0.4)' }}
+            >
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ffae00', display: 'inline-block' }} />
+              {connecting === 'meta' ? 'Opening Meta…' : 'Connect Meta account'}
             </button>
           )}
           {googleAccount.connected ? (
@@ -1571,8 +1657,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               )}
             </div>
           ) : (
-            <button onClick={connectGoogleAds} style={{ ...btnGhost, color: '#8B85FF', borderColor: 'rgba(90,82,255,0.4)' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ffae00', display: 'inline-block' }} /> Connect Google Ads account
+            <button
+              onClick={connectGoogleAds}
+              onMouseEnter={() => prefetchAuthUrl('google')}
+              onFocus={() => prefetchAuthUrl('google')}
+              disabled={connecting === 'google'}
+              style={{ ...btnGhost, color: '#8B85FF', borderColor: 'rgba(90,82,255,0.4)' }}
+            >
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ffae00', display: 'inline-block' }} />
+              {connecting === 'google' ? 'Opening Google Ads…' : 'Connect Google Ads account'}
             </button>
           )}
           {campaign && !published && <button onClick={startNewCampaign} style={btnGhost}><Sparkles size={14} /> New Campaign</button>}
@@ -2467,6 +2560,42 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             {recentPublished.map((c: any) => {
               const cm = c.metrics || {};
               const plats = (cm.published_platforms || []).map((p: string) => (p === 'meta' ? 'Meta' : 'Google')).join(' & ');
+              // What actually exists on the ad platforms. Every row used to say
+              // "PUBLISHED · DEMO", including campaigns that went out for real — the server
+              // records the truth per platform in published_modes, and delivery state in
+              // metrics.delivery once someone starts or pauses it.
+              const realPlats: string[] = Object.entries(cm.published_modes || {})
+                .filter(([, mode]) => mode === 'real').map(([p]) => p);
+              const deliveryState = cm.delivery || {};
+              const isLive = realPlats.some(p => ['ACTIVE', 'ENABLED'].includes(deliveryState[p]?.status));
+              const partlyDemo = cm.published_mode === 'mixed';
+              const badge = !realPlats.length
+                ? { text: 'PUBLISHED · DEMO', color: 'var(--text-secondary)', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.15)' }
+                : isLive
+                  ? { text: partlyDemo ? 'LIVE · PARTLY DEMO' : 'LIVE', color: '#00e676', bg: 'rgba(0,230,118,0.1)', border: 'rgba(0,230,118,0.3)' }
+                  : { text: partlyDemo ? 'PAUSED · PARTLY DEMO' : 'PUBLISHED · PAUSED', color: '#FFB300', bg: 'rgba(255,179,0,0.1)', border: 'rgba(255,179,0,0.3)' };
+              const busyKey = `delivery-${c.id}`;
+              const toggleDelivery = async () => {
+                if (!workspaceId) return;
+                const action = isLive ? 'pause' : 'start';
+                setBusy(busyKey);
+                try {
+                  const res = await CampaignService.setDelivery(workspaceId, c.id, action);
+                  setRecentPublished(prev => prev.map((x: any) => (x.id === c.id
+                    ? { ...x, metrics: { ...(x.metrics || {}), delivery: res.delivery } } : x)));
+                  const failed = Object.entries(res.results).filter(([, r]) => !r.ok);
+                  flash(failed.length
+                    ? `${action === 'start' ? 'Started' : 'Paused'} only partly — ${failed.map(([p, r]) => `${p === 'meta' ? 'Meta' : 'Google'}: ${r.error}`).join(' ')}`
+                    : action === 'start'
+                      ? 'Campaign started. A new ad can sit in the platform’s review for a few minutes up to 24h before it delivers.'
+                      : 'Campaign paused on every platform it was published to.',
+                    !failed.length);
+                } catch (e: any) {
+                  flash(e?.message || 'Could not change the campaign’s delivery.', false);
+                } finally {
+                  setBusy(null);
+                }
+              };
               return (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'rgba(0,230,118,0.04)', border: '1px solid rgba(0,230,118,0.18)', borderRadius: '12px', padding: '13px 15px', transition: 'all 0.2s ease' }}>
                   <span style={{ minWidth: 0, flex: 1 }}>
@@ -2478,7 +2607,20 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     </span>
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '20px', padding: '3px 9px', whiteSpace: 'nowrap' }}>PUBLISHED · DEMO</span>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: badge.color, background: badge.bg, border: `1px solid ${badge.border}`, borderRadius: '20px', padding: '3px 9px', whiteSpace: 'nowrap' }}>{badge.text}</span>
+                    {/* The on/off switch that did not exist: publishing creates everything
+                        paused, and this is what turns it on. Only shown where something real
+                        exists to switch — a demo publish has nothing on Meta or Google. */}
+                    {realPlats.length > 0 && (
+                      <button
+                        onClick={toggleDelivery}
+                        disabled={busy === busyKey}
+                        style={{ ...(isLive ? btnGhost : btnPrimary), padding: '5px 11px', fontSize: '12px', opacity: busy === busyKey ? 0.6 : 1 }}
+                        title={isLive ? 'Stop delivery on every platform' : 'Start delivery — this begins spending your budget'}
+                      >
+                        {busy === busyKey ? (isLive ? 'Pausing…' : 'Starting…') : isLive ? 'Pause' : 'Start campaign'}
+                      </button>
+                    )}
                     <button onClick={() => refresh(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '12px' }}>View</button>
                     <button onClick={() => viewAnalytics(c.id)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '12px' }}><BarChart3 size={12} /> Analytics</button>
                     <button onClick={() => duplicateCampaign(c.id).then(scrollToTop)} style={{ ...btnGhost, padding: '5px 11px', fontSize: '12px' }}><Copy size={12} /> Duplicate</button>
@@ -2499,8 +2641,15 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               You haven't connected a Meta ad account. Connect it to publish to a real account, or publish now in demo mode.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button onClick={connectMeta} className="btn btn-primary" style={{ ...btnPrimary, padding: '12px', justifyContent: 'center' }}>
-                <CheckCircle2 size={15} /> Connect Meta account
+              <button
+                onClick={connectMeta}
+                onMouseEnter={() => prefetchAuthUrl('meta')}
+                onFocus={() => prefetchAuthUrl('meta')}
+                disabled={connecting === 'meta'}
+                className="btn btn-primary"
+                style={{ ...btnPrimary, padding: '12px', justifyContent: 'center' }}
+              >
+                <CheckCircle2 size={15} /> {connecting === 'meta' ? 'Opening Meta…' : 'Connect Meta account'}
               </button>
               <button onClick={() => { setPublishPopup(false); publish(chosen); }} disabled={busy?.startsWith('publish')} style={{ ...btnGhost, padding: '12px', justifyContent: 'center' }}>
                 <Rocket size={15} /> Publish anyway (demo)

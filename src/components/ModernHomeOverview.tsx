@@ -145,6 +145,20 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   const [brandKitLoading, setBrandKitLoading] = useState(true);
   const [vaultAssets, setVaultAssets] = useState<{ url: string; name: string }[]>([]);
 
+  /* The growth-score card, its metric strip and its four pillars were the last numbers on
+     this screen still copied verbatim from the design mock: a score of 84 with a "+18.4 pts"
+     trend, ₹7,74,900 revenue, 4.2x ROAS, 3.8% conversion, 76% AEO citations and pillars at
+     92/86/78/80% — identical for every workspace, including ones with nothing connected.
+     They now read the workspace's own /metrics, its latest GEO audit and its schedules.
+     Deliberately NOT used: /metrics' `aiVisibility`, which is `seoVisibility * 0.85` — a
+     fixed ratio, not a measurement — so it is never presented as an AEO figure here. */
+  const [metrics, setMetrics] = useState<{
+    revenue: number; roas: number; seoVisibility: number; campaignHealth: number;
+    campaignsLive: number; campaignsLaunched: number; growthScore: number;
+  } | null>(null);
+  const [geoScore, setGeoScore] = useState<number | null>(null);
+  const [scheduleRows, setScheduleRows] = useState<any[] | null>(null);
+
   /* Ad account connection.
      `isAdAccountConnected` used to be plain local state, flipped either by a "Demo Mode
      (Click to Toggle)" button or by a 900ms fake connect, and it gated whether this page
@@ -191,18 +205,26 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
     if (!workspaceId) { setBrandKitLoading(false); return; }
     let cancelled = false;
     setBrandKitLoading(true);
+    const getJson = (u: string) => fetch(u, { headers: authHdrs() })
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
     Promise.all([
-      fetch(`/api/workspaces/${workspaceId}/brand-profile`, { headers: authHdrs() })
-        .then(r => (r.ok ? r.json() : null)).catch(() => null),
-      fetch(`/api/workspaces/${workspaceId}/assets`, { headers: authHdrs() })
-        .then(r => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([bp, av]) => {
+      getJson(`/api/workspaces/${workspaceId}/brand-profile`),
+      getJson(`/api/workspaces/${workspaceId}/assets`),
+      getJson(`/api/workspaces/${workspaceId}/metrics`),
+      getJson(`/api/workspaces/${workspaceId}/seo/audit-report`),
+      getJson(`/api/workspaces/${workspaceId}/schedules`),
+    ]).then(([bp, av, mx, rep, sch]) => {
       if (cancelled) return;
       if (bp) setBrandKit(bp);
       const rows = Array.isArray(av?.assets) ? av.assets : [];
       setVaultAssets(rows
         .filter((a: any) => a?.url && !String(a.format || '').match(/mp4|webm|mov/i))
         .map((a: any) => ({ url: a.url, name: a.alt_text || a.filename || 'Asset' })));
+      if (mx) setMetrics(mx);
+      // The score is nested in the latest GEO audit row, not a top-level field.
+      const g = rep?.geo?.audit?.geo?.score_100;
+      setGeoScore(typeof g === 'number' ? Math.round(g) : null);
+      setScheduleRows(Array.isArray(sch) ? sch : []);
     }).finally(() => { if (!cancelled) setBrandKitLoading(false); });
     return () => { cancelled = true; };
   }, [workspaceId]);
@@ -215,6 +237,27 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
       ? brandKit.color_tokens.map((t: any) => ({ name: t?.name || t?.role || 'Brand colour', hex: t?.hex || t?.value || '' }))
       : (brandKit?.color_palette || []).map((hex: any) => ({ name: 'Brand colour', hex: String(hex) }))
     ).filter((c: any) => /^#[0-9a-f]{3,8}$/i.test(String(c.hex || '').trim()));
+
+  /* Brand-kit readiness per checklist item, from what onboarding actually extracted. The
+     card used to say "100% Extracted" with every item "Ready" whether or not the crawl had
+     found a single logo. */
+  const kitReady: Record<string, boolean> = {
+    logo: (brandKit?.logos || []).length > 0,
+    colors: bkColors.length > 0,
+    typography: !!(brandKit?.typography && Object.keys(brandKit.typography).length),
+    knowledge: !!(bkLine(brandKit?.brand_voice) || bkLine(bkGuidelines.tone) || bkLine(bkGuidelines.usps)
+      || bkLine(bkGuidelines.categories) || bkLine(brandKit?.brand_guidelines_summary)),
+    assets: vaultAssets.length > 0,
+    market: !!(bkLine(brandKit?.target_audience) || bkLine(bkGuidelines.target_audiences)),
+  };
+  const kitPct = Math.round((Object.values(kitReady).filter(Boolean).length / 6) * 100);
+
+  const inr = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
+  const score = metrics?.growthScore ?? null;
+  // A band, not a trend: nothing stores yesterday's score, so the "+18.4 pts" the mock
+  // showed has no honest replacement.
+  const scoreBand = score == null ? 'Loading…'
+    : score >= 75 ? 'Strong' : score >= 50 ? 'Building' : score > 0 ? 'Early stage' : 'Not enough data yet';
 
   // 'error' means the status call failed and we know nothing — never treat it as a state.
   const liveState = (key: string) => {
@@ -286,33 +329,28 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   // Scheduler Modal State
   const [showSchedulerModal, setShowSchedulerModal] = useState(false);
 
-  // Schedule items state
-  const [schedules, setSchedules] = useState([
-    {
-      id: 'sch_1',
-      title: `${brandName} Fresh Creative Batch`,
-      frequency: 'Mon, Thu at 9:00 AM • Next run in 2d',
-      type: 'Creative AI Generation',
-      status: 'Active',
-      color: '#7C75FF'
-    },
-    {
-      id: 'sch_2',
-      title: 'Weekly competitor report',
-      frequency: 'Weekly on Mon at 9:00 AM • Next run in 6d',
-      type: 'Market Intelligence Crawl',
-      status: 'Active',
-      color: '#00D2FF'
-    },
-    {
-      id: 'sch_3',
-      title: 'Daily ROAS Guardrail & Bid Scaling',
-      frequency: 'Daily at 12:00 AM • Next run in 11h',
-      type: 'Ad Optimization Auto-Pilot',
-      status: 'Active',
-      color: '#00E676'
-    }
-  ]);
+  /* This workspace's real schedules from /workspaces/{id}/schedules, mapped into the same
+     view shape the three hardcoded rows used — so the card and the modal render unchanged.
+     Those rows ("Fresh Creative Batch", "Weekly competitor report", "Daily ROAS Guardrail")
+     were shown as Active to every workspace, whether or not anything was scheduled. */
+  const AGENT_COLOR: Record<string, string> = { creative: '#7C75FF', seo: '#00D2FF', geo: '#00D2FF', campaign: '#00E676', social: '#FF5296', analytics: '#FFB300' };
+  const schedules = React.useMemo(() => (scheduleRows || []).map((s: any) => {
+    const hh = String(s.hour ?? 0).padStart(2, '0'), mm = String(s.minute ?? 0).padStart(2, '0');
+    const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const when = s.cadence === 'weekly' && s.weekday != null ? `Weekly on ${DAYS[s.weekday] || 'day ' + s.weekday} at ${hh}:${mm}`
+      : s.cadence === 'monthly' && s.day_of_month ? `Monthly on day ${s.day_of_month} at ${hh}:${mm}`
+      : `${String(s.cadence || 'daily').replace(/^\w/, (c: string) => c.toUpperCase())} at ${hh}:${mm}`;
+    const next = s.next_run_at ? ` • Next run ${new Date(s.next_run_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '';
+    const agent = String(s.agent || 'agent').toLowerCase();
+    return {
+      id: String(s.id),
+      title: s.name || 'Untitled schedule',
+      frequency: when + next,
+      type: `${agent.replace(/^\w/, (c: string) => c.toUpperCase())} agent`,
+      status: s.enabled ? (s.last_status === 'failed' ? 'Last run failed' : 'Active') : 'Paused',
+      color: AGENT_COLOR[agent] || '#7C75FF',
+    };
+  }), [scheduleRows]);
 
   // Brand Kit Checklist Items
   const brandKitItems = [
@@ -413,7 +451,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 flexShrink: 0
               }}
             >
-              <span style={{ fontSize: '22px', fontWeight: 900, color: '#00E676', lineHeight: 1 }}>84</span>
+              <span style={{ fontSize: '22px', fontWeight: 900, color: '#00E676', lineHeight: 1 }}>{score ?? '—'}</span>
               <span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>/ 100</span>
             </div>
 
@@ -423,7 +461,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                   Overall Growth Score & Trajectory
                 </h2>
                 <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.2)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.4)', padding: '2px 9px', borderRadius: '100px', fontWeight: 800 }}>
-                  🔥 High Velocity Growth (+18.4 pts)
+                  {scoreBand}
                 </span>
               </div>
               <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0 }}>
@@ -457,75 +495,70 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
         {/* 4 Key Growth Metrics Strip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Attributed Revenue</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Estimated Revenue</span>
             <div style={{ fontSize: '20px', fontWeight: 900, color: '#fff', marginTop: '2px' }}>
-              ₹7,74,900 <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>+38.4%</span>
+              {metrics && metrics.revenue > 0 ? inr(metrics.revenue) : '—'}
+              {/* /metrics computes this as budget × ROAS, so it is labelled an estimate
+                  rather than passed off as attributed revenue. */}
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500, marginLeft: '6px' }}>budget × ROAS</span>
             </div>
           </div>
 
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Blended ROAS</span>
             <div style={{ fontSize: '20px', fontWeight: 900, color: '#00E676', marginTop: '2px' }}>
-              4.2x <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Target: &gt;3.5x</span>
+              {metrics && metrics.roas > 0 ? `${metrics.roas.toFixed(1)}x` : '—'}
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, marginLeft: '6px' }}>
+                {metrics && metrics.roas > 0 ? 'mean across campaigns' : 'no ROAS measured yet'}
+              </span>
             </div>
           </div>
 
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Conversion Rate</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>Campaigns Live</span>
+            {/* Replaces "Conversion Rate 3.8%": nothing in the product records conversions
+                per session, but live-vs-launched campaigns is measured. */}
             <div style={{ fontSize: '20px', fontWeight: 900, color: '#fff', marginTop: '2px' }}>
-              3.8% <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>+0.9%</span>
+              {metrics ? `${metrics.campaignsLive} / ${metrics.campaignsLaunched}` : '—'}
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, marginLeft: '6px' }}>
+                {metrics && metrics.campaignsLaunched ? 'running of launched' : 'none launched yet'}
+              </span>
             </div>
           </div>
 
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '14px', padding: '14px 18px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>AEO / Search Citations</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>GEO Score (AI Search)</span>
             <div style={{ fontSize: '20px', fontWeight: 900, color: '#7C75FF', marginTop: '2px' }}>
-              76% <span style={{ fontSize: '12px', color: '#00E676', fontWeight: 700 }}>+14% AI</span>
+              {geoScore != null ? `${geoScore}/100` : '—'}
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, marginLeft: '6px' }}>
+                {geoScore != null ? 'latest GEO audit' : 'no GEO audit yet'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* 4 Growth Pillars Progress Bars */}
+        {/* 4 Growth Pillars Progress Bars — same visual as the mock, but every bar is a real
+            0-100 value, labelled with what it measures. `null` renders an empty track and an
+            em dash rather than a guessed percentage. */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '16px' }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
-              <span style={{ color: '#fff', fontWeight: 600 }}>🎨 Creative Hook Power & Freshness</span>
-              <span style={{ color: '#00E676', fontWeight: 800 }}>92%</span>
+          {[
+            { label: '🎨 Brand Kit Completeness', value: brandKitLoading ? null : kitPct, color: '#00E676' },
+            { label: '⚡ Campaign Health (live of launched)', value: metrics && metrics.campaignsLaunched ? metrics.campaignHealth : null, color: '#00D2FF' },
+            { label: '🔍 SEO Visibility (audit average)', value: metrics && metrics.seoVisibility > 0 ? metrics.seoVisibility : null, color: '#FFB300' },
+            { label: '🤖 GEO Score (AI search readiness)', value: geoScore, color: '#7C75FF' },
+          ].map(p => (
+            <div key={p.label}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
+                <span style={{ color: '#fff', fontWeight: 600 }}>{p.label}</span>
+                <span style={{ color: p.value != null ? p.color : 'var(--text-muted)', fontWeight: 800 }}>
+                  {p.value != null ? `${p.value}%` : '—'}
+                </span>
+              </div>
+              <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
+                <div style={{ width: `${p.value ?? 0}%`, height: '100%', background: p.color, borderRadius: '100px' }} />
+              </div>
             </div>
-            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
-              <div style={{ width: '92%', height: '100%', background: '#00E676', borderRadius: '100px' }} />
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
-              <span style={{ color: '#fff', fontWeight: 600 }}>⚡ Ad Spend Auto-Scale & Guardrails</span>
-              <span style={{ color: '#00D2FF', fontWeight: 800 }}>86%</span>
-            </div>
-            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
-              <div style={{ width: '86%', height: '100%', background: '#00D2FF', borderRadius: '100px' }} />
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
-              <span style={{ color: '#fff', fontWeight: 600 }}>🔍 Competitor Defense & Recon</span>
-              <span style={{ color: '#FFB300', fontWeight: 800 }}>78%</span>
-            </div>
-            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
-              <div style={{ width: '78%', height: '100%', background: '#FFB300', borderRadius: '100px' }} />
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '6px' }}>
-              <span style={{ color: '#fff', fontWeight: 600 }}>🤝 Creator & UGC Pipeline</span>
-              <span style={{ color: '#7C75FF', fontWeight: 800 }}>80%</span>
-            </div>
-            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '100px', overflow: 'hidden' }}>
-              <div style={{ width: '80%', height: '100%', background: '#7C75FF', borderRadius: '100px' }} />
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
@@ -553,7 +586,7 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 Brand kit extraction
               </h2>
               <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
-                100% Extracted
+                {brandKitLoading ? 'Checking…' : `${kitPct}% Extracted`}
               </span>
             </div>
             <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0 }}>
@@ -616,10 +649,18 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                 {item.icon}
                 <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#fff' }}>{item.label}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#00E676', fontSize: '11px', fontWeight: 700 }}>
-                <CheckCircle2 size={13} color="#00E676" />
-                <span>Ready</span>
-              </div>
+              {/* Ready only when onboarding actually extracted this item. */}
+              {kitReady[item.id] ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#00E676', fontSize: '11px', fontWeight: 700 }}>
+                  <CheckCircle2 size={13} color="#00E676" />
+                  <span>Ready</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)', fontSize: '11px', fontWeight: 700 }}>
+                  <AlertCircle size={13} />
+                  <span>{brandKitLoading ? '…' : 'Missing'}</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -971,6 +1012,12 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
 
         {/* Schedule List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {scheduleRows !== null && schedules.length === 0 && (
+            <div style={{ padding: '18px 20px', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '14px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Nothing is scheduled for this workspace yet. Set up a recurring creative batch, competitor
+              report or SEO audit in the Scheduler and it will appear here.
+            </div>
+          )}
           {schedules.map((sch) => (
             <div
               key={sch.id}
@@ -1638,7 +1685,9 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
                     </div>
 
                     <button
-                      onClick={() => alert(`Triggered manual execution of "${sch.title}"!`)}
+                      // Was an alert() claiming a manual run had been triggered; nothing ran.
+                      // The Scheduler owns the real run-now control.
+                      onClick={() => { setShowSchedulerModal(false); onNavigateTab('scheduler'); }}
                       style={{
                         background: 'rgba(0, 210, 255, 0.12)',
                         border: '1px solid rgba(0, 210, 255, 0.3)',

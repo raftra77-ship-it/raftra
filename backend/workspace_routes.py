@@ -790,6 +790,119 @@ async def _launch_google_ad(camp, spec: dict, conn, db: Session, workspace_id: i
     return result
 
 
+from pydantic import BaseModel as _DeliveryBaseModel
+
+
+class CampaignDeliveryRequest(_DeliveryBaseModel):
+    action: str    # "start" | "pause"
+
+
+@router.post("/{workspace_id}/campaigns/{campaign_id}/delivery")
+async def set_campaign_delivery(workspace_id: int, campaign_id: int, req: CampaignDeliveryRequest,
+                                db: Session = Depends(database.get_db),
+                                current_user: models.User = Depends(auth.get_current_user)):
+    """Start or pause a campaign that was published for REAL, on every platform it reached.
+
+    Publishing creates everything PAUSED so nothing spends by accident, and until now the
+    app had no way to switch it on: the only on/off control (BrandDashboard's
+    handleToggleCampaign) flipped a React value and never called Meta or Google. Users had
+    to find the campaign in Ads Manager themselves.
+
+    Meta is the subtle one. An ad delivers only when the campaign, its ad set AND the ad are
+    all ACTIVE; flipping the campaign alone (all the old status route did) leaves it looking
+    live and serving nothing. So start goes through meta_ads.activate_ad, which activates
+    all three parents-first, using the ad id publish recorded in metrics.meta_objects.
+    Pausing the campaign alone is enough to stop delivery, so pause stays one call.
+
+    Demo publishes are refused: they have MOCK ids, and there is nothing on either platform
+    to switch on.
+    """
+    from core import meta_ads as meta_api, google_ads as gads_api
+    import datetime as _dt
+
+    _require_workspace(workspace_id, db, current_user)
+    camp = _get_campaign_or_404(workspace_id, campaign_id, db)
+    action = (req.action or "").strip().lower()
+    if action not in ("start", "pause"):
+        raise HTTPException(status_code=400, detail="action must be 'start' or 'pause'.")
+
+    m = dict(camp.metrics or {})
+    modes = m.get("published_modes") or {}
+    ids = m.get("campaign_ids") or {}
+    real = [p for p in ("meta", "google") if modes.get(p) == "real" and ids.get(p)]
+    if not real:
+        raise HTTPException(status_code=409, detail=(
+            "This campaign was only published in demo mode, so nothing exists on Meta or Google "
+            "to start or pause. Connect an ad account and publish it for real first."))
+
+    results: dict = {}
+    delivery = dict(m.get("delivery") or {})
+    now = _dt.datetime.utcnow().isoformat()
+
+    for p in real:
+        try:
+            if p == "meta":
+                conn = (db.query(models.MetaAdsConnection)
+                          .filter(models.MetaAdsConnection.workspace_id == workspace_id).first())
+                if not conn or not conn.access_token:
+                    raise RuntimeError("Meta is not connected for this workspace.")
+                if getattr(conn, "auth_error", None):
+                    raise RuntimeError(conn.auth_error)
+                cid = str(ids["meta"])
+                if action == "start":
+                    # Refuse rather than report "live": an account with no payment method
+                    # accepts an ACTIVE ad and then never delivers a single impression.
+                    if getattr(conn, "funding_ok", None) is False:
+                        raise RuntimeError(
+                            "The ad account has no payment method, so Meta would accept this "
+                            "but never deliver it. Add one in Meta Billing & payments, then "
+                            "start again.")
+                    ad_id = ((m.get("meta_objects") or {}).get(cid) or {}).get("ad_id")
+                    if not ad_id:
+                        raise RuntimeError(
+                            "The ad id for this campaign wasn't recorded when it was published, "
+                            "so it can't be started safely from here — start it in Meta Ads Manager.")
+                    res = await meta_api.activate_ad(conn, str(ad_id))
+                    results[p] = {"ok": True, "status": "ACTIVE",
+                                  "effective_status": res.get("effective_status"),
+                                  "note": res.get("note")}
+                else:
+                    await meta_api.set_campaign_status(conn, cid, "PAUSED")
+                    results[p] = {"ok": True, "status": "PAUSED"}
+            else:
+                conn = (db.query(models.GoogleAdsConnection)
+                          .filter(models.GoogleAdsConnection.workspace_id == workspace_id).first())
+                if not conn or not conn.refresh_token:
+                    raise RuntimeError("Google Ads is not connected for this workspace.")
+                if getattr(conn, "auth_error", None):
+                    raise RuntimeError(conn.auth_error)
+                # Google's ad group and ad were created ENABLED under the PAUSED campaign, so
+                # the campaign is the only switch that controls delivery.
+                status = "ENABLED" if action == "start" else "PAUSED"
+                await gads_api.set_campaign_status(conn, str(ids["google"]), status)
+                results[p] = {"ok": True, "status": status}
+        except Exception as e:
+            results[p] = {"ok": False, "error": getattr(e, "detail", None) or str(e)}
+
+        verb = "started" if action == "start" else "paused"
+        if results[p].get("ok"):
+            delivery[p] = {"status": results[p]["status"], "at": now}
+            m = _append_activity(m, f"{p.title()} campaign {verb} ({results[p]['status']})")
+        else:
+            m = _append_activity(m, f"{p.title()} could not be {verb}: {results[p]['error']}")
+
+    m["delivery"] = delivery
+    camp.metrics = m
+    db.commit()
+
+    # Partial success is reported per platform, not flattened into one error: Meta starting
+    # while Google refuses is a real, useful outcome the UI should show as such.
+    if not any(r.get("ok") for r in results.values()):
+        raise HTTPException(status_code=502, detail="; ".join(
+            f"{p.title()}: {r.get('error')}" for p, r in results.items()))
+    return {"status": "success", "action": action, "results": results, "delivery": delivery}
+
+
 @router.post("/{workspace_id}/campaigns/{campaign_id}/publish")
 async def publish_campaign(workspace_id: int, campaign_id: int,
                      req: Optional[schemas.PublishCampaignRequest] = None,

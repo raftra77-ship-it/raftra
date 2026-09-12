@@ -630,6 +630,15 @@ class MetaAdsConnection(Base):
     page_name = Column(String, nullable=True)
     # Default destination URL for ads; falls back to the workspace's company_url.
     default_link_url = Column(String, nullable=True)
+    # Whether the selected ad account can actually SPEND — i.e. has a payment method. Cached
+    # here rather than fetched on every status call, because the dashboard batches every
+    # connector's status into one request and a Graph call per load would undo that.
+    # NULL = not checked yet. Refreshed by the single-connector status route (at most every
+    # 6h) and whenever an ad account is selected.
+    funding_ok = Column(Boolean, nullable=True)
+    funding_checked_at = Column(DateTime, nullable=True)
+    # Set when Meta rejects this token (OAuthException 190: expired or revoked).
+    auth_error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -653,6 +662,11 @@ class GoogleAdsConnection(Base):
     # True when the SELECTED customer_id is itself a manager (MCC). Campaigns cannot be
     # created inside one, so the UI has to warn before publish rather than after.
     customer_is_manager = Column(Boolean, default=False)
+    # Set when Google refuses to refresh this connection's token (invalid_grant: revoked, or
+    # expired — which a Google OAuth app in "Testing" mode does to every refresh token after
+    # 7 days). Without it `connected` was just "a refresh token exists", so a dead connection
+    # showed as Connected and every publish failed with a 502. Cleared on the next success.
+    auth_error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

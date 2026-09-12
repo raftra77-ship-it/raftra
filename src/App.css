@@ -66,10 +66,15 @@
 }
 
 /* Hero Section */
+/* Landing-page measurements match the deployed build at raftra-nine.vercel.app, which is
+   the reference for this layout. They had drifted much wider here — 1640px containers
+   against the deployed 1200px, a 950px subtitle against 700px — so every section spread
+   across the full screen instead of sitting in a centred column, which is what the
+   alignment looked wrong. */
 .hero-section {
-  max-width: 1640px;
-  margin: 110px auto 120px;
-  padding: 0 40px;
+  max-width: 1200px;
+  margin: 80px auto 120px;
+  padding: 0 24px;
   text-align: center;
 }
 
@@ -105,7 +110,7 @@
 .hero-title {
   font-size: 64px;
   line-height: 1.1;
-  max-width: 1200px;
+  max-width: 900px;
   margin: 0 auto 24px;
   font-family: var(--font-heading);
   letter-spacing: -0.03em;
@@ -120,7 +125,7 @@
 .hero-subtitle {
   font-size: 20px;
   color: var(--text-secondary);
-  max-width: 950px;
+  max-width: 700px;
   margin: 0 auto 40px;
   line-height: 1.6;
 }
@@ -140,7 +145,7 @@
 
 /* Agent Terminal Preview on Landing Page */
 .terminal-preview-container {
-  max-width: 1540px;
+  max-width: 1000px;
   margin: 0 auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
@@ -210,9 +215,9 @@
 
 /* Problems Grid & Solutions Section */
 .section-container {
-  max-width: 1640px;
+  max-width: 1200px;
   margin: 120px auto;
-  padding: 0 40px;
+  padding: 0 24px;
 }
 
 .section-tag {
@@ -231,7 +236,7 @@
 .section-desc {
   color: var(--text-secondary);
   font-size: 18px;
-  max-width: 900px;
+  max-width: 600px;
   margin-bottom: 48px;
 }
 

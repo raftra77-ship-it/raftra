@@ -263,6 +263,12 @@ def _run_light_migrations():
         # Vision-written descriptions for Asset Vault search (core/asset_tagging.py).
         "ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS description TEXT",
         "ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS tagged_at TIMESTAMP",
+        # Connection health (connector_routes status payloads): a revoked/expired token and
+        # the ad account's ability to spend, so "Connected" / "Ready" stop being claims.
+        "ALTER TABLE google_ads_connections ADD COLUMN IF NOT EXISTS auth_error TEXT",
+        "ALTER TABLE meta_ads_connections ADD COLUMN IF NOT EXISTS auth_error TEXT",
+        "ALTER TABLE meta_ads_connections ADD COLUMN IF NOT EXISTS funding_ok BOOLEAN",
+        "ALTER TABLE meta_ads_connections ADD COLUMN IF NOT EXISTS funding_checked_at TIMESTAMP",
         "ALTER TABLE knowledge_chunks ENABLE ROW LEVEL SECURITY",
         "DROP POLICY IF EXISTS tenant_isolation ON knowledge_chunks",
         "CREATE POLICY tenant_isolation ON knowledge_chunks FOR ALL "

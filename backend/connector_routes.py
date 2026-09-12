@@ -158,24 +158,56 @@ def _get_wp(workspace_id: int, db: Session):
 
 
 def _meta_status_payload(conn) -> dict:
-    # `ready_to_publish` is the single flag the UI should gate the publish button on: an ad
-    # needs BOTH an ad account (where it's billed) and a Page (who it's published as).
+    # Pure and network-free on purpose: the dashboard batches every connector's status
+    # through this, and a Graph call per load would undo that batching. Everything it
+    # reports that needs Meta's opinion (payment, token health) is cached on the row by
+    # the single-connector route below.
+    #
+    # Two flags, because "can create" and "can spend" really are different states:
+    #   ready_to_publish — token + ad account + Page: enough to CREATE a (paused) campaign.
+    #                      The publish button keeps gating on this, unchanged.
+    #   can_spend        — the account also has a payment method, so an activated campaign
+    #                      will actually deliver. None = not checked yet.
+    now = datetime.datetime.utcnow()
+    expiry = conn.token_expiry if conn else None
+    days_left = int((expiry - now).total_seconds() // 86400) if expiry else None
+    auth_error = getattr(conn, "auth_error", None) if conn else None
+    # Meta cannot extend a long-lived token — re-exchanging one returns a new string with
+    # the SAME expiry (verified against the live Graph API) — so the only renewal is the
+    # user connecting again. Say so a week ahead, before the connection silently dies.
+    expired = days_left is not None and days_left < 0
+    needs_reconnect = bool(conn and conn.access_token and (expired or auth_error))
+    has_token = bool(conn and conn.access_token)
+    live = has_token and not needs_reconnect
+    funding_ok = getattr(conn, "funding_ok", None) if conn else None
     return {
         "configured": meta.is_configured(),
-        "connected": bool(conn and conn.access_token),
+        "connected": live,
         "name": conn.connected_name if conn else None,
         "ad_account_id": conn.ad_account_id if conn else None,
         "page_id": conn.page_id if conn else None,
         "page_name": conn.page_name if conn else None,
         "default_link_url": conn.default_link_url if conn else None,
-        "ready_to_publish": bool(conn and conn.access_token and conn.ad_account_id and conn.page_id),
+        "ready_to_publish": bool(live and conn.ad_account_id and conn.page_id),
+        "can_spend": (bool(funding_ok) if funding_ok is not None else None) if live else False,
+        "token_expires_in_days": days_left,
+        "token_expiring_soon": bool(live and days_left is not None and days_left <= 7),
+        "needs_reconnect": needs_reconnect,
+        "auth_error": auth_error or ("Your Meta connection has expired. Reconnect Meta Ads." if expired else None),
     }
 
 
 def _gads_status_payload(conn) -> dict:
+    # `connected` used to be "a refresh token exists", so a connection Google had revoked
+    # (invalid_grant) still showed Connected while every call failed. auth_error is recorded
+    # by google_ads._ensure_access_token the first time Google refuses the token.
+    auth_error = getattr(conn, "auth_error", None) if conn else None
+    has_token = bool(conn and conn.refresh_token)
     return {
         "configured": gads.is_configured(),
-        "connected": bool(conn and conn.refresh_token),
+        "connected": bool(has_token and not auth_error),
+        "needs_reconnect": bool(has_token and auth_error),
+        "auth_error": auth_error,
         "email": conn.connected_email if conn else None,
         "customer_id": conn.customer_id if conn else None,
         "login_customer_id": (conn.login_customer_id if conn else None) or None,
@@ -983,10 +1015,38 @@ async def gh_apply_seo_fixes(workspace_id: int, body: ApplySeoFixesBody,
 
 
 # ================================================================ Meta Ads
+async def _refresh_meta_funding(conn, db: Session, force: bool = False) -> None:
+    """Re-check payment / token health against Meta and cache it on the row.
+
+    At most every 6 hours unless forced (account selection forces it), so opening Campaign
+    Manager repeatedly does not hammer the Graph API.
+    """
+    if not (conn and conn.access_token and conn.ad_account_id):
+        return
+    checked = getattr(conn, "funding_checked_at", None)
+    if not force and checked and checked > datetime.datetime.utcnow() - datetime.timedelta(hours=6):
+        return
+    res = await meta.check_funding(conn)
+    if res.get("token_invalid"):
+        conn.auth_error = "Meta rejected this connection's token (expired or revoked). Reconnect Meta Ads."
+    elif res.get("ok") is not None:
+        conn.funding_ok = bool(res["ok"])
+        conn.auth_error = None
+    conn.funding_checked_at = datetime.datetime.utcnow()
+    db.commit()
+
+
 @router.get("/meta/{workspace_id}/status")
-def meta_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def meta_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    """Single-connector status. Unlike the batched status, this one is allowed a (cached,
+    rate-limited) live check, because it is what Campaign Manager reads before publishing."""
     _require_workspace(workspace_id, db, current_user)
-    return _meta_status_payload(_get_meta(workspace_id, db))
+    conn = _get_meta(workspace_id, db)
+    try:
+        await _refresh_meta_funding(conn, db)
+    except Exception as e:      # a failed check must never break the status read
+        print(f"[meta] funding check failed for ws {workspace_id}: {e}")
+    return _meta_status_payload(conn)
 
 
 @router.get("/meta/{workspace_id}/authorize")
@@ -1045,14 +1105,22 @@ async def meta_ad_accounts(workspace_id: int, db: Session = Depends(database.get
 
 
 @router.post("/meta/{workspace_id}/account")
-def meta_select_account(workspace_id: int, body: MetaAccountSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def meta_select_account(workspace_id: int, body: MetaAccountSelect, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     _require_workspace(workspace_id, db, current_user)
     conn = _get_meta(workspace_id, db)
     if not conn or not conn.access_token:
         raise HTTPException(status_code=400, detail="Meta is not connected for this workspace.")
     conn.ad_account_id = body.ad_account_id.replace("act_", "")
+    # A different account has a different billing state, so the cached answer is stale.
+    conn.funding_ok = None
+    conn.funding_checked_at = None
     db.commit()
-    return {"status": "success", "ad_account_id": conn.ad_account_id}
+    try:
+        await _refresh_meta_funding(conn, db, force=True)
+    except Exception as e:
+        print(f"[meta] funding check after account select failed for ws {workspace_id}: {e}")
+    return {"status": "success", "ad_account_id": conn.ad_account_id,
+            "can_spend": _meta_status_payload(conn)["can_spend"]}
 
 
 @router.post("/meta/{workspace_id}/disconnect")
@@ -1331,7 +1399,7 @@ class GoogleAdsCampaignBudgetBody(BaseModel):
 
 
 @router.get("/google-ads/{workspace_id}/status")
-def gads_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+async def gads_status(workspace_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     # login_customer_id is the manager (MCC) this connection must act through, and is NULL
     # in the normal case where the connected Google account reaches the customer directly.
     # It is surfaced so the UI can warn when the selected customer IS that manager:
@@ -1339,7 +1407,20 @@ def gads_status(workspace_id: int, db: Session = Depends(database.get_db), curre
     # fails at publish time — and listAccessibleCustomers returns the manager alongside
     # the real ad accounts, so it is an easy one to pick by mistake.
     _require_workspace(workspace_id, db, current_user)
-    return _gads_status_payload(_get_gads(workspace_id, db))
+    conn = _get_gads(workspace_id, db)
+    # Live token check, but only when a refresh would be needed anyway (the access token is
+    # missing or expired — at most about once an hour). That is exactly the moment a revoked
+    # grant surfaces, and _ensure_access_token records it; the batched status then reports
+    # it with no network call of its own.
+    if conn and conn.refresh_token and not (
+            conn.access_token and conn.token_expiry
+            and conn.token_expiry > datetime.datetime.utcnow() + datetime.timedelta(minutes=2)):
+        try:
+            await gads._ensure_access_token(conn)
+            db.commit()
+        except Exception as e:
+            print(f"[google_ads] token check failed for ws {workspace_id}: {e}")
+    return _gads_status_payload(conn)
 
 
 @router.get("/google-ads/{workspace_id}/authorize")
@@ -1393,8 +1474,16 @@ def _gads_ready(workspace_id: int, db: Session, need_account: bool = True) -> "m
     conn = _get_gads(workspace_id, db)
     if not conn or not conn.refresh_token:
         raise HTTPException(status_code=400, detail="Google Ads is not connected for this workspace.")
+    if getattr(conn, "auth_error", None):
+        # Fail with the reason and the fix, instead of a 502 carrying Google's raw
+        # invalid_grant JSON after the user has already filled in a whole campaign.
+        raise HTTPException(status_code=401, detail=conn.auth_error)
     if need_account and not conn.customer_id:
         raise HTTPException(status_code=400, detail="Select a Google Ads customer account first.")
+    if need_account and conn.customer_is_manager:
+        raise HTTPException(status_code=400, detail=(
+            "The selected Google Ads account is a manager (MCC) account, and campaigns can't be "
+            "created inside one. Select a client ad account under it."))
     return conn
 
 
@@ -1429,6 +1518,20 @@ async def gads_select_account(workspace_id: int, body: GoogleAdsAccountSelect, d
         pass   # listing failed; assume direct rather than forcing a manager hop
     direct = {str(a.get("customer_id") or "").replace("-", "") for a in accounts}
     picked = next((a for a in accounts if str(a.get("customer_id") or "").replace("-", "") == chosen), None)
+
+    # Refuse a manager (MCC) account outright. Google does not allow campaigns inside one,
+    # so storing it only postpones the failure to publish time — after the user has built
+    # the whole campaign. listAccessibleCustomers returns the manager alongside its client
+    # accounts, which is why it is so easy to pick by mistake. When listing failed we cannot
+    # tell, so the selection is allowed and _gads_ready's check covers publish.
+    if picked and picked.get("manager"):
+        clients = [str(a.get("customer_id")) for a in accounts
+                   if not a.get("manager") and str(a.get("customer_id") or "").replace("-", "") != chosen]
+        raise HTTPException(status_code=400, detail=(
+            f"{chosen} is a Google Ads manager (MCC) account, and campaigns can't be created "
+            "inside a manager account. Choose one of the client ad accounts under it"
+            + (f" ({', '.join(clients[:5])})" if clients else
+               ", or create a client account under this manager in Google Ads first") + "."))
 
     conn.customer_id = chosen
     conn.login_customer_id = None if (not direct or chosen in direct) else (gads.LOGIN_CUSTOMER_ID or "").replace("-", "") or None

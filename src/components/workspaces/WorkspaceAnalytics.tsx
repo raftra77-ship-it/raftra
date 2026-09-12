@@ -54,11 +54,22 @@ interface GscOverview {
   timeseries?: { key: string; clicks: number; impressions: number }[];
 }
 
-/** Combined SEO + GEO audit read model from /seo/audit-report. */
+/** Combined SEO + GEO audit read model from /seo/audit-report.
+ *  The scores are NOT top-level fields. The endpoint returns each pipeline's latest audit
+ *  row, and the score sits inside it at `geo.audit.geo.score_100` (and the SEO equivalent).
+ *  An earlier version of this interface declared `geo_score`/`seo_score` — keys the
+ *  endpoint never sends — so the GEO tile read undefined and told every workspace that no
+ *  GEO audit had been run, including ones that had one. */
+interface AuditRow {
+  created_at?: string | null;
+  audit?: { geo?: { score_100?: number }; seo?: { score_100?: number } } | null;
+}
 interface AuditReport {
-  geo_score?: number | null;
-  seo_score?: number | null;
+  has_audit?: boolean;
   generated_at?: string | null;
+  overall_health?: number | null;
+  seo?: AuditRow | null;
+  geo?: AuditRow | null;
 }
 
 export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
@@ -152,7 +163,9 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
 
   const gscTotals = gscOverview?.totals;
   const organicConnected = Boolean(gscOverview);
-  const geoScore = auditReport?.geo_score ?? null;
+  // See the AuditReport interface: the score is nested in the latest GEO audit row.
+  const geoScoreRaw = auditReport?.geo?.audit?.geo?.score_100;
+  const geoScore = typeof geoScoreRaw === 'number' ? Math.round(geoScoreRaw) : null;
 
 /* Categorical series colours, assigned in this fixed order and never cycled.
    What this replaces was `['#8884d8','#82ca9d','#ffc658','#ff8042','#7C75FF','#00E676']` —

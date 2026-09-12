@@ -190,6 +190,17 @@ export const CampaignService = {
     req<{ status: string; campaign_id: number; version: number }>('POST', `${ws(workspaceId)}/campaigns/${id}/duplicate`),
 
   analytics: (workspaceId: number, id: number) => req<Analytics>('GET', `${ws(workspaceId)}/campaigns/${id}/analytics`),
+
+  // Start or pause a campaign that went out for real. Publishing creates everything paused;
+  // this is the switch. The server refuses demo publishes (nothing exists to start) and a
+  // Meta start with no payment method (it would never deliver), and reports each platform
+  // separately so a partial success is visible.
+  setDelivery: (workspaceId: number, id: number, action: 'start' | 'pause') =>
+    req<{
+      status: string; action: string;
+      results: Record<string, { ok: boolean; status?: string; error?: string; effective_status?: string; note?: string }>;
+      delivery: Record<string, { status: string; at: string }>;
+    }>('POST', `${ws(workspaceId)}/campaigns/${id}/delivery`, { action }),
 };
 
 export default CampaignService;
