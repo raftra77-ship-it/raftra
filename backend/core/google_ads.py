@@ -982,3 +982,46 @@ async def fetch_insights(conn, date_range: str = "LAST_7_DAYS") -> dict:
             "roas": round(conv_value / cost, 2) if cost > 0 else 0.0,
         }
     return out
+
+
+async def fetch_keyword_performance(conn, campaign_id: str, date_range: str = "LAST_7_DAYS",
+                                    limit: int = 8) -> list:
+    """Which search keywords actually earned the clicks, for one campaign.
+
+    Keywords are a Google Search concept with no Meta equivalent, so this is the only real
+    source for the analytics view's keyword panel — which previously listed the campaign's
+    *planned* keywords beside invented click counts, i.e. the terms we asked Google to bid on
+    dressed up as the terms that performed.
+
+    Ordered by clicks and capped, because the panel shows a short leaderboard rather than the
+    whole account. Callers treat an empty list as "no keyword data" and hide the panel: a
+    campaign that has never delivered genuinely has none.
+    """
+    if not conn.customer_id:
+        raise RuntimeError("No Google Ads customer account selected.")
+    query = (
+        "SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, "
+        "metrics.clicks, metrics.impressions, metrics.ctr, metrics.conversions, "
+        "metrics.cost_micros "
+        f"FROM keyword_view WHERE segments.date DURING {date_range} "
+        f"AND campaign.id = {int(campaign_id)} "
+        f"ORDER BY metrics.clicks DESC LIMIT {int(limit)}"
+    )
+    out = []
+    for row in await _search(conn, conn.customer_id, query):
+        kw = ((row.get("adGroupCriterion") or {}).get("keyword") or {})
+        m = row.get("metrics", {})
+        text = kw.get("text")
+        if not text:
+            continue
+        out.append({
+            "keyword": text,
+            "match_type": kw.get("matchType"),
+            "clicks": int(m.get("clicks", 0) or 0),
+            "impressions": int(m.get("impressions", 0) or 0),
+            # Google returns ctr as a ratio; the panel and Meta's numbers are both percentages.
+            "ctr": round(float(m.get("ctr", 0) or 0) * 100, 2),
+            "conversions": float(m.get("conversions", 0) or 0),
+            "cost": _micros_to_major(m.get("costMicros")) or 0.0,
+        })
+    return out

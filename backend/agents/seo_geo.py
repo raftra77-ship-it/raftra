@@ -16,7 +16,6 @@ class SEOState(TypedDict):
     site_signals: dict
     audit: dict
 
-    # Placeholder fields for future LLM integration
     crawl_data: dict
     keyword_clusters: dict
     content_gaps: list
@@ -25,6 +24,21 @@ class SEOState(TypedDict):
     schema_markup: dict
     report: str
     content_metrics: dict
+
+    # Findings from the nodes that now measure something. These MUST be declared here: a
+    # LangGraph state is a TypedDict and only declared keys survive a node returning — a node
+    # can set state["geo_citations"], read it back within its own body, and have it silently
+    # dropped from the result the graph hands back. That is exactly what happened on the first
+    # end-to-end run: every probe logged a correct finding and the persisted audit got none of
+    # them, because the keys were not declared here.
+    connections: dict           # gathered Search Console / GA4 / site-connector data
+    ga4: dict
+    index_status: dict          # Google's own verdict on the audited URL
+    content_signals: dict       # E-E-A-T + readability
+    authority_signals: dict     # about / contact / docs / blog / profiles
+    geo_citations: dict          # what an answer engine would cite
+    geo_prompt_visibility: dict  # named in N of M buyer-intent answers
+    geo_optimizations: dict      # paste-ready copy written against the findings
 
 
 # Real node-name trails for the Running-state progress checklist. Must match the
@@ -448,26 +462,28 @@ async def keyword_agent_node(state: SEOState) -> SEOState:
     # Search Console when connected - genuine search demand (clicks/impressions/position),
     # not a guess derived from the page's own wording. Degrades honestly when not connected
     # rather than fabricating volumes.
-    real_keywords = {
-        "source": "none", "queries": [],
-        "message": "Connect Google Search Console to see the real queries driving traffic to this page.",
-    }
-    try:
-        from database import SessionLocal
-        import models
-        from core import search_console
-        with SessionLocal() as db:
-            conn = db.query(models.SearchConsoleConnection).filter(
-                models.SearchConsoleConnection.workspace_id == state["workspace_id"]
-            ).first()
-            if conn and conn.refresh_token and conn.site_url:
-                data = await asyncio.to_thread(search_console.fetch_search_analytics, conn, 28, 15)
-                real_keywords = {"source": "search_console", "queries": data["rows"],
-                                 "range_days": data["range_days"], "message": None}
-                # Persist any refreshed access token from credentials_from_connection().
-                db.commit()
-    except Exception as e:
-        real_keywords = {"source": "error", "queries": [], "message": f"Could not load Search Console data: {e}"}
+    # Read from the single gather done before the graph ran, rather than opening a second
+    # Search Console session here. This node used to make its own call while the pipeline's
+    # other GSC needs (index status, page performance) went unmet entirely — one round of
+    # OAuth refresh and one set of API calls now serves every node that needs them.
+    sc = (state.get("connections") or {}).get("search_console") or {}
+    if sc.get("connected"):
+        real_keywords = {"source": "search_console", "queries": sc.get("queries") or [],
+                         "range_days": sc.get("range_days"), "site_url": sc.get("site_url"),
+                         "totals": sc.get("totals") or {}, "message": None}
+        if sc.get("errors"):
+            real_keywords["message"] = "; ".join(sc["errors"])
+    else:
+        real_keywords = {"source": "none", "queries": [],
+                         "message": sc.get("message") or
+                         "Connect Google Search Console to see the real queries driving traffic to this page."}
+
+    # GA4 sits on the same Google grant and was never read by this pipeline at all. Search
+    # Console says what people searched to arrive; GA4 says what happened once they did.
+    ga = (state.get("connections") or {}).get("ga4") or {}
+    state["ga4"] = ga
+    if state.get("audit") is not None and isinstance(state.get("audit"), dict):
+        state["audit"]["ga4"] = ga
 
     state["keyword_clusters"]["real_search_queries"] = real_keywords
     if state.get("audit"):
@@ -486,12 +502,57 @@ async def keyword_agent_node(state: SEOState) -> SEOState:
     return state
 
 async def content_strategy_node(state: SEOState) -> SEOState:
+    """Content Review — the E-E-A-T and readability facts, plus how this page really performs.
+
+    This node logged "Creating On-Page Optimization Checklist and evaluating E-E-A-T signals"
+    and then slept for 1.5 seconds. It now evaluates them: who wrote the page, when it was
+    published or updated, what it cites, how long its sentences run — and, when Search Console
+    is connected, whether Google has actually indexed it and what it earns.
+
+    The index check matters more than everything else here combined. Every on-page
+    recommendation in this audit is worthless while the URL sits outside Google's index, and
+    that fact is invisible in the HTML no matter how carefully it is parsed.
+    """
     state["current_node"] = "Content Strategy Agent"
-    msg = "Creating On-Page Optimization Checklist and evaluating E-E-A-T signals..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Content Strategy Agent", "running")
-    await asyncio.sleep(1.5)
+    crawl = state.get("crawl_data", {}) or {}
+
+    from core.seo_signals import content_signals
+    signals = content_signals(crawl.get("html", "") or "", crawl.get("markdown", "") or "")
+    state["content_signals"] = signals
+
+    parts = []
+    parts.append(f"author: {signals['author']} ({signals['author_source']})" if signals["author"]
+                 else "no author byline (E-E-A-T: unattributed content)")
+    parts.append(f"published {signals['published']}" if signals["published"]
+                 else "no published/updated date")
+    parts.append(f"{len(signals['authoritative_citations'])} authoritative citations"
+                 if signals["authoritative_citations"] else "no citations to authoritative sources")
+    if signals["sentences"]:
+        parts.append(f"avg sentence {signals['avg_sentence_words']} words, "
+                     f"{int(signals['long_sentence_ratio'] * 100)}% over 25 words")
+
+    # Search Console: real demand and real index state for this exact URL.
+    sc = (state.get("connections") or {}).get("search_console") or {}
+    if sc.get("connected"):
+        idx = sc.get("index_status") or {}
+        if idx.get("coverage_state"):
+            state["index_status"] = idx
+            parts.append(f"Google index: {idx.get('coverage_state')}"
+                         + (f" (verdict {idx.get('verdict')})" if idx.get("verdict") else ""))
+        page = sc.get("this_page")
+        if page:
+            parts.append(f"this URL earns {page.get('clicks', 0)} clicks / "
+                         f"{page.get('impressions', 0)} impressions, avg position "
+                         f"{page.get('position', 0)} (28d)")
+        elif sc.get("pages"):
+            parts.append("this URL does not appear in the site's top Search Console pages (28d)")
+    else:
+        parts.append(sc.get("message") or "Search Console not connected")
+
+    msg = "Content review: " + "; ".join(parts)
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Content Strategy Agent", "completed")
     _seo_stage_done(state, "Content Strategy Agent")
     return state
@@ -510,12 +571,42 @@ async def internal_linking_node(state: SEOState) -> SEOState:
     return state
 
 async def backlink_agent_node(state: SEOState) -> SEOState:
+    """Backlink Check — and an honest account of what cannot be checked.
+
+    This is the one node whose name the product cannot currently deliver on. Inbound links
+    require a crawler with its own index (Ahrefs, Majestic, Moz, Semrush); the Search Console
+    API exposes no links endpoint at all — Google shows that report in its UI only — so no
+    combination of connected accounts here can produce a referring-domain count.
+
+    It previously claimed to be "Generating Digital PR targets and content-led link building
+    strategies" while sleeping. It now reports the outbound half, which IS measured from the
+    crawl, and names the missing provider instead of implying the inbound half was checked —
+    the same contract keyword_agent_node uses when Search Console is absent.
+    """
     state["current_node"] = "Backlink Agent"
-    msg = "Generating Digital PR targets and content-led link building strategies..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Backlink Agent", "running")
-    await asyncio.sleep(1.5)
+    signals = state.get("content_signals") or {}
+    cites = signals.get("authoritative_citations") or []
+    domains = signals.get("outbound_domains") or []
+
+    state["backlink_strategy"] = {
+        "inbound": {
+            "source": "none",
+            "message": ("Referring domains need a backlink data provider (Ahrefs, Majestic, "
+                        "Moz or Semrush). The Search Console API does not expose links, so "
+                        "no inbound link data is included in this audit."),
+        },
+        "outbound": {
+            "source": "crawl",
+            "domains": domains,
+            "authoritative": cites,
+        },
+    }
+    msg = (f"Outbound links: {len(domains)} distinct domains, "
+           f"{len(cites)} authoritative ({', '.join(cites[:3]) or 'none'}). "
+           f"Inbound links NOT measured — no backlink provider is connected.")
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Backlink Agent", "completed")
     _seo_stage_done(state, "Backlink Agent")
     return state
@@ -621,22 +712,58 @@ async def publishing_agent_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Publishing Agent", "running")
-    # No site connector is wired up yet, so we must NOT claim we deployed anything.
-    # Auto-apply happens once a website connector (GitHub/WordPress/Shopify) is added.
-    msg = "Deployment plan ready. Connect your site (GitHub/WordPress/Shopify) to auto-apply these changes — nothing was published automatically."
+    # Nothing is ever published from here — the plan is prepared and a human applies it.
+    # What changed is that whether a connector EXISTS is now looked up rather than asserted:
+    # this told every workspace "no site connector is wired up yet", including the ones that
+    # had connected GitHub, WordPress or Shopify and were being told to go connect it again.
+    site = (state.get("connections") or {}).get("site") or {}
+    if site.get("connected"):
+        msg = (f"Deployment plan ready. {site.get('label')} is connected ({site.get('target')}), "
+               f"so these changes can be applied from the approval step — nothing was published "
+               f"automatically.")
+    else:
+        msg = ("Deployment plan ready. " + (site.get("message") or
+               "Connect GitHub, WordPress or Shopify to auto-apply these changes.")
+               + " Nothing was published automatically.")
+    state["logs"].append(msg)
     await manager.broadcast_agent_log("SEO Agent", msg, "completed")
     await manager.broadcast_node_update("seo_geo", "Publishing Agent", "completed")
     _seo_stage_done(state, "Publishing Agent")
     return state
 
 async def reporting_agent_node(state: SEOState) -> SEOState:
+    """Final summary of what was measured, and on what evidence.
+
+    Replaces a 2-second sleep followed by "Awaiting Answer Engine indexing. Post-publish
+    metrics generated." — a sentence describing two things that had not happened: nothing was
+    published, so there were no post-publish metrics, and no answer engine had been asked to
+    index anything. It now closes the run with the real score, the real issue counts and the
+    list of data sources the audit was actually able to read.
+    """
     state["current_node"] = "Reporting Agent"
-    msg = "Compiling Technical SEO Audit, Keyword Strategy, and Link Authority plan into final deliverable..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Reporting Agent", "running")
-    await asyncio.sleep(2.0)
-    await manager.broadcast_agent_log("SEO Agent", "Awaiting Answer Engine indexing. Post-publish metrics generated.", "completed")
+
+    audit = state.get("audit") or {}
+    section = audit.get("seo") or {}
+    issues = audit.get("priority_issues") or []
+    sev = {}
+    for i in issues:
+        sev[i.get("severity")] = sev.get(i.get("severity"), 0) + 1
+    breakdown = ", ".join(f"{n} {s.lower()}" for s, n in
+                          sorted(sev.items(), key=lambda kv: {"Critical": 0, "High": 1,
+                                                              "Medium": 2, "Low": 3}.get(kv[0], 4)))
+    head = (f"SEO report ready: {section.get('score_100', state.get('audit_score', 0))}/100 "
+            f"from {len(section.get('categories') or [])} measured categories"
+            + (f"; {len(issues)} prioritised issues ({breakdown})" if issues else "; no issues found"))
+    if section.get("not_verified"):
+        head += f". Not verified: {', '.join(section['not_verified'])}"
+    state["logs"].append(head)
+    await manager.broadcast_agent_log("SEO Agent", head, "running")
+
+    from core.seo_connections import summary_line
+    sources = summary_line(state.get("connections") or {})
+    state["logs"].append(sources)
+    await manager.broadcast_agent_log("SEO Agent", sources, "completed")
     await manager.broadcast_node_update("seo_geo", "Reporting Agent", "completed")
     _seo_stage_done(state, "Reporting Agent")
 
@@ -693,6 +820,31 @@ def _persist_audit(workspace_id: int, pipeline: str, target_url: str, result: di
         audit = result.get("audit")
         if isinstance(audit, dict) and ("seo" in audit or "geo" in audit):
             kd["audit"] = audit
+
+        # The findings the pipeline nodes measured, kept beside the score. Without this they
+        # existed only inside the report markdown, which means nothing can chart them, compare
+        # them month over month, or re-render them without parsing prose back into numbers.
+        for key in ("content_signals", "authority_signals", "geo_citations",
+                    "geo_prompt_visibility", "schema_markup", "index_status"):
+            value = result.get(key)
+            if value:
+                kd[key] = value
+        # Which integrations this run could actually read, minus their payloads — a later
+        # comparison needs to know whether a metric moved or a connection simply dropped.
+        conns = result.get("connections") or {}
+        if conns:
+            kd["connections"] = {
+                name: {"connected": bool((conns.get(name) or {}).get("connected")),
+                       "message": (conns.get(name) or {}).get("message")}
+                for name in ("search_console", "ga4", "site")
+            }
+            sc = conns.get("search_console") or {}
+            if sc.get("connected"):
+                kd["connections"]["search_console"]["totals"] = sc.get("totals") or {}
+                kd["connections"]["search_console"]["site_url"] = sc.get("site_url")
+            ga = conns.get("ga4") or {}
+            if ga.get("connected"):
+                kd["connections"]["ga4"]["totals"] = ((ga.get("traffic") or {}).get("totals") or {})
         db = SessionLocal()
         db.add(models.SEOAudit(
             workspace_id=workspace_id,
@@ -729,6 +881,17 @@ async def run_seo_pipeline(workspace_id: int, target_url: str):
     import datetime as _dt
     start_time = _dt.datetime.utcnow()
     record_agent_task(workspace_id, "SEO", "RUNNING", f"Auditing {target_url}", reset=True, target_url=target_url)
+
+    # Read every connected account once, before the graph starts. Gathering here rather than
+    # inside the nodes means one OAuth refresh per run instead of one per node, and it means
+    # a node can report "Search Console says this page is not indexed" without each node
+    # having to know how to talk to Google.
+    from core.seo_connections import gather, summary_line
+    initial_state["connections"] = await gather(workspace_id, target_url)
+    intro = summary_line(initial_state["connections"])
+    initial_state["logs"].append(intro)
+    await manager.broadcast_agent_log("SEO Agent", intro, "running")
+
     try:
         result = await seo_graph.ainvoke(initial_state)
         duration = (_dt.datetime.utcnow() - start_time).total_seconds()
@@ -794,24 +957,106 @@ async def geo_entity_agent_node(state: SEOState) -> SEOState:
     _geo_stage_done(state, "Entity Agent")
     return state
 
+def _brand_label(state: SEOState) -> str:
+    """The brand's own name, for deciding whether an answer actually named it.
+
+    The workspace name is used only when it is actually this site's name, which takes two
+    checks. It must not be a placeholder — the default "<user>'s Workspace" would otherwise be
+    searched for in model answers, where it can never appear, dragging every visibility score
+    to zero. And the workspace's own company_url must match the domain being audited: a
+    workspace called "DSA" auditing ambraneindia.com is a real case from testing, and passing
+    "DSA" as the brand meant the probes asked about one company and scored the answers for
+    another. The domain is the reliable identifier, so it is always kept either way.
+    """
+    from urllib.parse import urlparse as _u
+    host = (_u(state["target_url"]).netloc or "").replace("www.", "").lower()
+    try:
+        from database import SessionLocal
+        import models
+        with SessionLocal() as db:
+            ws = (db.query(models.Workspace)
+                    .filter(models.Workspace.id == state["workspace_id"]).first())
+            name = (getattr(ws, "name", "") or "").strip()
+            own = (_u(getattr(ws, "company_url", "") or "").netloc or "").replace("www.", "").lower()
+            if (name and len(name) > 2 and "workspace" not in name.lower()
+                    and own and host and (own == host or own.endswith("." + host)
+                                          or host.endswith("." + own))):
+                return name
+    except Exception:
+        pass
+    return host
+
+
 async def geo_citation_agent_node(state: SEOState) -> SEOState:
+    """AI Mentions — what an answer engine would cite as a source about this brand.
+
+    The claim this node used to log was "Cross-referencing brand facts against Perplexity and
+    ChatGPT source datasets", which described an integration that does not exist, during a
+    one-second sleep. There is no Perplexity or OpenAI credential in this product, so the
+    honest version asks the model it does have, and every result says which model answered.
+    """
     state["current_node"] = "Citation Agent"
-    msg = "Cross-referencing brand facts against Perplexity and ChatGPT source datasets..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("GEO Agent", msg, "running")
     await manager.broadcast_node_update("geo_pipeline", "Citation Agent", "running")
-    await asyncio.sleep(1.0)
+    from core.geo_probes import probe_citations
+
+    brand = _brand_label(state)
+    result = await probe_citations(state["target_url"], brand)
+    state["geo_citations"] = result
+
+    if not result["ok"]:
+        msg = f"Citation probe could not run: {result.get('error')}"
+    elif not result["knows_brand"]:
+        msg = (f"{result['model']} has no knowledge of this brand and could name no sources "
+               f"for it — there is nothing for an answer engine to cite yet.")
+    else:
+        msg = (f"{result['model']} would cite {len(result['sources'])} source(s): "
+               f"{', '.join(result['sources'][:4]) or 'none named'}. "
+               + ("The brand's own site is among them."
+                  if result["cites_own_site"] else
+                  "The brand's own site is NOT among them — answers about it would be sourced "
+                  "from third parties."))
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "Citation Agent", "completed")
     _geo_stage_done(state, "Citation Agent")
     return state
 
+
 async def geo_prompt_visibility_agent_node(state: SEOState) -> SEOState:
+    """AI Visibility — ask the questions a buyer would ask, count how often the brand appears.
+
+    The previous log line, "Auditing top 50 LLM prompt structures that intersect with target
+    market", was emitted during a one-second sleep in which no prompt was written and no model
+    was called. This runs a real probe: buyer-intent prompts for this category, answered in
+    one pass, checked for whether the brand is named. That percentage is the closest thing GEO
+    has to a rank, and it is now measured rather than described.
+
+    Five prompts, not fifty — each one costs a model call and a user is waiting on this. The
+    number is reported alongside the result so nobody reads 40% as a bigger sample than it is.
+    """
     state["current_node"] = "Prompt Visibility Agent"
-    msg = "Auditing top 50 LLM prompt structures that intersect with target market..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("GEO Agent", msg, "running")
     await manager.broadcast_node_update("geo_pipeline", "Prompt Visibility Agent", "running")
-    await asyncio.sleep(1.0)
+    from core.geo_probes import probe_prompt_visibility
+
+    # Seed the category from what the brand already ranks for in Search Console where it is
+    # connected: real queries from real people beat a category inferred from the domain.
+    sc = (state.get("connections") or {}).get("search_console") or {}
+    queries = [q.get("key") for q in (sc.get("queries") or [])[:5] if q.get("key")]
+    category = (", ".join(queries) if queries else "")
+    brand = _brand_label(state)
+
+    result = await probe_prompt_visibility(state["target_url"], brand, category)
+    state["geo_prompt_visibility"] = result
+
+    if not result["ok"]:
+        msg = f"Prompt visibility probe could not run: {result.get('error')}"
+    else:
+        src = (f" Prompts were derived from this site's real Search Console queries ({category})."
+               if queries else " Search Console is not connected, so prompts were derived from the site itself.")
+        msg = (f"AI visibility: named in {result['mentioned_in']} of {result['total']} "
+               f"buyer-intent answers ({result['visibility_pct']}%) from {result['model']}." + src)
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "Prompt Visibility Agent", "completed")
     _geo_stage_done(state, "Prompt Visibility Agent")
     return state
@@ -828,15 +1073,42 @@ async def geo_llm_ranking_agent_node(state: SEOState) -> SEOState:
             prompt=f"What do you know about the brand/company at {url}? "
                    f"If you don't recognise it, say exactly 'NO RECALL'. Otherwise summarise what you know in 2 sentences.",
             system_prompt="You are an AI answer engine. Answer only from your own training knowledge - do not guess or fabricate.",
-            max_output_tokens=200,
+            # The max_output_tokens=200 that was here made this probe unreliable in a way that
+            # read as a finding. gemini-2.5-flash spends that budget on thinking tokens before
+            # emitting any text, so the reply came back truncated or empty — and an empty reply
+            # contains no "NO RECALL", so `recalled` evaluated True and the audit reported that
+            # the model recognised a brand it had said nothing about. Two sentences need no cap.
         )
         probe = (probe or "").strip()
     except Exception as e:
         probe = f"(recall probe failed: {e})"
-    recalled = "NO RECALL" not in probe.upper() and "recall probe failed" not in probe
-    state["content_metrics"] = {**(state.get("content_metrics") or {}), "llm_recall": probe, "brand_recognised": recalled}
-    msg = ("LLM recall probe: model recognises the brand." if recalled
-           else "LLM recall probe: model does NOT recall this brand (zero unprompted visibility).")
+    # An empty reply is not recall. Without the `probe.strip()` term, a blank or blocked
+    # response contains no "NO RECALL" and so counted as the model recognising the brand —
+    # the audit's most quotable finding, asserted from nothing.
+    recalled = bool(probe.strip()) and "NO RECALL" not in probe.upper() and "recall probe failed" not in probe
+
+    # Reconcile with the citation probe rather than contradicting it. These are two differently
+    # framed questions to a nondeterministic model, and a real run produced "does NOT recall
+    # this brand" in the same report as "would cite ambraneindia.com, en.wikipedia.org,
+    # timesofindia.indiatimes.com, gadgets360.com". Naming four genuine third-party sources is
+    # recall, whatever the other prompt returned, so that evidence wins and the report says on
+    # what basis — rather than printing both claims and leaving the reader to pick.
+    cit = state.get("geo_citations") or {}
+    citation_evidence = bool(cit.get("ok") and cit.get("knows_brand") and cit.get("sources"))
+    if not recalled and citation_evidence:
+        msg = (f"LLM recall probe: the direct question returned no recall, but the citation "
+               f"probe named {len(cit['sources'])} real sources for this brand "
+               f"({', '.join(cit['sources'][:3])}), so the model does hold knowledge of it. "
+               f"Treating the brand as recognised on that evidence.")
+        recalled = True
+    elif recalled:
+        msg = "LLM recall probe: model recognises the brand."
+    else:
+        msg = "LLM recall probe: model does NOT recall this brand (zero unprompted visibility)."
+
+    state["content_metrics"] = {**(state.get("content_metrics") or {}),
+                                "llm_recall": probe, "brand_recognised": recalled,
+                                "recall_from_citations": bool(not probe.strip() or citation_evidence)}
     state["logs"].append(msg)
     await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "LLM Ranking Agent", "completed")
@@ -844,34 +1116,134 @@ async def geo_llm_ranking_agent_node(state: SEOState) -> SEOState:
     return state
 
 async def geo_authority_agent_node(state: SEOState) -> SEOState:
+    """Online Presence — the trust surfaces that are actually on the site.
+
+    Was "Identifying digital PR avenues for trusted knowledge base ingestion" over a
+    one-second sleep. Digital PR avenues are not something this product can identify; what it
+    can do is check, from the page it just crawled, which trust surfaces an answer engine
+    looks for are present — about, contact, docs, blog, pricing, policies, official profiles —
+    and name the ones that are missing.
+    """
     state["current_node"] = "Authority Agent"
-    msg = "Identifying digital PR avenues for trusted knowledge base ingestion..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("GEO Agent", msg, "running")
     await manager.broadcast_node_update("geo_pipeline", "Authority Agent", "running")
-    await asyncio.sleep(1.0)
+    from core.seo_signals import authority_signals
+
+    crawl = state.get("crawl_data", {}) or {}
+    sig = authority_signals(crawl.get("html", "") or "", crawl.get("markdown", "") or "",
+                            state["target_url"])
+    state["authority_signals"] = sig
+    present = [k for k, v in sig["found"].items() if v]
+    msg = (f"Trust surfaces present: {', '.join(present) or 'none'}. "
+           f"Missing: {', '.join(sig['missing']) or 'none'}. "
+           f"Official profiles linked: {', '.join(sig['profiles']) or 'none'}.")
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "Authority Agent", "completed")
     _geo_stage_done(state, "Authority Agent")
     return state
 
+
 async def geo_knowledge_graph_agent_node(state: SEOState) -> SEOState:
+    """Knowledge Presence — build the JSON-LD the page is missing.
+
+    The old line promised a "localized RDF graph payload to feed Google's Knowledge Panel",
+    which is not a thing that can be fed to Google and was not being constructed anyway. What
+    genuinely helps is the markup the page lacks: an Organization and WebSite block naming the
+    entity and linking its official profiles, so an answer engine can tell that this site, that
+    LinkedIn page and that GitHub org are one company.
+
+    Assembled deterministically rather than written by the model. Structured data is a factual
+    claim about a business, and markup that disagrees with the page is penalised — so it is
+    built from the site's own URL, the workspace's brand profile and the profile links found
+    during the crawl, and it never recommends adding a type the page already declares.
+    """
     state["current_node"] = "Knowledge Graph Agent"
-    msg = "Constructing localized RDF graph payload to feed Google's Knowledge Panel..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("GEO Agent", msg, "running")
     await manager.broadcast_node_update("geo_pipeline", "Knowledge Graph Agent", "running")
-    await asyncio.sleep(1.0)
+    from core.seo_signals import build_jsonld
+
+    crawl = state.get("crawl_data", {}) or {}
+    profiles = (state.get("authority_signals") or {}).get("profiles") or []
+    description = ""
+    try:
+        from core.brand_context import get_brand_context
+        description = (get_brand_context(state["workspace_id"],
+                                         query="one sentence describing what this company does")
+                       or "")[:300]
+    except Exception:
+        description = ""
+
+    kg = build_jsonld(state["target_url"], _brand_label(state), description,
+                      crawl.get("html", "") or "", profiles)
+    # Populates a state field that has been initialised and then left empty since this
+    # pipeline was written, so the report and the approval step have something to carry.
+    state["schema_markup"] = kg
+
+    if kg["missing_types"]:
+        msg = (f"Knowledge graph: page declares {', '.join(kg['existing_types']) or 'no schema types'}. "
+               f"Generated ready-to-paste JSON-LD for {', '.join(kg['missing_types'])}"
+               + (f", linking {len(profiles)} official profile(s) via sameAs." if profiles else
+                  ". No official profiles were found to link via sameAs — add them to confirm the entity."))
+    else:
+        msg = (f"Knowledge graph: page already declares {', '.join(kg['existing_types'])} — "
+               f"no Organization/WebSite markup needs adding.")
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "Knowledge Graph Agent", "completed")
     _geo_stage_done(state, "Knowledge Graph Agent")
     return state
 
+
 async def geo_optimization_agent_node(state: SEOState) -> SEOState:
+    """AI Recommendations — paste-ready content, written against this audit's measurements.
+
+    The node did claim to be "drafting precise content injections"; it just slept instead. It
+    now drafts them, and the difference that matters is the grounding: the model is handed the
+    measured findings from the four nodes before it — recall, citations, visibility rate,
+    missing trust surfaces, word count — and told to write only about those. A blank prompt
+    returns generic best practice that would read identically for any site on the internet.
+    """
     state["current_node"] = "Optimization Agent"
-    msg = "Drafting precise content injections to improve model generation likelihood..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("GEO Agent", msg, "thinking")
     await manager.broadcast_node_update("geo_pipeline", "Optimization Agent", "running")
-    await asyncio.sleep(1.0)
+    from core.geo_probes import draft_optimizations
+
+    m = state.get("content_metrics") or {}
+    cit = state.get("geo_citations") or {}
+    vis = state.get("geo_prompt_visibility") or {}
+    auth = state.get("authority_signals") or {}
+    kg = state.get("schema_markup") or {}
+    findings = "\n".join(filter(None, [
+        f"- Page length: {m.get('word_count', 0)} words, "
+        f"{m.get('h1_count', 0)} H1 / {m.get('h2_count', 0)} H2.",
+        f"- Model recall: {'recognises the brand' if m.get('brand_recognised') else 'does NOT recall this brand'}.",
+        (f"- Citations: model would cite {len(cit.get('sources') or [])} source(s); "
+         f"own site {'included' if cit.get('cites_own_site') else 'not included'}."
+         if cit.get("ok") else None),
+        (f"- Buyer-intent visibility: named in {vis.get('mentioned_in')} of {vis.get('total')} "
+         f"answers ({vis.get('visibility_pct')}%). Prompts: "
+         f"{'; '.join(vis.get('prompts') or [])[:400]}" if vis.get("ok") else None),
+        (f"- Missing trust surfaces: {', '.join(auth.get('missing') or []) or 'none'}."
+         if auth else None),
+        (f"- Structured data missing: {', '.join(kg.get('missing_types') or []) or 'none'}."
+         if kg else None),
+    ]))
+
+    brand = ""
+    try:
+        from core.brand_context import get_brand_context
+        brand = get_brand_context(state["workspace_id"],
+                                  query=f"AI answer-engine visibility for {state['target_url']}")
+    except Exception:
+        brand = ""
+
+    result = await draft_optimizations(state["target_url"], brand, findings)
+    state["geo_optimizations"] = result
+    state["content_gaps"] = findings.splitlines()
+
+    msg = (f"Drafted paste-ready content for the measured gaps ({len(result['markdown'])} chars)."
+           if result.get("ok") else
+           f"Could not draft content injections: {result.get('error')}")
+    state["logs"].append(msg)
+    await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     await manager.broadcast_node_update("geo_pipeline", "Optimization Agent", "completed")
     _geo_stage_done(state, "Optimization Agent")
     return state
@@ -932,12 +1304,43 @@ async def geo_reporting_agent_node(state: SEOState) -> SEOState:
             f"- Brand recognised by the model: {_m.get('brand_recognised')}\n"
             f"- Model's response: {_m.get('llm_recall')}\n\n"
         )
+
+    # Everything the four probe nodes measured, handed to the narrative so it argues from this
+    # site's numbers instead of restating GEO best practice. Previously only the recall line
+    # reached here, because the other nodes produced nothing to pass on.
+    _vis = state.get("geo_prompt_visibility") or {}
+    _cit = state.get("geo_citations") or {}
+    _auth = state.get("authority_signals") or {}
+    _sc = (state.get("connections") or {}).get("search_console") or {}
+    measured = []
+    if _vis.get("ok"):
+        measured.append(
+            f"MEASURED AI VISIBILITY ({_vis['model']}): the brand was named in "
+            f"{_vis['mentioned_in']} of {_vis['total']} buyer-intent answers "
+            f"({_vis['visibility_pct']}%). Prompts asked: " + "; ".join(_vis.get("prompts") or []))
+    if _cit.get("ok"):
+        measured.append(
+            f"MEASURED CITATIONS: model {'knows' if _cit['knows_brand'] else 'does NOT know'} this "
+            f"brand; sources it would cite: {', '.join(_cit.get('sources') or []) or 'none'}; "
+            f"own site cited: {_cit.get('cites_own_site')}")
+    if _auth:
+        measured.append(f"MEASURED TRUST SURFACES: missing {', '.join(_auth.get('missing') or []) or 'none'}; "
+                        f"profiles linked: {', '.join(_auth.get('profiles') or []) or 'none'}")
+    if _sc.get("connected"):
+        t = _sc.get("totals") or {}
+        measured.append(
+            f"SEARCH CONSOLE (28d, real): {t.get('clicks', 0)} clicks, {t.get('impressions', 0)} "
+            f"impressions, avg position {t.get('position', 0)}. Top queries: "
+            + ", ".join(q.get("key", "") for q in (_sc.get("queries") or [])[:8]))
+    measured_block = ("\n\n".join(measured) + "\n\n") if measured else ""
+
     geo_prompt = (
         f"Target URL / Brand: {state['target_url']}\n\n"
         f"COMPANY CONTEXT (tailor the GEO strategy to this brand, audience and offerings):\n{brand}\n\n"
-        f"{recall_line}"
-        f"Write the GEO / AEO strategy report for this company, using the measured recall finding above "
-        f"as the starting point of the Visibility Audit section."
+        f"{recall_line}{measured_block}"
+        f"Write the GEO / AEO strategy report for this company. Build the Visibility Audit "
+        f"section from the measured findings above — quote those real numbers rather than "
+        f"describing what could be measured — and do not introduce metrics that are not listed."
     )
     try:
         llm = GeminiProvider()
@@ -949,6 +1352,23 @@ async def geo_reporting_agent_node(state: SEOState) -> SEOState:
     # correct regardless of the narrative (same pattern as the SEO pipeline's schema_agent_node).
     scorecard = _scorecard_markdown(state.get("audit") or {})
     state["report"] = (scorecard + "\n\n---\n\n" + mock_geo_report) if scorecard else mock_geo_report
+
+    # The two deliverables the probe nodes produced are appended verbatim, after the narrative.
+    # They are the parts of this report someone can act on without rewriting anything, and
+    # neither survives a round trip through the model — the JSON-LD because a regenerated copy
+    # is no longer guaranteed to match the page, the drafted copy because it is already final.
+    kg = state.get("schema_markup") or {}
+    if kg.get("ready_to_paste"):
+        state["report"] += (
+            f"\n\n---\n\n## Structured data to add\n\n"
+            f"This page declares {', '.join(kg.get('existing_types') or []) or 'no schema types'}. "
+            f"Paste this into the `<head>` to add {', '.join(kg.get('missing_types') or [])}:\n\n"
+            f"```html\n<script type=\"application/ld+json\">\n{kg.get('jsonld')}\n</script>\n```")
+    opt = state.get("geo_optimizations") or {}
+    if opt.get("ok") and opt.get("markdown"):
+        state["report"] += ("\n\n---\n\n## Content to add, written against this audit\n\n"
+                            + opt["markdown"])
+
     import json
     await manager.broadcast(json.dumps({
         "type": "new_geo_report",
@@ -965,18 +1385,40 @@ async def geo_publishing_agent_node(state: SEOState) -> SEOState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("GEO Agent", msg, "running")
     await manager.broadcast_node_update("geo_pipeline", "Publishing Agent", "running")
-    # No CMS connector yet - don't claim a deploy that didn't happen.
-    await manager.broadcast_agent_log("GEO Agent", "GEO structured data plan ready. Connect your site to auto-apply it — nothing was pushed to a CMS automatically.", "completed")
+    # Nothing is pushed from here. Whether a CMS connector exists is looked up rather than
+    # denied outright — the same correction made in the SEO publishing node, which told every
+    # workspace to go and connect the site it had already connected.
+    from core.seo_connections import gather
+    site = (state.get("connections") or await gather(state["workspace_id"],
+                                                     state.get("target_url") or "")).get("site") or {}
+    state["connections"] = state.get("connections") or {"site": site}
+    if site.get("connected"):
+        done = (f"GEO structured data plan ready. {site.get('label')} is connected "
+                f"({site.get('target')}), so it can be applied from here — nothing was pushed "
+                f"automatically.")
+    else:
+        done = ("GEO structured data plan ready. " + (site.get("message") or
+                "Connect GitHub, WordPress or Shopify to auto-apply it.")
+                + " Nothing was pushed to a CMS automatically.")
+    state["logs"].append(done)
+    await manager.broadcast_agent_log("GEO Agent", done, "completed")
     await manager.broadcast_node_update("geo_pipeline", "Publishing Agent", "completed")
     return state
 
 async def geo_reporting_final_agent_node(state: SEOState) -> SEOState:
+    """Closes the approval run. Was a 1-second sleep followed by "GEO strategy active.
+    Awaiting Answer Engine indexing." — asserting both that a strategy had been activated and
+    that an answer engine had been asked to index something, neither of which happened. There
+    is no submission step to an answer engine; models pick a site up on their own schedule."""
     state["current_node"] = "Final Reporting"
-    msg = "Finalizing GEO metrics update..."
+    kg = state.get("schema_markup") or {}
+    msg = ("GEO plan approved and recorded"
+           + (f"; structured data prepared for {', '.join(kg.get('missing_types') or [])}."
+              if kg.get("missing_types") else ".")
+           + " Answer engines re-read a site on their own schedule — there is no index request "
+             "to submit, so changes surface over the following weeks.")
     state["logs"].append(msg)
-    await manager.broadcast_agent_log("GEO Agent", msg, "running")
-    await asyncio.sleep(1.0)
-    await manager.broadcast_agent_log("GEO Agent", "GEO strategy active. Awaiting Answer Engine indexing.", "completed")
+    await manager.broadcast_agent_log("GEO Agent", msg, "completed")
     return state
 
 geo_workflow = StateGraph(SEOState)
@@ -1032,6 +1474,17 @@ async def run_geo_pipeline(workspace_id: int, target_url: str):
     import datetime as _dt
     start_time = _dt.datetime.utcnow()
     record_agent_task(workspace_id, "GEO", "RUNNING", f"GEO audit for {target_url}", reset=True, target_url=target_url)
+
+    # GEO read no connected account at all before this. Search Console is as relevant here as
+    # it is to SEO — the queries a brand already wins are the questions an answer engine is
+    # being asked in its own words, and the Prompt Visibility probe uses them as its starting
+    # point rather than inventing a category from the domain name.
+    from core.seo_connections import gather, summary_line
+    initial_state["connections"] = await gather(workspace_id, target_url)
+    intro = summary_line(initial_state["connections"])
+    initial_state["logs"].append(intro)
+    await manager.broadcast_agent_log("GEO Agent", intro, "running")
+
     try:
         result = await geo_graph.ainvoke(initial_state)
         duration = (_dt.datetime.utcnow() - start_time).total_seconds()

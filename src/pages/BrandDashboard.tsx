@@ -103,6 +103,8 @@ interface CreativeAsset {
   type: string;
   status: 'pending_review' | 'approved' | 'rejected';
   imageUrl?: string;
+  /** Where a click on this creative goes. Set per card by the Carousel Builder. */
+  destinationUrl?: string;
 }
 
 // Real vector-store stats for the Knowledge Base tab — reads /knowledge/stats (actual Qdrant

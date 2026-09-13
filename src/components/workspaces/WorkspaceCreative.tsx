@@ -40,6 +40,8 @@ export interface CreativeAsset {
   imageUrl?: string;
   videoUrl?: string;
   audioUrl?: string;
+  /** Where a click on this creative goes. Set per card by the Carousel Builder. */
+  destinationUrl?: string;
 }
 
 interface WorkspaceCreativeProps {
@@ -440,6 +442,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             cta: (card.ctaAction || '').replace('_', ' '),
             type: `Carousel Ad — card ${i + 1} of ${filled.length}`,
             image_url: card.imageUrl || null,
+            // The per-card click destination. This is the one field the whole Carousel
+            // Builder is built around — "CARD SPECIFIC META DESTINATION LINK" — and it was
+            // not in this payload, so every card the user pointed somewhere was saved
+            // pointing nowhere.
+            destination_url: (card.destinationUrl || '').trim() || null,
             status,
           }),
         });
@@ -451,6 +458,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         onAssetSaved?.({
           id: String(row.id), headline: row.headline, bodyText: row.body_text,
           cta: row.cta, type: row.type, imageUrl: row.image_url, status: row.status,
+          destinationUrl: row.destination_url,
         } as CreativeAsset);
         saved++;
       }
@@ -1007,6 +1015,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setTimeout(() => setCopyToast(null), 3500);
   };
 
+  /* These open a public template gallery in a new tab. They used to toast "Syncing Raftra
+     design assets…" / "Syncing Raftra design frames…", which describes an integration that
+     does not exist — there is no Canva or Figma connector anywhere in this product, nothing
+     is sent, and nothing comes back. The round trip is manual: design there, export, then
+     upload the image onto a card with the button that does exist. */
   const handleOpenCanva = (designType: string) => {
     let url = 'https://www.canva.com/templates/?query=facebook-ad-banner';
     if (designType.toLowerCase().includes('carousel')) {
@@ -1015,7 +1028,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       url = 'https://www.canva.com/templates/?query=instagram-reel-ad';
     }
     window.open(url, '_blank', 'noopener,noreferrer');
-    triggerToast(`Opened ${designType} Canva Ad Templates! Syncing Raftra design assets... 🎨`);
+    triggerToast(`Opened Canva's ${designType} templates in a new tab. Nothing syncs — design there, then upload the image back onto a card. 🎨`);
   };
 
   const handleOpenFigma = (designType: string) => {
@@ -1026,7 +1039,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       url = 'https://www.figma.com/community/file/1187428389230198421';
     }
     window.open(url, '_blank', 'noopener,noreferrer');
-    triggerToast(`Opened ${designType} Figma Community File! Syncing Raftra design frames... ❖`);
+    triggerToast(`Opened a Figma community ${designType} file in a new tab. Nothing syncs — design there, then upload the image back onto a card. ❖`);
   };
 
   // File Upload Handler
@@ -1041,6 +1054,86 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      Vault, an ad it has already generated, and the user's disk; all three are wired here. */
   const carouselFileRef = useRef<HTMLInputElement>(null);
   const [uploadingCardImage, setUploadingCardImage] = useState(false);
+
+  const [downloadingCarousel, setDownloadingCarousel] = useState(false);
+
+  /* "Download Ad" handed over a .json file.
+     ------------------------------------------------------------------
+     The button is labelled Download Ad and produced carousel_ad_bundle.json — a manifest of
+     the text fields, with the images present only as URLs. Nobody can upload that to Meta,
+     open it in a design tool, or send it to a client; the one thing a person wants from a
+     button called Download Ad is the artwork.
+
+     So it downloads the images, named by the card they belong to, and keeps the manifest
+     alongside them for the copy, links and CTAs that are not in any picture.
+
+     Each file is fetched and handed over as a real blob rather than by pointing an <a> at a
+     remote URL: a cross-origin href is opened by the browser instead of saved, and `download`
+     is ignored on it, so half the cards would have silently navigated away instead. Downloads
+     are staggered because Chrome drops same-tick bursts, and a card whose image cannot be
+     fetched is reported by name rather than skipped in silence. */
+  const downloadCarousel = async () => {
+    const withImages = carouselCards.filter(c => (c.imageUrl || '').trim());
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    const save = (blob: Blob, filename: string) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    };
+
+    setDownloadingCarousel(true);
+    const failed: string[] = [];
+    try {
+      for (let i = 0; i < withImages.length; i++) {
+        const card = withImages[i];
+        const src = card.imageUrl.trim();
+        try {
+          const res = await fetch(src);
+          if (!res.ok) throw new Error(String(res.status));
+          const blob = await res.blob();
+          const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').split('+')[0];
+          save(blob, `carousel-${stamp}-card-${carouselCards.indexOf(card) + 1}.${ext}`);
+          await new Promise(r => setTimeout(r, 350));
+        } catch {
+          failed.push(`Card ${carouselCards.indexOf(card) + 1}`);
+        }
+      }
+
+      const manifest = {
+        ad_type: 'CAROUSEL',
+        exported_at: new Date().toISOString(),
+        card_count: carouselCards.length,
+        cards: carouselCards.map((c, i) => ({
+          card: i + 1,
+          headline: c.headline,
+          description: c.description,
+          destination_url: c.destinationUrl,
+          call_to_action: c.ctaAction,
+          image_url: c.imageUrl,
+          image_file: (c.imageUrl || '').trim() ? `carousel-${stamp}-card-${i + 1}` : null,
+        })),
+      };
+      save(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }),
+           `carousel-${stamp}-manifest.json`);
+
+      const n = withImages.length - failed.length;
+      if (!withImages.length) {
+        triggerToast('Downloaded the copy manifest. No card has an image yet, so there was no artwork to include.');
+      } else if (failed.length) {
+        triggerToast(`Downloaded ${n} image${n === 1 ? '' : 's'} + manifest. Could not fetch: ${failed.join(', ')}.`);
+      } else {
+        triggerToast(`Downloaded ${n} card image${n === 1 ? '' : 's'} + manifest.`);
+      }
+    } finally {
+      setDownloadingCarousel(false);
+    }
+  };
 
   const setActiveCardImage = (url: string) => {
     setCarouselCards(prev => prev.map((c, i) => (i === activeCarouselIndex ? { ...c, imageUrl: url } : c)));
@@ -3771,26 +3864,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
               {/* 3. DOWNLOAD AD */}
               <button 
-                onClick={() => {
-                  const payload = {
-                    ad_type: 'CAROUSEL',
-                    cards: carouselCards.map(c => ({
-                      headline: c.headline,
-                      description: c.description,
-                      destination_url: c.destinationUrl,
-                      call_to_action: c.ctaAction,
-                      image_url: c.imageUrl
-                    }))
-                  };
-                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'carousel_ad_bundle.json';
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  triggerToast('Downloading carousel ad asset bundle... ⬇️');
-                }}
+                onClick={() => downloadCarousel()}
+                disabled={downloadingCarousel}
                 className="btn-grad"
                 style={{ padding: '9px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
               >
@@ -3820,6 +3895,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                       ctaAction: 'SHOP_NOW',
                       imageUrl: ''
                     };
+                    // Meta rejects a carousel with more than 10 cards, so stop here rather
+                    // than letting someone build an 11-card ad that fails only at publish.
+                    if (carouselCards.length >= 10) {
+                      triggerToast('A Meta carousel can hold at most 10 cards.');
+                      return;
+                    }
                     setCarouselCards(prev => [...prev, newCard]);
                     setActiveCarouselIndex(carouselCards.length);
                     triggerToast('Added new Carousel Slide Card! 🎴');
@@ -3833,8 +3914,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               {/* CARDS SLIDE TAB SELECTOR */}
               <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
                 {carouselCards.map((card, idx) => (
+                  <div key={card.id} style={{ position: 'relative', flexShrink: 0 }}>
                   <button
-                    key={card.id}
                     onClick={() => setActiveCarouselIndex(idx)}
                     style={{
                       padding: '8px 14px',
@@ -3850,6 +3931,38 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                   >
                     Card {idx + 1}
                   </button>
+                  {/* Cards could be added and never removed: a mistyped or unwanted slide was
+                      permanent for the life of the tab, and the only way out was reloading and
+                      losing every other card too. Meta requires at least 2 cards in a carousel,
+                      so the control disappears rather than letting someone build a 1-card ad
+                      that is rejected at publish. */}
+                  {carouselCards.length > 2 && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        const card = carouselCards[idx];
+                        const hasContent = !!((card.headline || '').trim() || (card.description || '').trim() || card.imageUrl);
+                        if (hasContent && !window.confirm(`Delete Card ${idx + 1}? Its headline, copy and image are removed.`)) return;
+                        setCarouselCards(prev => prev.filter((_, i) => i !== idx));
+                        // Keep the selection in range, and keep it on the same neighbour the
+                        // user was looking at rather than snapping back to card 1.
+                        setActiveCarouselIndex(prev => (prev > idx ? prev - 1 : Math.min(prev, carouselCards.length - 2)));
+                        triggerToast(`Deleted Card ${idx + 1}.`);
+                      }}
+                      title={`Delete Card ${idx + 1}`}
+                      aria-label={`Delete Card ${idx + 1}`}
+                      style={{
+                        position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px',
+                        padding: 0, borderRadius: '50%', background: '#2a1116', color: '#ff8b95',
+                        border: '1px solid rgba(255,71,87,0.5)', cursor: 'pointer', fontSize: '11px',
+                        lineHeight: '16px', fontWeight: 700, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                  </div>
                 ))}
               </div>
 

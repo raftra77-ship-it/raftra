@@ -24,12 +24,30 @@ try:
     # pooler and Postgres apply, so a connection is very unlikely to go stale while parked.
     # Set DB_PRE_PING=true to put the check back if a deployment ever needs it.
     _PRE_PING = os.getenv("DB_PRE_PING", "false").strip().lower() in ("1", "true", "yes", "on")
+
+    # Pool sized to what the SERVER will actually allow, not to what this process would like.
+    #
+    # This asked for pool_size=20 + max_overflow=40 — up to 60 connections. Supabase's
+    # session-mode pooler caps the whole project at 15:
+    #
+    #   FATAL: (EMAXCONNSESSION) max clients reached in session mode
+    #          — max clients are limited to pool_size: 15
+    #
+    # and that 15 is shared with every other client of the same project, the deployed Render
+    # service included. Asking for 60 does not get 60; it gets connection attempts that block
+    # until something frees up or pool_timeout expires, which is why requests intermittently
+    # took seconds and sometimes failed outright.
+    #
+    # 5 + 5 leaves real headroom under the cap for the deployed API and for psql sessions.
+    # Both are env-overridable so a deployment on a larger plan can raise them without a code
+    # change — and if you move to the transaction-mode pooler (port 6543), which allows far
+    # more clients, that is the knob to turn.
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=_PRE_PING,
-        pool_size=20,
-        max_overflow=40,
-        pool_timeout=30,
+        pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT_SEC", "30")),
         pool_recycle=int(os.getenv("DB_POOL_RECYCLE_SEC", "300")),
     )
     print("Connected to PostgreSQL (Supabase) successfully.")

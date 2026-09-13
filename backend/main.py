@@ -232,7 +232,22 @@ import auth, models, database, payments, agent_routes, workspace_routes, connect
 import schedule_routes
 
 # Create tables in db (in production, use alembic for migrations)
-models.Base.metadata.create_all(bind=database.engine)
+#
+# Boot must not depend on the database being reachable. This call used to run bare at
+# import time, so any connectivity failure — a paused Supabase project, a DSN whose host
+# resolves only over IPv6 on a network without an IPv6 route — raised straight out of
+# `import main` and uvicorn exited before binding a port. The API then looked completely
+# dead: no /docs, no 503, nothing to tell anyone what was wrong.
+#
+# Starting anyway means the process serves, the health check answers, and every DB-backed
+# request returns the clean 503 the handler below produces, which says the database is
+# unreachable and worth retrying. A bad DSN stays just as broken — it is simply legible.
+try:
+    models.Base.metadata.create_all(bind=database.engine)
+except Exception as e:
+    print("[startup] Could not reach the database to create tables: %s" % e)
+    print("[startup] Serving anyway; database-backed requests will return 503 until it "
+          "is reachable.")
 
 
 def _run_light_migrations():
@@ -255,6 +270,7 @@ def _run_light_migrations():
         "ALTER TABLE search_console_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
         # Creative Studio generation metadata (core/creative/). Additive only — `status`
         # keeps its existing review-state meaning and is untouched.
+        "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS destination_url VARCHAR",
         "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS generation_status VARCHAR",
         "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS original_prompt TEXT",
         "ALTER TABLE ad_assets ADD COLUMN IF NOT EXISTS optimized_prompt TEXT",

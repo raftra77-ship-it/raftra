@@ -613,12 +613,90 @@ def approve_campaign(workspace_id: int, campaign_id: int, db: Session = Depends(
             "message": "Strategy approved — it is now the source of truth for creatives and ad setup."}
 
 
+def _platform_readiness(platform: str, workspace_id: int, db: Session) -> tuple:
+    """Can this workspace's REAL ad-platform connection publish? Returns (ok, reason, identity).
+
+    Deliberately reuses connector_routes' status payloads instead of re-deriving "connected"
+    here. That is the same verdict the connection header, the connector list and the publish
+    gate already show the user, and a second implementation of "is this account usable" would
+    eventually disagree with them about a half-connected account.
+
+    Network-free, and that is a real limit worth naming: both payloads are pure reads of the
+    connection row. Token health lives there as `auth_error`, written by the code that
+    actually calls Meta/Google, so this reflects the last answer those APIs really gave — not
+    a guess, but not a fresh check either. A token revoked since the last call still reads as
+    live here; publish surfaces that, and this step no longer pretends to have proven more
+    than it did. The import is local because it is the only edge from this module to
+    connector_routes, and a module-level one would couple their import order for one helper.
+    """
+    from connector_routes import _meta_status_payload, _gads_status_payload
+
+    if platform == "meta":
+        conn = (db.query(models.MetaAdsConnection)
+                  .filter(models.MetaAdsConnection.workspace_id == workspace_id).first())
+        s = _meta_status_payload(conn)
+        identity = {
+            "account": f"act_{s['ad_account_id']}" if s["ad_account_id"] else None,
+            "account_id": s["ad_account_id"],
+            "connected_as": s["name"],
+            "page_id": s["page_id"],
+            "page_name": s["page_name"],
+            # None = Meta has not been asked yet. Recorded rather than resolved to a bool so
+            # "no payment method" and "not checked" stay distinguishable after the fact.
+            "can_spend": s["can_spend"],
+        }
+        if not s["configured"]:
+            return False, "Meta Ads is not configured on this server.", identity
+        if not s["connected"]:
+            return False, (s["auth_error"] or
+                           "Meta Ads is not connected for this workspace. Connect it above."), identity
+        if not s["ad_account_id"]:
+            return False, "No Meta ad account selected — choose one on the Meta connection above.", identity
+        if not s["page_id"]:
+            return False, ("No Facebook Page selected. Every Meta ad is published as a Page, "
+                           "so one has to be chosen before this campaign can go out."), identity
+        return True, None, identity
+
+    conn = (db.query(models.GoogleAdsConnection)
+              .filter(models.GoogleAdsConnection.workspace_id == workspace_id).first())
+    s = _gads_status_payload(conn)
+    identity = {
+        "account": s["customer_id"],
+        "account_id": s["customer_id"],
+        "connected_as": s["email"],
+        "login_customer_id": s["login_customer_id"],
+        "is_manager_account": s["is_manager_account"],
+    }
+    if not s["configured"]:
+        return False, "Google Ads is not configured on this server.", identity
+    if not s["connected"]:
+        return False, (s["auth_error"] or
+                       "Google Ads is not connected for this workspace. Connect it above."), identity
+    if not s["customer_id"]:
+        return False, "No Google Ads account selected — choose one on the Google connection above.", identity
+    if s["is_manager_account"]:
+        return False, ("The selected Google Ads account is a manager (MCC) account, and Google "
+                       "does not allow campaigns inside one. Select a client account instead."), identity
+    return True, None, identity
+
+
 @router.post("/{workspace_id}/campaigns/{campaign_id}/ad-setup")
 def campaign_ad_setup(workspace_id: int, campaign_id: int, req: schemas.AdSetupRequest,
                       db: Session = Depends(database.get_db),
                       current_user: models.User = Depends(auth.get_current_user)):
-    """Connect / launch a platform for this campaign. Real Meta + Google API keys are not wired
-    yet, so this records a clearly-flagged MOCK setup — enough to exercise the whole flow."""
+    """Bind this campaign to the workspace's real ad-platform connection and mark it ready.
+
+    This step used to fabricate its answer. Every call wrote
+    {"connected": true, "mock": true, "account": "Mock Meta Ad Account"} without ever looking
+    at MetaAdsConnection or GoogleAdsConnection, and `launch` set launched=true
+    unconditionally. Because publish_campaign gates on exactly that flag, the one checkpoint
+    in the seven-step flow certified nothing: a workspace with no ad account at all cleared it
+    identically to a fully connected one, and only the publish call — several screens later —
+    ever found out.
+
+    It now reads the real connection through the same status helpers the rest of the product
+    uses, and refuses with the specific reason when that connection could not publish.
+    """
     _require_workspace(workspace_id, db, current_user)
     camp = _get_campaign_or_404(workspace_id, campaign_id, db)
 
@@ -630,30 +708,71 @@ def campaign_ad_setup(workspace_id: int, campaign_id: int, req: schemas.AdSetupR
     if platform not in ("meta", "google"):
         raise HTTPException(status_code=400, detail="platform must be 'meta' or 'google'")
     action = (req.action or "").lower()
+    if action not in ("connect", "disconnect", "launch"):
+        raise HTTPException(status_code=400, detail="action must be 'connect', 'disconnect' or 'launch'")
 
     import datetime as _dt
+    now = _dt.datetime.utcnow().isoformat()
     m = dict(camp.metrics or {})
     key = f"{platform}_setup"
     setup = dict(m.get(key) or {})
+    label = "Meta" if platform == "meta" else "Google Ads"
+
+    def _persist(s: dict) -> None:
+        m[key] = s
+        camp.metrics = m
+        db.commit()
+
+    if action == "disconnect":
+        # Unbinds this campaign from the account; the workspace-level connection is untouched,
+        # which is the distinction the header owns and this step does not.
+        setup.update({"connected": False, "launched": False, "mock": False,
+                      "disconnected_at": now})
+        for stale in ("account", "account_id", "connected_as", "page_id", "page_name",
+                      "can_spend", "login_customer_id", "is_manager_account", "verified_at"):
+            setup.pop(stale, None)
+        _persist(setup)
+        return {"status": "success", "platform": platform, "action": action,
+                "mock": False, "setup": setup}
+
+    ok, reason, identity = _platform_readiness(platform, workspace_id, db)
+
+    if not ok:
+        # Record the refusal rather than leaving whatever was here before. Rows written by the
+        # old mock path still say connected=true, and silently keeping that while telling the
+        # user the opposite is the same failure in a new place.
+        #
+        # The identity is written even on refusal, and deliberately: it is what the connection
+        # genuinely points at, so it replaces any "Mock Google Ad Account" left behind instead
+        # of letting a fabricated name outlive the flag that made it look plausible. With no
+        # connection at all its fields are None, which clears that name rather than keeping it.
+        setup.update(identity)
+        setup.update({"connected": False, "launched": False, "mock": False,
+                      "blocked_reason": reason, "checked_at": now})
+        _persist(setup)
+        raise HTTPException(status_code=409, detail=reason)
 
     if action == "connect":
-        setup.update({"connected": True, "mock": True,
-                      "account": f"Mock {platform.title()} Ad Account",
-                      "connected_at": _dt.datetime.utcnow().isoformat()})
-    elif action == "disconnect":
-        setup.update({"connected": False, "launched": False})
-    elif action == "launch":
-        if not setup.get("connected"):
-            raise HTTPException(status_code=409, detail=f"Connect {platform.title()} first.")
-        setup.update({"launched": True, "mock": True,
-                      "launched_at": _dt.datetime.utcnow().isoformat()})
-    else:
-        raise HTTPException(status_code=400, detail="action must be 'connect', 'disconnect' or 'launch'")
+        setup.update(identity)
+        setup.update({"connected": True, "mock": False, "connected_at": now,
+                      "checked_at": now})
+        setup.pop("blocked_reason", None)
+        _persist(setup)
+        return {"status": "success", "platform": platform, "action": action,
+                "mock": False, "setup": setup}
 
-    m[key] = setup
-    camp.metrics = m
-    db.commit()
-    return {"status": "success", "platform": platform, "action": action, "mock": True, "setup": setup}
+    # launch
+    if not setup.get("connected"):
+        raise HTTPException(status_code=409, detail=f"Connect {label} first.")
+    # Re-checked here, not inherited from the connect call: the two are separate requests and
+    # an account can be deselected or a token revoked between them. `verified_at` records when
+    # that check actually passed, so a stale "Ready" is identifiable afterwards.
+    setup.update(identity)
+    setup.update({"launched": True, "mock": False, "launched_at": now, "verified_at": now})
+    setup.pop("blocked_reason", None)
+    _persist(setup)
+    return {"status": "success", "platform": platform, "action": action,
+            "mock": False, "setup": setup}
 
 
 async def _launch_meta_ad(camp, spec: dict, conn, req, db: Session, workspace_id: int) -> dict:
@@ -924,7 +1043,16 @@ async def publish_campaign(workspace_id: int, campaign_id: int,
         raise HTTPException(status_code=400, detail=f"Unknown platform(s): {', '.join(bad)}")
 
     m = dict(camp.metrics or {})
-    missing = [p for p in wanted if not (m.get(f"{p}_setup") or {}).get("launched")]
+    # `mock` disqualifies a setup as firmly as a missing one. Campaigns set up before ad-setup
+    # read the real connection carry launched=true alongside mock=true, and that flag was
+    # written without anything being checked — so honouring it here would let exactly the
+    # campaigns the old behaviour misled walk straight through the gate that now exists to
+    # catch them. Pressing Mark as Ready again re-checks the account and clears the flag.
+    def _ready(p: str) -> bool:
+        s = m.get(f"{p}_setup") or {}
+        return bool(s.get("launched")) and not s.get("mock")
+
+    missing = [p for p in wanted if not _ready(p)]
     if missing:
         raise HTTPException(status_code=409,
                             detail=f"Complete the {', '.join(p.title() for p in missing)} setup before publishing.")
@@ -1202,57 +1330,185 @@ def duplicate_campaign(workspace_id: int, campaign_id: int, db: Session = Depend
     return {"status": "success", "campaign_id": new.id, "version": 1}
 
 
+def _real_platform_ids(m: dict, camp) -> dict:
+    """The platform campaign ids this campaign genuinely has, MOCK placeholders excluded.
+
+    A demo publish wrote ids like MOCK-META-498669468017 into the same field a real publish
+    uses. They are not campaign ids — no API will ever answer for one — so they are filtered
+    out here rather than being sent to Meta and coming back as a confusing error.
+    """
+    ids = {}
+    for p, raw in (m.get("campaign_ids") or {}).items():
+        s = str(raw or "")
+        if s and not s.upper().startswith("MOCK-"):
+            ids[p] = s
+    if not ids.get("meta") and camp.meta_campaign_id:
+        ids["meta"] = str(camp.meta_campaign_id)
+    return ids
+
+
 @router.get("/{workspace_id}/campaigns/{campaign_id}/analytics")
-def campaign_analytics(workspace_id: int, campaign_id: int, db: Session = Depends(database.get_db),
-                       current_user: models.User = Depends(auth.get_current_user)):
-    """Realistic MOCK analytics for a published campaign (no external API). Deterministic per
-    campaign so numbers are stable across reloads. Replace with real Meta/Google insights later."""
+async def campaign_analytics(workspace_id: int, campaign_id: int, date_preset: str = "last_7d",
+                             db: Session = Depends(database.get_db),
+                             current_user: models.User = Depends(auth.get_current_user)):
+    """What this campaign actually did, from Meta's and Google's own reporting.
+
+    Every number here used to be invented. The endpoint seeded random.Random(campaign_id *
+    7919 + 13) and generated spend, impressions, reach, clicks, CTR, conversions, CPA, ROAS,
+    revenue, the per-platform split, the "top keywords" and the "AI recommendations" from it —
+    stable across reloads, which made them look like readings rather than dice. The modal did
+    carry a DEMO pill, but a user comparing those figures against Ads Manager was comparing
+    against nothing at all.
+
+    Now: totals come from meta_ads.fetch_insights / google_ads.fetch_insights for the real
+    campaign ids this campaign was published under, recommendations from
+    campaign_optimizer.analyze (the same engine behind the optimisation feed, so the two can
+    never disagree), and keywords from Google's keyword_view. Nothing is synthesised to fill a
+    gap: a campaign that never ran for real, or that ran but has no delivery yet, comes back
+    with has_data=false and a reason the UI states plainly.
+    """
     _require_workspace(workspace_id, db, current_user)
     camp = _get_campaign_or_404(workspace_id, campaign_id, db)
     m = dict(camp.metrics or {})
-    import random as _rand
-    rng = _rand.Random(campaign_id * 7919 + 13)          # stable seed
-    budget = float(camp.budget or m.get("total_budget") or 40000)
-    platforms = m.get("published_platforms") or [p for p, on in (m.get("platforms") or {}).items() if on] or ["meta", "google"]
-    spend = round(budget * rng.uniform(0.55, 0.92), 2)
-    cpm = rng.uniform(90, 260)                            # ₹ per 1000 impressions
-    impressions = int(spend / cpm * 1000)
-    reach = int(impressions * rng.uniform(0.5, 0.72))
-    ctr = round(rng.uniform(1.4, 4.6), 2)
-    clicks = int(impressions * ctr / 100)
-    conversions = max(1, int(clicks * rng.uniform(0.02, 0.06)))
-    cpa = round(spend / conversions, 2) if conversions else 0.0
-    roas = round(rng.uniform(1.6, 4.8), 2)               # realistic return on ad spend
-    revenue = round(spend * roas, 2)
+    budget = float(camp.budget or m.get("total_budget") or 0)
+    ids = _real_platform_ids(m, camp)
 
-    def _split(total, base):
-        a = round(total * base, 2); return a, round(total - a, 2)
-    meta_share = 0.62 if len(platforms) > 1 else (1.0 if "meta" in platforms else 0.0)
-    m_spend, g_spend = _split(spend, meta_share)
-    m_conv, g_conv = _split(conversions, meta_share)
-
-    kws = (m.get("top_keywords") or (m.get("google_review") or {}).get("keywords") or
-           ["online course", "learn coding", "interview prep", "dsa practice", "placement guide"])[:6]
-    top_keywords = [{"keyword": k, "clicks": int(clicks * rng.uniform(0.05, 0.22)),
-                     "ctr": round(rng.uniform(1.8, 6.2), 2), "conversions": max(0, int(conversions * rng.uniform(0.05, 0.2)))}
-                    for k in kws]
-    recs = []
-    if roas >= 2.5: recs.append({"action": "Increase Budget", "why": f"ROAS {roas}× is well above target — scale to capture more volume.", "severity": "good"})
-    if ctr < 2.0: recs.append({"action": "Rotate Creative", "why": f"CTR {ctr}% is soft — refresh the creative to fight fatigue.", "severity": "warn"})
-    if cpa > budget * 0.05: recs.append({"action": "Pause Campaign", "why": f"CPA ₹{cpa} is high relative to budget — pause or tighten targeting.", "severity": "critical"})
-    if not recs: recs.append({"action": "Keep Running", "why": "Delivery is healthy and on-target.", "severity": "good"})
-
-    return {
+    base = {
         "campaign_id": campaign_id, "name": camp.name, "version": camp.version,
         "status": camp.status, "published": _is_published(camp),
-        "demo": True, "budget": budget, "platforms": platforms,
+        "demo": False, "budget": budget, "date_preset": date_preset,
+        "platforms": sorted(ids.keys()),
+        "platform_campaign_ids": ids,
+    }
+    if not ids:
+        why = ("This campaign has been published in demo mode only, so no real ad account ever "
+               "ran it. Connect Meta or Google Ads and publish for real to see performance here."
+               if _is_published(camp) else
+               "This campaign has not been published to an ad account yet, so there is nothing "
+               "to report on.")
+        return {**base, "has_data": False, "reason": why, "totals": None,
+                "meta_performance": None, "google_performance": None,
+                "top_keywords": [], "recommendations": [], "errors": []}
+
+    errors: list = []
+    meta_row: dict = {}
+    google_row: dict = {}
+    top_keywords: list = []
+
+    if ids.get("meta"):
+        conn = (db.query(models.MetaAdsConnection)
+                  .filter(models.MetaAdsConnection.workspace_id == workspace_id).first())
+        if not conn or not conn.access_token:
+            errors.append("Meta is no longer connected, so its numbers are missing.")
+        elif getattr(conn, "auth_error", None):
+            errors.append(f"Meta: {conn.auth_error}")
+        else:
+            try:
+                insights = await meta.fetch_insights(conn, date_preset=date_preset)
+                meta_row = insights.get(ids["meta"]) or {}
+            except Exception as e:
+                errors.append(f"Meta insights unavailable: {e}")
+
+    if ids.get("google"):
+        conn = (db.query(models.GoogleAdsConnection)
+                  .filter(models.GoogleAdsConnection.workspace_id == workspace_id).first())
+        if not conn or not conn.refresh_token:
+            errors.append("Google Ads is no longer connected, so its numbers are missing.")
+        elif getattr(conn, "auth_error", None):
+            errors.append(f"Google Ads: {conn.auth_error}")
+        else:
+            gr = "LAST_30_DAYS" if "30" in date_preset else "LAST_7_DAYS"
+            try:
+                insights = await gads.fetch_insights(conn, date_range=gr)
+                google_row = insights.get(ids["google"]) or {}
+            except Exception as e:
+                errors.append(f"Google Ads insights unavailable: {e}")
+            try:
+                top_keywords = await gads.fetch_keyword_performance(conn, ids["google"], date_range=gr)
+            except Exception as e:
+                # A missing keyword leaderboard must not cost the user their spend figures.
+                errors.append(f"Google keyword report unavailable: {e}")
+
+    if not meta_row and not google_row:
+        why = (" ".join(errors) if errors else
+               "Neither platform has reported any delivery for this campaign yet. Campaigns are "
+               "created paused, so this stays empty until it is switched on and starts spending.")
+        return {**base, "has_data": False, "reason": why, "totals": None,
+                "meta_performance": None, "google_performance": None,
+                "top_keywords": top_keywords, "recommendations": [], "errors": errors}
+
+    # ── totals, added up from whichever platforms reported ────────────────────────────────
+    # Meta calls its conversions "purchases" and reports cost as `spend`; Google calls them
+    # "conversions" and `cost`. Summing them is only honest because both are counting the same
+    # thing for the same campaign over the same window.
+    m_spend = float(meta_row.get("spend", 0) or 0)
+    g_spend = float(google_row.get("cost", 0) or 0)
+    spend = round(m_spend + g_spend, 2)
+    impressions = int(meta_row.get("impressions", 0) or 0) + int(google_row.get("impressions", 0) or 0)
+    clicks = int(meta_row.get("clicks", 0) or 0) + int(google_row.get("clicks", 0) or 0)
+    # Reach is a Meta metric with no Google equivalent — left as Meta's alone rather than
+    # presented as a cross-platform figure it is not.
+    reach = int(meta_row.get("reach", 0) or 0)
+    conversions = round(float(meta_row.get("purchases", 0) or 0)
+                        + float(google_row.get("conversions", 0) or 0), 2)
+    # Recomputed from the totals rather than averaging the platforms' own rates, which would
+    # weight a 10-impression campaign the same as a 10,000-impression one.
+    ctr = round(clicks / impressions * 100, 2) if impressions else 0.0
+    cpa = round(spend / conversions, 2) if conversions else 0.0
+    revenue = round(float(meta_row.get("roas", 0) or 0) * m_spend
+                    + float(google_row.get("roas", 0) or 0) * g_spend, 2)
+    roas = round(revenue / spend, 2) if spend else 0.0
+
+    # ── recommendations: the optimisation engine, on this campaign's real numbers ──────────
+    # Meta only, deliberately. campaign_optimizer reads Meta's metric vocabulary — `purchases`,
+    # `frequency`, `roas` as Meta defines it — and Google's rows use neither the same names nor
+    # the same meanings. Passing a Google row through it would produce confident advice derived
+    # from fields that are absent, which is worse than the panel saying nothing about Google.
+    recommendations = []
+    if meta_row:
+        try:
+            from core.campaign_optimizer import analyze
+            rules = m.get("optimization") or {}
+            out = analyze({ids["meta"]: meta_row},
+                          current_budgets={ids["meta"]: float(camp.daily_budget)} if camp.daily_budget else None,
+                          per_campaign={ids["meta"]: rules})
+            # Flattened to the {action, why, severity} the modal renders. `title` is the
+            # instruction and `detail` the reasoning, which is the same split the old invented
+            # recommendations used — so the panel needs no new shape.
+            recommendations = [{"action": r.get("title"), "why": r.get("detail"),
+                                "severity": r.get("severity"), "signal": r.get("signal"),
+                                "evidence": r.get("evidence"), "expected": r.get("expected")}
+                               for r in out.get("recommendations", [])]
+        except Exception as e:
+            errors.append(f"Could not compute recommendations: {e}")
+
+    return {
+        **base,
+        "has_data": True,
+        "reason": None,
+        "errors": errors,
         "totals": {"impressions": impressions, "reach": reach, "clicks": clicks, "ctr": ctr,
-                   "conversions": conversions, "cpa": cpa, "spend": spend, "roas": roas, "revenue": revenue},
-        "meta_performance": {"spend": m_spend, "conversions": int(m_conv), "roas": round(roas * rng.uniform(0.9, 1.15), 2)} if "meta" in platforms else None,
-        "google_performance": {"spend": g_spend, "conversions": int(g_conv), "roas": round(roas * rng.uniform(0.85, 1.1), 2)} if "google" in platforms else None,
+                   "conversions": conversions, "cpa": cpa, "spend": spend, "roas": roas,
+                   "revenue": revenue},
+        "meta_performance": ({"spend": round(m_spend, 2),
+                              "conversions": float(meta_row.get("purchases", 0) or 0),
+                              "roas": float(meta_row.get("roas", 0) or 0),
+                              "impressions": int(meta_row.get("impressions", 0) or 0),
+                              "clicks": int(meta_row.get("clicks", 0) or 0),
+                              "ctr": float(meta_row.get("ctr", 0) or 0),
+                              "frequency": float(meta_row.get("frequency", 0) or 0)}
+                             if meta_row else None),
+        "google_performance": ({"spend": round(g_spend, 2),
+                                "conversions": float(google_row.get("conversions", 0) or 0),
+                                "roas": float(google_row.get("roas", 0) or 0),
+                                "impressions": int(google_row.get("impressions", 0) or 0),
+                                "clicks": int(google_row.get("clicks", 0) or 0),
+                                "ctr": float(google_row.get("ctr", 0) or 0)}
+                               if google_row else None),
         "top_keywords": top_keywords,
-        "best_creative": {"image_url": m.get("image_url"), "ctr": round(ctr * rng.uniform(1.1, 1.5), 2), "label": "Best performing creative"},
-        "recommendations": recs,
+        "recommendations": recommendations,
+        "best_creative": ({"image_url": m.get("image_url"), "label": "Creative in this campaign"}
+                          if m.get("image_url") else None),
     }
 
 
@@ -1501,6 +1757,7 @@ def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session =
         type=asset.type,
         image_url=asset.image_url,
         video_url=asset.video_url,
+        destination_url=asset.destination_url,
         # Was hardcoded "approved", so a design saved from the Studio as a *draft* came back
         # as an approved library asset. Constrained to the states the review flow knows.
         status=(asset.status if asset.status in ("approved", "pending_review", "rejected")

@@ -116,6 +116,8 @@ class AdAssetCreate(BaseModel):
     image_url: Optional[str] = None
     video_url: Optional[str] = None
     audio_url: Optional[str] = None
+    # Per-card click destination (see models.AdAsset.destination_url).
+    destination_url: Optional[str] = None
     # Review state. Defaults to "approved" so every existing caller behaves exactly as
     # before; the Studio editor sends "pending_review" when saving a draft, which is the
     # difference between "Save as Draft" and "Save to Vault" actually meaning something.
@@ -129,6 +131,7 @@ class AdAssetResponse(BaseModel):
     type: str
     image_url: Optional[str] = None
     video_url: Optional[str] = None
+    destination_url: Optional[str] = None
     status: str
 
     class Config:
@@ -239,8 +242,9 @@ class OptimizationBody(BaseModel):
 
 
 class AdSetupRequest(BaseModel):
-    """Ad-platform setup step. While real Meta/Google API keys aren't configured these run in
-    MOCK mode so the end-to-end flow is testable; the response always says which mode it was."""
+    """Ad-platform setup step: binds a campaign to the workspace's real Meta / Google Ads
+    connection. Refuses with the specific reason when that connection could not publish, so
+    `launched` means the account was actually checked rather than that the button was pressed."""
     platform: str            # "meta" | "google"
     action: str              # "connect" | "disconnect" | "launch"
 

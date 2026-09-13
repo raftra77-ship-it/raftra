@@ -229,6 +229,12 @@ class AdAsset(Base):
     image_url = Column(String, nullable=True)
     video_url = Column(String, nullable=True)
     audio_url = Column(String, nullable=True)
+    # Where a click on this creative sends the user. The Carousel Builder collects a
+    # per-card destination URL and calls it "CARD SPECIFIC META DESTINATION LINK" — it is
+    # the reason that builder exists, since a carousel's whole point is sending each card
+    # somewhere different. There was nowhere to put it, so every save silently dropped it
+    # and the cards came back pointing nowhere.
+    destination_url = Column(String, nullable=True)
     status = Column(String)  # pending_review, approved, rejected — REVIEW state, set by humans
     parent_id = Column(Integer, ForeignKey("ad_assets.id"), nullable=True)
     suggested_edits = Column(JSON, nullable=True)
