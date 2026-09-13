@@ -432,18 +432,45 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
         result = await campaign_graph.ainvoke(initial_state)
         spec = json.loads(result["campaign_spec"])
 
-        # Auto-generate an image ad from the strategy (Pollinations returns a URL
-        # instantly, no API key). Shown in the Campaign Manager; the user can open
-        # Creative Studio to generate more.
+        # Auto-generate the campaign's image ad through the SAME pipeline the Creative Studio
+        # uses, rather than a second, weaker one.
+        #
+        # This called FluxSchnellProvider directly, which is Pollinations — the keyless
+        # fallback the router treats as the floor, the thing it picks when nothing else is
+        # configured. The Studio meanwhile asks router_decision_engine, which on this
+        # deployment returns hf_flux. So the two screens ran different models against
+        # different prompts, and the campaign image came out visibly worse than the one the
+        # Studio produced from the same brief — which is exactly what it looked like.
+        #
+        # Three things were missing beyond the provider. The prompt was hand-assembled here
+        # instead of built by core.creative.optimizer, so it carried none of the structure the
+        # providers are tuned for. No negative prompt was sent at all, so nothing suppressed
+        # the watermarks, extra limbs and garbled lettering it exists to suppress. And the
+        # brand context never reached it, so the creative described a generic product rather
+        # than this brand's. Going through service.plan() fixes all three at once, and means
+        # a future change to the Studio's pipeline reaches Campaign Manager for free.
         image_url = None
         try:
-            from core.providers.image_providers import FluxSchnellProvider
-            img_prompt = (
-                f"Advertising creative for: {prompt[:140]}. "
-                f"{spec.get('objective', '')} campaign for {spec.get('audience', '')}. "
-                f"Commercial ad photography, vibrant, high detail, no text."
+            from core.creative.service import service as creative_service, _image_provider
+            from core.creative import optimizer as creative_optimizer
+            from agents.creative_nodes.router import router_decision_engine
+
+            brief = (f"{prompt[:200]}. "
+                     f"{spec.get('objective', '')} campaign for {spec.get('audience', '')}.")
+            # Meta feed: the placement these campaigns actually publish to, so the aspect
+            # ratio comes from platforms.py instead of being hardcoded 1:1.
+            cspec = await creative_service.plan(
+                workspace_id=workspace_id, prompt=brief, media_type="image",
+                platform="facebook", placement="feed")
+            prompts = creative_optimizer.build_prompts(cspec)
+            provider_name = router_decision_engine("conversion", brief)["image_provider"]
+            image_url = await _image_provider(provider_name).generate_image(
+                prompts["image_prompt"],
+                aspect_ratio=prompts["aspect_ratio"],
+                negative_prompt=prompts["negative_prompt"],
             )
-            image_url = await FluxSchnellProvider().generate_image(img_prompt, aspect_ratio="1:1")
+            print(f"[campaign] creative generated via {provider_name} "
+                  f"at {prompts['aspect_ratio']}")
         except Exception as e:
             print(f"Campaign image generation failed: {e}")
 
