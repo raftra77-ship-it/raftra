@@ -76,6 +76,33 @@ def _pg_search(workspace_id: int, query: str, kinds: List[str], limit: int) -> L
     from database import SessionLocal
     from core.embeddings import embed_query, EMBEDDING_MODEL_NAME
 
+    # Is there anything to search, before paying to search it?
+    #
+    # embed_query() lazily constructs a SentenceTransformer the first time it is called, and
+    # that load measured 43.6 seconds — against a workspace whose knowledge base returned
+    # ZERO rows. Campaign strategy generation begins by fetching brand context, so a user
+    # with an unindexed workspace waited three quarters of a minute for a model to be loaded,
+    # asked one question, and told there was nothing there. Every agent that grounds itself in
+    # brand context paid the same toll.
+    #
+    # EMBEDDING_MODEL_NAME is a module constant, so this check costs one indexed COUNT and
+    # never touches the model. Matching rows still take the slow path, exactly as before —
+    # the load is real work when there is something to retrieve.
+    db = SessionLocal()
+    try:
+        probe = (db.query(models.KnowledgeChunk.id)
+                   .filter(models.KnowledgeChunk.workspace_id == workspace_id,
+                           models.KnowledgeChunk.model == EMBEDDING_MODEL_NAME))
+        if kinds:
+            probe = probe.filter(models.KnowledgeChunk.kind.in_(kinds))
+        if probe.first() is None:
+            return []
+    except Exception as e:
+        # A failed probe must not block retrieval; fall through to the real query.
+        print(f"[vector_store] index probe failed for ws {workspace_id}: {e}")
+    finally:
+        db.close()
+
     vec = embed_query(query)
     db = SessionLocal()
     try:
