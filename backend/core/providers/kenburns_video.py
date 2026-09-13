@@ -18,6 +18,7 @@ it is the only genuinely free option that stays on-prompt.
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import base64
 import hashlib
 import os
@@ -185,16 +186,32 @@ class KenBurnsVideoProvider(VideoProvider):
             "-movflags", "+faststart",
             str(out),
         ]
+        # Run ffmpeg in a THREAD, not through the event loop.
+        #
+        # asyncio.create_subprocess_exec raises NotImplementedError on a Windows
+        # SelectorEventLoop, which is the loop uvicorn runs. So every video render failed
+        # under the server while succeeding in any standalone script, which run on the
+        # default Proactor loop — the reason this looked intermittent rather than broken.
+        # NotImplementedError also carries no message, so the failure was stored as
+        # "Video generation failed: " and the user got a video ad with no video and no
+        # explanation.
+        #
+        # subprocess.run in a worker thread behaves identically on every loop and platform,
+        # and ffmpeg is a bounded, CPU-bound call that a thread suits anyway.
+        def _run_ffmpeg():
+            import subprocess
+            completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       timeout=180)
+            return completed.returncode, completed.stderr
+
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
-        except asyncio.TimeoutError:
+            returncode, stderr = await asyncio.to_thread(_run_ffmpeg)
+        except subprocess.TimeoutExpired:
             raise VideoProviderError("ffmpeg timed out while rendering the video.")
         finally:
             src.unlink(missing_ok=True)
 
-        if proc.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        if returncode != 0 or not out.exists() or out.stat().st_size == 0:
             out.unlink(missing_ok=True)
             detail = (stderr or b"").decode(errors="replace").strip()[:300]
             raise VideoProviderError(f"ffmpeg failed to render the video: {detail}")

@@ -1332,7 +1332,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setGenerationElapsed(0);
     setIsGenerating(true);
 
-    const job = await Promise.resolve(onGenerate(productPrompt || 'Brand Knowledge Generation', undefined, {
+    const job = await Promise.resolve(onGenerate(productPrompt.trim() || brandKnowledgeBrief(), undefined, {
       // Pass what the user actually chose. The old call sent the prompt alone, so the format,
       // platform and ratio selectors above had no effect on what the backend produced.
       format: selectedAdType,
@@ -1414,6 +1414,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         setGenerationError(d.error || 'The image provider returned no asset for this prompt.');
         forgetCreative(ws);
         return;
+      }
+
+      // A video ad that produced no video is not a finished video ad.
+      //
+      // The guard above only fires when NOTHING came back. A video job whose image
+      // succeeded and whose video step failed arrives as status=completed with an image_url
+      // and an empty video_url, so it fell straight through to adoptCreativeJob and was
+      // shown as a finished creative — a video ad with no video, no player and no reason
+      // given. The image is still worth keeping, so it is adopted either way; what changes
+      // is that the failure is now stated instead of hidden.
+      if (d.media_type === 'video' && !d.video_url) {
+        setGenerationError(d.error
+          || 'The image was generated but the video render did not finish, so there is no preview. Generate again to retry the animation.');
       }
 
       adoptCreativeJob(d);
@@ -1682,20 +1695,48 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      framework as the structure, and the input method switches so the user can read and edit
      it before spending a generation. Every value comes from the brand profile already loaded
      on this screen; nothing is invented, and a field the crawl never found is left out. */
-  const applyFramework = (tmpl: { key: string; name: string; desc: string }) => {
-    const subject = brandCategory || brandName || "the product";
-    // Brand fields are free text and some already end in a sentence. Appending a full stop
-    // regardless produced "...technical coding interviews.. Tone:" in a brief the user is
-    // meant to read and edit.
+  /* The brand, written out as a brief a generator can actually use.
+     Shared by "Use Framework" and by the Brand Knowledge input method, so the two cannot
+     drift into describing the same brand differently. */
+  const brandBriefLines = (): string[] => {
     const sentence = (v: string) => v.trim().replace(/[.\s]+$/, "") + ".";
-    const lines = [
-      `${tmpl.name} ad for ${brandName || "this brand"}${brandSite ? ` (${brandSite})` : ""}.`,
-      `Framework: ${tmpl.desc}`,
-      `Subject: ${sentence(subject)}`,
+    return [
+      `Subject: ${sentence(brandCategory || brandName || "the product")}`,
       brandAudience ? `Audience: ${sentence(brandAudience)}` : "",
       brandTone ? `Tone: ${sentence(brandTone)}` : "",
       brandTheme ? `Brand personality: ${sentence(brandTheme)}` : "",
     ].filter(Boolean);
+  };
+
+  /* What "Generate using Brand Knowledge" actually sends.
+     ------------------------------------------------------------------
+     The call was `onGenerate(productPrompt || "Brand Knowledge Generation", ...)`, and in
+     this mode productPrompt is empty — so the literal string "Brand Knowledge Generation"
+     was the prompt. A real asset in this workspace has it stored verbatim:
+
+       original_prompt : "Brand Knowledge Generation"
+       optimized_prompt: "Brand Knowledge Generation, product centred with clean negative
+                          space for a headline, eye level, soft natural light, ..."
+
+     The card promises the AI "automatically extracts Product USPs, Brand Colors, Previous
+     Campaigns & Knowledge Base". None of that was sent. The model was handed a placeholder
+     and produced something unrelated to the brand, which is exactly how it looked.
+
+     The brand profile is already loaded on this screen, so the honest version of that
+     promise is to send it. */
+  const brandKnowledgeBrief = (): string => {
+    const lines = brandBriefLines();
+    if (!lines.length) return "Brand Knowledge Generation";   // nothing crawled yet
+    return [`Advertising creative for ${brandName || "this brand"}${brandSite ? ` (${brandSite})` : ""}.`,
+            ...lines].join(" ");
+  };
+
+  const applyFramework = (tmpl: { key: string; name: string; desc: string }) => {
+    const lines = [
+      `${tmpl.name} ad for ${brandName || "this brand"}${brandSite ? ` (${brandSite})` : ""}.`,
+      `Framework: ${tmpl.desc}`,
+      ...brandBriefLines(),
+    ];
     setProductPrompt(lines.join(" "));
     setInputOption("ai_generate_image");
     setActiveTab("create");

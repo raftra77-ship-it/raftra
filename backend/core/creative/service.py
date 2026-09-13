@@ -188,7 +188,13 @@ class CreativeService:
             except Exception as e:
                 # An image without motion is still a usable creative — report the video
                 # failure but do not throw the whole generation away.
-                error = (error + " | " if error else "") + f"Video generation failed: {e}"
+                #
+                # `or type(e).__name__` because some exceptions carry no message at all, and
+                # a cancelled task is one of them: a real run stored the reason as
+                # "Video generation failed: " with nothing after the colon, which tells the
+                # user precisely as much as saying nothing would have.
+                reason = str(e) or type(e).__name__
+                error = (error + " | " if error else "") + f"Video generation failed: {reason}"
                 await log("Video Agent", f"Could not render the video: {e}", "failed")
 
         with SessionLocal() as db:
@@ -253,6 +259,12 @@ class CreativeService:
                 "primary_text": a.body_text,
                 "cta": a.cta,
                 "error": a.error_message,
+                # What was REQUESTED. Without it the poller cannot tell "an image ad, which
+                # correctly has no video" from "a video ad whose video step failed" — both
+                # arrive as status=completed with an image_url and no video_url, so the
+                # second was silently shown as a finished image and the user saw a video ad
+                # with no video and no explanation.
+                "media_type": a.media_type,
                 "created_at": a.created_at.isoformat() if a.created_at else None,
             }
 
