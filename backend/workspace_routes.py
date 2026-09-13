@@ -2602,6 +2602,24 @@ class VerifyCreatorRequest(BaseModel):
 
 @router.post("/influencer/me/verify")
 async def verify_creator_profile(req: VerifyCreatorRequest, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # The handle is the creator's identity everywhere deals are authorised - posted-deal
+    # applications, deliverables, deals and payout requests all check "is this handle one of
+    # yours". It was saved exactly as typed and never checked, so any creator could claim
+    # another creator's handle and read or act on their applications and payout requests.
+    from sqlalchemy import func as _func
+    handle = (req.username or "").replace("@", "").strip().lower()
+    if not handle:
+        raise HTTPException(status_code=400, detail="Enter your Instagram username.")
+    taken = (db.query(models.Influencer)
+               .filter(models.Influencer.user_id.isnot(None),
+                       models.Influencer.user_id != current_user.id,
+                       _func.lower(_func.replace(models.Influencer.handle, "@", "")) == handle)
+               .first())
+    if taken:
+        raise HTTPException(status_code=409,
+                            detail="That handle is already linked to another Raftra creator "
+                                   "account. Contact support if it is yours.")
+
     inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
     if not inf:
         # Create a new influencer profile automatically if none exists
@@ -2610,7 +2628,7 @@ async def verify_creator_profile(req: VerifyCreatorRequest, db: Session = Depend
             name=f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email.split('@')[0],
             niche=req.niche,
             platform="instagram",
-            handle=req.username,
+            handle=handle,
             fit_score=95,
             success_rate=90
         )
@@ -2618,13 +2636,39 @@ async def verify_creator_profile(req: VerifyCreatorRequest, db: Session = Depend
         db.commit()
         db.refresh(inf)
         
+    # Claiming a handle brings its history along. Brands can message and propose to a handle
+    # before the creator has an account; those threads sit on an unclaimed marketplace row for
+    # the handle and move to this creator's own row here, so nothing sent earlier is lost.
+    unclaimed_ids = [r[0] for r in db.query(models.Influencer.id).filter(
+        models.Influencer.user_id.is_(None),
+        models.Influencer.id != inf.id,
+        _func.lower(_func.replace(models.Influencer.handle, "@", "")) == handle).all()]
+    if unclaimed_ids:
+        db.query(models.ChatMessage).filter(
+            models.ChatMessage.influencer_id.in_(unclaimed_ids)
+        ).update({models.ChatMessage.influencer_id: inf.id}, synchronize_session=False)
+        db.commit()
+
+    # The Instagram read uses blocking SDK calls and can take minutes when Instagram stalls,
+    # which held the request open with the creator's handle still unsaved. It runs on a worker
+    # thread with a hard limit; the details the creator typed are saved either way.
+    import asyncio as _asyncio
     from agents.influencers import verify_instagram_profile
-    result = await verify_instagram_profile(req.username, req.niche)
+    try:
+        result = await _asyncio.wait_for(
+            _asyncio.to_thread(lambda: _asyncio.run(verify_instagram_profile(handle, req.niche))),
+            timeout=45)
+    except _asyncio.TimeoutError:
+        result = {"verification_status": "unverified",
+                  "reason": "Instagram did not respond in time, so the profile could not be read."}
+    except Exception as e:  # noqa: BLE001 - a failed check must not lose the saved handle
+        result = {"verification_status": "unverified",
+                  "reason": f"The profile check could not run ({type(e).__name__})."}
     
     # The details the creator typed are theirs and are saved either way. Collaborations, posts
     # and reviews are only stored when they were genuinely read from the profile: writing a
     # simulated result here is what put invented brand endorsements on a real creator's card.
-    inf.handle = req.username
+    inf.handle = handle
     inf.niche = req.niche
     inf.base_rate = req.base_rate
     if result.get("verification_status") == "verified" and not result.get("simulated"):

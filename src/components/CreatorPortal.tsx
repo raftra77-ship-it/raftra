@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, MessageCircle, DollarSign, Send, CheckCircle2, ShieldAlert, Sparkles, User, CreditCard, BadgeCheck, Activity, LogOut, FileText } from 'lucide-react';
 import { GlowButton } from './GlowButton';
-import parsedCreatorsData from '../data/influencers_parsed.json';
 import { CreatorBrandOpportunitiesView, CreatorApplicationsView } from './workspaces/PostedDealsWorkflow';
 
 interface CreatorPortalProps {
@@ -27,18 +26,20 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     recent_reviews: [] as {author: string, text: string}[] 
   });
   
+  // Empty rather than a real person's card: this used to default every creator to
+  // "samaira rao / @samairaa.r" with her photo and follower count.
   const DEFAULT_CREATOR_CARD = {
-    name: 'samaira rao',
-    handle: '@samairaa.r',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-    niche: 'Fashion & Lifestyle',
+    name: '',
+    handle: '',
+    avatar: '',
+    niche: '',
     category: 'MICRO',
-    location: 'gurgaon haryana india',
-    followers: '18.8k',
-    avgViews: '2.5M peak (170k reach)',
-    fakeFollowerScore: '1%',
-    expectedPrice: '₹500 - ₹1,000',
-    profileLink: 'https://www.instagram.com/samairaa.r',
+    location: '',
+    followers: '',
+    avgViews: '',
+    fakeFollowerScore: '',
+    expectedPrice: '',
+    profileLink: '',
     deliverables: ['UGC Video', 'Reel', 'Story', 'Static Post']
   };
 
@@ -186,7 +187,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          creator_handle: cardCustomizer.handle || myHandle,
+          creator_handle: myHandle,
           creator_name: cardCustomizer.name || 'Creator',
           screenshot_url: proofUploadedUrl || null,
           token_submitted: proofTokenInput,
@@ -214,72 +215,21 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     setTimeout(() => setProofSubmissionToast(null), 6000);
   };
 
-  const handleSimulateHumanApproval = async () => {
-    setProofVerificationStatus('verified_payout');
-    setProofSubmissionToast('✅ Human Verification Approved by Team Raftra! Net payout disbursed to your bank account via Razorpay/UPI.');
+  // A "Simulate Team Raftra Human Verification Approval" handler lived here. It switched the
+  // screen to "₹9,000 Payout Disbursed" and called the admin-only approve route from the
+  // creator's own account. The route refuses that (403), but the screen still said money had
+  // been sent. Payout approval happens only in the admin console.
 
-    try {
-      // Trigger approval on backend
-      const cleanH = (cardCustomizer.handle || myHandle).replace('@', '').toLowerCase();
-      const res = await fetch(`/api/payouts/creator/${cleanH}`);
-      const payouts = await res.json();
-      if (Array.isArray(payouts) && payouts.length > 0) {
-        const latestP = payouts[0];
-        await fetch(`/api/payouts/${latestP.id}/approve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ admin_note: "Verified by Team Raftra Admin" })
-        });
-      }
-    } catch (err) {
-      console.error("Backend approval simulation error:", err);
-    }
-
-    setTimeout(() => setProofSubmissionToast(null), 6000);
-  };
+  /* Who this creator is comes from the server. The portal used to decode the JWT, fuzzy-match
+     the email against a bundled spreadsheet export and fall back to a hardcoded
+     "samaira rao / @samairaa.r" card - so a new creator applied to brand deals, and read
+     deals and payouts, as someone else. The backend only accepts the signed-in account's own
+     handle, so every one of those requests was rejected and the screens stayed empty. */
+  const [serverHandle, setServerHandle] = useState('');
+  const [myCollabs, setMyCollabs] = useState<any[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    let loggedUser = '';
-    if (token) {
-      try {
-        const payloadBase64 = token.split('.')[1];
-        if (payloadBase64) {
-          const decoded = JSON.parse(atob(payloadBase64));
-          loggedUser = (decoded.username || decoded.handle || decoded.email || decoded.first_name || '').toLowerCase();
-        }
-      } catch (e) {}
-    }
-
-    // Match logged-in user with parsed influencers database sheet
-    if (loggedUser) {
-      const matched = (parsedCreatorsData as any[]).find(c => {
-        const handleClean = (c.handle || '').toLowerCase().replace('@', '');
-        const nameClean = (c.name || '').toLowerCase();
-        const emailClean = (c.email || '').toLowerCase();
-        return loggedUser.includes(handleClean) || loggedUser.includes(nameClean) || loggedUser.includes(emailClean) || handleClean.includes(loggedUser);
-      });
-
-      if (matched) {
-        const matchedCard = {
-          name: matched.name,
-          handle: matched.handle,
-          avatar: matched.avatar || DEFAULT_CREATOR_CARD.avatar,
-          niche: matched.niche || 'Lifestyle',
-          category: (matched.category || 'MICRO').toUpperCase(),
-          location: matched.location || 'India',
-          followers: matched.followers || '10k+',
-          avgViews: matched.avgViews || '20k+ avg',
-          fakeFollowerScore: `${matched.fakeFollowerScore || 1}%`,
-          expectedPrice: matched.expectedPrice || matched.priceRange || '₹1,000 - ₹3,000',
-          profileLink: matched.profileLink || `https://www.instagram.com/${matched.handle.replace('@', '')}`,
-          deliverables: matched.deliverables || ['UGC Video', 'Reel', 'Story', 'Static Post']
-        };
-        setCardCustomizer(matchedCard);
-        localStorage.setItem('raftra_creator_card_custom', JSON.stringify(matchedCard));
-      }
-    }
-
     fetch('/api/auth/me', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(data => {
@@ -291,8 +241,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     }).then(r => r.json()).then(data => {
       if(data && data.id) {
         setMyInfluencerId(data.id);
-        if (data.handle) {
+        const h = String(data.handle || '').replace('@', '').trim().toLowerCase();
+        setServerHandle(h);
+        if (h) {
           setVerificationStatus('verified');
+          setCardCustomizer((c: any) => ({ ...c, handle: `@${h}`, name: data.name || c.name, niche: data.niche || c.niche }));
         }
         setProfileForm({
           avatar: data.avatar || '',
@@ -308,20 +261,19 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Derive the creator's own handle (stable, matches brand side)
-  const myHandle = (cardCustomizer.handle || '@samairaa.r').replace('@', '').toLowerCase();
+  // The creator's own handle, as the server has it. Empty until Profile Setup saves one.
+  const myHandle = serverHandle;
 
+  // /mine routes answer for the signed-in account only. The per-handle routes these called
+  // (/api/deals/creator/{handle}, /api/payouts/creator/{handle}) were removed because they
+  // returned anyone's deals and bank details to anyone who knew a handle.
   useEffect(() => {
-    if (!myHandle) return;
-    fetch(`/api/deals/creator/${myHandle}`)
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setCreatorDeals(data); })
-      .catch(() => {});
-
-    fetch(`/api/payouts/creator/${myHandle}`)
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setCreatorPayouts(data); })
-      .catch(() => {});
+    if (!myHandle) { setCreatorDeals([]); setCreatorPayouts([]); setMyCollabs([]); return; }
+    const list = (url: string, set: (rows: any[]) => void) =>
+      fetch(url).then(r => (r.ok ? r.json() : [])).then(d => set(Array.isArray(d) ? d : [])).catch(() => {});
+    list('/api/deals/mine', setCreatorDeals);
+    list('/api/payouts/mine', setCreatorPayouts);
+    list('/api/posted-deals/mine', setMyCollabs);
   }, [myHandle, activeTab]);
 
   // Active brand’s workspaceId (determines WS room)
@@ -334,6 +286,10 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
   // ── Real-time WebSocket chat (creator side) ────────────────────────────
   useEffect(() => {
+    // No handle, no room. Rooms are keyed ws{workspace}_{handle}; with the hardcoded
+    // "samairaa.r" fallback gone, an empty handle would put every creator who has not set
+    // one up into the same chat room.
+    if (!myHandle) { setChatMessages([]); return; }
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
     const ws = new WebSocket(`${protocol}://${wsHost}/ws/chat/${activeRoomKey}`);
@@ -415,11 +371,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
 
   const initDemoBrandChat = () => {
-    const creatorName = cardCustomizer.name || 'samaira rao';
-    const creatorHandle = cardCustomizer.handle || '@samairaa.r';
+    const creatorName = cardCustomizer.name || 'Creator';
+    const creatorHandle = myHandle ? `@${myHandle}` : '';
     const creatorRate = cardCustomizer.expectedPrice || '₹500 - ₹1,000';
     // Build the storageKey from current activeRoomKey at call time
-    const currentRoomKey = `ws${1}_${(cardCustomizer.handle || '@samairaa.r').replace('@', '').toLowerCase()}`;
+    const currentRoomKey = `ws${1}_${myHandle}`;
     const currentStorageKey = `raftra_chat_${currentRoomKey}`;
 
     const initialMsgs = [
@@ -504,8 +460,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const handleAcceptProposal = async (amount: number) => {
     // Notify backend database that creator has accepted the deal & locked escrow
     try {
-      const cleanH = myHandle;
-      const res = await fetch(`/api/deals/creator/${cleanH}`);
+      const res = await fetch('/api/deals/mine');
       const deals = await res.json();
       if (Array.isArray(deals) && deals.length > 0) {
         const pendingDeal = deals.find((d: any) => d.status === 'pending') || deals[0];
@@ -561,6 +516,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
       }
 
       const status = data.verification_status || 'unverified';
+      const savedHandle = String(data.influencer?.handle || '').replace('@', '').trim().toLowerCase();
+      if (savedHandle) {
+        setServerHandle(savedHandle);
+        setCardCustomizer((c: any) => ({ ...c, handle: `@${savedHandle}` }));
+      }
       setProfileForm({
         avatar: data.influencer?.avatar || '',
         recent_posts: data.influencer?.recent_posts || [],
@@ -638,7 +598,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { id: 'brand_opportunities', label: 'Brand Opportunities', icon: Sparkles },
-            { id: 'my_applications', label: 'My Applications', icon: FileText },
+            { id: 'my_applications', label: 'My Collabs', icon: FileText },
             { id: 'inbox', label: 'Inbox', icon: MessageCircle },
             { id: 'profile_setup', label: 'Profile Setup', icon: User },
             { id: 'payment_setup', label: 'Payment Setup', icon: CreditCard },
@@ -690,22 +650,26 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
         {/* 🌟 BRAND OPPORTUNITIES TAB */}
         {activeTab === 'brand_opportunities' && (
           <div style={{ width: '100%' }}>
+            {/* The server-held handle, never a fallback: applying as "samairaa.r" is what the
+                backend refused for every creator who was not Samaira. */}
             <CreatorBrandOpportunitiesView
-              creatorHandle={cardCustomizer.handle || 'samairaa.r'}
-              creatorName={cardCustomizer.name || 'Samaira Rao'}
-              creatorAvatar={cardCustomizer.avatar}
-              creatorFollowers={cardCustomizer.followers}
-              onOpenChatWithBrand={(brandId, campaignName) => setActiveTab('inbox')}
+              creatorHandle={myHandle}
+              creatorName={cardCustomizer.name || me?.first_name || myHandle}
+              creatorAvatar={cardCustomizer.avatar || undefined}
+              creatorFollowers={cardCustomizer.followers || undefined}
+              onOpenChatWithBrand={() => setActiveTab('inbox')}
+              onOpenProfileSetup={() => setActiveTab('profile_setup')}
             />
           </div>
         )}
 
-        {/* 📋 MY APPLICATIONS TAB */}
+        {/* 📋 MY COLLABS TAB */}
         {activeTab === 'my_applications' && (
           <div style={{ width: '100%' }}>
             <CreatorApplicationsView
-              creatorHandle={cardCustomizer.handle || 'samairaa.r'}
-              onOpenChatWithBrand={(brandName) => setActiveTab('inbox')}
+              creatorHandle={myHandle}
+              onOpenChatWithBrand={() => setActiveTab('inbox')}
+              onOpenProfileSetup={() => setActiveTab('profile_setup')}
             />
           </div>
         )}
@@ -722,108 +686,139 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   Overview of your active brand campaigns, earnings, and escrow funds.
                 </p>
               </div>
-              <div style={{ padding: '6px 14px', background: 'rgba(0,230,118,0.12)', border: '1px solid #00E676', borderRadius: '100px', fontSize: '12px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <BadgeCheck size={16} /> Verified Creator Partner
-              </div>
+              {/* Was an unconditional "Verified Creator Partner" badge for every account. */}
+              {verificationStatus === 'verified' ? (
+                <div style={{ padding: '6px 14px', background: 'rgba(0,230,118,0.12)', border: '1px solid #00E676', borderRadius: '100px', fontSize: '12px', color: '#00E676', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <BadgeCheck size={16} /> Verified Creator Partner
+                </div>
+              ) : (
+                <button onClick={() => setActiveTab('profile_setup')} style={{ padding: '6px 14px', background: 'rgba(255,174,0,0.12)', border: '1px solid rgba(255,174,0,0.5)', borderRadius: '100px', fontSize: '12px', color: '#ffae00', fontWeight: 700, cursor: 'pointer' }}>
+                  Finish profile setup to apply to brand deals →
+                </button>
+              )}
             </div>
 
-            {/* Stat Cards - Live Backend & Dynamic Calculation */}
+            {/* Stat cards. Every number is read from this account: /api/posted-deals/mine,
+                /api/deals/mine and /api/payouts/mine. The previous cards summed paid payouts
+                with a ₹9,000 default per payout (payout rows carry no amount), and showed a
+                fixed "4.9 ★ Top Performing Creator" to everyone. */}
             {(() => {
-              const paidPayoutsSum = creatorPayouts
-                .filter((p: any) => p.status === 'paid')
-                .reduce((acc: number, p: any) => acc + (p.amount || 9000), 0);
-              const activeDealsCount = creatorDeals.filter((d: any) => d.status === 'active' || d.status === 'pending' || d.status === 'delivered').length;
-              const totalPayoutCount = creatorPayouts.filter((p: any) => p.status === 'paid').length;
+              const confirmedCollabs = myCollabs.filter((a: any) => a.status === 'CONFIRMED').length;
+              const completed = myCollabs.filter((a: any) => a.status === 'COMPLETED');
+              const openApplications = myCollabs.filter((a: any) => ['SUBMITTED', 'SHORTLISTED', 'NEGOTIATION', 'ACCEPTED'].includes(a.status)).length;
+              const activeDirectDeals = creatorDeals.filter((d: any) => d.status === 'active' || d.status === 'pending').length;
+              const completedValue = completed.reduce((sum: number, a: any) => sum + Number(a.final_price ?? a.proposed_price ?? 0), 0)
+                + creatorDeals.filter((d: any) => d.status === 'delivered' || d.status === 'paid').reduce((sum: number, d: any) => sum + Number(d.amount || 0), 0);
+              const paidCount = creatorPayouts.filter((p: any) => p.status === 'paid').length;
+              const inReviewCount = creatorPayouts.filter((p: any) => ['submitted', 'under_review', 'approved'].includes(p.status)).length;
+              const card = { padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' };
+              const label = { color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 } as const;
+              const sub = { fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' } as const;
 
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '20px', marginBottom: '32px' }}>
-                  <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>TOTAL PAYOUTS DISBURSED</div>
-                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#00E676', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      ₹{paidPayoutsSum.toLocaleString()}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{totalPayoutCount} Payouts Disbursed</div>
+                  <div className="glow-card" style={card}>
+                    <div style={label}>VALUE OF COMPLETED WORK</div>
+                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#00E676' }}>₹{completedValue.toLocaleString('en-IN')}</div>
+                    <div style={sub}>{paidCount} payment{paidCount === 1 ? '' : 's'} paid · {inReviewCount} in review</div>
                   </div>
 
-                  <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>ACTIVE BRAND DEALS</div>
-                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {activeDealsCount} Deals
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{activeDealsCount} Active Campaigns</div>
+                  <div className="glow-card" style={card}>
+                    <div style={label}>ACTIVE COLLABORATIONS</div>
+                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#fff' }}>{confirmedCollabs + activeDirectDeals}</div>
+                    <div style={sub}>{openApplications} application{openApplications === 1 ? '' : 's'} awaiting brands</div>
                   </div>
 
-                  <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>FOLLOWER REACH</div>
-                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#00C4CC' }}>{cardCustomizer.followers}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Synced with {cardCustomizer.handle} ({cardCustomizer.avgViews})</div>
+                  <div className="glow-card" style={card}>
+                    <div style={label}>COMPLETED CAMPAIGNS</div>
+                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#FFB300' }}>{completed.length}</div>
+                    <div style={sub}>Approved and closed by brands</div>
                   </div>
 
-                  <div className="glow-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '6px', fontWeight: 600 }}>APPROVAL RATING</div>
-                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#FFB300' }}>4.9 ★</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Top Performing Creator</div>
+                  <div className="glow-card" style={card}>
+                    <div style={label}>CREATOR HANDLE</div>
+                    <div style={{ fontSize: '22px', fontWeight: 800, color: '#00C4CC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{myHandle ? `@${myHandle}` : '—'}</div>
+                    <div style={sub}>{myHandle ? (cardCustomizer.followers ? `${cardCustomizer.followers} followers` : 'Linked to your deals') : 'Add it in Profile Setup'}</div>
                   </div>
                 </div>
               );
             })()}
 
-            {/* Brand Collaborations Status Tracker Table */}
-            <div className="glow-card" style={{ padding: '24px', marginBottom: '32px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '16px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>Brand Collaborations Status Tracker</h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Live Status Tracker ({creatorDeals.length} Deals)</span>
-              </div>
+            {/* Brand Collaborations Status Tracker: posted-deal collaborations and direct brand
+                deals together. It listed direct deals only, from a route that no longer
+                existed, so it always read "No Active Brand Deals". */}
+            {(() => {
+              const rows = [
+                ...myCollabs
+                  .filter((a: any) => ['ACCEPTED', 'CONFIRMED', 'COMPLETED'].includes(a.status))
+                  .map((a: any) => ({
+                    key: `posted-${a.id}`, brand: a.brand_name || 'Brand', amount: a.final_price ?? a.proposed_price,
+                    deliverables: a.final_deliverables || a.campaign_name,
+                    label: a.status === 'COMPLETED' ? (a.cashout_requested ? `Payment ${String(a.cashout_status || 'requested').toLowerCase()}` : 'Completed — request payment') : a.status === 'CONFIRMED' ? `In progress · ${a.deliverables_approved || 0}/${a.deliverables_total || 0} approved` : 'Accepted — terms coming',
+                    color: a.status === 'COMPLETED' ? '#00E676' : '#8B85FF',
+                    action: 'My Collabs', onAction: () => setActiveTab('my_applications'),
+                  })),
+                ...creatorDeals.map((d: any) => ({
+                  key: `direct-${d.id}`, brand: d.brand_name || 'Brand', amount: d.amount, deliverables: d.deliverables,
+                  // "Escrow Locked" / "Payment Released" described money movements that no code performs.
+                  label: d.status === 'paid' ? 'Paid' : d.status === 'delivered' ? 'Approved — submit payment proof' : d.status === 'active' ? 'Accepted' : 'Awaiting your acceptance',
+                  color: d.status === 'paid' ? '#00E676' : d.status === 'delivered' ? '#00C4CC' : d.status === 'active' ? '#8B85FF' : '#FFB300',
+                  action: 'Open Chat', onAction: () => setActiveTab('inbox'),
+                })),
+              ];
+              return (
+                <div className="glow-card" style={{ padding: '24px', marginBottom: '32px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '10px', flexWrap: 'wrap' }}>
+                    <h3 style={{ fontSize: '16px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>Brand Collaborations Status Tracker</h3>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{rows.length} collaboration{rows.length === 1 ? '' : 's'}</span>
+                  </div>
 
-              {creatorDeals.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '12px', color: 'var(--text-secondary)' }}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>📊</div>
-                  <div style={{ fontSize: '15px', fontWeight: 600, color: '#fff', marginBottom: '4px' }}>No Active Brand Deals</div>
-                  <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>When a brand reaches out and sends a deal proposal on Raftra Marketplace, your status tracker will update here.</div>
+                  {rows.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '12px', color: 'var(--text-secondary)' }}>
+                      <div style={{ fontSize: '32px', marginBottom: '8px' }}>📊</div>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#fff', marginBottom: '4px' }}>No brand collaborations yet</div>
+                      <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>Apply to a brief in Brand Opportunities. Accepted collaborations and brand deals appear here.</div>
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}>
+                            <th style={{ padding: '10px' }}>BRAND</th>
+                            <th style={{ padding: '10px' }}>AMOUNT</th>
+                            <th style={{ padding: '10px' }}>DELIVERABLES</th>
+                            <th style={{ padding: '10px' }}>STATUS</th>
+                            <th style={{ padding: '10px' }}>ACTION</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map(row => (
+                            <tr key={row.key} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <td style={{ padding: '12px 10px', fontWeight: 700, color: '#fff' }}>{row.brand}</td>
+                              <td style={{ padding: '12px 10px', color: '#00E676', fontWeight: 800 }}>₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
+                              <td style={{ padding: '12px 10px', color: 'rgba(255,255,255,0.8)' }}>{row.deliverables || '—'}</td>
+                              <td style={{ padding: '12px 10px' }}>
+                                <span style={{ padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 700, color: row.color, border: '1px solid currentColor', whiteSpace: 'nowrap' }}>
+                                  {row.label}
+                                </span>
+                              </td>
+                              <td style={{ padding: '12px 10px' }}>
+                                <button
+                                  onClick={row.onAction}
+                                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', color: '#fff', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                  {row.action}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}>
-                        <th style={{ padding: '10px' }}>BRAND</th>
-                        <th style={{ padding: '10px' }}>AMOUNT</th>
-                        <th style={{ padding: '10px' }}>DELIVERABLES</th>
-                        <th style={{ padding: '10px' }}>STATUS</th>
-                        <th style={{ padding: '10px' }}>ACTION</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {creatorDeals.map((deal: any) => (
-                        <tr key={deal.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '12px 10px', fontWeight: 700, color: '#fff' }}>{deal.brand_name || 'Brand Partner'}</td>
-                          <td style={{ padding: '12px 10px', color: '#00E676', fontWeight: 800 }}>₹{deal.amount?.toLocaleString()}</td>
-                          <td style={{ padding: '12px 10px', color: 'rgba(255,255,255,0.8)' }}>{deal.deliverables}</td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <span style={{
-                              padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 700,
-                              background: deal.status === 'paid' ? 'rgba(0,230,118,0.15)' : deal.status === 'delivered' ? 'rgba(0,196,204,0.15)' : deal.status === 'active' ? 'rgba(90,82,255,0.2)' : 'rgba(255,179,0,0.15)',
-                              color: deal.status === 'paid' ? '#00E676' : deal.status === 'delivered' ? '#00C4CC' : deal.status === 'active' ? '#8B85FF' : '#FFB300',
-                              border: '1px solid currentColor'
-                            }}>
-                              {deal.status === 'paid' ? '✅ Paid' : deal.status === 'delivered' ? '🚀 Payment Released' : deal.status === 'active' ? '🔒 Escrow Locked' : '⏳ Pending Acceptance'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <button
-                              onClick={() => setActiveTab('inbox')}
-                              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', color: '#fff', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
-                            >
-                              Open Chat
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* 🚨 STRICT ANTI-BYPASS & LEGAL WARNING BANNER */}
             <div 
@@ -1042,7 +1037,7 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                   return (
                     <div key={i} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', textAlign: isMe ? 'right' : 'left' }}>
-                        {isMe ? `You (${cardCustomizer.name || 'Samaira'})` : activeBrandChat.name}
+                        {isMe ? `You (${cardCustomizer.name || myHandle || 'creator'})` : activeBrandChat.name}
                       </div>
                       <div style={{ 
                         background: isMe ? 'linear-gradient(135deg, #5A52FF, #7832FF)' : 'rgba(255,255,255,0.06)', 
@@ -1602,27 +1597,16 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                 </div>
               )}
 
-              {proofVerificationStatus === 'verified_payout' ? (
-                <div style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', padding: '24px', borderRadius: '14px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                  <CheckCircle2 size={36} color="#00E676" />
-                  <h4 style={{ fontSize: '18px', color: '#fff', margin: 0 }}>₹9,000 Payout Disbursed & Verified!</h4>
-                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', margin: 0, maxWidth: '500px' }}>
-                    Team Raftra Human Verification completed. 90% net payout transferred to your <b>{bankDetails.bankName}</b> (A/C: {bankDetails.accountNumber}) & UPI (<b>{bankDetails.upiId}</b>).
-                  </p>
-                  <button
-                    onClick={() => setShowInvoiceModal(true)}
-                    style={{ marginTop: '8px', background: '#00E676', color: '#000', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    📄 Download Official Raftra Tax Invoice & Receipt
-                  </button>
-                </div>
-              ) : proofVerificationStatus === 'under_review' ? (
+              {/* The "₹9,000 Payout Disbursed & Verified!" panel and the button that produced it
+                  are gone: nothing on this screen can approve or send a payout, so it must not
+                  say one was sent. Real status comes from /api/payouts/mine on the dashboard. */}
+              {proofVerificationStatus === 'under_review' ? (
                 <div style={{ background: 'rgba(0,196,204,0.1)', border: '1px solid rgba(0,196,204,0.3)', padding: '20px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <Sparkles size={20} color="#00C4CC" />
                     <div>
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>Proof Under Human Verification by Team Raftra 🔍</div>
-                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>Est. Verification Time: 15-30 minutes. Raftra Auditor is checking your chat screenshot & timestamp.</div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>Proof submitted — waiting for Team Raftra review 🔍</div>
+                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>A reviewer checks your screenshot and verification code, then arranges the transfer. Its status appears on your dashboard.</div>
                     </div>
                   </div>
                   {proofFileScreenshot && (
@@ -1630,12 +1614,6 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
                       <img src={proofFileScreenshot} alt="Uploaded Proof" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                   )}
-                  <button
-                    onClick={handleSimulateHumanApproval}
-                    style={{ alignSelf: 'flex-start', background: '#00E676', color: '#000', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    ⚡ Simulate Team Raftra Human Verification Approval (Demo Test)
-                  </button>
                 </div>
               ) : (
                 <form onSubmit={handleSubmitProofToTeamRaftra} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>

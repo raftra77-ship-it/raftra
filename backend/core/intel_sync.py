@@ -141,13 +141,19 @@ async def sync_competitor_ads(workspace_id: int, country: str = None,
     fetched: dict = {}
     errors: List[str] = []
 
-    for name in names[:8]:
+    async def _fetch_one(name: str):
         try:
-            fetched[name] = await ad_library.fetch_competitor_ads(name, country, per_competitor)
-        except ad_library.AdLibraryError as e:
-            errors.append("%s: %s" % (name, e))
+            return name, await ad_library.fetch_competitor_ads(name, country, per_competitor), None
         except Exception as e:
-            errors.append("%s: %s" % (name, e))
+            return name, None, "%s: %s" % (name, e)
+
+    # Concurrently: a scraper run takes a minute or more per rival, and "Sync now" is an HTTP
+    # request the user is waiting on - eight of them in series outlasts any sensible wait.
+    for name, rows, err in await asyncio.gather(*(_fetch_one(n) for n in names[:8])):
+        if err:
+            errors.append(err)
+        else:
+            fetched[name] = rows
 
     total = sum(len(v) for v in fetched.values())
     if total == 0:

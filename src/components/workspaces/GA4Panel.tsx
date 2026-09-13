@@ -20,7 +20,9 @@ const authHeaders = (): HeadersInit => {
   return token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' };
 };
 
-const BENEFITS = ['Users', 'Sessions', 'Page Views', 'Bounce Rate', 'Avg. Session Duration', 'Traffic Sources', 'Real-Time Visitors'];
+// Only what the panel actually reads (GET /ga4/{id}/traffic). Bounce rate, session duration
+// and real-time visitors were advertised here and shown as permanent "—" tiles once connected.
+const BENEFITS = ['Users', 'Sessions', 'Page Views', 'Traffic Sources'];
 
 export const GA4Panel: React.FC<{ workspaceId: number | null }> = ({ workspaceId }) => {
   const [status, setStatus] = useState<Status | null>(null);
@@ -178,8 +180,6 @@ export const GA4Panel: React.FC<{ workspaceId: number | null }> = ({ workspaceId
             <MetricTile label="Users (28d)" value={traffic ? traffic.totals.active_users.toLocaleString() : '—'} />
             <MetricTile label="Sessions (28d)" value={traffic ? traffic.totals.sessions.toLocaleString() : '—'} />
             <MetricTile label="Page Views (28d)" value={traffic ? traffic.totals.page_views.toLocaleString() : '—'} />
-            <MetricTile label="Bounce Rate" value="—" />
-            <MetricTile label="Avg. Session Duration" value="—" />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '10px', marginBottom: '16px' }}>
@@ -192,9 +192,6 @@ export const GA4Panel: React.FC<{ workspaceId: number | null }> = ({ workspaceId
                 </div>
               )) : undefined}
             />
-            <DataSection title="Top Pages" />
-            <DataSection title="Devices" />
-            <DataSection title="New vs Returning" />
           </div>
 
           {changingProperty ? (

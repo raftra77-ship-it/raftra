@@ -87,9 +87,15 @@ def extract_offers(text: str) -> dict:
     }
 
 
-def _parse_ts(value: str) -> Optional[datetime]:
-    if not value:
+def _parse_ts(value) -> Optional[datetime]:
+    if value in (None, ""):
         return None
+    # Scrapers report dates as Unix seconds (Apify's `startDate`), the Graph API as ISO.
+    if isinstance(value, (int, float)) or re.fullmatch(r"\d{9,11}(\.\d+)?", str(value).strip()):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc).replace(tzinfo=None)
+        except (OverflowError, OSError, ValueError):
+            return None
     raw = str(value).replace("Z", "+00:00")
     try:
         dt = datetime.fromisoformat(raw)
@@ -121,7 +127,7 @@ async def _fetch_official(client: httpx.AsyncClient, competitor: str, country: s
     params = {
         "access_token": token,
         "ad_reached_countries": "['%s']" % country.upper(),
-        "search_terms": competitor,
+        "search_terms": _search_term(competitor),
         "ad_active_status": "ACTIVE",
         "ad_type": "ALL" if official_api_available(country) else "POLITICAL_AND_ISSUE_ADS",
         "fields": _FIELDS,
@@ -160,24 +166,54 @@ async def _fetch_official(client: httpx.AsyncClient, competitor: str, country: s
 
 # ---------------------------------------------------------------- Apify fallback
 
+def _search_term(competitor: str) -> str:
+    """What to type into the Ad Library search box for a saved competitor.
+
+    Rivals are often saved as a website ("geeksforgeeks.org", "https://boat-lifestyle.com/"),
+    and the Ad Library searches advertiser names and ad text - a bare domain matches almost
+    nothing. The registrable name ("geeksforgeeks", "boat lifestyle") is what it can find.
+    """
+    raw = (competitor or "").strip()
+    host = re.sub(r"^https?://", "", raw, flags=re.I).split("/")[0]
+    if "." in host and " " not in host:
+        stem = re.sub(r"^www\.", "", host, flags=re.I).split(".")[0]
+        return stem.replace("-", " ").replace("_", " ").strip() or raw
+    return raw
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
 async def _fetch_apify(client: httpx.AsyncClient, competitor: str, country: str,
                        limit: int) -> List[dict]:
-    """Run an Apify Meta-Ads actor synchronously and map its items onto our shape.
+    """Run the Apify Facebook Ads Library actor synchronously and map its items onto our shape.
 
-    Actor output schemas differ between actors and change between versions, so every field
-    is read through a list of plausible keys rather than one. A missing field yields an
-    empty value; it never guesses.
+    Input and output follow apify/facebook-ads-scraper's published schema: the search is
+    expressed as an Ad Library URL in `startUrls` (the actor has no separate country or
+    keyword fields), `resultsLimit` caps the items, and each item carries its creative under
+    `snapshot` (`body.text`, `title`, `cards[]`) with `startDate` as a Unix timestamp. The
+    previous mapping read top-level keys (`adText`, `title`, `maxItems`) the actor does not
+    use, so a configured token would still have stored ads with no copy, no headline and no
+    run time. Older/alternative keys are kept as fallbacks for other actors.
     """
+    from urllib.parse import urlencode
+
     token = os.getenv("APIFY_TOKEN")
     actor = os.getenv("APIFY_META_ADS_ACTOR", "apify~facebook-ads-scraper")
     if not token:
         return []
 
+    term = _search_term(competitor)
+    library_url = "https://www.facebook.com/ads/library/?" + urlencode({
+        "active_status": "active", "ad_type": "all", "country": country.upper(),
+        "q": term, "search_type": "keyword_unordered", "media_type": "all",
+    })
     url = "https://api.apify.com/v2/acts/%s/run-sync-get-dataset-items" % actor
-    payload = {"startUrls": [{"url": "https://www.facebook.com/ads/library/?active_status=active"
-                                     "&ad_type=all&country=%s&q=%s" % (country.upper(), competitor)}],
-               "maxItems": limit, "country": country.upper(), "searchTerms": [competitor]}
-    r = await client.post(url, params={"token": token}, json=payload, timeout=180)
+    payload = {"startUrls": [{"url": library_url}], "resultsLimit": limit,
+               "activeStatus": "active", "isDetailsPerAd": False, "onlyTotal": False}
+    # run-sync waits up to 300s on Apify's side before handing back a timeout.
+    r = await client.post(url, params={"token": token}, json=payload, timeout=320)
     if r.status_code not in (200, 201):
         raise AdLibraryError("Apify actor %s returned %s: %s" % (actor, r.status_code, r.text[:200]))
 
@@ -188,31 +224,62 @@ async def _fetch_apify(client: httpx.AsyncClient, competitor: str, country: str,
                 return v
         return ""
 
+    items = [i for i in (r.json() or []) if isinstance(i, dict)]
+    failures = [i for i in items if i.get("error")]
+    items = [i for i in items if not i.get("error")]
+    if failures and not items:
+        f = failures[0]
+        raise AdLibraryError("Apify actor %s could not read the Ad Library: %s %s"
+                             % (actor, f.get("error"), f.get("errorDescription") or ""))
+
     rows = []
-    for item in (r.json() or [])[:limit]:
-        if not isinstance(item, dict):
-            continue
-        body = pick(item, "adText", "body", "text", "ad_creative_body", "description")
-        if isinstance(body, dict):
-            body = body.get("text", "")
-        title = pick(item, "title", "adTitle", "headline", "linkTitle")
-        start = _parse_ts(str(pick(item, "startDate", "startDateFormatted",
-                                   "ad_delivery_start_time", "startedRunningOn")))
-        stop = _parse_ts(str(pick(item, "endDate", "ad_delivery_stop_time")))
-        copy_text = str(body or "")
+    for item in items:
+        snap = item.get("snapshot") if isinstance(item.get("snapshot"), dict) else {}
+        cards = [c for c in (snap.get("cards") or []) if isinstance(c, dict)]
+        body = snap.get("body")
+        body_text = body.get("text") if isinstance(body, dict) else body
+        body_text = (body_text
+                     or next((c.get("body") for c in cards if c.get("body")), "")
+                     or pick(item, "adText", "body", "text", "ad_creative_body"))
+        if isinstance(body_text, dict):
+            body_text = body_text.get("text", "")
+        title = (snap.get("title")
+                 or next((c.get("title") for c in cards if c.get("title")), "")
+                 or snap.get("link_description")
+                 or pick(item, "title", "adTitle", "headline", "linkTitle"))
+        start = _parse_ts(pick(item, "startDateFormatted", "startDate", "ad_delivery_start_time"))
+        # An active ad's endDate is the day it was scraped, not a stop date.
+        stop = None if item.get("isActive") else _parse_ts(pick(item, "endDateFormatted", "endDate"))
+        archive_id = str(pick(item, "adArchiveID", "adArchiveId", "adId", "id"))
+        copy_text = str(body_text or "")
         rows.append({
-            "external_id": str(pick(item, "adArchiveId", "adId", "id")),
-            "competitor_name": str(pick(item, "pageName", "advertiser", "page_name")) or competitor,
-            "ad_title": str(title)[:300],
+            "external_id": archive_id,
+            "competitor_name": str(pick(item, "pageName", "advertiser", "page_name")
+                                   or snap.get("page_name") or competitor),
+            "ad_title": str(title or "")[:300],
             "ad_copy": copy_text[:4000],
-            "snapshot_url": str(pick(item, "adLibraryUrl", "url", "snapshotUrl")),
-            "platforms": pick(item, "publisherPlatform", "platforms") or [],
+            "snapshot_url": str(pick(item, "url", "adLibraryUrl", "snapshotUrl")
+                                or ("https://www.facebook.com/ads/library/?id=%s" % archive_id
+                                    if archive_id else "")),
+            "platforms": [str(p).lower() for p in (pick(item, "publisherPlatform", "platforms") or [])],
             "started_at": start,
             "days_active": days_active(start, stop),
-            "offers": extract_offers(copy_text + " " + str(title)),
+            "offers": extract_offers(copy_text + " " + str(title or "")),
             "source": "Apify (%s)" % actor,
         })
-    return rows
+
+    # A keyword search also returns other advertisers who merely mention the rival. Keep the
+    # rival's own page when it is in the results; only fall back to keyword matches (and
+    # say so in `source`) when no page name matches at all.
+    wanted = _norm(term)
+    own = [row for row in rows if wanted and (wanted in _norm(row["competitor_name"])
+                                              or _norm(row["competitor_name"]) in wanted)
+           and _norm(row["competitor_name"])]
+    if own:
+        return own[:limit]
+    for row in rows:
+        row["source"] += " - keyword match"
+    return rows[:limit]
 
 
 async def fetch_competitor_ads(competitor: str, country: str = "IN",

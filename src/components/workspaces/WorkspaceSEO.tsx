@@ -649,6 +649,23 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
     // A blank target used to make the button a silent no-op, which reads as "the button is
     // broken". Say what's missing instead.
     if (!url.trim()) { setToast({ msg: 'Enter the website address you want audited first.' }); return; }
+    // /seo/preflight existed but nothing called it, so a typo, a login wall or a "coming
+    // soon" page cost a full crawl and came back as a plausible-looking audit of the wrong
+    // page. Only definite verdicts stop the run: a slow site, or one that refuses the
+    // preflight's bot request but serves the crawler, still gets audited.
+    try {
+      const pf = await fetch(`/api/workspaces/${workspaceId}/seo/preflight`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),
+      });
+      if (pf.ok) {
+        const v = await pf.json().catch(() => null);
+        if (v && v.ok === false && ['EMPTY_URL', 'INVALID_URL', 'NOT_PUBLIC'].includes(v.code)) {
+          setToast({ msg: v.message || 'That address cannot be audited.' });
+          return;
+        }
+        if (v?.url) url = v.url;
+      }
+    } catch { /* advisory only — never block a run because the check itself failed */ }
     try {
       const r = await fetch(`/api/agents/${workspaceId}/${pipeline.toLowerCase()}`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),

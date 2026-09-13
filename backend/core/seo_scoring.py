@@ -242,9 +242,17 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
                   f"— excluded from scoring rather than counted as missing")
     elif r.get("found"):
         pts += 4; ev.append(f"robots.txt found (HTTP {r.get('status')}) → 4/4")
+        # `disallow_all` means this URL is disallowed for search crawlers (* or Googlebot /
+        # Bingbot). It used to be set by any `Disallow: /` line in the file, so a group aimed
+        # only at GPTBot or Nutch was reported as the site blocking Google.
         if r.get("disallow_all"):
-            pts -= 2; ev.append("robots.txt contains 'Disallow: /' → -2 (blocks crawling)")
-            rec.append("robots.txt disallows crawling of the whole site — remove that rule.")
+            who = ", ".join(r.get("blocked_search_agents") or []) or "all crawlers"
+            pts -= 2; ev.append(f"robots.txt disallows this page for {who} → -2 (blocks search crawling)")
+            rec.append(f"robots.txt blocks {who} from this page — remove that rule so it can be indexed.")
+        elif r.get("blocked_agents"):
+            names = r["blocked_agents"]
+            ev.append(f"robots.txt blocks {len(names)} specific bot(s) ({', '.join(names[:5])}"
+                      f"{'…' if len(names) > 5 else ''}) but allows Google and Bing → no deduction")
     else:
         ev.append("robots.txt NOT found → 0/4")
         rec.append("Add a robots.txt that allows crawling and points to the sitemap.")
@@ -322,12 +330,17 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
                 rec.append(f"Improve {label} (currently {v}, target <= {good}).")
         cats.append(_cat("Performance", 15, min(pts, 15), "Core Web Vitals from PageSpeed data", ev, rec, "High"))
     else:
+        # Say why. "PageSpeed/CrUX not integrated" was printed for every failure, including
+        # the usual one: the keyless PageSpeed API's shared daily quota being exhausted.
+        why = signals.get("psi_error") or "Core Web Vitals were not measured for this run"
         cats.append(_cat(
-            "Performance", 15, None,
-            "No Core Web Vitals source connected (PageSpeed/CrUX not integrated)",
+            "Performance", 15, None, why,
             ["LCP: Not Verified", "FCP: Not Verified", "CLS: Not Verified",
              "Excluded from the score rather than estimated."],
-            ["Connect PageSpeed Insights/CrUX to score performance with real data."],
+            (["Set PAGESPEED_API_KEY on the server (Google Cloud → APIs & Services → Credentials) "
+              "so every audit measures Core Web Vitals."]
+             if ("PAGESPEED_API_KEY" in why or "429" in why) else
+             ["Re-run the audit to measure Core Web Vitals."]),
             "High", status="not_verified"))
 
     # ---- 5. Accessibility (10)
@@ -431,6 +444,22 @@ def score_seo(url: str, html: str, markdown: str, metrics: dict, signals: dict) 
     cats.append(_cat("Structured Data", 10, pts, f"Detected schema types: {', '.join(sorted(types)) or 'none'}",
                      ev, rec, "High" if pts < 5 else "Medium"))
 
+    # Structured Data is read entirely from the HTML and Content entirely from the markdown,
+    # but neither had the not-verified guard Metadata/Accessibility/Linking got. An unreadable
+    # fetch therefore still reported "No JSON-LD → 0/10" and "Word count 0 → thin content" as
+    # measured findings and pushed them into the fix list.
+    # Internal Linking and Accessibility join them for the no-text case: a JavaScript app shell
+    # has a scorable <head> but an empty <body>, and "0 internal links, no <nav>" measured on
+    # the shell describes the fetch, not the site.
+    for c in cats:
+        if c["status"] != "verified":
+            continue
+        why = unmeasured_reason(c["name"], markup_ok, markdown, signals,
+                                html_only={"Structured Data"},
+                                text_needed={"Content", "Internal Linking", "Accessibility"})
+        if why:
+            c.update(status="not_verified", score=None, recommendations=[], evidence=[why])
+
     return _finalise("SEO", cats)
 
 
@@ -502,8 +531,15 @@ def score_geo(url: str, html: str, markdown: str, metrics: dict, signals: dict,
     else:
         pts += 2; ev.append(f"{h3} H3+ subsections → 2/5")
         rec.append("Add sub-headings for a deeper, more parseable hierarchy.")
-    if bullets := len(re.findall(r"(?m)^\s*[-*]\s+\S", md)):
+    # Same thresholds as the bullet check in AI Readability. Any list at all scored 5/5 here,
+    # so one stray bullet read "Only 1 bullet points → 2/5" in one category and full marks in
+    # the next.
+    bullets = len(re.findall(r"(?m)^\s*[-*]\s+\S", md))
+    if bullets >= 5:
         pts += 5; ev.append(f"{bullets} list items → 5/5")
+    elif bullets:
+        pts += 2.5; ev.append(f"Only {bullets} list item(s) → 2.5/5")
+        rec.append("Use more lists — AI extracts them far more reliably than prose.")
     else:
         ev.append("No lists → 0/5")
         rec.append("Use lists — AI extracts them far more reliably than prose.")
@@ -603,6 +639,61 @@ def score_geo(url: str, html: str, markdown: str, metrics: dict, signals: dict,
     cats.append(_cat("Structured Knowledge", 20, pts, f"Schema detected: {', '.join(sorted(types)) or 'none'}",
                      ev, rec, "High"))
 
+    # ---- 6. AI Crawler Access (10)
+    # Whether AI crawlers may fetch the page at all - the precondition for every other GEO
+    # category, and invisible from the page itself. ambraneindia.com, for one, disallows
+    # GPTBot, ClaudeBot, CCBot and Applebot-Extended while allowing ChatGPT search and
+    # Perplexity. Answer-engine crawlers carry more weight than training crawlers, because
+    # blocking training is a legitimate choice and blocking citation rarely is.
+    robots = signals.get("robots_txt") or {}
+    crawlers = robots.get("ai_crawlers") or []
+    if not robots or robots.get("checked") is False:
+        cats.append(_cat("AI Crawler Access", 10, None,
+                         "robots.txt could not be read, so AI crawler access was not checked",
+                         ["AI crawler access: Not Verified"], [], "High", status="not_verified"))
+    elif not robots.get("found") or not crawlers:
+        cats.append(_cat("AI Crawler Access", 10, 10,
+                         "No robots.txt rules apply, so every AI crawler may fetch this page",
+                         ["No robots.txt restrictions → answer-engine and training crawlers allowed → 10/10"],
+                         [], "Medium"))
+    else:
+        ev, rec = [], []
+        answer = [c for c in crawlers if c.get("kind") == "answer"]
+        training = [c for c in crawlers if c.get("kind") == "training"]
+        a_blocked = [c["agent"] for c in answer if not c.get("allowed")]
+        t_blocked = [c["agent"] for c in training if not c.get("allowed")]
+        a_pts = 6 * (len(answer) - len(a_blocked)) / len(answer) if answer else 6
+        t_pts = 4 * (len(training) - len(t_blocked)) / len(training) if training else 4
+        ev.append(f"Answer-engine crawlers allowed: {len(answer) - len(a_blocked)}/{len(answer)}"
+                  + (f" (blocked: {', '.join(a_blocked)})" if a_blocked else "")
+                  + f" → {round(a_pts, 1)}/6")
+        ev.append(f"Model-training crawlers allowed: {len(training) - len(t_blocked)}/{len(training)}"
+                  + (f" (blocked: {', '.join(t_blocked)})" if t_blocked else "")
+                  + f" → {round(t_pts, 1)}/4")
+        if a_blocked:
+            rec.append(f"robots.txt blocks {', '.join(a_blocked)} — those answer engines cannot "
+                       f"fetch this page to cite it. Allow them.")
+        if t_blocked:
+            rec.append(f"robots.txt blocks {', '.join(t_blocked)} from training. That is a valid "
+                       f"choice, but those models cannot learn the brand from its own site — allow "
+                       f"them if being recalled by AI matters more.")
+        cats.append(_cat("AI Crawler Access", 10, a_pts + t_pts,
+                         "Which AI crawlers robots.txt allows to fetch this page", ev, rec,
+                         "High" if a_blocked else "Medium"))
+
+    # Same guard as the SEO scorer: these categories are read from the HTML or from the page
+    # text, and an unreadable crawl must not turn into a column of measured zeros.
+    html_ok = html_is_scorable(html)
+    for c in cats:
+        if c["status"] != "verified":
+            continue
+        why = unmeasured_reason(c["name"], html_ok, md, signals,
+                                html_only={"AI Readability", "Authority Signals", "Structured Knowledge"},
+                                text_needed={"AI Readability", "Content Structure",
+                                             "AI Citation Readiness", "Authority Signals"})
+        if why:
+            c.update(status="not_verified", score=None, recommendations=[], evidence=[why])
+
     result = _finalise("GEO", cats)
     if llm_recall:
         result["llm_recall"] = {
@@ -611,6 +702,30 @@ def score_geo(url: str, html: str, markdown: str, metrics: dict, signals: dict,
             "note": "Measured by directly querying an AI model — not an estimate.",
         }
     return result
+
+
+def unmeasured_reason(name: str, markup_ok: bool, markdown: str, signals: dict,
+                      html_only: set, text_needed: set) -> str:
+    """Why category `name` cannot be scored from this crawl, or "" when it can.
+
+    `html_only` names categories that need a readable <head>/markup; `text_needed` names
+    those that need body text. A category may be in both. The message names JavaScript
+    rendering when the page came from the direct-fetch fallback, since an app shell is by far
+    the most common reason a fetched page has markup but no text.
+    """
+    if name in html_only and not markup_ok:
+        what = "HTML"
+    elif name in text_needed and not (markdown or "").strip():
+        what = "page text"
+    else:
+        return ""
+    msg = f"Not measured: the crawl returned no readable {what}."
+    signals = signals or {}
+    if str(signals.get("crawl_source") or "").startswith("Direct"):
+        fc = signals.get("firecrawl_error")
+        msg += (" The page likely renders its content with JavaScript, which the direct fetch "
+                "cannot run" + (f" (Firecrawl was unavailable: {fc})" if fc else "") + ".")
+    return msg
 
 
 # --------------------------------------------------------------------------- totals

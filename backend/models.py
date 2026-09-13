@@ -472,6 +472,9 @@ class CreatorPayoutRequest(Base):
     creator_handle = Column(String, index=True)
     creator_name = Column(String)
     deal_id = Column(Integer, ForeignKey("influencer_deals.id"), nullable=True)
+    # A payment request for a completed posted-deal collaboration (DealApplication) rather than
+    # a direct deal. Added with ADD COLUMN IF NOT EXISTS in main._run_light_migrations.
+    application_id = Column(Integer, nullable=True)
     screenshot_url = Column(String, nullable=True)
     token_submitted = Column(String, nullable=True)
     bank_account_holder = Column(String, nullable=True)

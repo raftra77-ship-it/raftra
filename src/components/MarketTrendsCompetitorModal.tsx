@@ -30,6 +30,9 @@ interface MarketTrendsCompetitorModalProps {
   onClose: () => void;
   workspaceId?: number | null;
   onNavigateTab?: (tab: string) => void;
+  /** Fired after a successful competitor-ad sync, so a screen reading the same vault behind
+   *  this modal can refetch instead of showing its pre-sync empty state. */
+  onSynced?: () => void;
 }
 
 const CARD = {
@@ -97,13 +100,14 @@ const SyncBar: React.FC<{
       style={{ padding: '8px 18px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px' }}
     >
       <RefreshCw size={13} className={busy ? 'spin-animation' : undefined} />
-      {busy ? 'Syncing…' : 'Sync now'}
+      {/* Disabled with a bare "Sync now" label read as a broken button. */}
+      {busy ? 'Syncing…' : configured ? 'Sync now' : 'Source not configured'}
     </GlowButton>
   </div>
 );
 
 export const MarketTrendsCompetitorModal: React.FC<MarketTrendsCompetitorModalProps> = ({
-  isOpen, onClose, workspaceId = null,
+  isOpen, onClose, workspaceId = null, onSynced,
 }) => {
   const [activeReportTab, setActiveReportTab] = useState<'competitor_ads' | 'keyword_trends'>('competitor_ads');
   const [copiedHook, setCopiedHook] = useState<string | null>(null);
@@ -144,6 +148,7 @@ export const MarketTrendsCompetitorModal: React.FC<MarketTrendsCompetitorModalPr
       if (kind === 'ads') await IntelligenceService.syncCompetitorAds(workspaceId);
       else await IntelligenceService.syncMarketTrends(workspaceId);
       await load();
+      if (kind === 'ads') onSynced?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sync failed.');
     } finally {

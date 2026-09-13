@@ -150,6 +150,7 @@ const CATEGORY_EXPLAIN: Record<string, string> = {
   "AI Citation Readiness": "AI engines prefer to cite sources with concrete facts, stats and definitions — vague marketing copy rarely gets quoted.",
   "Authority Signals": "About/contact/social links are how AI models corroborate that you're a real, trustworthy entity worth citing — not an anonymous or low-quality page.",
   "Structured Knowledge": "Organization/Product schema is the clearest signal you can give an AI model about who you are — without it, the model has to guess from prose alone.",
+  "AI Crawler Access": "AI answer engines can only cite pages their crawlers are allowed to fetch, and models only recall brands whose pages they were allowed to learn from. robots.txt decides both, per bot.",
 };
 
 const CategoryRow: React.FC<{ c: any }> = ({ c }) => {
@@ -454,7 +455,7 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
                 <StatusPill status={overallStatus} />
                 {viewingDate && <span style={{ fontSize: '11px', color: '#ffae00', border: '1px solid rgba(255,174,0,0.35)', borderRadius: '20px', padding: '2px 9px' }}>Viewing {viewingDate}</span>}
                 {gscConnected && (
-                  <span title="During future audits, Search Console data will be used together with Firecrawl and SEO analysis."
+                  <span title="Each audit reads this site's Search Console queries, page performance and Google index status."
                     style={{ fontSize: '10px', fontWeight: 700, color: '#22C55E', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '20px', padding: '3px 9px' }}>
                     Google Search Console Connected
                   </span>
@@ -522,6 +523,22 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
                     </div>
                   </div>
                 )}
+                {/* The backend has always flagged audits of a login wall, password gate or
+                    "not deployed" page as invalid, but nothing rendered the flag - so those
+                    audits read exactly like real ones. */}
+                {(report.seo?.audit?.invalid || report.geo?.audit?.invalid) && (
+                  <div style={{
+                    marginBottom: '16px', padding: '12px 14px', borderRadius: '10px',
+                    background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.45)',
+                    color: 'var(--text-primary)', fontSize: '12.5px', lineHeight: 1.55,
+                  }}>
+                    <strong style={{ color: '#f87171' }}>This audit measured a placeholder page, not your live site.</strong>
+                    <div style={{ marginTop: '5px' }}>
+                      {report.seo?.audit?.invalid_reason || report.geo?.audit?.invalid_reason}{' '}
+                      Its fixes are marked not actionable. Make the site public (or audit a page that is) and run again.
+                    </div>
+                  </div>
+                )}
                 {!report.url_mismatch && report.stale_half && (
                   <div style={{
                     marginBottom: '16px', padding: '10px 14px', borderRadius: '10px',
@@ -568,9 +585,9 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
                 <div style={{ marginBottom: '26px', padding: '14px 16px', background: 'rgba(0,255,157,0.05)', border: '1px solid rgba(0,255,157,0.2)', borderRadius: '10px' }}>
                   <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#00ff9d', marginBottom: '4px' }}>Next Step</div>
                   <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                    Review the recommendations below. Approve the fixes you want to implement. After reviewing them,
-                    connect or open your website platform to manually apply the changes. Automatic AI publishing will
-                    be available in a future update.
+                    Review the recommendations below and approve the fixes you want. Approved fixes are applied from
+                    "Connect &amp; Publish" above — a GitHub pull request, or a WordPress / Shopify preview you confirm —
+                    and nothing goes live without that confirmation. Then run the audit again to verify.
                   </p>
                 </div>
 

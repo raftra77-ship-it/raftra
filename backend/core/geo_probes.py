@@ -138,21 +138,47 @@ async def probe_prompt_visibility(url: str, brand_name: str = "", category: str 
             system_prompt=_NO_TOOLS + " Reply with JSON only.",
         )
         rows = _json_block(answered)
-        if not isinstance(rows, list):
-            rows = [{"question": p, "answer": answered or ""} for p in prompts]
+        rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+        by_prompt = [rows[i] if i < len(rows) else None for i in range(len(prompts))]
+
+        # A long batched reply comes back truncated often enough that _json_block salvaging
+        # the first two answers was routine - and the audit then printed "named in 0 of 2"
+        # beside a list of five prompts. Any prompt the batch did not answer is asked on its
+        # own, so every prompt listed is a prompt measured. (The old fallback, when nothing
+        # parsed, scored the whole raw reply once per prompt: one mention counted five times.)
+        missing = [i for i, r in enumerate(by_prompt) if r is None]
+        if missing:
+            import asyncio
+
+            async def _ask(question: str):
+                try:
+                    reply = await llm.generate_text(
+                        prompt=(question + "\n\nAnswer the way you normally would, naming the "
+                                "specific companies, products or sites you would recommend. If "
+                                "you do not know of any, say so."),
+                        system_prompt=_NO_TOOLS)
+                    return {"question": question, "answer": reply or ""} if (reply or "").strip() else None
+                except Exception:
+                    return None
+
+            for i, r in zip(missing, await asyncio.gather(*(_ask(prompts[i]) for i in missing))):
+                by_prompt[i] = r
 
         hits = 0
-        for r in rows:
-            if not isinstance(r, dict):
+        for prompt, r in zip(prompts, by_prompt):
+            if not r:
                 continue
             ans = str(r.get("answer", ""))
             hit = _mentions(ans, names)
             hits += 1 if hit else 0
-            out["answers"].append({"question": str(r.get("question", ""))[:200],
-                                   "mentioned": hit, "answer": ans[:500]})
-        out["total"] = len(out["answers"]) or len(prompts)
+            out["answers"].append({"question": prompt[:200], "mentioned": hit, "answer": ans[:500]})
+        if not out["answers"]:
+            out["error"] = "The model returned no usable answers to the probe prompts."
+            return out
+        out["total"] = len(out["answers"])
+        out["unanswered"] = len(prompts) - len(out["answers"])
         out["mentioned_in"] = hits
-        out["visibility_pct"] = round(hits / out["total"] * 100, 1) if out["total"] else 0.0
+        out["visibility_pct"] = round(hits / out["total"] * 100, 1)
         out["ok"] = True
     except Exception as e:
         out["error"] = str(e)[:200]

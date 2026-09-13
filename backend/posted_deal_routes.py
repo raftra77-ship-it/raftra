@@ -309,29 +309,39 @@ def discover_brand_deals(niche: Optional[str] = None, db: Session = Depends(data
     the handle from a query parameter and fell back to a hardcoded creator when it was
     missing; here it comes from the signed-in account."""
     handles = _my_handles(db, current_user)
+    # Scored against the creator's own saved niche. The portal never sends ?niche=, so every
+    # brief used to score identically for every creator.
+    profile = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
+    creator_niche = niche or (profile.niche if profile else "") or ""
+
     deals = db.query(models.PostedDeal).filter(
         models.PostedDeal.status == "ACTIVE"
     ).order_by(models.PostedDeal.created_at.desc()).all()
 
+    # One query for this creator's applications across all open briefs, instead of one per brief.
+    applied = {}
+    if handles and deals:
+        for a in db.query(models.DealApplication).filter(
+                models.DealApplication.deal_id.in_([d.id for d in deals]),
+                models.DealApplication.creator_handle.in_(list(handles))).all():
+            applied[a.deal_id] = a
+
     result = []
     for d in deals:
-        existing = None
-        if handles:
-            existing = db.query(models.DealApplication).filter(
-                models.DealApplication.deal_id == d.id,
-                models.DealApplication.creator_handle.in_(list(handles)),
-            ).first()
+        existing = applied.get(d.id)
         result.append({
             "id": d.id, "brand_name": d.brand_name, "brand_logo": d.brand_logo,
             "brand_url": d.brand_url, "campaign_name": d.campaign_name,
             "product_name": d.product_name, "description": d.description,
             "objective": d.objective, "platform": d.platform, "niche": d.niche,
-            "location": d.location, "match_score": _match_score(d, niche or ""),
+            "location": d.location, "match_score": _match_score(d, creator_niche),
+            "creators_required": d.creators_required,
             "budget_per_creator": d.budget_per_creator,
             "deliverables_json": d.deliverables_json,
             "application_deadline": d.application_deadline,
             "has_applied": existing is not None,
             "application_status": existing.status if existing else None,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
         })
     return result
 
@@ -339,26 +349,49 @@ def discover_brand_deals(niche: Optional[str] = None, db: Session = Depends(data
 @router.get("/mine")
 def get_my_applications(db: Session = Depends(database.get_db),
                         current_user: models.User = Depends(auth.get_current_user)):
-    """The signed-in creator's applications. Replaces /creator/applications/{handle}, which
-    returned any creator's history to anyone who knew their handle."""
+    """The signed-in creator's applications - their side of "My Collabs". Replaces
+    /creator/applications/{handle}, which returned any creator's history to anyone who knew
+    their handle (and which the portal was still calling, so the screen was always empty).
+
+    Carries the agreed terms and deliverable progress, so the creator sees the same
+    collaboration the brand sees in its workspace rather than a proposal-only summary."""
     handles = _my_handles(db, current_user)
     if not handles:
         return []
     apps = db.query(models.DealApplication).filter(
         models.DealApplication.creator_handle.in_(list(handles))
     ).order_by(models.DealApplication.created_at.desc()).all()
+    if not apps:
+        return []
+
+    deals = {d.id: d for d in db.query(models.PostedDeal).filter(
+        models.PostedDeal.id.in_({a.deal_id for a in apps})).all()}
+    subs_by_app: dict = {}
+    for s in db.query(models.DealDeliverableSubmission).filter(
+            models.DealDeliverableSubmission.application_id.in_([a.id for a in apps])).all():
+        subs_by_app.setdefault(s.application_id, []).append(s)
 
     out = []
     for a in apps:
-        deal = db.query(models.PostedDeal).filter(models.PostedDeal.id == a.deal_id).first()
+        deal = deals.get(a.deal_id)
+        subs = subs_by_app.get(a.id, [])
         out.append({
-            "id": a.id, "deal_id": a.deal_id,
-            "campaign_name": deal.campaign_name if deal else "Brand campaign",
-            "brand_name": deal.brand_name if deal else "Brand",
+            "id": a.id, "deal_id": a.deal_id, "creator_handle": a.creator_handle,
+            "campaign_name": (deal.campaign_name if deal else "") or "",
+            "brand_name": (deal.brand_name if deal else "") or "",
+            "platform": deal.platform if deal else None,
+            "deal_status": deal.status if deal else None,
+            "deliverable_deadline": deal.deliverable_deadline if deal else None,
             "proposed_price": a.proposed_price, "final_price": a.final_price,
-            "final_deliverables": a.final_deliverables, "status": a.status,
-            "cashout_requested": a.cashout_requested, "cashout_status": a.cashout_status,
-            "created_at": a.created_at,
+            "final_deliverables": a.final_deliverables,
+            "final_delivery_days": a.final_delivery_days,
+            "usage_rights": a.usage_rights, "revisions_allowed": a.revisions_allowed,
+            "status": a.status,
+            "cashout_requested": bool(a.cashout_requested), "cashout_status": a.cashout_status,
+            "deliverables_total": len(subs),
+            "deliverables_approved": sum(1 for s in subs if s.status == "APPROVED"),
+            "deliverables_revision_requested": sum(1 for s in subs if s.status == "REVISION_REQUESTED"),
+            "created_at": a.created_at.isoformat() if a.created_at else None,
         })
     return out
 
@@ -491,6 +524,29 @@ def update_application_status(application_id: int, req: ApplicationStatusUpdate,
     return {"status": "success", "application_id": app.id, "application_status": app.status}
 
 
+def _deliverable_titles(raw: Optional[str]) -> List[str]:
+    """Deliverable names from a brief's deliverables_json, which is stored in two shapes:
+    ["Reel", "Story"] from the brand screen, [{"type": "Reel", "quantity": 2}] from the API
+    default."""
+    try:
+        data = json.loads(raw or "[]")
+    except (TypeError, ValueError):
+        return []
+    titles: List[str] = []
+    for item in data if isinstance(data, list) else []:
+        if isinstance(item, str) and item.strip():
+            titles.append(item.strip())
+        elif isinstance(item, dict):
+            name = str(item.get("type") or item.get("title") or "").strip()
+            try:
+                qty = max(1, int(item.get("quantity") or 1))
+            except (TypeError, ValueError):
+                qty = 1
+            if name:
+                titles.extend([name] if qty == 1 else [f"{name} #{i}" for i in range(1, qty + 1)])
+    return titles
+
+
 @router.post("/applications/{application_id}/finalize")
 def finalize_deal_terms(application_id: int, req: DealFinalizeRequest,
                         db: Session = Depends(database.get_db),
@@ -500,19 +556,38 @@ def finalize_deal_terms(application_id: int, req: DealFinalizeRequest,
     app = _brand_owns_application(application_id, db, current_user)
     if req.final_price is None or req.final_price <= 0:
         raise HTTPException(status_code=400, detail="Enter an amount greater than zero.")
+    if app.status in ("DECLINED", "COMPLETED"):
+        raise HTTPException(status_code=409, detail=f"This application is already {app.status.lower()}.")
+
+    deal = db.query(models.PostedDeal).filter(models.PostedDeal.id == app.deal_id).first()
+
+    # The brand screen sent a fixed "Instagram Reel, Instagram Story #1, Instagram Story #2"
+    # whatever the brief actually asked for. The brief's own deliverables are the default now.
+    deliverables = (req.final_deliverables or "").strip()
+    if not deliverables and deal:
+        deliverables = ", ".join(_deliverable_titles(deal.deliverables_json))
+    if not deliverables:
+        raise HTTPException(status_code=400, detail="List at least one deliverable.")
 
     app.final_price = req.final_price
-    app.final_deliverables = req.final_deliverables
-    app.final_delivery_days = req.final_delivery_days
+    app.final_deliverables = deliverables
+    app.final_delivery_days = req.final_delivery_days or app.estimated_delivery_days
     app.usage_rights = req.usage_rights or "30 Days Digital Rights"
     app.revisions_allowed = req.revisions_allowed or 1
     app.status = "CONFIRMED"
+    db.flush()
 
-    deal = db.query(models.PostedDeal).filter(models.PostedDeal.id == app.deal_id).first()
+    # A brief looking for three creators used to leave the marketplace the moment the first
+    # was confirmed, because any confirmation set it IN_PROGRESS - and /discover only lists
+    # ACTIVE briefs. It closes to new applicants once enough creators are confirmed.
     if deal:
-        deal.status = "IN_PROGRESS"
+        confirmed = db.query(models.DealApplication).filter(
+            models.DealApplication.deal_id == deal.id,
+            models.DealApplication.status.in_(("CONFIRMED", "COMPLETED"))).count()
+        if confirmed >= (deal.creators_required or 1):
+            deal.status = "IN_PROGRESS"
 
-    titles = [t.strip() for t in (req.final_deliverables or "").split(",") if t.strip()]
+    titles = [t.strip() for t in deliverables.split(",") if t.strip()]
     for title in titles:
         exists = db.query(models.DealDeliverableSubmission).filter(
             models.DealDeliverableSubmission.application_id == application_id,
@@ -541,21 +616,36 @@ def submit_deliverable(application_id: int, req: DeliverableSubmissionCreate,
                        current_user: models.User = Depends(auth.get_current_user)):
     """Creator submits one deliverable for review."""
     app = _creator_owns_application(application_id, db, current_user)
+    # Only once terms are agreed, and never over approved work. This accepted submissions on
+    # applications the brand had not even shortlisted, and let an approved deliverable be
+    # swapped out after the brand had signed it off.
+    if app.status != "CONFIRMED":
+        raise HTTPException(status_code=409,
+                            detail="Deliverables can be submitted once the brand has confirmed terms.")
+    title = (req.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Name the deliverable you are submitting.")
+    if not (req.content_url or "").strip():
+        raise HTTPException(status_code=400, detail="Add a link to the content you are submitting.")
 
     sub = db.query(models.DealDeliverableSubmission).filter(
         models.DealDeliverableSubmission.application_id == application_id,
-        models.DealDeliverableSubmission.title == req.title,
+        models.DealDeliverableSubmission.title == title,
     ).first()
+    if sub and sub.status == "APPROVED":
+        raise HTTPException(status_code=409, detail=f"'{title}' is already approved.")
     if not sub:
         sub = models.DealDeliverableSubmission(
-            application_id=application_id, deal_id=app.deal_id, title=req.title)
+            application_id=application_id, deal_id=app.deal_id, title=title)
         db.add(sub)
+    previous = sub.status
 
     sub.submission_type = req.submission_type or "video"
-    sub.content_url = req.content_url
+    sub.content_url = req.content_url.strip()
     sub.caption = req.caption
     sub.notes = req.notes
-    sub.status = "UNDER_REVIEW"
+    # RESUBMITTED tells the brand this is the second pass on something they sent back.
+    sub.status = "RESUBMITTED" if previous == "REVISION_REQUESTED" else "UNDER_REVIEW"
 
     _notify(db, recipient_type="brand", workspace_id=app.workspace_id,
             title="Deliverable submitted",
@@ -619,8 +709,18 @@ def complete_deal_campaign(application_id: int, db: Session = Depends(database.g
     off, so it cannot be taken on trust."""
     app = _brand_owns_application(application_id, db, current_user)
 
+    if app.status != "CONFIRMED":
+        raise HTTPException(status_code=409,
+                            detail=f"Only a confirmed collaboration can be completed "
+                                   f"(this one is {(app.status or 'unknown').lower()}).")
+
     subs = db.query(models.DealDeliverableSubmission).filter(
         models.DealDeliverableSubmission.application_id == application_id).all()
+    # With no deliverables there was nothing "outstanding", so the collaboration completed on
+    # request - which unlocks a payment request for work that was never delivered.
+    if not subs:
+        raise HTTPException(status_code=409,
+                            detail="No deliverables are recorded on this collaboration yet.")
     outstanding = [s.title for s in subs if s.status != "APPROVED"]
     if outstanding:
         raise HTTPException(
@@ -628,9 +728,17 @@ def complete_deal_campaign(application_id: int, db: Session = Depends(database.g
             detail="Approve every deliverable first. Still open: " + ", ".join(outstanding))
 
     app.status = "COMPLETED"
+    db.flush()
     deal = db.query(models.PostedDeal).filter(models.PostedDeal.id == app.deal_id).first()
-    if deal:
-        deal.status = "COMPLETED"
+    # The brief completes when it has stopped recruiting (finalize moves it to IN_PROGRESS once
+    # enough creators are confirmed) and no confirmed creator is still working. Completing one
+    # creator of three used to mark the whole campaign COMPLETED and pull it off the marketplace.
+    if deal and deal.status != "ACTIVE":
+        still_working = db.query(models.DealApplication).filter(
+            models.DealApplication.deal_id == deal.id,
+            models.DealApplication.status == "CONFIRMED").count()
+        if still_working == 0:
+            deal.status = "COMPLETED"
 
     amount = app.final_price or app.proposed_price or 0
     _notify(db, recipient_type="creator", recipient_handle=app.creator_handle,

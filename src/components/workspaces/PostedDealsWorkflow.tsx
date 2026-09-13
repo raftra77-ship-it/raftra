@@ -145,22 +145,37 @@ export const BrandPostedDealsView: React.FC<{
   // Collaboration / Deliverables workspace view
   const [activeCollabApp, setActiveCollabApp] = useState<DealApplicationItem | null>(null);
   const [collabSubmissions, setCollabSubmissions] = useState<DeliverableSubmissionItem[]>([]);
-  const [revisionReasonText, setRevisionReasonText] = useState('');
-  const [selectedSubForRevision, setSelectedSubForRevision] = useState<DeliverableSubmissionItem | null>(null);
 
-  const fetchBrandDeals = () => {
-    fetch(`/api/posted-deals/brand/${workspaceId}`)
-      .then(r => r.json())
+  /* Multi-tenant sync. The plain fetch-on-mount this replaced had two problems:
+     - Switching workspace left the previous brand's deals on screen until the new request
+       landed, and a slow response for the OLD workspace could land after the new one and
+       overwrite it - one brand's briefs shown under another brand.
+     - Nothing refreshed when the creator side acted, so a new application only appeared
+       after a manual reload. The list now re-reads every 30s while the tab is visible. */
+  const dealsRequestWs = React.useRef<number | null>(null);
+  const fetchBrandDeals = React.useCallback(() => {
+    if (!workspaceId) return;
+    const ws = workspaceId;
+    dealsRequestWs.current = ws;
+    fetch(`/api/posted-deals/brand/${ws}`)
+      .then(r => (r.ok ? r.json() : null))
       .then(data => {
+        if (dealsRequestWs.current !== ws) return; // a newer workspace has taken over
         if (Array.isArray(data)) setDeals(data);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  };
+      .catch(() => { /* keep what is on screen; the next poll retries */ })
+      .finally(() => { if (dealsRequestWs.current === ws) setLoading(false); });
+  }, [workspaceId]);
 
   useEffect(() => {
+    setDeals([]);
+    setLoading(true);
+    setSelectedDealForApps(null);
+    setActiveCollabApp(null);
     fetchBrandDeals();
-  }, [workspaceId]);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') fetchBrandDeals(); }, 30000);
+    return () => clearInterval(t);
+  }, [fetchBrandDeals]);
 
   // Was `deals.length > 0 ? deals : sampleDeals`: a brand that had posted nothing saw
   // two invented campaigns it could open, edit and review applicants for.
@@ -211,6 +226,7 @@ export const BrandPostedDealsView: React.FC<{
 
   const handleViewApplications = (deal: PostedDealItem) => {
     setSelectedDealForApps(deal);
+    setApplications([]);
     // No fixture fallback. `sampleApplicants` used to fill this list whenever the API
     // returned nothing OR failed, so a brand with zero applicants saw four invented
     // creators - complete with names, rates and follower counts - and had no way to tell
@@ -220,6 +236,21 @@ export const BrandPostedDealsView: React.FC<{
       .then(data => setApplications(Array.isArray(data) ? data : []))
       .catch(() => setApplications([]));
   };
+
+  // The applicants list was read once when the modal opened, so a creator applying while the
+  // brand had it open never appeared. Re-read while it stays open.
+  const openDealId = selectedDealForApps?.id ?? null;
+  useEffect(() => {
+    if (openDealId === null) return;
+    const t = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetch(`/api/posted-deals/${openDealId}/applications`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (Array.isArray(d)) setApplications(d); })
+        .catch(() => { /* keep what is on screen */ });
+    }, 30000);
+    return () => clearInterval(t);
+  }, [openDealId]);
 
   const handleUpdateAppStatus = (appId: number, status: string) => {
     // Applying the status change in the catch made a failed request look identical to a
@@ -237,37 +268,102 @@ export const BrandPostedDealsView: React.FC<{
       .catch(e => alert(`Could not update this application: ${e instanceof Error ? e.message : e}`));
   };
 
-  const handleFinalizeTerms = (app: DealApplicationItem) => {
-    const finalPrice = app.proposed_price || 15000;
-    fetch(`/api/posted-deals/applications/${app.id}/finalize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        final_price: finalPrice,
-        final_deliverables: 'Instagram Reel, Instagram Story #1, Instagram Story #2',
-        final_delivery_days: app.estimated_delivery_days || 7,
-        usage_rights: '30 Days Digital Rights',
-        revisions_allowed: 1
-      })
-    })
-      .then(r => r.json())
-      .then(() => {
-        handleOpenCollabWorkspace({ ...app, status: 'CONFIRMED', final_price: finalPrice });
-      })
-      .catch(() => {
-        handleOpenCollabWorkspace({ ...app, status: 'CONFIRMED', final_price: finalPrice });
-      });
+  // Real finalized collaborations for this workspace (/brand/{id}/collaborations). Previously a
+  // hardcoded array: one invented creator ("Samaira Rao", an Unsplash headshot) on an invented
+  // campaign, identical for every brand. Same workspace guard and 30s refresh as the deals list,
+  // so a switched workspace never shows the previous brand's collaborations and a creator's
+  // submission shows up without a reload.
+  const [activeCollaborations, setActiveCollaborations] = useState<DealApplicationItem[]>([]);
+  const [collabsLoading, setCollabsLoading] = useState(true);
+  const collabsRequestWs = React.useRef<number | null>(null);
+
+  const loadCollaborations = React.useCallback(() => {
+    if (!workspaceId) { setCollabsLoading(false); return; }
+    const ws = workspaceId;
+    collabsRequestWs.current = ws;
+    fetch(`/api/posted-deals/brand/${ws}/collaborations`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (collabsRequestWs.current === ws && Array.isArray(d)) setActiveCollaborations(d); })
+      .catch(() => { /* keep what is on screen; the next poll retries */ })
+      .finally(() => { if (collabsRequestWs.current === ws) setCollabsLoading(false); });
+  }, [workspaceId]);
+
+  useEffect(() => {
+    setActiveCollaborations([]);
+    setCollabsLoading(true);
+    loadCollaborations();
+    const t = setInterval(() => { if (document.visibilityState === 'visible') loadCollaborations(); }, 30000);
+    return () => clearInterval(t);
+  }, [loadCollaborations]);
+
+  // Three invented deliverables used to appear whenever a collab had none - an "Instagram
+  // Reel" with a stock Unsplash thumbnail, plus two stories. Only real submissions are shown.
+  const loadCollabSubmissions = (appId: number) => {
+    fetch(`/api/posted-deals/applications/${appId}/submissions`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (Array.isArray(data)) setCollabSubmissions(data); })
+      .catch(() => { /* keep what is on screen */ });
   };
 
   const handleOpenCollabWorkspace = (app: DealApplicationItem) => {
     setActiveCollabApp(app);
-    // Three invented deliverables used to appear here whenever a collab had none - an
-    // "Instagram Reel" whose thumbnail was a stock Unsplash photo, plus two stories. A
-    // brand could sit reviewing submissions no creator had ever uploaded.
-    fetch(`/api/posted-deals/applications/${app.id}/submissions`)
-      .then(r => (r.ok ? r.json() : []))
-      .then(data => setCollabSubmissions(Array.isArray(data) ? data : []))
-      .catch(() => setCollabSubmissions([]));
+    setCollabSubmissions([]);
+    loadCollabSubmissions(app.id);
+  };
+
+  // While a workspace is open, pick up the creator's submissions as they arrive.
+  const openCollabId = activeCollabApp?.id ?? null;
+  useEffect(() => {
+    if (openCollabId === null) return;
+    const t = setInterval(() => { if (document.visibilityState === 'visible') loadCollabSubmissions(openCollabId); }, 30000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCollabId]);
+
+  /* Accept & Finalize. This used to fire a separate "ACCEPTED" status call alongside
+     finalize (two writes racing on one row), send a fixed "Instagram Reel, Instagram Story
+     #1, Instagram Story #2" whatever the brief asked for, and open the workspace as
+     CONFIRMED even when the request failed. It is one confirmed call now, carrying the
+     brief's own deliverables. */
+  const handleFinalizeTerms = async (app: DealApplicationItem) => {
+    const brief = selectedDealForApps || deals.find(d => d.id === app.deal_id) || null;
+    const items = brief ? deliverableNames(brief.deliverables_json) : [];
+    const finalPrice = app.proposed_price;
+    if (!finalPrice || finalPrice <= 0) {
+      alert('This application has no fee to agree. Message the creator to settle one first.');
+      return;
+    }
+    if (!window.confirm(
+      `Confirm ${app.creator_name} (@${app.creator_handle}) for ${inr(finalPrice)}?\n\n` +
+      `Deliverables: ${items.join(', ') || 'as listed on the brief'}\n\n` +
+      'The creator is notified and can start submitting content.')) return;
+    try {
+      const r = await fetch(`/api/posted-deals/applications/${app.id}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          final_price: finalPrice,
+          final_deliverables: items.join(', '),
+          final_delivery_days: app.estimated_delivery_days || 7,
+          usage_rights: '30 Days Digital Rights',
+          revisions_allowed: 1,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Request failed (${r.status})`);
+      const confirmed: DealApplicationItem = {
+        ...app, status: 'CONFIRMED', final_price: finalPrice,
+        final_deliverables: items.join(', ') || app.final_deliverables,
+        final_delivery_days: app.estimated_delivery_days || 7,
+        usage_rights: '30 Days Digital Rights',
+      };
+      setApplications(prev => prev.map(a => (a.id === app.id ? confirmed : a)));
+      fetchBrandDeals();
+      loadCollaborations();
+      handleOpenCollabWorkspace(confirmed);
+    } catch (e) {
+      alert(`Could not confirm this creator: ${e instanceof Error ? e.message : e}\n\nNothing has changed.`);
+    }
   };
 
   const handleReviewSubmission = (subId: number, status: 'APPROVED' | 'REVISION_REQUESTED', reason?: string) => {
@@ -277,9 +373,11 @@ export const BrandPostedDealsView: React.FC<{
       body: JSON.stringify({ status, revision_reason: reason })
     })
       .then(async r => {
-        if (!r.ok) throw new Error(`Request failed (${r.status})`);
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || `Request failed (${r.status})`);
+        }
         setCollabSubmissions(prev => prev.map(s => s.id === subId ? { ...s, status, revision_reason: reason } : s));
-        setSelectedSubForRevision(null);
       })
       .catch(e => alert(`Could not record this review: ${e instanceof Error ? e.message : e}\n\nThe creator has not been notified.`));
   };
@@ -290,11 +388,16 @@ export const BrandPostedDealsView: React.FC<{
     // still had it open - a disagreement about money between two screens.
     fetch(`/api/posted-deals/applications/${appId}/complete`, { method: 'POST' })
       .then(async r => {
-        if (!r.ok) throw new Error(`Request failed (${r.status})`);
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || `Request failed (${r.status})`);
+        }
         setActiveCollabApp(prev => prev ? { ...prev, status: 'COMPLETED' } : null);
-        alert('Campaign marked COMPLETED! Creator can now request payout cashout.');
+        loadCollaborations();
+        fetchBrandDeals();
+        alert('Campaign marked complete. The creator can now request payment.');
       })
-      .catch(e => alert(`Could not complete this campaign: ${e instanceof Error ? e.message : e}\n\nNothing has changed — please try again.`));
+      .catch(e => alert(`Could not complete this campaign: ${e instanceof Error ? e.message : e}\n\nNothing has changed.`));
   };
 
   const filteredApps = applications.filter(a => {
@@ -302,25 +405,6 @@ export const BrandPostedDealsView: React.FC<{
     if (appFilter === 'ACCEPTED') return a.status === 'ACCEPTED' || a.status === 'CONFIRMED';
     return true;
   });
-
-  // Real finalized collaborations for this workspace, from the endpoint added alongside
-  // this change. Previously a hardcoded array: one invented creator ("Samaira Rao", an
-  // Unsplash headshot) on an invented campaign, identical for every brand, and clickable
-  // through into a collab workspace for a deal that did not exist.
-  const [activeCollaborations, setActiveCollaborations] = useState<DealApplicationItem[]>([]);
-  const [collabsLoading, setCollabsLoading] = useState(true);
-
-  useEffect(() => {
-    if (!workspaceId) { setCollabsLoading(false); return; }
-    const token = localStorage.getItem('token');
-    setCollabsLoading(true);
-    fetch(`/api/posted-deals/brand/${workspaceId}/collaborations`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then(r => (r.ok ? r.json() : []))
-      .then(d => setActiveCollaborations(Array.isArray(d) ? d : []))
-      .catch(() => setActiveCollaborations([]))
-      .finally(() => setCollabsLoading(false));
-  }, [workspaceId]);
 
   if (mode === 'my_collaborations') {
     return (
@@ -330,7 +414,7 @@ export const BrandPostedDealsView: React.FC<{
             My Collaborations <span style={{ fontSize: '11px', background: 'rgba(0,230,118,0.15)', color: '#00e676', border: '1px solid rgba(0,230,118,0.3)', padding: '2px 8px', borderRadius: '12px' }}>Active Finalized Deals</span>
           </h2>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Manage active finalized creator deals with Raftra Escrow protection and deliverable reviews.
+            Creators you have confirmed on your posted deals: agreed terms, deliverables to review, and completion.
           </p>
         </div>
 
@@ -349,30 +433,42 @@ export const BrandPostedDealsView: React.FC<{
                 No active collaborations yet
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                Once you accept a creator's application on one of your posted deals, the
-                collaboration appears here with its deliverables and escrow status.
+                Once you confirm a creator's application on one of your posted deals, the
+                collaboration appears here with its deliverables. This list refreshes on its own.
               </div>
             </div>
           )}
           {activeCollaborations.map(collab => (
             <div key={collab.id} className="glow-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,15,22,0.7)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '20px', flexWrap: 'wrap', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <img src={collab.creator_avatar} alt="" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
-                <div>
-                  <div style={{ fontSize: '16px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
+                {/* No avatar on file rendered a broken <img>; an initial is honest. */}
+                {collab.creator_avatar ? (
+                  <img src={collab.creator_avatar} alt="" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(124,117,255,0.15)', border: '1px solid rgba(124,117,255,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: 800, color: '#7C75FF', flexShrink: 0 }}>
+                    {(collab.creator_name || collab.creator_handle || '?').replace('@', '').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     {collab.creator_name} <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>@{collab.creator_handle}</span>
                   </div>
                   <div style={{ fontSize: '13px', color: 'var(--primary)', fontWeight: 600, marginTop: '2px' }}>{collab.campaign_name}</div>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Deliverables: <b style={{ color: '#fff' }}>{collab.final_deliverables}</b> · Delivery: {collab.final_delivery_days} Days
+                    Deliverables: <b style={{ color: '#fff' }}>{collab.final_deliverables || '—'}</b>
+                    {collab.final_delivery_days ? ` · Delivery: ${collab.final_delivery_days} days` : ''}
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 700, color: '#00e676' }}>₹{(collab.final_price || collab.proposed_price).toLocaleString()}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Raftra Vault Funded</div>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: '#00e676' }}>{inr(collab.final_price ?? collab.proposed_price)}</div>
+                  {/* Was "Raftra Vault Funded". No payment is taken anywhere in this flow, so
+                      nothing is funded - it is the fee both sides agreed. */}
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {collab.cashout_requested ? `Payment ${(collab.cashout_status || 'requested').toLowerCase()}` : 'Agreed fee'}
+                  </div>
                 </div>
 
                 <span style={{ fontSize: '11px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px', background: collab.status === 'COMPLETED' ? 'rgba(0,230,118,0.15)' : 'rgba(90,141,255,0.15)', color: collab.status === 'COMPLETED' ? '#00e676' : '#5a8dff' }}>
@@ -392,68 +488,14 @@ export const BrandPostedDealsView: React.FC<{
           ))}
         </div>
 
-        {/* Deliverables Workspace Modal */}
         {activeCollabApp && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div className="glow-card" style={{ width: '100%', maxWidth: '820px', background: '#0D0D14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '90vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>Collaboration Workspace</h3>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Brand ↔ {activeCollabApp.creator_name} (@{activeCollabApp.creator_handle})</span>
-                </div>
-                <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setActiveCollabApp(null)} />
-              </div>
-
-              {/* Terms Overview */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '10px', fontSize: '12.5px' }}>
-                <div><span style={{ color: 'var(--text-secondary)' }}>Final Price:</span> <b style={{ color: '#fff' }}>₹{(activeCollabApp.final_price || activeCollabApp.proposed_price).toLocaleString()}</b></div>
-                <div><span style={{ color: 'var(--text-secondary)' }}>Delivery Days:</span> <b style={{ color: '#fff' }}>{activeCollabApp.final_delivery_days || 7} Days</b></div>
-                <div><span style={{ color: 'var(--text-secondary)' }}>Usage Rights:</span> <b style={{ color: '#fff' }}>30 Days Digital Rights</b></div>
-              </div>
-
-              {/* Deliverables Checklist */}
-              <div>
-                <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#fff', marginBottom: '12px' }}>Deliverables Progress:</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {collabSubmissions.map(sub => (
-                    <div key={sub.id} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>{sub.title}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Due: {sub.due_date || '20 Aug'}</div>
-                        {sub.content_url && (
-                          <a href={sub.content_url} target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: '#5A8DFF', display: 'inline-block', marginTop: '4px' }}>View Submitted Content 🔗</a>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: sub.status === 'APPROVED' ? 'rgba(0,230,118,0.15)' : 'rgba(255,174,0,0.15)', color: sub.status === 'APPROVED' ? '#00e676' : '#ffae00' }}>
-                          {sub.status}
-                        </span>
-                        {sub.status === 'SUBMITTED' && (
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <GlowButton variant="glow" onClick={() => handleReviewSubmission(sub.id, 'APPROVED')} style={{ fontSize: '11px', padding: '4px 8px' }}>Approve ✓</GlowButton>
-                            <GlowButton variant="secondary" onClick={() => setSelectedSubForRevision(sub)} style={{ fontSize: '11px', padding: '4px 8px' }}>Revision 📝</GlowButton>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Complete Campaign CTA */}
-              {collabSubmissions.every(s => s.status === 'APPROVED') && (
-                <div style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#00e676' }}>All Deliverables Approved ✓</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>You can now mark the campaign completed to release creator cashout.</div>
-                  </div>
-                  <GlowButton variant="glow" onClick={() => handleCompleteCampaign(activeCollabApp.id)}>
-                    Complete Campaign 🏆
-                  </GlowButton>
-                </div>
-              )}
-            </div>
-          </div>
+          <CollabWorkspaceModal
+            app={activeCollabApp}
+            submissions={collabSubmissions}
+            onClose={() => setActiveCollabApp(null)}
+            onReview={handleReviewSubmission}
+            onComplete={handleCompleteCampaign}
+          />
         )}
       </div>
     );
@@ -506,7 +548,7 @@ export const BrandPostedDealsView: React.FC<{
                 </div>
                 <div>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Deadline</div>
-                  <div style={{ color: '#fff', marginTop: '2px' }}>{deal.application_deadline || '30 Aug'}</div>
+                  <div style={{ color: '#fff', marginTop: '2px' }}>{deal.application_deadline || 'Open'}</div>
                 </div>
               </div>
 
@@ -752,12 +794,17 @@ export const BrandPostedDealsView: React.FC<{
                           Shortlist
                         </GlowButton>
                       )}
-                      {app.status !== 'ACCEPTED' && app.status !== 'CONFIRMED' && (
-                        <GlowButton variant="glow" onClick={() => { handleUpdateAppStatus(app.id, 'ACCEPTED'); handleFinalizeTerms(app); }} style={{ fontSize: '11.5px', padding: '5px 10px' }}>
+                      {['SUBMITTED', 'SHORTLISTED', 'NEGOTIATION'].includes(app.status) && (
+                        <GlowButton variant="secondary" onClick={() => { if (window.confirm(`Decline ${app.creator_name}'s application? They will be notified.`)) handleUpdateAppStatus(app.id, 'DECLINED'); }} style={{ fontSize: '11.5px', padding: '5px 10px' }}>
+                          Decline
+                        </GlowButton>
+                      )}
+                      {['SUBMITTED', 'SHORTLISTED', 'NEGOTIATION', 'ACCEPTED'].includes(app.status) && (
+                        <GlowButton variant="glow" onClick={() => handleFinalizeTerms(app)} style={{ fontSize: '11.5px', padding: '5px 10px' }}>
                           Accept & Finalize
                         </GlowButton>
                       )}
-                      {(app.status === 'ACCEPTED' || app.status === 'CONFIRMED') && (
+                      {(app.status === 'CONFIRMED' || app.status === 'COMPLETED') && (
                         <GlowButton variant="glow" onClick={() => handleOpenCollabWorkspace(app)} style={{ fontSize: '11.5px', padding: '5px 10px' }}>
                           Open Workspace ➔
                         </GlowButton>
@@ -766,283 +813,430 @@ export const BrandPostedDealsView: React.FC<{
                   </div>
                 </div>
               ))}
+              {filteredApps.length === 0 && (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '12px' }}>
+                  {applications.length === 0
+                    ? 'No applications yet. Creators who apply to this brief appear here — the list refreshes on its own.'
+                    : 'No applications match this filter.'}
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── COLLABORATION & DELIVERABLES WORKSPACE MODAL ──────────────────────── */}
       {activeCollabApp && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="glow-card" style={{ width: '100%', maxWidth: '820px', background: '#0D0D14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-              <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>Collaboration Workspace</h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Brand ↔ {activeCollabApp.creator_name} (@{activeCollabApp.creator_handle})</span>
-              </div>
-              <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setActiveCollabApp(null)} />
-            </div>
-
-            {/* Terms Overview */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '10px', fontSize: '12.5px' }}>
-              <div><span style={{ color: 'var(--text-secondary)' }}>Final Price:</span> <b style={{ color: '#fff' }}>₹{(activeCollabApp.final_price || activeCollabApp.proposed_price).toLocaleString()}</b></div>
-              <div><span style={{ color: 'var(--text-secondary)' }}>Delivery Days:</span> <b style={{ color: '#fff' }}>{activeCollabApp.final_delivery_days || 7} Days</b></div>
-              <div><span style={{ color: 'var(--text-secondary)' }}>Usage Rights:</span> <b style={{ color: '#fff' }}>30 Days Digital Rights</b></div>
-            </div>
-
-            {/* Deliverables Checklist */}
-            <div>
-              <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#fff', marginBottom: '12px' }}>Deliverables Progress:</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {collabSubmissions.map(sub => (
-                  <div key={sub.id} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>{sub.title}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Due: {sub.due_date || '20 Aug'}</div>
-                      {sub.content_url && (
-                        <a href={sub.content_url} target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: '#5A8DFF', display: 'inline-block', marginTop: '4px' }}>View Submitted Content 🔗</a>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: sub.status === 'APPROVED' ? 'rgba(0,230,118,0.15)' : 'rgba(255,174,0,0.15)', color: sub.status === 'APPROVED' ? '#00e676' : '#ffae00' }}>
-                        {sub.status}
-                      </span>
-                      {sub.status === 'SUBMITTED' && (
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <GlowButton variant="glow" onClick={() => handleReviewSubmission(sub.id, 'APPROVED')} style={{ fontSize: '11px', padding: '4px 8px' }}>Approve ✓</GlowButton>
-                          <GlowButton variant="secondary" onClick={() => setSelectedSubForRevision(sub)} style={{ fontSize: '11px', padding: '4px 8px' }}>Revision 📝</GlowButton>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Revision Request Popup */}
-            {selectedSubForRevision && (
-              <div style={{ background: 'rgba(255,174,0,0.1)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#ffae00' }}>Request Revision for {selectedSubForRevision.title}:</div>
-                <input type="text" value={revisionReasonText} onChange={e => setRevisionReasonText(e.target.value)} placeholder="e.g. Please update CTA in final frame to include discount code..." style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12.5px' }} />
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                  <GlowButton variant="secondary" onClick={() => setSelectedSubForRevision(null)} style={{ fontSize: '11px', padding: '4px 8px' }}>Cancel</GlowButton>
-                  <GlowButton variant="glow" onClick={() => handleReviewSubmission(selectedSubForRevision.id, 'REVISION_REQUESTED', revisionReasonText)} style={{ fontSize: '11px', padding: '4px 8px' }}>Send Revision Request</GlowButton>
-                </div>
-              </div>
-            )}
-
-            {/* Complete Campaign CTA */}
-            {collabSubmissions.every(s => s.status === 'APPROVED') && (
-              <div style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#00e676' }}>All Deliverables Approved ✓</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>You can now mark the campaign completed to release creator cashout.</div>
-                </div>
-                <GlowButton variant="glow" onClick={() => handleCompleteCampaign(activeCollabApp.id)}>
-                  Complete Campaign 🏆
-                </GlowButton>
-              </div>
-            )}
-          </div>
-        </div>
+        <CollabWorkspaceModal
+          app={activeCollabApp}
+          submissions={collabSubmissions}
+          onClose={() => setActiveCollabApp(null)}
+          onReview={handleReviewSubmission}
+          onComplete={handleCompleteCampaign}
+        />
       )}
     </div>
   );
 };
 
+// ── SHARED ───────────────────────────────────────────────────────────────────
+/* Both sides of the marketplace read and write the same rows: the brand through
+   /brand/{workspace}, /{deal}/applications and the review routes; the creator through
+   /discover, /{deal}/apply, /mine and the per-application submissions routes. Each side
+   re-reads on an interval while the tab is visible, so an application, a confirmation, a
+   submitted deliverable or a review shows up on the other side without a reload. */
+const POLL_MS = 30000;
+
+function usePolling(fn: () => void, deps: React.DependencyList) {
+  useEffect(() => {
+    fn();
+    const t = setInterval(() => { if (document.visibilityState === 'visible') fn(); }, POLL_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
+const inr = (n?: number | null) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
+const deliverableNames = (raw?: string): string[] => {
+  try {
+    const d = JSON.parse(raw || '[]');
+    return Array.isArray(d)
+      ? d.map((x: any) => (typeof x === 'string' ? x : x?.type || x?.title || '')).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const SUB_STATUS_STYLE: Record<string, { c: string; b: string; label: string }> = {
+  PENDING: { c: 'var(--text-secondary)', b: 'rgba(255,255,255,0.06)', label: 'Not submitted' },
+  SUBMITTED: { c: '#ffae00', b: 'rgba(255,174,0,0.15)', label: 'Awaiting review' },
+  UNDER_REVIEW: { c: '#ffae00', b: 'rgba(255,174,0,0.15)', label: 'Awaiting review' },
+  RESUBMITTED: { c: '#ffae00', b: 'rgba(255,174,0,0.15)', label: 'Resubmitted' },
+  REVISION_REQUESTED: { c: '#ff8a5c', b: 'rgba(255,138,92,0.15)', label: 'Revision requested' },
+  APPROVED: { c: '#00e676', b: 'rgba(0,230,118,0.15)', label: 'Approved' },
+};
+
+/* Statuses a brand can act on. The screen offered Approve / Revision only for "SUBMITTED",
+   but the backend records a creator's submission as UNDER_REVIEW (or RESUBMITTED after a
+   revision) - so a brand could never approve anything, and no campaign could complete. */
+const REVIEWABLE = new Set(['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED']);
+
+const SubStatusPill: React.FC<{ status: string }> = ({ status }) => {
+  const s = SUB_STATUS_STYLE[status] || SUB_STATUS_STYLE.PENDING;
+  return (
+    <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: s.b, color: s.c, whiteSpace: 'nowrap' }}>
+      {s.label}
+    </span>
+  );
+};
+
+// ── BRAND: COLLABORATION WORKSPACE MODAL ─────────────────────────────────────
+/* One component for both places a brand opens a collaboration (Posted Deals → applicants,
+   and My Collaborations). They were two copies that had drifted: the My Collaborations copy
+   had no revision form at all, and both showed "Complete Campaign" for a collaboration with
+   no deliverables, because [].every(...) is true. */
+export const CollabWorkspaceModal: React.FC<{
+  app: DealApplicationItem;
+  submissions: DeliverableSubmissionItem[];
+  onClose: () => void;
+  onReview: (subId: number, status: 'APPROVED' | 'REVISION_REQUESTED', reason?: string) => void;
+  onComplete: (appId: number) => void;
+}> = ({ app, submissions, onClose, onReview, onComplete }) => {
+  const [revisionFor, setRevisionFor] = useState<DeliverableSubmissionItem | null>(null);
+  const [reason, setReason] = useState('');
+  const allApproved = submissions.length > 0 && submissions.every(s => s.status === 'APPROVED');
+  const completed = app.status === 'COMPLETED';
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div className="glow-card" style={{ width: '100%', maxWidth: '820px', background: '#0D0D14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+          <div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>Collaboration Workspace</h3>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              {app.campaign_name ? `${app.campaign_name} · ` : ''}{app.creator_name} (@{app.creator_handle})
+            </span>
+          </div>
+          <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={onClose} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '10px', fontSize: '12.5px' }}>
+          <div><span style={{ color: 'var(--text-secondary)' }}>Agreed fee:</span> <b style={{ color: '#fff' }}>{inr(app.final_price ?? app.proposed_price)}</b></div>
+          <div><span style={{ color: 'var(--text-secondary)' }}>Delivery:</span> <b style={{ color: '#fff' }}>{app.final_delivery_days ? `${app.final_delivery_days} days` : '—'}</b></div>
+          <div><span style={{ color: 'var(--text-secondary)' }}>Usage rights:</span> <b style={{ color: '#fff' }}>{app.usage_rights || '—'}</b></div>
+          <div><span style={{ color: 'var(--text-secondary)' }}>Status:</span> <b style={{ color: completed ? '#00e676' : '#5a8dff' }}>{completed ? 'Completed' : 'In progress'}</b></div>
+        </div>
+
+        <div>
+          <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#fff', marginBottom: '12px' }}>Deliverables</h4>
+          {submissions.length === 0 ? (
+            <div style={{ padding: '18px', textAlign: 'center', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '10px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+              No deliverables on this collaboration yet. They are created when terms are confirmed, and appear here as the creator submits them.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {submissions.map(sub => (
+                <div key={sub.id} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>{sub.title}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Due: {sub.due_date || 'not set'}</div>
+                    {sub.content_url && (
+                      <a href={sub.content_url} target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: '#5A8DFF', display: 'inline-block', marginTop: '4px' }}>View submitted content 🔗</a>
+                    )}
+                    {sub.caption && <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>“{sub.caption}”</div>}
+                    {sub.status === 'REVISION_REQUESTED' && sub.revision_reason && (
+                      <div style={{ fontSize: '11.5px', color: '#ff8a5c', marginTop: '4px' }}>You asked: {sub.revision_reason}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <SubStatusPill status={sub.status} />
+                    {REVIEWABLE.has(sub.status) && !completed && (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <GlowButton variant="glow" onClick={() => onReview(sub.id, 'APPROVED')} style={{ fontSize: '11px', padding: '4px 8px' }}>Approve ✓</GlowButton>
+                        <GlowButton variant="secondary" onClick={() => { setRevisionFor(sub); setReason(''); }} style={{ fontSize: '11px', padding: '4px 8px' }}>Revision 📝</GlowButton>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {revisionFor && (
+          <div style={{ background: 'rgba(255,174,0,0.1)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#ffae00' }}>Request a revision on {revisionFor.title}</div>
+            <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Say exactly what needs changing, e.g. add the discount code to the final frame" style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12.5px' }} />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <GlowButton variant="secondary" onClick={() => setRevisionFor(null)} style={{ fontSize: '11px', padding: '4px 8px' }}>Cancel</GlowButton>
+              <GlowButton variant="glow" onClick={() => {
+                if (!reason.trim()) { alert('Say what needs changing so the creator can act on it.'); return; }
+                onReview(revisionFor.id, 'REVISION_REQUESTED', reason.trim());
+                setRevisionFor(null);
+              }} style={{ fontSize: '11px', padding: '4px 8px' }}>Send revision request</GlowButton>
+            </div>
+          </div>
+        )}
+
+        {allApproved && !completed && (
+          <div style={{ background: 'rgba(0,230,118,0.1)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#00e676' }}>All deliverables approved ✓</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Mark the campaign complete so the creator can request payment.</div>
+            </div>
+            <GlowButton variant="glow" onClick={() => onComplete(app.id)}>Complete campaign 🏆</GlowButton>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ── CREATOR BRAND OPPORTUNITIES VIEW ─────────────────────────────────────────
+const NoHandleNotice: React.FC<{ onSetup?: () => void }> = ({ onSetup }) => (
+  <div style={{ padding: '18px 20px', borderRadius: '14px', background: 'rgba(255,174,0,0.08)', border: '1px solid rgba(255,174,0,0.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+    <div>
+      <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffae00' }}>Add your Instagram handle first</div>
+      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: 1.5 }}>
+        Brands see applications under your handle, and your collaborations and payouts are linked to it. Save it in Profile Setup, then apply.
+      </div>
+    </div>
+    {onSetup && <GlowButton variant="glow" onClick={onSetup}>Go to Profile Setup</GlowButton>}
+  </div>
+);
+
 export const CreatorBrandOpportunitiesView: React.FC<{
   creatorHandle: string;
   creatorName: string;
   creatorAvatar?: string;
   creatorFollowers?: string;
   onOpenChatWithBrand?: (brandId: string, campaignName?: string) => void;
-}> = ({ creatorHandle, creatorName, creatorAvatar, creatorFollowers, onOpenChatWithBrand }) => {
+  onOpenProfileSetup?: () => void;
+}> = ({ creatorHandle, creatorName, creatorAvatar, creatorFollowers, onOpenProfileSetup }) => {
+  /* The handle is only a label here - the server decides who is applying from the signed-in
+     account and rejects any other handle. The portal used to pass a hardcoded fallback
+     ("samairaa.r"), so every application from a new creator was refused. */
+  const handle = (creatorHandle || '').replace('@', '').trim().toLowerCase();
   const [deals, setDeals] = useState<PostedDealItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<PostedDealItem | null>(null);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [proposalText, setProposalText] = useState('');
-  const [proposedPrice, setProposedPrice] = useState<number>(15000);
-  const [appliedDealIds, setAppliedDealIds] = useState<number[]>([]);
+  const [proposedPrice, setProposedPrice] = useState<number>(0);
+  const [deliveryDays, setDeliveryDays] = useState<number>(7);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    // Fixture brands ("Aura Premium", "Nykaa Fashion", with Unsplash logos and invented
-    // budgets) used to fill this list whenever the API returned nothing or failed, so a
-    // creator browsing opportunities could apply to campaigns that never existed.
-    fetch(`/api/posted-deals/discover?handle=${encodeURIComponent(creatorHandle)}`)
-      .then(r => (r.ok ? r.json() : []))
-      .then(data => setDeals(Array.isArray(data) ? data : []))
-      .catch(() => setDeals([]));
-  }, [creatorHandle]);
-
-  const handleApplySubmit = () => {
-    if (!selectedDeal) return;
-    fetch(`/api/posted-deals/${selectedDeal.id}/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        creator_handle: creatorHandle,
-        creator_name: creatorName,
-        creator_avatar: creatorAvatar,
-        creator_followers: creatorFollowers,
-        proposal_text: proposalText || `I am excited to collaborate on ${selectedDeal.campaign_name}! I will deliver high converting content.`,
-        proposed_price: proposedPrice || selectedDeal.budget_per_creator,
-        availability_date: 'Immediate',
-        estimated_delivery_days: 5
-      })
-    })
-      .then(async r => {
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}));
-          throw new Error(d.detail || `Request failed (${r.status})`);
-        }
-        setAppliedDealIds(prev => [...prev, selectedDeal.id]);
-        setIsApplyModalOpen(false);
-        alert(`Application Submitted ✓ Your proposal has been sent to ${selectedDeal.brand_name}!`);
-      })
-      // Marking the deal applied in the catch told a creator their proposal had been sent
-      // when it had not - and the button then read "Applied", so they could not retry.
-      .catch(e => {
-        alert(`Could not submit your application: ${e instanceof Error ? e.message : e}
-
-Please try again.`);
-      });
+  const load = () => {
+    fetch('/api/posted-deals/discover')
+      .then(async r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => { setDeals(Array.isArray(data) ? data : []); setError(null); })
+      .catch(() => setError('Could not load brand opportunities. Retrying shortly.'))
+      .finally(() => setLoading(false));
   };
+  usePolling(load, []);
+
+  const openApply = (deal: PostedDealItem) => {
+    setSelectedDeal(deal);
+    setProposedPrice(deal.budget_per_creator || 0);
+    setProposalText('');
+    setDeliveryDays(7);
+    setIsApplyModalOpen(true);
+  };
+
+  const handleApplySubmit = async () => {
+    if (!selectedDeal) return;
+    if (!proposalText.trim()) { alert('Write a short proposal so the brand knows why you are a fit.'); return; }
+    if (!proposedPrice || proposedPrice <= 0) { alert('Enter the fee you are asking for.'); return; }
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/posted-deals/${selectedDeal.id}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creator_handle: handle,
+          creator_name: creatorName || handle,
+          creator_avatar: creatorAvatar || null,
+          creator_followers: creatorFollowers || null,
+          proposal_text: proposalText.trim(),
+          proposed_price: proposedPrice,
+          availability_date: 'Immediate',
+          estimated_delivery_days: deliveryDays,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Request failed (${r.status})`);
+      setIsApplyModalOpen(false);
+      setSelectedDeal(null);
+      alert(`Application submitted ✓ ${selectedDeal.brand_name} will see it in their Posted Deals.`);
+      load();
+    } catch (e) {
+      alert(`Could not submit your application: ${e instanceof Error ? e.message : e}`);
+    }
+    setSubmitting(false);
+  };
+
+  const openCount = deals.filter(d => !d.has_applied).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
-        <h2 style={{ fontSize: '26px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          Brand Opportunities <span style={{ fontSize: '13px', background: 'rgba(90,82,255,0.2)', color: '#8B85FF', border: '1px solid rgba(90,82,255,0.3)', padding: '3px 10px', borderRadius: '12px' }}>New Deals ③</span>
+        <h2 style={{ fontSize: '26px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          Brand Opportunities
+          {openCount > 0 && (
+            <span style={{ fontSize: '13px', background: 'rgba(90,82,255,0.2)', color: '#8B85FF', border: '1px solid rgba(90,82,255,0.3)', padding: '3px 10px', borderRadius: '12px' }}>
+              {openCount} open to you
+            </span>
+          )}
         </h2>
         <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-          Find campaigns posted by brands looking for creators like you.
+          Campaign briefs posted by brands on Raftra. Apply with a proposal; the brand reviews it in their Posted Deals.
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))', gap: '22px' }}>
-        {deals.map(deal => {
-          const isApplied = appliedDealIds.includes(deal.id) || deal.has_applied;
-          return (
-            <div key={deal.id} className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(15,15,22,0.7)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>{deal.campaign_name} <span style={{ fontSize: '12px', color: '#8B85FF', background: 'rgba(90,82,255,0.15)', padding: '2px 6px', borderRadius: '6px', fontWeight: 600 }}>(Demo)</span></h3>
-                  <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>{deal.brand_name} · {deal.platform} · {deal.location}</div>
+      {!handle && <NoHandleNotice onSetup={onOpenProfileSetup} />}
+      {error && <div style={{ fontSize: '13px', color: '#ff8a8a' }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ padding: '28px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>Loading brand opportunities…</div>
+      ) : deals.length === 0 ? (
+        <div style={{ padding: '32px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '14px' }}>
+          <div style={{ fontSize: '15px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>No open briefs right now</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>New campaigns appear here as soon as a brand publishes one. This list refreshes on its own.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))', gap: '22px' }}>
+          {deals.map(deal => {
+            const items = deliverableNames(deal.deliverables_json);
+            return (
+              <div key={deal.id} className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(15,15,22,0.7)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>{deal.campaign_name}</h3>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>{[deal.brand_name, deal.platform, deal.location].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {!!deal.match_score && (
+                    <span title="Based on your saved niche and the brief's platform" style={{ fontSize: '13px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.25)', borderRadius: '20px', padding: '4px 12px', whiteSpace: 'nowrap' }}>
+                      {deal.match_score}% fit
+                    </span>
+                  )}
                 </div>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: '#00e676', background: 'rgba(0,230,118,0.12)', border: '1px solid rgba(0,230,118,0.25)', borderRadius: '20px', padding: '4px 12px', whiteSpace: 'nowrap' }}>
-                  ⚡ {deal.match_score || 94}% Brand Fit
-                </span>
-              </div>
 
-              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                {deal.description}
-              </p>
+                {deal.description && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{deal.description}</p>}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '12px' }}>
-                <div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Est. Payout</div>
-                  <div style={{ fontWeight: 800, color: '#00e676', fontSize: '20px', marginTop: '4px' }}>₹{deal.budget_per_creator.toLocaleString()}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '12px' }}>
+                  <div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Budget per creator</div>
+                    <div style={{ fontWeight: 800, color: '#00e676', fontSize: '20px', marginTop: '4px' }}>{inr(deal.budget_per_creator)}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Apply by</div>
+                    <div style={{ color: '#fff', marginTop: '4px', fontSize: '15px', fontWeight: 600 }}>{deal.application_deadline || 'Open'}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Deadline</div>
-                  <div style={{ color: '#fff', marginTop: '4px', fontSize: '15px', fontWeight: 600 }}>{deal.application_deadline || '20 Aug 2026'}</div>
-                </div>
-              </div>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                <GlowButton variant="secondary" onClick={() => setSelectedDeal(deal)} style={{ flex: 1, fontSize: '14px', padding: '10px' }}>
-                  View Deal
-                </GlowButton>
-
-                {isApplied ? (
-                  <button disabled style={{ flex: 1, background: 'rgba(0,230,118,0.2)', border: '1px solid rgba(0,230,118,0.4)', color: '#00e676', borderRadius: '10px', fontSize: '14px', fontWeight: 600 }}>
-                    Applied ✓
-                  </button>
-                ) : (
-                  <GlowButton variant="glow" onClick={() => { setSelectedDeal(deal); setProposedPrice(deal.budget_per_creator); setIsApplyModalOpen(true); }} style={{ flex: 1, fontSize: '14px', padding: '10px' }}>
-                    Apply
-                  </GlowButton>
+                {items.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {items.map(i => (
+                      <span key={i} style={{ fontSize: '12px', color: '#fff', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '100px', padding: '3px 10px' }}>{i}</span>
+                    ))}
+                  </div>
                 )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
-      {/* VIEW DEAL DETAILS MODAL */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
+                  <GlowButton variant="secondary" onClick={() => { setSelectedDeal(deal); setIsApplyModalOpen(false); }} style={{ flex: 1, fontSize: '14px', padding: '10px' }}>
+                    View brief
+                  </GlowButton>
+                  {deal.has_applied ? (
+                    <button disabled style={{ flex: 1, background: 'rgba(0,230,118,0.2)', border: '1px solid rgba(0,230,118,0.4)', color: '#00e676', borderRadius: '10px', fontSize: '14px', fontWeight: 600 }}>
+                      Applied ✓{deal.application_status && deal.application_status !== 'SUBMITTED' ? ` · ${deal.application_status.toLowerCase()}` : ''}
+                    </button>
+                  ) : (
+                    <GlowButton variant="glow" disabled={!handle} onClick={() => openApply(deal)} style={{ flex: 1, fontSize: '14px', padding: '10px' }}>
+                      {handle ? 'Apply' : 'Add handle to apply'}
+                    </GlowButton>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {selectedDeal && !isApplyModalOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="glow-card" style={{ width: '100%', maxWidth: '640px', background: '#0D0D14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="glow-card" style={{ width: '100%', maxWidth: '640px', background: '#0D0D14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '18px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>{selectedDeal.campaign_name}</h3>
-                <span style={{ fontSize: '12px', color: '#00e676' }}>⚡ {selectedDeal.match_score || 94}% Brand Fit Match</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{selectedDeal.brand_name}</span>
               </div>
               <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setSelectedDeal(null)} />
             </div>
 
-            {/* Match explanation */}
-            <div style={{ background: 'rgba(90,82,255,0.1)', border: '1px solid rgba(90,82,255,0.25)', borderRadius: '10px', padding: '14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px' }}>
-              <div>✓ Niche Match: <b style={{ color: '#fff' }}>100%</b></div>
-              <div>✓ Platform Match: <b style={{ color: '#fff' }}>100%</b></div>
-              <div>✓ Audience Match: <b style={{ color: '#fff' }}>92%</b></div>
-              <div>✓ Content Match: <b style={{ color: '#fff' }}>95%</b></div>
-            </div>
-
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              {selectedDeal.description}
-            </p>
+            {selectedDeal.description && <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{selectedDeal.description}</p>}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '10px', fontSize: '12.5px' }}>
-              <div><span style={{ color: 'var(--text-secondary)' }}>Brand:</span> <b style={{ color: '#fff' }}>{selectedDeal.brand_name}</b></div>
-              <div><span style={{ color: 'var(--text-secondary)' }}>Est. Payout:</span> <b style={{ color: '#00e676' }}>₹{selectedDeal.budget_per_creator.toLocaleString()}</b></div>
+              {selectedDeal.product_name && <div><span style={{ color: 'var(--text-secondary)' }}>Product:</span> <b style={{ color: '#fff' }}>{selectedDeal.product_name}</b></div>}
+              {selectedDeal.objective && <div><span style={{ color: 'var(--text-secondary)' }}>Objective:</span> <b style={{ color: '#fff' }}>{selectedDeal.objective}</b></div>}
+              <div><span style={{ color: 'var(--text-secondary)' }}>Platform:</span> <b style={{ color: '#fff' }}>{selectedDeal.platform}</b></div>
+              <div><span style={{ color: 'var(--text-secondary)' }}>Niche:</span> <b style={{ color: '#fff' }}>{selectedDeal.niche}</b></div>
               <div><span style={{ color: 'var(--text-secondary)' }}>Location:</span> <b style={{ color: '#fff' }}>{selectedDeal.location}</b></div>
-              <div><span style={{ color: 'var(--text-secondary)' }}>Deadline:</span> <b style={{ color: '#fff' }}>{selectedDeal.application_deadline || '20 Aug'}</b></div>
+              <div><span style={{ color: 'var(--text-secondary)' }}>Creators wanted:</span> <b style={{ color: '#fff' }}>{selectedDeal.creators_required || 1}</b></div>
+              <div><span style={{ color: 'var(--text-secondary)' }}>Budget per creator:</span> <b style={{ color: '#00e676' }}>{inr(selectedDeal.budget_per_creator)}</b></div>
+              <div><span style={{ color: 'var(--text-secondary)' }}>Apply by:</span> <b style={{ color: '#fff' }}>{selectedDeal.application_deadline || 'Open'}</b></div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '10px' }}>
+            {deliverableNames(selectedDeal.deliverables_json).length > 0 && (
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                <b style={{ color: '#fff' }}>Deliverables:</b> {deliverableNames(selectedDeal.deliverables_json).join(', ')}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '6px' }}>
               <GlowButton variant="secondary" onClick={() => setSelectedDeal(null)}>Close</GlowButton>
-              <GlowButton variant="glow" onClick={() => { setProposedPrice(selectedDeal.budget_per_creator); setIsApplyModalOpen(true); }}>
-                Apply to Deal ➔
-              </GlowButton>
+              {!selectedDeal.has_applied && (
+                <GlowButton variant="glow" disabled={!handle} onClick={() => openApply(selectedDeal)}>
+                  {handle ? 'Apply to this brief ➔' : 'Add handle to apply'}
+                </GlowButton>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* APPLY TO DEAL MODAL */}
       {selectedDeal && isApplyModalOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div className="glow-card" style={{ width: '100%', maxWidth: '580px', background: '#0D0D14', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '16px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>Apply to {selectedDeal.campaign_name}</h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{selectedDeal.brand_name}</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{selectedDeal.brand_name} · applying as @{handle}</span>
               </div>
               <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setIsApplyModalOpen(false)} />
             </div>
 
             <div className="form-group">
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Your Proposal / Cover Message *</label>
-              <textarea value={proposalText} onChange={e => setProposalText(e.target.value)} placeholder="Introduce yourself, mention past brand collabs, and explain why you're a great fit for this campaign..." rows={4} style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
+              <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Your proposal *</label>
+              <textarea value={proposalText} onChange={e => setProposalText(e.target.value)} placeholder="Introduce yourself, mention relevant past work, and explain how you would approach this brief" rows={4} style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Requested Price (₹)</label>
-                <input type="number" value={proposedPrice} onChange={e => setProposedPrice(Number(e.target.value))} style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Your fee (₹) *</label>
+                <input type="number" min={1} value={proposedPrice || ''} onChange={e => setProposedPrice(Number(e.target.value))} style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
               </div>
               <div>
-                <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Estimated Delivery</label>
-                <input type="text" value="5 Days" disabled style={{ width: '100%', padding: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Delivery (days)</label>
+                <input type="number" min={1} value={deliveryDays} onChange={e => setDeliveryDays(Math.max(1, Number(e.target.value) || 1))} style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '10px' }}>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '6px' }}>
               <GlowButton variant="secondary" onClick={() => setIsApplyModalOpen(false)}>Cancel</GlowButton>
-              <GlowButton variant="glow" onClick={handleApplySubmit}>
-                Submit Application 🚀
+              <GlowButton variant="glow" disabled={submitting} onClick={handleApplySubmit}>
+                {submitting ? 'Submitting…' : 'Submit application 🚀'}
               </GlowButton>
             </div>
           </div>
@@ -1052,122 +1246,232 @@ Please try again.`);
   );
 };
 
-// ── CREATOR APPLICATIONS & CASH OUT VIEW ──────────────────────────────────────
-export const CreatorApplicationsView: React.FC<{ 
+// ── CREATOR: MY COLLABS ──────────────────────────────────────────────────────
+interface MyApplication extends DealApplicationItem {
+  platform?: string | null;
+  deal_status?: string | null;
+  deliverable_deadline?: string | null;
+  deliverables_total?: number;
+  deliverables_approved?: number;
+  deliverables_revision_requested?: number;
+  created_at?: string | null;
+}
+
+const APP_STATUS: Record<string, { c: string; b: string; label: string }> = {
+  SUBMITTED: { c: '#ffae00', b: 'rgba(255,174,0,0.15)', label: 'Application under review' },
+  SHORTLISTED: { c: '#8B85FF', b: 'rgba(90,82,255,0.15)', label: 'Shortlisted' },
+  NEGOTIATION: { c: '#8B85FF', b: 'rgba(90,82,255,0.15)', label: 'In negotiation' },
+  ACCEPTED: { c: '#8B85FF', b: 'rgba(90,82,255,0.15)', label: 'Accepted — terms coming' },
+  CONFIRMED: { c: '#5a8dff', b: 'rgba(90,141,255,0.15)', label: 'Terms confirmed — deliver content' },
+  COMPLETED: { c: '#00e676', b: 'rgba(0,230,118,0.15)', label: 'Campaign completed' },
+  DECLINED: { c: '#FF4D4D', b: 'rgba(255,77,77,0.15)', label: 'Not selected' },
+};
+
+export const CreatorApplicationsView: React.FC<{
   creatorHandle: string;
   onOpenChatWithBrand?: (brandName: string) => void;
-}> = ({ creatorHandle, onOpenChatWithBrand }) => {
-  const [apps, setApps] = useState<DealApplicationItem[]>([]);
+  onOpenProfileSetup?: () => void;
+}> = ({ creatorHandle, onOpenChatWithBrand, onOpenProfileSetup }) => {
+  const handle = (creatorHandle || '').replace('@', '').trim().toLowerCase();
+  const [apps, setApps] = useState<MyApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [openAppId, setOpenAppId] = useState<number | null>(null);
+  const [subs, setSubs] = useState<DeliverableSubmissionItem[]>([]);
+  const [drafts, setDrafts] = useState<Record<number, { url: string; caption: string }>>({});
+  const [busy, setBusy] = useState<number | null>(null);
 
-  useEffect(() => {
-    // Same fixture problem as the opportunities list above: a creator with no applications
-    // saw invented ones, complete with statuses and payout amounts.
-    fetch(`/api/posted-deals/creator/applications/${encodeURIComponent(creatorHandle)}`)
+  /* Was /api/posted-deals/creator/applications/{handle}, a route removed when the backend
+     stopped handing any creator's history to anyone who knew their handle - so this screen
+     was permanently empty. /mine answers for the signed-in account only. */
+  const load = () => {
+    fetch('/api/posted-deals/mine')
+      .then(async r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => { setApps(Array.isArray(data) ? data : []); setError(null); })
+      .catch(() => setError('Could not load your collaborations. Retrying shortly.'))
+      .finally(() => setLoading(false));
+  };
+  usePolling(load, []);
+
+  const loadSubs = (appId: number) => {
+    fetch(`/api/posted-deals/applications/${appId}/submissions`)
       .then(r => (r.ok ? r.json() : []))
-      .then(data => setApps(Array.isArray(data) ? data : []))
-      .catch(() => setApps([]));
-  }, [creatorHandle]);
+      .then(d => setSubs(Array.isArray(d) ? d : []))
+      .catch(() => setSubs([]));
+  };
+  useEffect(() => {
+    if (openAppId === null) { setSubs([]); return; }
+    loadSubs(openAppId);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') loadSubs(openAppId); }, POLL_MS);
+    return () => clearInterval(t);
+  }, [openAppId]);
 
-  const handleRequestCashout = (appId: number) => {
-    // The catch here used to mark the payout REQUESTED and tell the creator
-    // "Payout Request Submitted ✓" even when the request never reached the server. That is
-    // the worst possible failure on this screen: someone is told they are owed money and
-    // waits for a payout no one has any record of. A failed request must fail visibly.
-    fetch(`/api/posted-deals/applications/${appId}/payout`, { method: 'POST' })
-      .then(async r => {
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}));
-          throw new Error(d.detail || `Request failed (${r.status})`);
-        }
-        setApps(prev => prev.map(a => a.id === appId ? { ...a, cashout_requested: true, cashout_status: 'REQUESTED' } : a));
-        alert('Payout Request Submitted ✓ Admin verification in progress.');
-      })
-      .catch(e => {
-        alert(`Could not submit the payout request: ${e instanceof Error ? e.message : e}\n\nNothing has been recorded — please try again.`);
+  const submitDeliverable = async (app: MyApplication, sub: DeliverableSubmissionItem) => {
+    const draft = drafts[sub.id] || { url: '', caption: '' };
+    if (!/^https?:\/\//i.test(draft.url.trim())) {
+      alert('Paste a link to the content — the live post or a shareable draft (starting with https://).');
+      return;
+    }
+    setBusy(sub.id);
+    try {
+      const r = await fetch(`/api/posted-deals/applications/${app.id}/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: sub.title, submission_type: 'url', content_url: draft.url.trim(), caption: draft.caption.trim() || null }),
       });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Request failed (${r.status})`);
+      setDrafts(prev => { const next = { ...prev }; delete next[sub.id]; return next; });
+      loadSubs(app.id);
+      load();
+    } catch (e) {
+      alert(`Could not submit "${sub.title}": ${e instanceof Error ? e.message : e}`);
+    }
+    setBusy(null);
+  };
+
+  const handleRequestPayout = async (app: MyApplication) => {
+    // A failed request must fail visibly: telling a creator they are owed money when nothing
+    // was recorded is the worst outcome this screen can produce.
+    setBusy(-app.id);
+    try {
+      const r = await fetch(`/api/posted-deals/applications/${app.id}/payout`, { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Request failed (${r.status})`);
+      alert('Payment requested ✓ Team Raftra reviews it and arranges the transfer.');
+      load();
+    } catch (e) {
+      alert(`Could not request payment: ${e instanceof Error ? e.message : e}\n\nNothing has been recorded — please try again.`);
+    }
+    setBusy(null);
+  };
+
+  const active = apps.filter(a => a.status === 'CONFIRMED');
+  const others = apps.filter(a => a.status !== 'CONFIRMED');
+
+  const renderCard = (app: MyApplication) => {
+    const st = APP_STATUS[app.status] || APP_STATUS.SUBMITTED;
+    const agreed = app.final_price != null;
+    const isOpen = openAppId === app.id;
+    const hasWork = app.status === 'CONFIRMED' || app.status === 'COMPLETED';
+    return (
+      <div key={app.id} className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'rgba(15,15,22,0.7)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '22px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>{app.campaign_name || 'Campaign'}</h3>
+            <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+              {app.brand_name && <>Brand: <span style={{ color: '#fff', fontWeight: 600 }}>{app.brand_name}</span> · </>}
+              {agreed ? 'Agreed fee' : 'Your ask'}: <span style={{ color: '#00e676', fontWeight: 700 }}>{inr(agreed ? app.final_price : app.proposed_price)}</span>
+            </div>
+            {hasWork && (
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                {app.final_deliverables && <>Deliverables: <b style={{ color: '#fff' }}>{app.final_deliverables}</b> · </>}
+                {app.deliverables_approved || 0}/{app.deliverables_total || 0} approved
+                {!!app.deliverables_revision_requested && <span style={{ color: '#ff8a5c' }}> · {app.deliverables_revision_requested} need changes</span>}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12.5px', fontWeight: 700, padding: '6px 14px', borderRadius: '20px', background: st.b, color: st.c }}>{st.label}</span>
+            {onOpenChatWithBrand && app.brand_name && (
+              <button onClick={() => onOpenChatWithBrand(app.brand_name || '')} style={{ padding: '7px 14px', background: 'rgba(90,82,255,0.15)', border: '1px solid rgba(90,82,255,0.3)', color: '#8B85FF', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                💬 Message brand
+              </button>
+            )}
+            {hasWork && (
+              <GlowButton variant="secondary" onClick={() => setOpenAppId(isOpen ? null : app.id)} style={{ fontSize: '13px', padding: '7px 14px' }}>
+                {isOpen ? 'Hide deliverables' : 'Deliverables'}
+              </GlowButton>
+            )}
+            {app.status === 'COMPLETED' && !app.cashout_requested && (
+              <GlowButton variant="glow" disabled={busy === -app.id} onClick={() => handleRequestPayout(app)} style={{ fontSize: '13px' }}>
+                Request payment ({inr(app.final_price ?? app.proposed_price)})
+              </GlowButton>
+            )}
+            {app.cashout_requested && (
+              <span style={{ fontSize: '12.5px', color: '#5A8DFF', background: 'rgba(90,141,255,0.15)', padding: '6px 12px', borderRadius: '10px', fontWeight: 600 }}>
+                Payment: {(app.cashout_status || 'REQUESTED').toLowerCase()}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {isOpen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
+            {subs.length === 0 ? (
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>No deliverables are listed on this collaboration yet.</div>
+            ) : subs.map(sub => {
+              const canSubmit = app.status === 'CONFIRMED' && (sub.status === 'PENDING' || sub.status === 'REVISION_REQUESTED');
+              const draft = drafts[sub.id] || { url: '', caption: '' };
+              return (
+                <div key={sub.id} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>{sub.title}</div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>Due: {sub.due_date || app.deliverable_deadline || 'not set'}</div>
+                    </div>
+                    <SubStatusPill status={sub.status} />
+                  </div>
+                  {sub.status === 'REVISION_REQUESTED' && sub.revision_reason && (
+                    <div style={{ fontSize: '12.5px', color: '#ff8a5c' }}>Brand asked: {sub.revision_reason}</div>
+                  )}
+                  {sub.content_url && !canSubmit && (
+                    <a href={sub.content_url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: '#5A8DFF' }}>Your submission 🔗</a>
+                  )}
+                  {canSubmit && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <input type="url" placeholder="https://… link to the content" value={draft.url} onChange={e => setDrafts(p => ({ ...p, [sub.id]: { ...draft, url: e.target.value } }))} style={{ flex: 2, minWidth: '200px', padding: '8px 10px', background: 'rgba(0,0,0,0.35)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '12.5px' }} />
+                      <input type="text" placeholder="Caption or note (optional)" value={draft.caption} onChange={e => setDrafts(p => ({ ...p, [sub.id]: { ...draft, caption: e.target.value } }))} style={{ flex: 1, minWidth: '160px', padding: '8px 10px', background: 'rgba(0,0,0,0.35)', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#fff', fontSize: '12.5px' }} />
+                      <GlowButton variant="glow" disabled={busy === sub.id} onClick={() => submitDeliverable(app, sub)} style={{ fontSize: '12px', padding: '7px 14px' }}>
+                        {busy === sub.id ? 'Submitting…' : sub.status === 'REVISION_REQUESTED' ? 'Resubmit' : 'Submit for review'}
+                      </GlowButton>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
-        <h2 style={{ fontSize: '26px', fontWeight: 700, color: '#fff' }}>My Applications &amp; Cashout</h2>
+        <h2 style={{ fontSize: '26px', fontWeight: 700, color: '#fff' }}>My Collabs</h2>
         <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-          Track campaign approval status from brands and claim payout cashout.
+          Your applications to brand briefs, confirmed collaborations and their deliverables, and payment requests.
         </p>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {apps.map(app => {
-          const isApproved = app.status === 'CONFIRMED' || app.status === 'ACCEPTED' || app.status === 'APPROVED';
-          const isCompleted = app.status === 'COMPLETED';
-          const isRejected = app.status === 'REJECTED';
+      {!handle && <NoHandleNotice onSetup={onOpenProfileSetup} />}
+      {error && <div style={{ fontSize: '13px', color: '#ff8a8a' }}>{error}</div>}
 
-          return (
-            <div key={app.id} className="glow-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(15,15,22,0.7)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>{app.campaign_name} <span style={{ fontSize: '12px', color: '#8B85FF', background: 'rgba(90,82,255,0.15)', padding: '2px 6px', borderRadius: '6px', fontWeight: 600 }}>(Demo)</span></h3>
-                  <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>Brand: <span style={{ color: '#fff', fontWeight: 600 }}>{app.brand_name}</span> &nbsp;·&nbsp; Price: <span style={{ color: '#00e676', fontWeight: 700 }}>₹{app.proposed_price.toLocaleString()}</span></div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  <span style={{ 
-                    fontSize: '13px', 
-                    fontWeight: 700, 
-                    padding: '6px 16px', 
-                    borderRadius: '20px', 
-                    background: isCompleted ? 'rgba(0,230,118,0.15)' : isApproved ? 'rgba(90,82,255,0.15)' : isRejected ? 'rgba(255,77,77,0.15)' : 'rgba(255,174,0,0.15)', 
-                    color: isCompleted ? '#00e676' : isApproved ? '#8B85FF' : isRejected ? '#FF4D4D' : '#ffae00' 
-                  }}>
-                    {isCompleted ? '✓ Campaign Completed' : isApproved ? '🔵 Brand Approved (Deal Confirmed)' : isRejected ? '❌ Application Rejected' : '🟡 Application Under Review'}
-                  </span>
-
-                  {onOpenChatWithBrand && (
-                    <button 
-                      onClick={() => onOpenChatWithBrand(app.brand_name || 'Brand Partner')}
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '6px', 
-                        padding: '8px 16px', 
-                        background: 'rgba(90,82,255,0.15)', 
-                        border: '1px solid rgba(90,82,255,0.3)', 
-                        color: '#8B85FF', 
-                        borderRadius: '10px', 
-                        cursor: 'pointer', 
-                        fontSize: '13px', 
-                        fontWeight: 600 
-                      }}
-                    >
-                      💬 Message Brand (Inbox)
-                    </button>
-                  )}
-
-                  {isCompleted && !app.cashout_requested && (
-                    <GlowButton variant="glow" onClick={() => handleRequestCashout(app.id)} style={{ fontSize: '14px' }}>
-                      Apply for Cashout (₹{app.proposed_price.toLocaleString()})
-                    </GlowButton>
-                  )}
-
-                  {app.cashout_requested && (
-                    <span style={{ fontSize: '13px', color: '#5A8DFF', background: 'rgba(90,141,255,0.15)', padding: '6px 14px', borderRadius: '10px', fontWeight: 600 }}>
-                      Cashout Status: {app.cashout_status || 'REQUESTED'}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Approval contact notification banner */}
-              {isApproved && (
-                <div style={{ background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '12px', padding: '12px 16px', fontSize: '13.5px', color: '#00E676', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                  <span>🎉 <strong>Brand Approved Your Application!</strong> Brand team has received your profile details and will contact you via WhatsApp / Raftra Inbox to send creative brief.</span>
-                </div>
-              )}
+      {loading ? (
+        <div style={{ padding: '28px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>Loading your collaborations…</div>
+      ) : apps.length === 0 ? (
+        <div style={{ padding: '32px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '14px' }}>
+          <div style={{ fontSize: '15px', color: '#fff', fontWeight: 700, marginBottom: '6px' }}>No collaborations yet</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Apply to a brief in Brand Opportunities. Once a brand confirms terms, the collaboration and its deliverables appear here.</div>
+        </div>
+      ) : (
+        <>
+          {active.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-muted)' }}>ACTIVE COLLABORATIONS ({active.length})</div>
+              {active.map(renderCard)}
             </div>
-          );
-        })}
-      </div>
+          )}
+          {others.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-muted)' }}>APPLICATIONS &amp; PAST CAMPAIGNS ({others.length})</div>
+              {others.map(renderCard)}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
-

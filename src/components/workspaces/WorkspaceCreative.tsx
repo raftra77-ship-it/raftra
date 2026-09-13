@@ -787,6 +787,11 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [adVault, setAdVault] = useState<CompetitorGroup[]>([]);
   const [adVaultLoading, setAdVaultLoading] = useState(true);
   const [selectedCompetitor, setSelectedCompetitor] = useState<string>('');
+  /* Bumped when Market Intelligence closes or finishes a sync. The vault was fetched once on
+     mount, so a sync run from the modal filled the database while this tab kept showing
+     "No competitor ads collected yet" until a full page reload. */
+  const [adVaultVersion, setAdVaultVersion] = useState(0);
+  const reloadAdVault = () => setAdVaultVersion(v => v + 1);
 
   useEffect(() => {
     if (!workspaceId) { setAdVaultLoading(false); return; }
@@ -796,16 +801,17 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
-        if (cancelled) return;
+        if (cancelled || !d) return;
         const groups: CompetitorGroup[] = Array.isArray(d?.competitors) ? d.competitors
           : Array.isArray(d) ? d : [];
         setAdVault(groups);
-        setSelectedCompetitor(prev => prev || groups[0]?.competitor || '');
+        setSelectedCompetitor(prev =>
+          groups.some(g => g.competitor === prev) ? prev : (groups[0]?.competitor || ''));
       })
       .catch(() => { /* the tab shows its empty state */ })
       .finally(() => { if (!cancelled) setAdVaultLoading(false); });
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, [workspaceId, adVaultVersion]);
 
   const activeCompetitorAds =
     adVault.find(g => g.competitor === selectedCompetitor)?.ads ?? [];
@@ -1318,7 +1324,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // The real asset arrives asynchronously: the backend renders it, writes the row, and
   // broadcasts it over the WebSocket, which lands in `assets` via the dashboard. The effects
   // below wait for that instead of inventing a placeholder.
-  const handleGenerateAd = async () => {
+  /* `override` exists for the Apply-pattern buttons: they set the prompt/format and generate
+     in the same click, and state set in a handler is not visible until the next render - so
+     reading `productPrompt` here generated from the PREVIOUS prompt. */
+  const handleGenerateAd = async (override?: {
+    prompt?: string;
+    format?: typeof selectedAdType;
+    platform?: typeof platform;
+    ratio?: typeof aspectRatio;
+  }) => {
     if (isGenerating) return;
     if (!onGenerate) {
       setGenerationError('Generation is not connected in this view.');
@@ -1332,12 +1346,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setGenerationElapsed(0);
     setIsGenerating(true);
 
-    const job = await Promise.resolve(onGenerate(productPrompt.trim() || brandKnowledgeBrief(), undefined, {
+    const job = await Promise.resolve(onGenerate((override?.prompt ?? productPrompt).trim() || brandKnowledgeBrief(), undefined, {
       // Pass what the user actually chose. The old call sent the prompt alone, so the format,
       // platform and ratio selectors above had no effect on what the backend produced.
-      format: selectedAdType,
-      platform,
-      ratio: aspectRatio,
+      format: override?.format ?? selectedAdType,
+      platform: override?.platform ?? platform,
+      ratio: override?.ratio ?? aspectRatio,
       reference_image: referenceImageUrl || undefined,
       // The backend already honours this (service.plan -> spec.video.duration); the
       // selector just was not being passed, so every video rendered at the default length
@@ -1619,14 +1633,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     const summary = top
       .map(a => `"${a.title}"${a.days_active ? ` (${a.days_active}d live)` : ''}`)
       .join(', ');
+    const prompt =
+      `Build an ad in the spirit of what ${selectedCompetitor} keeps running: ${summary}. ` +
+      `Match the angle, not the brand — this is for our own product.`;
     setSelectedAdType('Image');
     setAspectRatio('1:1');
-    setProductPrompt(
-      `Build an ad in the spirit of what ${selectedCompetitor} keeps running: ${summary}. ` +
-      `Match the angle, not the brand — this is for our own product.`);
+    setProductPrompt(prompt);
     setActiveTab('create');
     triggerToast(`Applied ${selectedCompetitor}'s longest-running patterns to the prompt.`);
-    handleGenerateAd();
+    handleGenerateAd({ prompt, format: 'Image', ratio: '1:1' });
   };
 
   // Apply Specific Individual Competitor Ad Pattern to Ad Studio
@@ -1647,17 +1662,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     const nextPlatform = isInstagram ? 'Instagram'
       : platforms.some(p => p.includes('facebook')) ? 'Facebook' : 'Instagram';
 
+    const ratio = isInstagram ? '9:16' : '1:1';
     setSelectedAdType('Image');
     setPlatform(nextPlatform as typeof platform);
-    setAspectRatio(isInstagram ? '9:16' : '1:1');
+    setAspectRatio(ratio);
 
     const runFor = ad.days_active ? ` — running ${ad.days_active} days` : '';
-    setProductPrompt(
+    const prompt =
       `Pattern derived from ${selectedCompetitor}'s ad "${ad.title}"${runFor}.` +
-      (ad.copy ? ` Their copy: ${ad.copy.slice(0, 300)}` : ''));
+      (ad.copy ? ` Their copy: ${ad.copy.slice(0, 300)}` : '');
+    setProductPrompt(prompt);
     setActiveTab('create');
     triggerToast(`Applied "${ad.title}" to the Ad Studio prompt.`);
-    handleGenerateAd();
+    handleGenerateAd({ prompt, format: 'Image', platform: nextPlatform as typeof platform, ratio });
   };
 
   // AI Product Prompt Preset Click Handler
@@ -2556,7 +2573,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
 
             <GlowButton
               variant="glow"
-              onClick={handleGenerateAd}
+              onClick={() => handleGenerateAd()}
               disabled={isGenerating}
               style={{ width: '100%', padding: '16px', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
             >
@@ -2957,11 +2974,19 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <p style={{ fontSize: '13.5px', color: '#fff', margin: '0 0 6px 0', fontWeight: 600 }}>
                   No competitor ads collected yet
                 </p>
-                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.55 }}>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: 1.55 }}>
                   The ad vault fills from the Meta Ad Library on the competitor sync. Add rivals
-                  in Market Intelligence, or run the sync there, and their live ads appear here
-                  ordered by how long each has been running.
+                  with “Research a competitor” above (or let the sync discover them from your brand
+                  profile), then press <strong>Sync now</strong> in Market Intelligence — their live
+                  ads appear here ordered by how long each has been running.
                 </p>
+                <GlowButton
+                  variant="glow"
+                  onClick={() => setShowMarketIntel(true)}
+                  style={{ padding: '9px 18px', fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+                >
+                  <RefreshCw size={13} /> Open Market Intelligence &amp; sync
+                </GlowButton>
               </div>
             )}
 
@@ -5553,7 +5578,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {showMarketIntel && (
         <MarketTrendsCompetitorModal
           isOpen={showMarketIntel}
-          onClose={() => setShowMarketIntel(false)}
+          onClose={() => { setShowMarketIntel(false); reloadAdVault(); }}
+          onSynced={reloadAdVault}
           workspaceId={workspaceId ?? null}
           onNavigateTab={onNavigateTab}
         />

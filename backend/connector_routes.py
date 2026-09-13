@@ -349,20 +349,20 @@ def gsc_authorize(workspace_id: int, db: Session = Depends(database.get_db), cur
 async def gsc_callback(state: str, code: str = None, error: str = None, db: Session = Depends(database.get_db)):
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{frontend}/dashboard?gsc=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=seo&gsc=error")
     try:
         payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("purpose") != "gsc_oauth":
             raise ValueError("bad purpose")
         workspace_id = int(payload["workspace_id"])
     except Exception:
-        return RedirectResponse(f"{frontend}/dashboard?gsc=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=seo&gsc=error")
 
     try:
         tokens = await gsc.exchange_code(code)
     except Exception as e:
         print(f"GSC token exchange failed: {e}")
-        return RedirectResponse(f"{frontend}/dashboard?gsc=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=seo&gsc=error")
 
     refresh_token = tokens.get("refresh_token")
     access_token = tokens.get("access_token")
@@ -396,7 +396,7 @@ async def gsc_callback(state: str, code: str = None, error: str = None, db: Sess
         except Exception as e:
             print(f"GSC site auto-select skipped: {e}")
 
-    return RedirectResponse(f"{frontend}/dashboard?gsc=connected")
+    return RedirectResponse(f"{frontend}/dashboard?tab=seo&gsc=connected")
 
 
 # ---------------------------------------------------------------- list sites

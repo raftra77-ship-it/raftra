@@ -206,10 +206,14 @@ async def _fetch_site_signals(target_url: str) -> dict:
     """Measure site-level facts used by the audit (HTTPS, robots.txt, sitemap, redirects,
     indexability headers). Everything here is an observed HTTP result — never assumed."""
     import httpx
+    from core.page_fetch import BROWSER_UA, robots_access
     p = _urlparse(target_url)
     origin = f"{p.scheme}://{p.netloc}"
     signals = {"https": p.scheme == "https", "origin": origin}
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+    # A browser User-Agent: several CDNs answer python-httpx with 403, which made robots.txt
+    # and the sitemap look missing on sites that serve both.
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True,
+                                 headers={"User-Agent": BROWSER_UA}) as client:
         robots_body = ""
         try:
             r = await client.get(origin + "/robots.txt")
@@ -217,7 +221,14 @@ async def _fetch_site_signals(target_url: str) -> dict:
             entry = {"found": r.status_code == 200 and bool(robots_body.strip()),
                      "status": r.status_code}
             if robots_body:
-                entry["disallow_all"] = bool(_re.search(r"(?mi)^\s*Disallow:\s*/\s*$", robots_body))
+                # Evaluated per user-agent. The regex this replaced set disallow_all for any
+                # `Disallow: /` anywhere in the file, so a group scoped to GPTBot or Nutch was
+                # reported as the whole site blocking search engines.
+                access = robots_access(robots_body, target_url)
+                entry["disallow_all"] = access["blocks_search"]
+                entry["blocked_search_agents"] = access["blocked_search_agents"]
+                entry["blocked_agents"] = access["blocked_agents"]
+                entry["ai_crawlers"] = access["ai_crawlers"]
             entry["checked"] = True
             signals["robots_txt"] = entry
         except Exception as e:
@@ -254,56 +265,30 @@ async def _fetch_site_signals(target_url: str) -> dict:
     return signals
 
 
-async def _crawl_via_firecrawl(target_url: str, agent_label: str) -> dict:
-    """Shared Firecrawl scrape (+ retry, + site signals) so the GEO pipeline can score from
-    a REAL crawl too, instead of never crawling at all. Never raises — a genuine post-retry
-    failure is reported back via crawl_error and the caller decides whether to fail the run."""
+async def _firecrawl_scrape(target_url: str) -> tuple:
+    """(page, None) from Firecrawl, or (None, reason). One retry — the API occasionally
+    hiccups. rawHtml is requested because metadata, schema and accessibility facts do not
+    survive the markdown conversion."""
     import httpx
-    firecrawl_key = (os.getenv("FIRECRAWL_API_KEY") or "").strip()
-    out = {"markdown": "", "html": "", "crawl_error": None, "site_signals": {}}
-
-    if not firecrawl_key:
-        await manager.broadcast_agent_log(
-            agent_label, f"No FIRECRAWL_API_KEY configured — SIMULATION only (no real crawl of {target_url}).", "running")
-        out["crawl_error"] = "no_api_key"
-        return out
-
-    await manager.broadcast_agent_log(agent_label, f"Crawling {target_url} via Firecrawl...", "running")
+    key = (os.getenv("FIRECRAWL_API_KEY") or "").strip()
+    if not key:
+        return None, "FIRECRAWL_API_KEY is not set"
     last_err = None
     for attempt in range(2):
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 res = await client.post(
                     "https://api.firecrawl.dev/v1/scrape",
-                    headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                     json={"url": target_url, "formats": ["markdown", "rawHtml"]},
                 )
             if res.status_code == 200:
                 data = res.json().get("data", {}) or {}
-                markdown = (data.get("markdown", "") or "")
+                markdown = data.get("markdown", "") or ""
                 if markdown.strip():
-                    html = data.get("rawHtml") or data.get("html") or ""
                     meta = data.get("metadata", {}) or {}
-                    out["markdown"], out["html"] = markdown, html
-                    try:
-                        out["site_signals"] = await _fetch_site_signals(target_url)
-                        out["site_signals"]["status_code"] = meta.get("statusCode")
-                        # Detect a password gate / holding page before anything is scored.
-                        gate = detect_gate_page(
-                            out["site_signals"].get("final_url") or meta.get("sourceURL") or target_url,
-                            html, markdown)
-                        out["site_signals"]["gate"] = gate
-                        if gate.get("is_gate"):
-                            await manager.broadcast_agent_log(
-                                agent_label,
-                                f"WARNING: {target_url} is a placeholder/password-protected page "
-                                f"({', '.join(gate['markers'][:2])}). The audit will be marked "
-                                "not valid for the live site.", "running")
-                    except Exception as e:
-                        out["site_signals"] = {"error": str(e)[:100]}
-                    await manager.broadcast_agent_log(
-                        agent_label, f"Crawled {len(markdown):,} chars (+{len(html):,} HTML) from {target_url}.", "running")
-                    return out
+                    return {"markdown": markdown, "html": data.get("rawHtml") or data.get("html") or "",
+                            "status_code": meta.get("statusCode"), "final_url": meta.get("sourceURL")}, None
                 last_err = "empty content returned"
             else:
                 last_err = f"HTTP {res.status_code}: {res.text[:150]}"
@@ -311,106 +296,121 @@ async def _crawl_via_firecrawl(target_url: str, agent_label: str) -> dict:
             last_err = f"{type(e).__name__}: {e}"
         if attempt == 0:
             await asyncio.sleep(2.0)
+    return None, last_err
 
-    out["crawl_error"] = last_err
-    await manager.broadcast_agent_log(agent_label, f"Crawl failed for {target_url} (after retry): {last_err}", "failed")
+
+async def _crawl_page(target_url: str, agent_label: str) -> dict:
+    """The one crawl both pipelines use: Firecrawl, then a direct fetch, then an honest failure.
+
+    There used to be two copies of the Firecrawl call (this helper for GEO, an inline one in
+    crawler_node for SEO) and neither had a fallback. With no key the SEO pipeline ran in
+    "simulation" and the GEO pipeline carried on with an empty page, and both scored that
+    empty page and saved it as a finished audit - SEO 8/100 and GEO 2/100, every category
+    "verified" at zero. A plain fetch of the same URL almost always works, so it is tried
+    before giving up, and when both fail `crawl_error` is set so the caller fails the run
+    instead of persisting a score for a page nobody read.
+
+    Never raises.
+    """
+    from core.page_fetch import clean_markdown, fetch_page, html_to_markdown
+    from core.seo_scoring import html_is_scorable
+
+    out = {"markdown": "", "html": "", "crawl_error": None, "site_signals": {},
+           "source": None, "status_code": None, "final_url": None}
+
+    await manager.broadcast_agent_log(agent_label, f"Crawling {target_url}...", "running")
+    page, fc_err = await _firecrawl_scrape(target_url)
+    if page:
+        out.update(page)
+        out["source"] = "Firecrawl"
+    else:
+        await manager.broadcast_agent_log(
+            agent_label, f"Firecrawl unavailable ({fc_err}) — fetching the page directly instead.", "running")
+        try:
+            direct = await fetch_page(target_url)
+            out["html"] = direct["html"]
+            out["markdown"] = html_to_markdown(direct["html"], direct["final_url"])
+            out["status_code"] = direct["status_code"]
+            out["final_url"] = direct["final_url"]
+            out["source"] = "Direct HTTP fetch (JavaScript not rendered)"
+        except Exception as e:
+            out["crawl_error"] = f"Firecrawl: {fc_err}; direct fetch: {str(e)[:120]}"
+
+    if not out["crawl_error"] and not out["markdown"].strip() and not html_is_scorable(out["html"]):
+        out["crawl_error"] = (f"Firecrawl: {fc_err or 'no content'}; direct fetch returned no "
+                              f"readable content (the page may need JavaScript to render)")
+    if out["crawl_error"]:
+        await manager.broadcast_agent_log(agent_label, f"Crawl failed for {target_url}: {out['crawl_error']}", "failed")
+        return out
+
+    out["markdown"] = clean_markdown(out["markdown"])
+    try:
+        signals = await _fetch_site_signals(target_url)
+        signals["status_code"] = out["status_code"]
+        signals["crawl_source"] = out["source"]
+        if fc_err:
+            signals["firecrawl_error"] = fc_err
+        # Detect a password gate / holding page before anything is scored.
+        gate = detect_gate_page(signals.get("final_url") or out["final_url"] or target_url,
+                                out["html"], out["markdown"])
+        signals["gate"] = gate
+        if gate.get("is_gate"):
+            await manager.broadcast_agent_log(
+                agent_label,
+                f"WARNING: {target_url} is a placeholder/password-protected page "
+                f"({', '.join(gate['markers'][:2])}). The audit will be marked "
+                "not valid for the live site.", "running")
+        out["site_signals"] = signals
+    except Exception as e:
+        out["site_signals"] = {"error": str(e)[:100], "status_code": out["status_code"],
+                               "crawl_source": out["source"]}
+
+    await manager.broadcast_agent_log(
+        agent_label,
+        f"Crawled {len(out['markdown']):,} chars (+{len(out['html']):,} HTML) from {target_url} "
+        f"via {out['source']}.", "running")
     return out
 
 
 async def crawler_node(state: SEOState) -> SEOState:
     state["current_node"] = "Crawler Agent"
-    import httpx
-    firecrawl_key = (os.getenv("FIRECRAWL_API_KEY") or "").strip()
-
-    # No key configured: this is an explicit dev/simulation mode. Flag it clearly so a
-    # simulated run can never be mistaken for a real audit.
-    if not firecrawl_key:
-        msg = f"No FIRECRAWL_API_KEY configured — SIMULATION only (no real crawl of {state['target_url']})."
-        state["logs"].append(msg)
-        state["crawl_error"] = "no_api_key"
-        await manager.broadcast_agent_log("SEO Agent", msg, "running")
-        await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
-        state["crawl_data"] = {"markdown": "", "simulated": True}
-        _seo_stage_done(state, "Crawler Agent")
-        return state
-
-    msg = f"Crawling {state['target_url']} via Firecrawl..."
-    state["logs"].append(msg)
-    await manager.broadcast_agent_log("SEO Agent", msg, "running")
     await manager.broadcast_node_update("seo_geo", "Crawler Agent", "running")
 
-    # Retry once — the API occasionally hiccups; a single retry makes it reliable while
-    # still surfacing a genuine failure instead of silently substituting fake content.
-    last_err = None
-    for attempt in range(2):
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                res = await client.post(
-                    "https://api.firecrawl.dev/v1/scrape",
-                    headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
-                    # rawHtml is needed to audit metadata, schema and accessibility — those
-                    # facts do not survive the markdown conversion.
-                    json={"url": state['target_url'], "formats": ["markdown", "rawHtml"]},
-                )
-            if res.status_code == 200:
-                data = res.json().get("data", {}) or {}
-                markdown = (data.get("markdown", "") or "")
-                if markdown.strip():
-                    html = data.get("rawHtml") or data.get("html") or ""
-                    meta = data.get("metadata", {}) or {}
-                    # Keep the FULL page. (Previously truncated to 4000 chars, which crippled
-                    # the analysis and falsely flagged large pages as "thin content".)
-                    state["crawl_data"] = {"markdown": markdown, "html": html,
-                                           "full_length": len(markdown), "status_code": meta.get("statusCode")}
-                    try:
-                        state["site_signals"] = await _fetch_site_signals(state["target_url"])
-                        state["site_signals"]["status_code"] = meta.get("statusCode")
-                        # Same gate check as _crawl_via_firecrawl. The SEO pipeline has its own
-                        # crawler node, so detection has to run on BOTH paths — patching only
-                        # the shared helper left this one still scoring password gates as if
-                        # they were the real site.
-                        gate = detect_gate_page(
-                            state["site_signals"].get("final_url") or meta.get("sourceURL")
-                            or state["target_url"], html, markdown)
-                        state["site_signals"]["gate"] = gate
-                        if gate.get("is_gate"):
-                            await manager.broadcast_agent_log(
-                                "Crawler Agent",
-                                f"WARNING: {state['target_url']} is a placeholder/password-"
-                                f"protected page ({', '.join(gate['markers'][:2])}). The audit "
-                                "will be marked not valid for the live site.", "running")
-                    except Exception as e:
-                        state["site_signals"] = {"error": str(e)[:100]}
-                    # Core Web Vitals (Performance). Failure is fine — the auditor then reports
-                    # Performance as "Not Verified" rather than estimating it.
-                    try:
-                        from core.pagespeed import fetch_core_web_vitals
-                        psi = await fetch_core_web_vitals(state["target_url"])
-                        if psi:
-                            state["site_signals"]["psi"] = psi
-                    except Exception as e:
-                        print(f"PageSpeed step skipped: {e}")
-                    ok = f"Crawled {len(markdown):,} chars (+{len(html):,} HTML) from {state['target_url']}."
-                    state["logs"].append(ok)
-                    await manager.broadcast_agent_log("SEO Agent", ok, "running")
-                    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
-                    _seo_stage_done(state, "Crawler Agent")
-                    return state
-                last_err = "empty content returned"
-            else:
-                last_err = f"HTTP {res.status_code}: {res.text[:150]}"
-        except Exception as e:
-            last_err = f"{type(e).__name__}: {e}"
-        if attempt == 0:
-            await asyncio.sleep(2.0)  # brief backoff before the retry
+    crawl = await _crawl_page(state["target_url"], "SEO Agent")
+    if crawl["crawl_error"]:
+        # Surface it honestly - never score, or save, a page that was not read.
+        state["crawl_error"] = crawl["crawl_error"]
+        err = f"Crawl failed for {state['target_url']}: {crawl['crawl_error']}"
+        state["logs"].append(err)
+        await manager.broadcast_node_update("seo_geo", "Crawler Agent", "failed")
+        raise RuntimeError(err)
 
-    # Both attempts failed — surface it honestly, do NOT fabricate content.
-    state["crawl_error"] = last_err
-    err = f"Crawl failed for {state['target_url']} (after retry): {last_err}"
-    state["logs"].append(err)
-    await manager.broadcast_agent_log("SEO Agent", err, "failed")
-    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "failed")
-    raise RuntimeError(err)
+    # Keep the FULL page. (Previously truncated to 4000 chars, which crippled the analysis and
+    # falsely flagged large pages as "thin content".)
+    state["crawl_data"] = {"markdown": crawl["markdown"], "html": crawl["html"],
+                           "full_length": len(crawl["markdown"]),
+                           "status_code": crawl["status_code"], "source": crawl["source"]}
+    state["site_signals"] = crawl["site_signals"]
+
+    # Core Web Vitals (Performance). Failure is fine — the auditor reports Performance as
+    # "Not Verified" with the reason, rather than estimating it.
+    try:
+        from core.pagespeed import fetch_core_web_vitals_detailed
+        psi, psi_error = await fetch_core_web_vitals_detailed(state["target_url"])
+        if psi:
+            state["site_signals"]["psi"] = psi
+        elif psi_error:
+            state["site_signals"]["psi_error"] = psi_error
+    except Exception as e:
+        print(f"PageSpeed step skipped: {e}")
+        state["site_signals"]["psi_error"] = f"PageSpeed step failed ({type(e).__name__})"
+
+    ok = (f"Crawled {len(crawl['markdown']):,} chars (+{len(crawl['html']):,} HTML) from "
+          f"{state['target_url']} via {crawl['source']}.")
+    state["logs"].append(ok)
+    await manager.broadcast_node_update("seo_geo", "Crawler Agent", "completed")
+    _seo_stage_done(state, "Crawler Agent")
+    return state
 
 async def technical_seo_node(state: SEOState) -> SEOState:
     state["current_node"] = "Technical SEO Agent"
@@ -672,7 +672,12 @@ async def schema_agent_node(state: SEOState) -> SEOState:
     import json as _json
     brand = get_brand_context(state["workspace_id"], query=f"SEO and content strategy for {state['target_url']}")
     metrics = state.get("content_metrics") or {}
+    # The model has no clock, so it invents one: a report generated on 31 August was dated
+    # "October 26, 2026". Hand it the real date.
+    import datetime as _dtm
+    audit_date = _dtm.date.today().strftime("%B %d, %Y")
     prompt = (
+        f"AUDIT DATE: {audit_date} (use exactly this date wherever the report shows a date)\n\n"
         f"Target URL / Query: {state['target_url']}\n\n"
         f"COMPANY CONTEXT (use this to tailor the audit to the brand, its audience and offerings):\n{brand}\n\n"
         f"MEASURED ON-PAGE METRICS from crawling the site (base your technical findings on these REAL numbers, "
@@ -940,12 +945,15 @@ async def geo_entity_agent_node(state: SEOState) -> SEOState:
     # REAL crawl (previously this pipeline never fetched the page at all, so GEO scoring
     # had nothing to measure). Same Firecrawl source as SEO, kept as a separate call so a
     # crawl failure in one pipeline never blocks the other.
-    crawl = await _crawl_via_firecrawl(state["target_url"], "GEO Agent")
-    state["crawl_data"] = {"markdown": crawl["markdown"], "html": crawl["html"], "full_length": len(crawl["markdown"])}
+    crawl = await _crawl_page(state["target_url"], "GEO Agent")
+    state["crawl_data"] = {"markdown": crawl["markdown"], "html": crawl["html"],
+                           "full_length": len(crawl["markdown"]), "source": crawl["source"]}
     state["site_signals"] = crawl["site_signals"]
-    if crawl["crawl_error"] and crawl["crawl_error"] != "no_api_key":
+    # No "no_api_key" exemption any more: that exemption is what let a GEO run with nothing
+    # crawled go on to score an empty page and save GEO 2/100 as a finished audit.
+    if crawl["crawl_error"]:
         state["crawl_error"] = crawl["crawl_error"]
-        err = f"GEO crawl failed for {state['target_url']} (after retry): {crawl['crawl_error']}"
+        err = f"GEO crawl failed for {state['target_url']}: {crawl['crawl_error']}"
         state["logs"].append(err)
         await manager.broadcast_node_update("geo_pipeline", "Entity Agent", "failed")
         raise RuntimeError(err)
@@ -1334,7 +1342,10 @@ async def geo_reporting_agent_node(state: SEOState) -> SEOState:
             + ", ".join(q.get("key", "") for q in (_sc.get("queries") or [])[:8]))
     measured_block = ("\n\n".join(measured) + "\n\n") if measured else ""
 
+    import datetime as _dtm
     geo_prompt = (
+        f"AUDIT DATE: {_dtm.date.today().strftime('%B %d, %Y')} (use exactly this date wherever "
+        f"the report shows a date)\n\n"
         f"Target URL / Brand: {state['target_url']}\n\n"
         f"COMPANY CONTEXT (tailor the GEO strategy to this brand, audience and offerings):\n{brand}\n\n"
         f"{recall_line}{measured_block}"

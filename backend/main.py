@@ -189,43 +189,10 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# Brand <-> creator chat, keyed by room ("ws{workspace_id}_{creator_handle}").
-#
-# Both WorkspaceInfluencer.tsx and CreatorPortal.tsx have always connected here, but the
-# endpoint did not exist, so the two sides fell back to writing into localStorage under
-# `raftra_chat_{room}`. That only ever worked because brand and creator were the same
-# browser - between two real users nothing was delivered. This relays messages for real.
-#
-# Unauthenticated like the creator deal endpoints, and for the same reason: a creator is
-# messaged by handle before they have an account. A room key is therefore a bearer
-# capability - guessable if you know the workspace id and handle - so nothing sensitive
-# should be sent over it. TODO_CREATOR_AUTH: require the JWT here too once creators
-# reliably sign in, matching the /ws endpoint above.
-_chat_rooms: dict[str, set[WebSocket]] = {}
-
-@app.websocket("/ws/chat/{room}")
-async def chat_socket(websocket: WebSocket, room: str):
-    await websocket.accept()
-    peers = _chat_rooms.setdefault(room, set())
-    peers.add(websocket)
-    try:
-        while True:
-            raw = await websocket.receive_text()
-            # Relay to everyone else in the room. Sending back to the author too would
-            # duplicate the message they already rendered optimistically on send.
-            for peer in list(peers):
-                if peer is websocket:
-                    continue
-                try:
-                    await peer.send_text(raw)
-                except Exception:
-                    peers.discard(peer)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        peers.discard(websocket)
-        if not peers:
-            _chat_rooms.pop(room, None)   # don't leak an entry per room forever
+# Brand <-> creator chat no longer has a socket of its own. The /ws/chat/{room} relay that
+# lived here was unauthenticated and keyed on a guessable "ws{workspace}_{handle}" room, and it
+# stored nothing. Messages are now rows written through /api/inbox (inbox_routes.py) and pushed
+# to exactly the two parties over the authenticated /ws socket above.
 
 # Import and include routers here as they are built (Auth, Stripe, Agents, etc.)
 import auth, models, database, payments, agent_routes, workspace_routes, connector_routes, publishing_routes, creative_routes
@@ -338,7 +305,11 @@ _run_light_migrations()
 import influencer_deal_routes
 import posted_deal_routes
 import payout_routes
+import inbox_routes
+import admin_routes
 app.include_router(auth.router)
+app.include_router(inbox_routes.router)
+app.include_router(admin_routes.router)
 app.include_router(payments.router)
 app.include_router(agent_routes.router)
 app.include_router(workspace_routes.router)

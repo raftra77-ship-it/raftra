@@ -8,7 +8,7 @@ PAGESPEED_API_KEY is optional — the API works without a key but is heavily rat
 so set one (Google Cloud → APIs & Services → Credentials → API key) for reliable runs.
 """
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 
@@ -24,11 +24,12 @@ def _audit_value(audits: dict, key: str, divide_by: float = 1.0) -> Optional[flo
         return None
 
 
-async def fetch_core_web_vitals(url: str, strategy: str = "mobile") -> Optional[dict]:
-    """Return {lcp, fcp, cls, tbt, performance_score, strategy, source} or None.
+async def fetch_core_web_vitals_detailed(url: str, strategy: str = "mobile") -> Tuple[Optional[dict], Optional[str]]:
+    """(result, None) on success, (None, reason) otherwise.
 
-    LCP/FCP are returned in seconds, CLS unitless — matching the thresholds the
-    auditor scores against.
+    The reason exists because every failure used to surface in the report as "PageSpeed/CrUX
+    not integrated" - including the most common one, where the keyless API's shared daily
+    quota is exhausted (HTTP 429) and setting PAGESPEED_API_KEY is the whole fix.
     """
     import httpx
 
@@ -43,11 +44,19 @@ async def fetch_core_web_vitals(url: str, strategy: str = "mobile") -> Optional[
             res = await client.get(ENDPOINT, params=params)
         if res.status_code != 200:
             print(f"PageSpeed: HTTP {res.status_code} for {url}: {res.text[:160]}")
-            return None
+            if res.status_code == 429:
+                return None, ("PageSpeed Insights quota exhausted (HTTP 429)"
+                              + ("" if key else " — the keyless API shares one daily quota; "
+                                                "set PAGESPEED_API_KEY"))
+            try:
+                detail = ((res.json().get("error") or {}).get("message") or "")[:140]
+            except Exception:
+                detail = ""
+            return None, f"PageSpeed Insights returned HTTP {res.status_code}" + (f": {detail}" if detail else "")
         data = res.json()
     except Exception as e:
         print(f"PageSpeed request failed for {url}: {e}")
-        return None
+        return None, f"PageSpeed Insights request failed ({type(e).__name__})"
 
     lh = data.get("lighthouseResult") or {}
     audits = lh.get("audits") or {}
@@ -65,5 +74,15 @@ async def fetch_core_web_vitals(url: str, strategy: str = "mobile") -> Optional[
     # If none of the three scored metrics came back, treat it as unavailable so the
     # auditor reports "Not Verified" instead of scoring against missing data.
     if result["lcp"] is None and result["fcp"] is None and result["cls"] is None:
-        return None
+        return None, "PageSpeed Insights returned no Core Web Vitals for this page"
+    return result, None
+
+
+async def fetch_core_web_vitals(url: str, strategy: str = "mobile") -> Optional[dict]:
+    """Return {lcp, fcp, cls, tbt, performance_score, strategy, source} or None.
+
+    LCP/FCP are returned in seconds, CLS unitless — matching the thresholds the
+    auditor scores against.
+    """
+    result, _reason = await fetch_core_web_vitals_detailed(url, strategy)
     return result
