@@ -187,85 +187,32 @@ _GOOGLE_TYPES = {"Search", "Display", "Performance Max", "Shopping", "Demand Gen
 
 
 async def creative_brief_node(state: CampaignState) -> CampaignState:
-    """The reasoning core. Produces a *reasoned* strategy — every recommendation carries a
-    plain-language WHY grounded in real best practice — plus the correct Google campaign
-    TYPE and ONLY the assets that type needs, and Meta ad-copy fields."""
+    """The reasoning core, run as two concurrent LLM calls.
+
+    This was one call producing the reasoned strategy, the Meta copy and the entire Google
+    asset set together — several hundred tokens of JSON written in sequence, and at ~25s the
+    single largest remaining cost in a ~41s strategy generation.
+
+    The two halves are independent, which is the only thing that makes splitting them honest:
+    strategy decides what to do and why; copy writes the words, from the objective, audience
+    and brand that were all settled before this node ran. See agents/creative_nodes/
+    _brief_halves.py for why the Google campaign type is not a dependency between them.
+    """
     await manager.broadcast_agent_log("Strategy Agent", "Reasoning about platforms, budget split, Google campaign type and creative...", "running")
     llm = GeminiProvider() if "gemini" in state["model"].lower() else OpenRouterProvider()
 
-    system = (
-        "You are a senior digital-marketing strategist. Apply real, current best practices for "
-        "Meta Ads and Google Ads. EVERY recommendation MUST include a short, plain-language reason "
-        "(the WHY) tied to the business, goal, audience, budget or search intent. Never invent "
-        "statistics or facts; if unsure, explain the reasoning rather than fabricating numbers.\n\n"
-        "Choose the Google campaign TYPE from goal + intent:\n"
-        "- Search: people actively search for this product/service (high intent; leads/sales). NO images.\n"
-        "- Display: awareness/retargeting across sites (visual, lower intent). Needs images.\n"
-        "- Performance Max: goal-based automation across all Google inventory (ecommerce/conversions). Needs images + optional video.\n"
-        "- Shopping: retail products with a product feed. Keywords not user-set.\n"
-        "- Demand Gen: social-style discovery on YouTube/Discover/Gmail. Needs images + audience signals.\n"
-        "- Video: awareness/consideration on YouTube. Needs video.\n"
-        "Only fill the asset arrays the chosen type actually uses; leave the rest as [].\n\n"
-        "Recommendations must be specific to the market described in the prompt - its "
-        "currency, buying behaviour, languages, city tiers, seasonal calendar and the "
-        "platforms people there actually use. A recommendation that would read identically "
-        "for any country is not specific enough. Still never invent statistics: ground the "
-        "WHY in the market's characteristics and the brand's own context, not in made-up "
-        "benchmark numbers."
+    from . import _brief_halves as halves
+    market = _market_context(state)
+    strategy, copy = await asyncio.gather(
+        halves.strategy_half(state, llm, generate_json, market),
+        halves.copy_half(state, llm, generate_json, market),
     )
-    prompt = (
-        f"Campaign brief from the user (may include business type, industry, product, goal, budget, "
-        f"audience, location, season, website, landing page):\n{state['prompt']}\n\n"
-        f"Business/brand context:\n{state['cached_context']}\n\n"
-        f"{_market_context(state)}\n\n"
-        f"Chosen objective: {state['objective']}\nAudience: {state['audience']}\n\n"
-        "Return ONLY a JSON object with EXACTLY these keys:\n"
-        "{\n"
-        '  "recommendations": {\n'
-        '    "objective": {"value": "...", "reason": "..."},\n'
-        '    "platforms": [{"value": "Meta Ads", "reason": "..."}, {"value": "Google Ads", "reason": "..."}],\n'
-        '    "budget_allocation": {"meta_pct": 60, "google_pct": 40, "reason": "..."},\n'
-        '    "google_campaign_type": {"value": "Search", "reason": "..."},\n'
-        '    "audience": {"value": "...", "reason": "..."},\n'
-        '    "creative": {"value": "...", "reason": "..."},\n'
-        '    "cta": {"value": "Shop Now", "reason": "..."},\n'
-        '    "optimization_goal": {"value": "...", "reason": "..."}\n'
-        "  },\n"
-        '  "meta": {"primary_text": "... (ONE sentence, HARD LIMIT 125 characters)", "headline": "... (HARD LIMIT 40 characters)", "cta": "...", "placements": ["Instagram Reels","Facebook Feed"]},\n'
-        '  "google": {\n'
-        '    "headlines": ["... 8-15 items, HARD LIMIT 30 characters each"],\n'
-        '    "descriptions": ["... 4 items, HARD LIMIT 90 characters each"],\n'
-        '    "keywords": ["... 5-15 phrases; [] if type is Display/Video/Demand Gen"],\n'
-        '    "extensions": ["Sitelink: ...","Callout: ..."; [] unless Search],\n'
-        '    "image_ideas": ["short image descriptions; [] unless Display/Performance Max/Demand Gen"],\n'
-        '    "video_ideas": ["short video concepts; [] unless Performance Max/Video"],\n'
-        '    "audience_signals": ["...; [] unless Performance Max/Demand Gen"],\n'
-        '    "cta": "..."\n'
-        "  },\n"
-        '  "kpis": ["2-4 measurable targets, e.g. CTR > 2%"],\n'
-        '  "channels": ["Meta Ads","Google Ads"],\n'
-        '  "ad_types": ["Image Ads","Carousel Ads"],\n'
-        '  "duration_days": 15,\n'
-        '  "total_budget": <total budget number from the request>\n'
-        "}\n"
-        "\n"
-        "CHARACTER LIMITS ARE HARD PLATFORM RULES, NOT STYLE ADVICE. Google and Meta\n"
-        "reject any ad whose copy exceeds them, so a campaign that breaks even one of\n"
-        "these cannot be published at all:\n"
-        "  - google.headlines    : 30 characters MAX, each\n"
-        "  - google.descriptions : 90 characters MAX, each\n"
-        "  - meta.headline       : 40 characters MAX\n"
-        "  - meta.primary_text   : 125 characters MAX\n"
-        "Count the characters of each one before answering, spaces and punctuation\n"
-        "included, and rewrite anything over. Shorter is always fine; over is never.\n"
-    )
-    resp = await generate_json(llm, prompt, system, state["model"])
 
+    # Merged with strategy last so that if both somehow return the same key, the reasoned
+    # half wins — it is the one that decides campaign shape.
     brief: dict = {}
-    try:
-        brief = json.loads(resp) or {}
-    except Exception:
-        brief = {}
+    brief.update(copy or {})
+    brief.update(strategy or {})
 
     _enforce_copy_limits(brief)
 
@@ -279,6 +226,11 @@ async def creative_brief_node(state: CampaignState) -> CampaignState:
         gtype = "Performance Max" if gtype.lower().startswith("perf") else "Search"
     rec.setdefault("google_campaign_type", {})
     rec["google_campaign_type"]["value"] = gtype
+
+    # Enforced here rather than asked of the model. The copy half writes every asset array
+    # because it does not know the type; this empties the ones this type does not use, which
+    # is also stricter than the prompt line it replaces.
+    google = halves.apply_type_assets(google, gtype)
 
     # Budget split from the reasoned allocation (fall back to 70/30).
     ba = rec.get("budget_allocation") or {}
