@@ -1142,6 +1142,25 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     try {
       await fetch(`/api/agents/${workspaceId}/campaign`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ prompt, model: 'gemini-2.5-flash', geo_targeting_level: form.geoTargetingLevel, geo_locations: geoLocations }) });
     } catch { setIsGenerating(false); flash('Could not start generation.', false); return; }
+    // Two waits, because two things finish at different times.
+    //
+    // This gave up after 20 tries at 3s — 60 seconds — and announced "Strategy and its ad
+    // image are ready" the moment a row appeared. Both halves were wrong. Strategy
+    // generation is four LLM calls against the campaign graph and measured ~50s on a good
+    // run, so 60s was inside the noise; and the server now saves the strategy first and
+    // attaches the creative afterwards, so a row appearing means the plan is ready and the
+    // picture is still rendering.
+    //
+    // So: wait up to 3 minutes for the strategy (an LLM that is slow or retrying a 503 is
+    // normal, not a failure), show it the moment it lands, then keep watching briefly for the
+    // image and slot it in. The user reads and reviews the plan while the creative renders,
+    // instead of staring at a spinner that times out on work which did in fact succeed.
+    // 5 minutes, not 3. A measured run with Gemini's free daily quota exhausted — every call
+    // paying a failed request before falling through to another model — put the strategy on
+    // screen at 175s. A 180s budget would have called that a failure by a five-second margin.
+    const STRATEGY_TRIES = 100;    // 100 x 3s = 5 minutes
+    const IMAGE_TRIES = 40;        // a further 2 minutes for the creative
+    const REASSURE_AT = 20;        // ~60s: say it is still working rather than looking stuck
     let tries = 0;
     const poll = setInterval(async () => {
       tries += 1;
@@ -1150,11 +1169,39 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
         const fresh = Array.isArray(now) ? now.filter((c: any) => c.id > beforeMax).sort((a: any, b: any) => b.id - a.id)[0] : null;
         if (fresh) {
           clearInterval(poll); setIsGenerating(false); setCampaign(fresh);
-          log('AI Strategy + ad image generated');
-          flash('Strategy and its ad image are ready. Review them, then approve to unlock the rest.');
-        } else if (tries >= 20) { clearInterval(poll); setIsGenerating(false); flash('Taking longer than expected — check the agent logs.', false); }
+          const hasImage = !!(fresh.metrics || {}).image_url;
+          log(hasImage ? 'AI Strategy + ad image generated' : 'AI Strategy generated');
+          flash(hasImage
+            ? 'Strategy and its ad image are ready. Review them, then approve to unlock the rest.'
+            : 'Strategy is ready — review it now. The ad image is still rendering and will appear here shortly.');
+          if (!hasImage) watchForImage(fresh.id);
+        } else if (tries === REASSURE_AT) {
+          // Long enough that a silent spinner reads as broken. Says what is happening
+          // instead, and does not stop waiting.
+          flash('Still writing the strategy — four AI passes, usually under a minute but slower when the model is busy. Hang on.');
+        } else if (tries >= STRATEGY_TRIES) {
+          clearInterval(poll); setIsGenerating(false);
+          flash('Still generating after 3 minutes — check the agent logs. The campaign will appear in Recent Campaigns when it finishes.', false);
+        }
       } catch { /* keep polling */ }
     }, 3000);
+
+    // The creative lands on the row a little after the plan does. Polled rather than driven
+    // by the campaign_image_ready broadcast so a dropped socket cannot leave the card
+    // permanently imageless; giving up here costs nothing, since a later refresh shows it.
+    function watchForImage(id: number) {
+      let n = 0;
+      const imgPoll = setInterval(async () => {
+        n += 1;
+        try {
+          const list = await fetch(`/api/workspaces/${workspaceId}/campaigns`, { headers: authHeaders() }).then(r => r.json());
+          const row = Array.isArray(list) ? list.find((c: any) => c.id === id) : null;
+          if (row && (row.metrics || {}).image_url) {
+            clearInterval(imgPoll); setCampaign(row); log('Ad image generated');
+          } else if (n >= IMAGE_TRIES) { clearInterval(imgPoll); }
+        } catch { /* keep polling */ }
+      }, 3000);
+    }
   };
 
   const approve = async () => {

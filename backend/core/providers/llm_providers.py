@@ -1,4 +1,5 @@
 import os
+import time as _time
 import google.generativeai as genai
 from typing import Optional
 from .base import LLMProvider, LLMProviderError
@@ -33,6 +34,45 @@ _GEMINI_FALLBACK_MODELS = [
 def _is_rate_limit(err: Exception) -> bool:
     s = str(err).lower()
     return "429" in s or "quota" in s or "rate limit" in s or "resource_exhausted" in s
+
+
+# Models known to be out of quota right now, and when to try them again.
+#
+# The fallback loop asks for the requested model first, every single time. Once a free-tier
+# model has burned its DAILY allowance that request cannot succeed again today, yet every call
+# still paid a full round trip to be told so before moving on. Campaign strategy generation
+# makes four LLM calls, so an exhausted gemini-2.5-flash cost four pointless requests per
+# campaign and pushed a run that measures ~50s out past 170s — long enough that the UI gave up
+# and reported the strategy as not generating, for work that was only queued behind its own
+# dead retries.
+#
+# In-process and deliberately short-lived: this is a latency optimisation, not bookkeeping. A
+# restart, or the cooldown expiring, simply tries the model again and re-learns the answer.
+_MODEL_COOLDOWN_SEC = int(os.getenv("LLM_MODEL_COOLDOWN_SEC", "900"))
+_model_cooldown: dict = {}
+
+
+def _on_cooldown(model: str) -> bool:
+    until = _model_cooldown.get(model)
+    if until is None:
+        return False
+    if _time.time() >= until:
+        _model_cooldown.pop(model, None)
+        return False
+    return True
+
+
+def _mark_exhausted(model: str) -> None:
+    _model_cooldown[model] = _time.time() + _MODEL_COOLDOWN_SEC
+
+
+def _order_models(model_name: str) -> list:
+    """Requested model first, then the fallbacks — minus anything cooling down. Never returns
+    an empty list: if everything is on cooldown, try the original order rather than fail
+    without asking."""
+    ordered = [model_name] + [m for m in _GEMINI_FALLBACK_MODELS if m != model_name]
+    live = [m for m in ordered if not _on_cooldown(m)]
+    return live or ordered
 
 
 def _is_model_unavailable(err: Exception) -> bool:
@@ -87,7 +127,7 @@ class GeminiProvider(LLMProvider):
         generation_config = genai.GenerationConfig(max_output_tokens=max_output_tokens) if max_output_tokens else None
 
         # Try the requested model first, then fall through to models with separate quotas.
-        models_to_try = [model_name] + [m for m in _GEMINI_FALLBACK_MODELS if m != model_name]
+        models_to_try = _order_models(model_name)
         last_err = None
         for m in models_to_try:
             try:
@@ -105,7 +145,9 @@ class GeminiProvider(LLMProvider):
             except Exception as e:
                 last_err = e
                 if _is_rate_limit(e):
-                    print(f"Gemini {m} rate-limited (daily quota), trying next model...")
+                    _mark_exhausted(m)
+                    print(f"Gemini {m} rate-limited (daily quota); skipping it for "
+                          f"{_MODEL_COOLDOWN_SEC}s and trying the next model...")
                     continue
                 if _is_model_unavailable(e):
                     print(f"Gemini {m} is retired/unavailable, trying next model...")
@@ -144,7 +186,7 @@ class GeminiProvider(LLMProvider):
                              if max_output_tokens else None)
 
         image_part = {"mime_type": mime_type, "data": image_bytes}
-        models_to_try = [model_name] + [m for m in _GEMINI_FALLBACK_MODELS if m != model_name]
+        models_to_try = _order_models(model_name)
         last_err = None
         for m in models_to_try:
             try:

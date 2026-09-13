@@ -432,23 +432,63 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
         result = await campaign_graph.ainvoke(initial_state)
         spec = json.loads(result["campaign_spec"])
 
-        # Auto-generate the campaign's image ad through the SAME pipeline the Creative Studio
-        # uses, rather than a second, weaker one.
+        # The strategy is saved and announced BEFORE the image is generated, and that order
+        # matters more than it looks.
         #
-        # This called FluxSchnellProvider directly, which is Pollinations — the keyless
-        # fallback the router treats as the floor, the thing it picks when nothing else is
-        # configured. The Studio meanwhile asks router_decision_engine, which on this
-        # deployment returns hf_flux. So the two screens ran different models against
-        # different prompts, and the campaign image came out visibly worse than the one the
-        # Studio produced from the same brief — which is exactly what it looked like.
+        # The image used to be generated first, with the campaign row written afterwards — so
+        # the row appeared only once the picture was done. Campaign Manager polls
+        # /campaigns every 3s for a new id and gives up after 20 tries, i.e. 60 seconds. The
+        # whole task measured 112s, so the poll ALWAYS expired before the row existed and the
+        # user was told "Taking longer than expected" for a campaign that then quietly
+        # appeared minutes later. That is the "strategy is not generating" report.
         #
-        # Three things were missing beyond the provider. The prompt was hand-assembled here
-        # instead of built by core.creative.optimizer, so it carried none of the structure the
-        # providers are tuned for. No negative prompt was sent at all, so nothing suppressed
-        # the watermarks, extra limbs and garbled lettering it exists to suppress. And the
-        # brand context never reached it, so the creative described a generic product rather
-        # than this brand's. Going through service.plan() fixes all three at once, and means
-        # a future change to the Studio's pipeline reaches Campaign Manager for free.
+        # Switching the provider to hf_flux made it worse, not better: Pollinations returned a
+        # lazy URL in milliseconds (the picture is rendered later, by the browser, when it
+        # loads the link), while a real generator spends 30-60s producing actual pixels. The
+        # fix is not a faster image — it is refusing to let the image gate the strategy.
+        campaign_id = 0
+        try:
+            with SessionLocal() as db:
+                camp = models.Campaign(
+                    workspace_id=workspace_id,
+                    platform="Meta / Google",
+                    name=spec.get("campaign_name", "AI Campaign"),
+                    objective=spec.get("objective", ""),
+                    budget=float(spec.get("daily_budget", 0) or 0),
+                    status="PENDING_REVIEW",
+                    metrics=dict(spec),
+                )
+                db.add(camp)
+                db.commit()
+                db.refresh(camp)
+                campaign_id = camp.id
+        except Exception as e:
+            print(f"Failed to save Campaign: {e}")
+
+        # Announced with image_url None: the strategy is genuinely ready and the creative is
+        # still rendering. The UI shows the plan now and fills the image in when it lands.
+        await manager.broadcast(json.dumps({
+            "type": "campaign_spec_generated",
+            "campaign_id": campaign_id,
+            "spec": result["campaign_spec"],
+            "image_url": None,
+        }))
+        record_agent_task(workspace_id, "CAMPAIGN", "RUNNING",
+                          f"Strategy ready — generating the ad image for "
+                          f"{spec.get('campaign_name', '')[:40]}")
+
+        # Generated through the SAME pipeline the Creative Studio uses, rather than a second,
+        # weaker one. This called FluxSchnellProvider directly — Pollinations, the keyless
+        # provider the router treats as the floor — while the Studio asks
+        # router_decision_engine, which on this deployment returns hf_flux. Measured on one
+        # prompt: 768x768 / 52KB against 1024x1024 / 846KB.
+        #
+        # Three things were missing besides the provider. The prompt was hand-assembled here
+        # instead of built by core.creative.optimizer, so it carried none of the composition
+        # and lighting structure the providers are tuned for. No negative prompt was sent at
+        # all, so nothing suppressed the watermarks, extra limbs and garbled lettering it
+        # exists to suppress. And brand context never reached it, so the creative described a
+        # generic product rather than this brand's. service.plan() supplies all three.
         image_url = None
         try:
             from core.creative.service import service as creative_service, _image_provider
@@ -471,41 +511,56 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
             )
             print(f"[campaign] creative generated via {provider_name} "
                   f"at {prompts['aspect_ratio']}")
+
+            # Store the bytes and keep a URL — never the data: URI itself.
+            #
+            # GET /campaigns returns each row's `metrics` wholesale, so a 1.5MB inline image
+            # is 1.5MB added to every campaign-list response, for every campaign, forever.
+            # Three test rows had already taken that payload to 4.5MB. core/creative solved
+            # the same problem for ad assets by handing back a URL instead of the bytes; this
+            # uses the same storage helper, so campaign creatives live beside uploaded ones
+            # and the list stays small.
+            if image_url and image_url.startswith("data:"):
+                try:
+                    import base64 as _b64
+                    header, _, b64 = image_url.partition(",")
+                    content_type = header.split(";")[0].replace("data:", "") or "image/png"
+                    raw = _b64.b64decode(b64)
+                    from storage import store_bytes
+                    image_url = store_bytes(
+                        raw, f"campaign-creative.{content_type.split('/')[-1]}",
+                        content_type, workspace_id=workspace_id, category="creatives")
+                    print(f"[campaign] creative stored ({len(raw) // 1024}KB) at {image_url[:70]}")
+                except Exception as e:
+                    # Keeping the data URI is worse than a URL but far better than no image;
+                    # the row is simply heavier until the next generation.
+                    print(f"Could not store campaign creative, keeping inline: {e}")
         except Exception as e:
             print(f"Campaign image generation failed: {e}")
 
-        # Persist the plan (audience/placements live in metrics; the model has no
-        # columns for them). send_personal_message no longer exists on the manager,
-        # so broadcast (scoped to this workspace by the contextvar set above) instead.
-        campaign_id = 0
-        try:
-            with SessionLocal() as db:
-                m = dict(spec)
-                if image_url:
-                    m["image_url"] = image_url
-                camp = models.Campaign(
-                    workspace_id=workspace_id,
-                    platform="Meta / Google",
-                    name=spec.get("campaign_name", "AI Campaign"),
-                    objective=spec.get("objective", ""),
-                    budget=float(spec.get("daily_budget", 0) or 0),
-                    status="PENDING_REVIEW",
-                    metrics=m,
-                )
-                db.add(camp)
-                db.commit()
-                db.refresh(camp)
-                campaign_id = camp.id
-        except Exception as e:
-            print(f"Failed to save Campaign: {e}")
+        # Attach the creative to the row that already exists. A failure here costs the image
+        # only — the strategy is already saved and on screen, which is the whole point of the
+        # ordering above.
+        if image_url and campaign_id:
+            try:
+                with SessionLocal() as db:
+                    camp = db.query(models.Campaign).filter(
+                        models.Campaign.id == campaign_id).first()
+                    if camp:
+                        m = dict(camp.metrics or {})
+                        m["image_url"] = image_url
+                        camp.metrics = m
+                        db.commit()
+            except Exception as e:
+                print(f"Failed to attach campaign image: {e}")
 
         await manager.broadcast(json.dumps({
-            "type": "campaign_spec_generated",
+            "type": "campaign_image_ready",
             "campaign_id": campaign_id,
-            "spec": result["campaign_spec"],
             "image_url": image_url,
         }))
-        record_agent_task(workspace_id, "CAMPAIGN", "COMPLETED", f"Campaign plan ready: {spec.get('campaign_name', '')[:60]}")
+        record_agent_task(workspace_id, "CAMPAIGN", "COMPLETED",
+                          f"Campaign plan ready: {spec.get('campaign_name', '')[:60]}")
     except Exception as e:
         await manager.broadcast_agent_log("Campaign Agent", f"Campaign generation failed: {e}", "failed")
         record_agent_task(workspace_id, "CAMPAIGN", "FAILED", str(e)[:120])
