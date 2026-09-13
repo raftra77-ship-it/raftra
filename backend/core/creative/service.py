@@ -139,18 +139,38 @@ class CreativeService:
         image_url, video_url, error = "", "", None
         await log("Media Generator", f"Generating the {spec.aspect_ratio} creative "
                                      f"via {provider_name}...")
-        try:
-            img = _image_provider(provider_name)
-            image_url = await img.generate_image(
+        async def _make(name: str) -> str:
+            return await _image_provider(name).generate_image(
                 prompts["image_prompt"],
                 aspect_ratio=prompts["aspect_ratio"],
                 negative_prompt=prompts["negative_prompt"],
                 image_url=spec.reference_image_url or None,
             )
+
+        try:
+            image_url = await _make(provider_name)
             await log("Media Generator", "Image generated.", "completed")
         except Exception as e:
-            error = f"Image generation failed: {e}"
-            await log("Media Generator", error, "failed")
+            # The routed provider can be configured and still refuse. Generating one
+            # creative per framework returned "402: You have depleted your monthly included
+            # credits" from Hugging Face on four of six — the token is present so the router
+            # keeps choosing it, and Creative Studio had no fallback at all, so those four
+            # produced nothing. Campaign Manager already retries keyless for exactly this;
+            # this is the same rule, in the path that generates most of the product's images.
+            if provider_name == "flux_schnell":
+                error = f"Image generation failed: {e}"
+                await log("Media Generator", error, "failed")
+            else:
+                await log("Media Generator",
+                          f"{provider_name} refused ({str(e)[:90]}); retrying on the keyless provider.",
+                          "running")
+                try:
+                    image_url = await _make("flux_schnell")
+                    provider_name = "flux_schnell"
+                    await log("Media Generator", "Image generated on the fallback provider.", "completed")
+                except Exception as e2:
+                    error = f"Image generation failed: {e2}"
+                    await log("Media Generator", error, "failed")
 
         if spec.media_type == "video" and image_url:
             await log("Video Agent", "Animating the generated creative into a video...")
@@ -201,6 +221,9 @@ class CreativeService:
             asset = db.query(models.AdAsset).filter(models.AdAsset.id == creative_id).first()
             if not asset:
                 return
+            # The provider that actually produced the asset, which after a fallback is not
+            # the one create_row stored.
+            asset.provider = provider_name
             asset.image_url = image_url or None
             asset.video_url = video_url or None
             asset.error_message = error
