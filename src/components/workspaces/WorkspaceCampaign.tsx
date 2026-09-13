@@ -2295,9 +2295,24 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     <Check size={14} /> {busy?.startsWith('meta-') ? 'Marking…' : 'Mark as Ready'}
                   </button>
                 ) : (
-                  <span style={{ flex: 1, fontSize: '12px', color: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', padding: '10px' }}>
-                    <CheckCircle2 size={14} /> Ready to publish
-                  </span>
+                  // Green says "nothing stands in the way", so it may not appear while something
+                  // does. This span was shown for any launched setup, which put a green
+                  // "Ready to publish" directly beneath the card's own red Blocked pill on the
+                  // same campaign. Blockers win, and a setup the server never verified against
+                  // the real ad account says so rather than borrowing the confident colour.
+                  metaBlockers.length ? (
+                    <span style={{ flex: 1, fontSize: '12px', color: 'var(--warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '9px', padding: '10px' }}>
+                      <AlertTriangle size={14} /> Marked ready — resolve the items above to publish
+                    </span>
+                  ) : metaVerified ? (
+                    <span style={{ flex: 1, fontSize: '12px', color: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', padding: '10px' }}>
+                      <CheckCircle2 size={14} /> Ready to publish
+                    </span>
+                  ) : (
+                    <button onClick={() => markPlatformReady('meta')} disabled={!!busy?.startsWith('meta-')} style={{ ...btnGhost, flex: 1, padding: '10px', color: 'var(--warning)', borderColor: 'rgba(255,174,0,0.35)' }}>
+                      <AlertTriangle size={14} /> Marked ready, not verified — re-check account
+                    </button>
+                  )
                 )}
               </div>
             </div>
@@ -2392,9 +2407,24 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
                     <Check size={14} /> {busy?.startsWith('google-') ? 'Marking…' : 'Mark as Ready'}
                   </button>
                 ) : (
-                  <span style={{ flex: 1, fontSize: '12px', color: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', padding: '10px' }}>
-                    <CheckCircle2 size={14} /> Ready to publish
-                  </span>
+                  // Green says "nothing stands in the way", so it may not appear while something
+                  // does. This span was shown for any launched setup, which put a green
+                  // "Ready to publish" directly beneath the card's own red Blocked pill on the
+                  // same campaign. Blockers win, and a setup the server never verified against
+                  // the real ad account says so rather than borrowing the confident colour.
+                  googleBlockers.length ? (
+                    <span style={{ flex: 1, fontSize: '12px', color: 'var(--warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'var(--warning-glow)', border: '1px solid rgba(255,174,0,0.3)', borderRadius: '9px', padding: '10px' }}>
+                      <AlertTriangle size={14} /> Marked ready — resolve the items above to publish
+                    </span>
+                  ) : googleVerified ? (
+                    <span style={{ flex: 1, fontSize: '12px', color: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '9px', padding: '10px' }}>
+                      <CheckCircle2 size={14} /> Ready to publish
+                    </span>
+                  ) : (
+                    <button onClick={() => markPlatformReady('google')} disabled={!!busy?.startsWith('google-')} style={{ ...btnGhost, flex: 1, padding: '10px', color: 'var(--warning)', borderColor: 'rgba(255,174,0,0.35)' }}>
+                      <AlertTriangle size={14} /> Marked ready, not verified — re-check account
+                    </button>
+                  )
                 )}
               </div>
             </div>
