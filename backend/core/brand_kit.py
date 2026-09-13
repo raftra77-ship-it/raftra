@@ -179,6 +179,32 @@ _LOGO_HINT_RE = re.compile(r"logo|brand|wordmark|masthead", re.I)
 _IMG_EXT_RE = re.compile(r"\.(svg|png|webp|jpe?g)(\?|$)", re.I)
 
 
+# Framework boilerplate that is not anybody's logo.
+#
+# extract_logos falls back to the favicon when a site marks up no logo of its own, which is
+# the right order of preference — but a scaffolded app ships with its FRAMEWORK's icon at
+# that path. A real workspace here had brand_logo set to dsahelper.onrender.com/vite.svg:
+# the Brand Kit displayed Vite's lightning bolt as the company's mark, the creative pipeline
+# had it available as brand identity, and nothing anywhere said it was a placeholder.
+#
+# Matched on the filename only, so a brand that genuinely ships "logo.svg" is unaffected, and
+# favicon.ico is deliberately absent — that one is usually a real (if small) brand mark.
+_BOILERPLATE_ICONS = {
+    "vite.svg", "react.svg", "vite.png",           # Vite / Vite-React templates
+    "next.svg", "vercel.svg", "turbo.svg",         # Next.js / Vercel scaffolds
+    "logo192.png", "logo512.png",                  # create-react-app
+    "nuxt.svg", "svelte.svg", "angular.svg",       # other framework defaults
+    "placeholder.svg", "placeholder.png",
+}
+
+
+def is_boilerplate_icon(url: str) -> bool:
+    """Is this URL a framework's default icon rather than a brand asset?"""
+    from urllib.parse import urlparse as _u
+    name = (_u(url or "").path or "").rsplit("/", 1)[-1].strip().lower()
+    return name in _BOILERPLATE_ICONS
+
+
 def _fmt_of(url: str) -> str:
     m = _IMG_EXT_RE.search(url or "")
     return m.group(1).lower().replace("jpeg", "jpg") if m else "unknown"
@@ -200,6 +226,11 @@ def extract_logos(html: str, base_url: str, limit: int = 6) -> List[dict]:
             return
         absolute = urljoin(base_url, raw_url.strip())
         if urlparse(absolute).scheme not in ("http", "https") or absolute in seen:
+            return
+        # Never offer a framework's own icon as the brand's logo. Returning nothing is the
+        # honest answer — the Brand Kit can then say no logo was found and invite an upload,
+        # instead of showing Vite's bolt and calling it the company mark.
+        if is_boilerplate_icon(absolute):
             return
         seen.add(absolute)
         found.append({"type": kind, "url": absolute,

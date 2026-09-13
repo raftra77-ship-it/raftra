@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Sparkles,
   ExternalLink,
@@ -189,6 +189,67 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
     } catch { /* the message stays in the box so it is not lost */ }
     setNewMessageInput('');
     setShowAddMessage(false);
+  };
+
+  /* Supplying the logo the crawl could not find.
+     ------------------------------------------------------------------
+     extract_logos reads the mark out of the site's markup, which works when a site has one
+     and finds nothing when it does not — and a scaffolded app has no logo, only its
+     framework's icon. core/brand_kit now refuses to pass those off as brand assets, so the
+     honest result for such a site is an empty logo panel. That leaves the user with no way
+     to supply the real file at all, which is why this exists: the brand kit is editable
+     everywhere else, and the logo is the one asset every generated creative wants.
+
+     Stored through /api/media/upload like every other image in the product, so the URL is
+     one this server owns rather than a link to somewhere that may stop serving it. */
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
+  const patchProfile = async (body: Record<string, unknown>) => {
+    const r = await fetch(`/api/workspaces/${workspaceId}/brand-profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.detail || `Save failed (${r.status})`);
+    }
+    setProfile(await r.json());
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';                    // so the same file can be picked again
+    if (!file || !workspaceId) return;
+    setUploadingLogo(true);
+    setLogoError(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const up = await fetch('/api/media/upload', { method: 'POST', headers: authHeaders(), body: form });
+      const data = await up.json().catch(() => null);
+      if (!up.ok || !data?.url) throw new Error((data && data.detail) || `Upload failed (${up.status})`);
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+      // Prepended, not appended: the first entry is what the kit shows as the primary mark,
+      // and someone uploading a logo means this one.
+      await patchProfile({ logos: [{ type: 'Uploaded', url: data.url, format: ext, variant: '' }, ...logos] });
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Could not upload that file.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleLogoRemove = async (url: string) => {
+    if (!workspaceId) return;
+    setLogoError(null);
+    try {
+      await patchProfile({ logos: logos.filter(l => l.url !== url) });
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Could not remove that logo.');
+    }
   };
 
   // Inline editing for the eight knowledge sections.
@@ -395,7 +456,20 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
             <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
               Brand Logos
             </h3>
+            <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" style={{ display: 'none' }} />
+            <button
+              onClick={() => logoInputRef.current?.click()}
+              disabled={uploadingLogo || !workspaceId}
+              style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)',
+                       color: '#fff', borderRadius: '100px', padding: '6px 14px', fontSize: '12px', fontWeight: 600,
+                       cursor: uploadingLogo ? 'wait' : 'pointer' }}
+            >
+              {uploadingLogo ? 'Uploading…' : 'Upload logo'}
+            </button>
           </div>
+          {logoError && (
+            <div style={{ fontSize: '11.5px', color: 'var(--warning)', marginBottom: '10px' }}>{logoError}</div>
+          )}
 
           {/* Real logo files when the crawl found them. Each is shown twice — on black and
               on white — because that is the question anyone opening this panel has: does
@@ -428,6 +502,15 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
                     >
                       {logo.format.toUpperCase()} · open file
                     </a>
+                    {/* A crawl can pick the wrong image out of a busy header. Removing it here
+                        beats re-running onboarding to correct one mistake. */}
+                    <button
+                      onClick={() => handleLogoRemove(logo.url)}
+                      style={{ marginLeft: '8px', background: 'none', border: 'none', padding: 0,
+                               color: 'var(--text-muted)', fontSize: '10px', cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                      remove
+                    </button>
                   </div>
                 </div>
               ))}
