@@ -876,9 +876,27 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
     
     db = SessionLocal()
     try:
+        # A re-crawl may only ever ADD to what is known about a brand.
+        #
+        # Every assignment below used to be unconditional, so a thin or failed extraction
+        # overwrote good data with "" / {} / []. That is not hypothetical: the LLM step is
+        # the first thing to fail when a free-tier daily quota runs out, and it returns
+        # `kit.overview or ""`. Pressing Sync Knowledge Graph on a bad day therefore wiped
+        # the brand voice, the summary, the audience, the typography, the palette, the
+        # colour tokens and the logos — the whole visual half of the Brand Kit — and left a
+        # blank screen where a populated one had been, while reporting success.
+        #
+        # `guidelines` was already protected this way (kit_to_guidelines omits its own empty
+        # fields and the result is merged over what is there). These are the fields that
+        # were not.
+        def keep(obj, field, value):
+            """Assign only when the new value actually carries something."""
+            if value or value == 0:
+                setattr(obj, field, value)
+
         ws = db.query(Workspace).filter(Workspace.id == state["workspace_id"]).first()
         if ws:
-            ws.brand_voice = summary
+            keep(ws, "brand_voice", summary)
             # The workspace's own accent, used by headers and chips that never load the full
             # brand profile. Only set when the crawl found one and the user has not chosen.
             if not (ws.brand_color or "").strip() and state["color_palette"]:
@@ -892,16 +910,16 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
             if not bp:
                 bp = BrandProfile(workspace_id=state["workspace_id"])
                 db.add(bp)
-            bp.typography = state["typography"]
-            bp.color_palette = state["color_palette"]
-            bp.color_tokens = insights.get("colour_tokens") or []
+            keep(bp, "typography", state["typography"])
+            keep(bp, "color_palette", state["color_palette"])
+            keep(bp, "color_tokens", insights.get("colour_tokens") or [])
             # Stored under guidelines so the Brand Kit can label a swatch "Primary brand
             # colour" / "Glow accent" / "Dark surface" instead of "Supporting 3".
             if insights.get("accents"):
                 existing_acc = dict(bp.guidelines or {})
                 existing_acc["accents"] = insights["accents"]
                 bp.guidelines = existing_acc
-            bp.logos = insights.get("logos") or []
+            keep(bp, "logos", insights.get("logos") or [])
             # Merged, not replaced: everything else under guidelines is user-written and a
             # re-crawl must not wipe it. kit_to_guidelines omits its own empty fields, so a
             # thinner second crawl cannot blank out what a richer first one found - or what
@@ -910,8 +928,8 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
             existing.update(kit_to_guidelines(kit))
             existing.update(state.get("brand_facts") or {})
             bp.guidelines = existing
-            bp.brand_guidelines_summary = summary
-            bp.target_audience = state["target_audience"]
+            keep(bp, "brand_guidelines_summary", summary)
+            keep(bp, "target_audience", state["target_audience"])
             bp.is_onboarded = True
             db.commit()
     except Exception as e:
