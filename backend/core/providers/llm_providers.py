@@ -66,6 +66,12 @@ def _mark_exhausted(model: str) -> None:
     _model_cooldown[model] = _time.time() + _MODEL_COOLDOWN_SEC
 
 
+def _cross_provider_enabled() -> bool:
+    """Whether a fully-exhausted provider may hand off to a different one. On by default,
+    but inert unless another provider is actually configured."""
+    return os.getenv("LLM_CROSS_PROVIDER_FALLBACK", "true").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _order_models(model_name: str) -> list:
     """Requested model first, then the fallbacks — minus anything cooling down. Never returns
     an empty list: if everything is on cooldown, try the original order rather than fail
@@ -155,6 +161,26 @@ class GeminiProvider(LLMProvider):
                 # Anything else (bad request, auth) - other models won't help.
                 print(f"Gemini Error ({m}): {e}")
                 raise LLMProviderError(f"Gemini call failed for model '{m}': {e}") from e
+        # Every Gemini model is out. Try a DIFFERENT provider before giving up.
+        #
+        # Without this, an exhausted key does not surface as an error the user sees — it
+        # surfaces as a worse product. generate_json's callers catch the exception and carry
+        # on with {}, so the campaign brief degrades to its hardcoded defaults: "CTR > 2%",
+        # "Image Ads", a 70/30 split. The user gets a generic strategy that looks real and
+        # nobody is told the model never answered.
+        #
+        # Free-tier daily quotas are per PROVIDER, so a second provider genuinely has its own
+        # allowance. This is a no-op until one is configured, which is the point: adding
+        # OPENROUTER_API_KEY to the environment is then sufficient, with no code change.
+        if _cross_provider_enabled() and os.getenv("OPENROUTER_API_KEY"):
+            print(f"Gemini fully exhausted ({last_err}); falling back to OpenRouter.")
+            try:
+                return await OpenRouterProvider().generate_text(
+                    prompt, system_prompt=system_prompt, max_output_tokens=max_output_tokens)
+            except Exception as e:
+                raise LLMProviderError(
+                    f"All Gemini models exhausted and the OpenRouter fallback also failed: {e}"
+                ) from e
         raise LLMProviderError(f"All Gemini models exhausted (free-tier daily quota or no output). Last error: {last_err}")
 
     async def generate_with_image(self, prompt: str, image_bytes: bytes,
