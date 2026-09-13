@@ -1662,6 +1662,46 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      which was baked into all four and reached the image provider verbatim for every brand. */
   const promptSubject = (brandCategory ? brandCategory.split(/[,/]/)[0].trim() : '')
     || (brandName ? `${brandName} product` : 'the product');
+  /* "Use Framework" — turning a framework into a brief this brand can actually generate.
+     ------------------------------------------------------------------
+     This set productPrompt to "Write an ad using the <name> framework. <desc>" and switched
+     tabs. Two things were wrong with that, and together they are why the output looked mock.
+
+     The prompt was never visible. productPrompt is only rendered when the input method is
+     ai_generate_image, and the generator opens on brand_kb — so the text went into a box
+     nobody could see, with no confirmation the click had done anything. It WAS still sent to
+     the backend, which made it worse rather than better: an invisible instruction silently
+     overrode the "Generate using Brand Knowledge" option the user could see was selected.
+
+     And it described a STRUCTURE, not a subject. "Write an ad using the Problem-Agitate-
+     Solution framework" tells an image model nothing about what to depict, so the analyzer
+     had no product, no audience and no tone to work from and produced something generic. A
+     framework is a shape to pour a brand into; on its own it is an empty shape.
+
+     The brief now carries the brand — product, audience, tone, personality — with the
+     framework as the structure, and the input method switches so the user can read and edit
+     it before spending a generation. Every value comes from the brand profile already loaded
+     on this screen; nothing is invented, and a field the crawl never found is left out. */
+  const applyFramework = (tmpl: { key: string; name: string; desc: string }) => {
+    const subject = brandCategory || brandName || "the product";
+    // Brand fields are free text and some already end in a sentence. Appending a full stop
+    // regardless produced "...technical coding interviews.. Tone:" in a brief the user is
+    // meant to read and edit.
+    const sentence = (v: string) => v.trim().replace(/[.\s]+$/, "") + ".";
+    const lines = [
+      `${tmpl.name} ad for ${brandName || "this brand"}${brandSite ? ` (${brandSite})` : ""}.`,
+      `Framework: ${tmpl.desc}`,
+      `Subject: ${sentence(subject)}`,
+      brandAudience ? `Audience: ${sentence(brandAudience)}` : "",
+      brandTone ? `Tone: ${sentence(brandTone)}` : "",
+      brandTheme ? `Brand personality: ${sentence(brandTheme)}` : "",
+    ].filter(Boolean);
+    setProductPrompt(lines.join(" "));
+    setInputOption("ai_generate_image");
+    setActiveTab("create");
+    triggerToast(`${tmpl.name} applied — the brief is in the generator, edit it before generating.`);
+  };
+
   const productPromptPresets = [
     { label: '🌌 Floating Metallic Neon', prompt: `Sleek ${promptSubject} floating over a dark obsidian desk lit with neon rim light` },
     { label: '🏛️ Minimalist Marble Studio', prompt: `Minimalist studio shot of ${promptSubject} resting on smooth white marble with soft daylight` },
@@ -3481,14 +3521,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.45 }}>{tmpl.desc}</p>
                 <GlowButton
                   variant="glow"
-                  onClick={() => {
-                    // Carries the framework into the generator instead of just switching
-                    // tabs, so "Use Framework" actually does something.
-                    setProductPrompt(prev => prev?.trim()
-                      ? `${prev}\n\nUse the ${tmpl.name} framework.`
-                      : `Write an ad using the ${tmpl.name} framework. ${tmpl.desc}`);
-                    setActiveTab('create');
-                  }}
+                  onClick={() => applyFramework(tmpl)}
                   style={{ padding: '8px 16px', fontSize: '12px' }}
                 >
                   Use Framework
