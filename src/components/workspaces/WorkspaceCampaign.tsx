@@ -493,6 +493,10 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
   // ── the full ideation brief (all original fields restored) ──
   const [form, setForm] = useState({
     campaignFocus: 'Diwali Festive Sale',
+    // Words to render ON the ad image. Empty means a clean photographic creative with
+    // space left for the headline to be laid over later, which is what every campaign
+    // produced before — there was no way to ask for text at all.
+    adHeadline: '',
     objective: 'Conversions',
     budget: 40000,
     audience: 'Women 18-35, Tier 1 & Tier 2 Cities, Interested in Festive Shopping',
@@ -1140,7 +1144,7 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
     // relying on the LLM to re-extract them accurately from text.
     const geoLocations = form.placement.split(',').map(s => s.trim()).filter(Boolean);
     try {
-      await fetch(`/api/agents/${workspaceId}/campaign`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ prompt, model: 'gemini-2.5-flash', geo_targeting_level: form.geoTargetingLevel, geo_locations: geoLocations }) });
+      await fetch(`/api/agents/${workspaceId}/campaign`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ prompt, model: 'gemini-2.5-flash', geo_targeting_level: form.geoTargetingLevel, geo_locations: geoLocations, ad_headline: form.adHeadline.trim() || null }) });
     } catch { setIsGenerating(false); flash('Could not start generation.', false); return; }
     // Two waits, because two things finish at different times.
     //
@@ -2050,6 +2054,17 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div><span style={label}>Schedule</span><input style={input} value={form.schedule} onChange={e => setForm(f => ({ ...f, schedule: e.target.value }))} /></div>
               <div><span style={label}>Tracking (UTM)</span><input style={input} value={form.tracking} onChange={e => setForm(f => ({ ...f, tracking: e.target.value }))} /></div>
+            </div>
+            <div>
+              <span style={label}>Text on the ad image (optional)</span>
+              <input style={input} value={form.adHeadline}
+                onChange={e => setForm(f => ({ ...f, adHeadline: e.target.value }))}
+                placeholder="e.g. FLAT 50% OFF — leave blank for a clean image" maxLength={80} />
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '4px', lineHeight: 1.5 }}>
+                Leave blank and the creative is generated clean, with space reserved for a headline.
+                Fill it in and those exact words are rendered into the image — keep it short, since
+                image models render a few large words far better than a sentence.
+              </span>
             </div>
             <button onClick={generate} disabled={isGenerating} className="btn btn-primary" style={{ ...btnPrimary, opacity: isGenerating ? 0.7 : 1, cursor: isGenerating ? 'wait' : 'pointer' }}>
               <Sparkles size={15} /> {isGenerating ? 'Writing your strategy & ad…' : campaign ? 'Regenerate Strategy' : 'Generate Strategy + Ad'}

@@ -92,6 +92,13 @@ class CampaignAgentTrigger(BaseModel):
     # exact geography the user picked in the form can't drift during strategy generation.
     geo_targeting_level: Optional[str] = None
     geo_locations: Optional[List[str]] = None
+    # Words to render ON the ad image. Carried as its own field rather than left for the
+    # analyzer to infer, because it could not: the image brief was a 200-character truncation
+    # of the campaign form, so it contained budget and UTM values and no mention of text —
+    # the analyzer set text_in_image false, and the optimizer then ADDED "text, words,
+    # letters" to the negative prompt. Asking for a headline on the creative produced a
+    # creative that was instructed not to have one.
+    ad_headline: Optional[str] = None
 
 class CampaignResponse(BaseModel):
     id: int

@@ -101,6 +101,7 @@ async def trigger_campaign(workspace_id: int, request: schemas.CampaignAgentTrig
         model=request.model,
         geo_targeting_level=request.geo_targeting_level,
         geo_locations=request.geo_locations,
+        ad_headline=request.ad_headline,
     )
     return {"status": "success", "message": "Campaign Manager agent pipeline triggered."}
 

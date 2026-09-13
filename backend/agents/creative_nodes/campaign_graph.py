@@ -405,7 +405,8 @@ workflow.add_edge("supervisor", END)
 campaign_graph = workflow.compile()
 
 async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str = "gemini-2.5-flash",
-                                     geo_targeting_level: str = None, geo_locations: list = None):
+                                     geo_targeting_level: str = None, geo_locations: list = None,
+                                     ad_headline: str = None):
     current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
     initial_state = {
         "workspace_id": workspace_id,
@@ -495,22 +496,80 @@ async def run_campaign_planning_task(workspace_id: int, prompt: str, model: str 
             from core.creative import optimizer as creative_optimizer
             from agents.creative_nodes.router import router_decision_engine
 
-            brief = (f"{prompt[:200]}. "
-                     f"{spec.get('objective', '')} campaign for {spec.get('audience', '')}.")
+            # A VISUAL brief, assembled from the strategy — not the campaign form.
+            #
+            # This was `prompt[:200]`, a truncation of the string the form builds. For a real
+            # request that came out as "Create an ad campaign. Theme/focus: Diwali Festive
+            # Sale. Objective: Conversions. Total budget: 40000. Audience: Women 18-35, Tier 1
+            # & Tier 2 Cities, Interested in Festive Sho" — cut mid-word, and mostly budget,
+            # funnel and UTM values. None of that describes a picture, so the analyzer had
+            # almost nothing to work with and the campaign's own creative direction, which the
+            # strategy graph had just spent four LLM calls producing, never reached the image
+            # at all.
+            theme = (spec.get("campaign_name") or "").replace("AI Campaign - ", "").strip()
+            creative_note = ((spec.get("recommendations") or {}).get("creative") or "")
+            brief_bits = [
+                f"Advertising creative for {theme}" if theme else "Advertising creative",
+                f"{spec.get('objective', '')} campaign" if spec.get("objective") else "",
+                f"aimed at {str(spec.get('audience') or '')[:200]}" if spec.get("audience") else "",
+                str(creative_note)[:300],
+            ]
+            brief = ". ".join(b for b in brief_bits if b) + "."
+
             # Meta feed: the placement these campaigns actually publish to, so the aspect
             # ratio comes from platforms.py instead of being hardcoded 1:1.
             cspec = await creative_service.plan(
                 workspace_id=workspace_id, prompt=brief, media_type="image",
                 platform="facebook", placement="feed")
+
+            # Words on the image, when the user asked for them.
+            #
+            # The optimizer has always supported this — it renders `with the words "..."
+            # rendered clearly` when spec.text_in_image is set, and otherwise pushes "text,
+            # words, letters, captions, logos" into the NEGATIVE prompt. Campaign Manager
+            # could never reach the first branch: nothing in its brief mentioned text, so the
+            # analyzer left the flag false and every campaign creative was actively instructed
+            # not to contain lettering. Setting it here from the form field is the difference
+            # between suppressing text and rendering it.
+            wants_text = bool((ad_headline or "").strip())
+            if wants_text:
+                cspec.text_in_image = True
+                cspec.headline = ad_headline.strip()[:80]
+
             prompts = creative_optimizer.build_prompts(cspec)
-            provider_name = router_decision_engine("conversion", brief)["image_provider"]
-            image_url = await _image_provider(provider_name).generate_image(
-                prompts["image_prompt"],
-                aspect_ratio=prompts["aspect_ratio"],
-                negative_prompt=prompts["negative_prompt"],
-            )
-            print(f"[campaign] creative generated via {provider_name} "
-                  f"at {prompts['aspect_ratio']}")
+            # Typography routing: diffusion models differ enormously at rendering legible
+            # words, and the router already prefers the strongest one when the request says so.
+            # It reads the request text, which never mentioned text before — so a request for a
+            # headline on the image was routed as if it were a plain photograph.
+            route_text = brief + (" text-heavy poster with typography" if wants_text else "")
+            provider_name = router_decision_engine("conversion", route_text)["image_provider"]
+            async def _gen(name: str) -> str:
+                return await _image_provider(name).generate_image(
+                    prompts["image_prompt"],
+                    aspect_ratio=prompts["aspect_ratio"],
+                    negative_prompt=prompts["negative_prompt"],
+                )
+
+            try:
+                image_url = await _gen(provider_name)
+                print(f"[campaign] creative generated via {provider_name} "
+                      f"at {prompts['aspect_ratio']}")
+            except Exception as primary_err:
+                # The best provider can be configured and still refuse. A backfill of 34
+                # campaigns hit "402: You have depleted your monthly included credits" from
+                # Hugging Face partway through — the token is present, so the router keeps
+                # choosing it, and every generation after that point produced no image at all.
+                # A keyless retry is worse-looking than the first choice and far better than a
+                # campaign with no creative, which is the only other outcome available here.
+                # generation_graph.py has always done this; this path had no fallback.
+                if provider_name == "flux_schnell":
+                    raise
+                print(f"[campaign] {provider_name} failed ({str(primary_err)[:120]}); "
+                      f"retrying on the keyless provider.")
+                image_url = await _gen("flux_schnell")
+                provider_name = "flux_schnell"
+                print(f"[campaign] creative generated via {provider_name} (fallback) "
+                      f"at {prompts['aspect_ratio']}")
 
             # Store the bytes and keep a URL — never the data: URI itself.
             #
