@@ -13,10 +13,86 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
   const [isNavHovered, setIsNavHovered] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  /* Whether the bar is in its desktop layout, tracked as state rather than read inline.
+     The `animate` block below branches on this to decide the bar's `left`/`x`, and it used
+     to call `window.innerWidth > 960` directly during render. Nothing re-rendered on
+     resize, so the value was whatever the width happened to be when the component first
+     mounted: load on a desktop and narrow the window — or just rotate a phone — and the bar
+     kept the desktop branch, `left: calc(50% - 105px)`. At 375px that resolves to 82.6px,
+     and the -50% translate then puts the bar's left edge at -81px, i.e. 81px off-screen
+     with the logo sliced in half and the hamburger pushed under the floating pill.
+     matchMedia fires on every crossing of the breakpoint, so the branch now follows the
+     viewport instead of lagging behind it. The query is the exact complement of the
+     `max-width: 960px` block in this component's stylesheet — both must move together, or
+     the links can hide while the bar still positions itself as though they were showing. */
+  /* Two breakpoints, because this bar has three distinct layouts and the old single 960px
+     one did not describe any of them honestly.
+
+     The bar's own comments record its content budget: logo 102 + links 669 + actions 275,
+     plus the 24px margin before the actions and 48 of padding = 1118, which is why maxWidth
+     is 1120. Width is calc(100% - 48px), so the bar only reaches 1120 once the viewport is
+     1168. And the bar is not centred — it is nudged left 105px so the floating Creator
+     Marketplace pill sits in the gap it leaves. Working the nudge through:
+
+         leftEdge = viewport/2 - 105 - min(viewport - 48, 1120)/2
+
+     is negative for every viewport below 1380. So at 961-1379 the previous code put the bar
+     partly off the left edge of the screen — at 1024 it was 81px off, with the logo sliced
+     in half — while still showing the desktop links, and below 1168 the actions overflowed
+     the pill entirely because the bar was narrower than its own contents. That band covers
+     ordinary tablets and small laptops, and it looked exactly like the phone bug.
+
+       < 1200   hamburger drawer   the desktop bar cannot fit its content
+       1200+    desktop, centred   fits (bar >= 1152), but the nudge would still clip
+       1380+    desktop, nudged    the layout as designed, with the floating pill
+
+     The 1200 figure must stay in step with the max-width block in this component's
+     stylesheet, and 1380 with the pill's media query in LandingPage. */
+  const DESKTOP_QUERY = '(min-width: 1200px)';
+  const WIDE_QUERY = '(min-width: 1380px)';
+  const [isDesktop, setIsDesktop] = useState(
+    () => (typeof window === 'undefined' ? true : window.matchMedia(DESKTOP_QUERY).matches)
+  );
+  const [isWide, setIsWide] = useState(
+    () => (typeof window === 'undefined' ? true : window.matchMedia(WIDE_QUERY).matches)
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const wideMq = window.matchMedia(WIDE_QUERY);
+    const apply = (matches: boolean) => {
+      setIsDesktop(matches);
+      setIsWide(wideMq.matches);
+      // The collapsed 78px puck is a desktop-only affordance, and the drawer is a
+      // mobile-only one. Leaving either set across a breakpoint change strands the bar in
+      // a state the new layout has no way to exit.
+      if (!matches) setIsScrolled(false);
+      else setMobileMenuOpen(false);
+    };
+    const onChange = () => apply(mq.matches);
+    // Both signals, deliberately. `change` is the precise one — it fires only on a crossing
+    // — but it is not delivered in every embedded/emulated viewport (the Browser pane's
+    // device emulation re-evaluates CSS media queries while firing no JS event at all), and
+    // a bar stuck 81px off-screen is a bad failure to leave to one listener. `resize` is
+    // noisier but universal; re-reading `mq.matches` keeps them agreeing, and setState with
+    // an unchanged value does not re-render, so the extra signal costs nothing.
+    const onResize = () => apply(mq.matches);
+    mq.addEventListener('change', onChange);
+    wideMq.addEventListener('change', onChange);
+    window.addEventListener('resize', onResize, { passive: true });
+    // Width can differ between first render and effect (hydration, a restored window size).
+    apply(mq.matches);
+    return () => {
+      mq.removeEventListener('change', onChange);
+      wideMq.removeEventListener('change', onChange);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
   useEffect(() => {
     const handleScroll = () => {
       // Smooth scroll threshold (collapse past 220px on desktop only, expand when <150px)
-      if (window.innerWidth > 960) {
+      if (isDesktop) {
         if (window.scrollY > 220) {
           setIsScrolled(true);
         } else if (window.scrollY < 150) {
@@ -28,7 +104,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [isDesktop]);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -104,10 +180,14 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           paddingRight: isCollapsed ? 12 : 24,
           // The >960 guard is kept from this branch's mobile pass: below that the bar stays
           // centred, because a 105px nudge on a phone pushes it off the screen edge.
-          left: isScrolled && window.innerWidth > 960
+          // `isDesktop`/`isWide` replace the three `window.innerWidth > 960` reads that used
+          // to sit here — see the matchMedia effect above for why reading the width inline
+          // left the bar 81px off-screen after a resize or rotation, and why the 105px nudge
+          // is now gated on `isWide` rather than applied at every width above 960.
+          left: isScrolled && isDesktop
             ? 'max(24px, calc(50% - 620px))'
-            : window.innerWidth > 960 ? 'calc(50% - 105px)' : '50%',
-          x: isScrolled && window.innerWidth > 960 ? '0%' : '-50%'
+            : isWide ? 'calc(50% - 105px)' : '50%',
+          x: isScrolled && isDesktop ? '0%' : '-50%'
         }}
         transition={{
           type: 'spring',
@@ -461,6 +541,18 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
 
             {/* Call To Action Buttons */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* The landing page's floating Creator Marketplace pill is hidden below 960px
+                  because it sat on top of the hamburger. This carries the same destination
+                  so phone users do not lose the link along with the pill. */}
+              <button
+                onClick={() => { setMobileMenuOpen(false); window.open('/influencer-marketplace', '_blank'); }}
+                className="mobile-nav-btn"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <span>✦ Creator Marketplace</span>
+                <ArrowRight size={14} color="#FF6B6B" />
+              </button>
+
               <GlowButton
                 variant="glow"
                 onClick={() => { setMobileMenuOpen(false); navigate('/login'); }}
@@ -539,7 +631,10 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         }
 
         /* ── RESPONSIVE MEDIA QUERIES ───────────────────────────── */
-        @media (max-width: 960px) {
+        /* 1199px, the complement of DESKTOP_QUERY above — keep the two in step. The old
+           960 let the desktop links show down to widths where the bar could not hold
+           them, so the actions group overflowed the rounded edge. */
+        @media (max-width: 1199px) {
           .nav-desktop-links,
           .nav-desktop-actions {
             display: none !important;

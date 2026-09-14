@@ -1279,6 +1279,54 @@ h2[style], h3[style] {
    express them.
    ───────────────────────────────────────────────────────────────────────── */
 
+/* Section shells for the SEO + GEO workspace.
+   The page's containers were plain .glow-card: a very dark gradient behind a 12%-white
+   hairline, which at full content width read as no container at all — the pipelines, the
+   audit bar and the platform list all floated on the page background with nothing holding
+   them. These reuse the --pipe-accent each card already sets (green for the SEO pipeline,
+   violet for GEO) so the border, the top hairline and the outer glow all carry the colour
+   of the thing inside, matching how Creative Studio tints its own shells by subject.
+   --pipe-accent is declared here as a fallback for the cards that don't set one. */
+.seo-shell {
+  --pipe-accent: var(--accent);
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--pipe-accent) 26%, transparent);
+  border-radius: 20px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.45),
+    0 0 26px -8px color-mix(in srgb, var(--pipe-accent) 30%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* .glow-card::before draws a violet hairline along the top of every card; re-point it at
+   the section's own accent so a green pipeline is not capped with a violet line. */
+.seo-shell::before {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--pipe-accent) 70%, transparent),
+    transparent
+  );
+  opacity: 0.9;
+}
+
+/* .glow-card:hover lifts 5px and scales 1.01. That is right for a small tile and wrong for
+   a full-width section — it drags the pipeline rail and the charts inside it — so the
+   transform is dropped and hover reads as the edge brightening instead. */
+.seo-shell:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--pipe-accent) 45%, transparent);
+  box-shadow:
+    0 18px 42px -12px rgba(0, 0, 0, 0.6),
+    0 0 38px -8px color-mix(in srgb, var(--pipe-accent) 42%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seo-shell { transition: none; }
+}
+
 .seo-action {
   display: inline-flex;
   align-items: center;

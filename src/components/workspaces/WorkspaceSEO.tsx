@@ -172,15 +172,18 @@ const PipelineCard: React.FC<{
   stages: { key: string; label: string; description: string; Icon: React.ElementType }[];
   run: RunStatus;
   running: boolean;
+  /** True only during the pre-run site check, so this button can say so rather than
+   *  claiming an audit that the server has not accepted yet. */
+  starting?: boolean;
   onOpenReport: () => void;
   onRun: () => void;
-}> = ({ pipeline, stages, run, running, onOpenReport, onRun }) => {
+}> = ({ pipeline, stages, run, running, starting = false, onOpenReport, onRun }) => {
   const theme = THEME[pipeline];
   const Kicker = theme.Icon;
 
   return (
     <div
-      className="glow-card"
+      className="glow-card seo-shell"
       style={{
         // Scopes the accent for every .seo-* rule inside this card, so one variable
         // drives the rail, stage states, focus ring and the run button.
@@ -201,9 +204,11 @@ const PipelineCard: React.FC<{
 
         <button className="seo-action" onClick={onRun} disabled={running}
           title={running ? `${pipeline} audit already running` : `Start the ${pipeline} pipeline`}>
-          {running
-            ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> {pipeline} Running…</>
-            : <><Play size={14} /> Run {pipeline}</>}
+          {starting
+            ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Checking site…</>
+            : running
+              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> {pipeline} Running…</>
+              : <><Play size={14} /> Run {pipeline}</>}
         </button>
       </div>
 
@@ -289,7 +294,7 @@ const ComparisonCard: React.FC<{ workspaceId?: number | null; pipeline: 'SEO' | 
     : 0;
 
   return (
-    <div className="glow-card" style={{ ['--pipe-accent' as string]: theme.accent }}>
+    <div className="glow-card seo-shell" style={{ ["--pipe-accent" as string]: theme.accent }}>
       <CardHead
         Icon={TrendingUp}
         title="Change Since Last Run"
@@ -443,7 +448,7 @@ const ExplainerCard: React.FC = () => {
     { t: 'Re-run & track', d: 'Deploy, then re-run to watch your scores improve over time.' },
   ];
   return (
-    <div className="glow-card">
+    <div className="glow-card seo-shell">
       <CardHead Icon={Globe} title="How SEO + GEO works here" sub="The workflow, from audit to live changes." />
       {/* Connecting spine makes the five steps read as one sequence rather than five
           unrelated rows. */}
@@ -504,7 +509,7 @@ const ConnectedPlatformsCard: React.FC<{ workspaceId?: number | null; onManageIn
   const liveCount = rows.filter(r => r.connected).length;
 
   return (
-    <div className="glow-card">
+    <div className="glow-card seo-shell">
       <CardHead
         Icon={ExternalLink}
         title="Connected Platforms"
@@ -622,6 +627,14 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
     setTargetUrl(normalized);
   }, [siteUrl, urlEditedByUser]);
   const [toast, setToast] = useState<{ msg: string; pipeline?: 'SEO' | 'GEO' } | null>(null);
+  /* Set the instant a Run button is pressed, cleared once the server has accepted (or
+     refused) the run. Without it the button sat completely inert while triggerPipeline
+     awaited /seo/preflight — measured at 11.2s against the live target, because preflight
+     fetches the site server-side. Nothing moved in that window: no spinner, no disabled
+     state, no toast, so the button read as broken and a second click fired a second
+     preflight. `starting` is separate from the run status the poller returns, which cannot
+     report a run the server has not accepted yet. */
+  const [starting, setStarting] = useState<'SEO' | 'GEO' | null>(null);
 
   // Real connector status (already-existing endpoint) — used only to show a status badge
   // on the audit report. Future audits will combine this data with Firecrawl + SEO
@@ -639,8 +652,11 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
   // scoring) but always render into the ONE report modal — never a second report.
   const [seoRun, refreshSeoRun, markSeoQueued] = useRunStatus(workspaceId, 'SEO');
   const [geoRun, refreshGeoRun, markGeoQueued] = useRunStatus(workspaceId, 'GEO');
-  const seoRunning = seoRun.status === 'running' || seoRun.status === 'queued';
-  const geoRunning = geoRun.status === 'running' || geoRun.status === 'queued';
+  /* `starting` is folded in here rather than handled at each button, so every control and
+     label already keyed on these flags — the two audit-bar buttons and both PipelineCard
+     buttons — reflects the press immediately and is disabled against a double-fire. */
+  const seoRunning = seoRun.status === 'running' || seoRun.status === 'queued' || starting === 'SEO';
+  const geoRunning = geoRun.status === 'running' || geoRun.status === 'queued' || starting === 'GEO';
 
   const flash = (msg: string, ok = true) => { if (!ok) setToast({ msg }); };
 
@@ -649,39 +665,47 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
     // A blank target used to make the button a silent no-op, which reads as "the button is
     // broken". Say what's missing instead.
     if (!url.trim()) { setToast({ msg: 'Enter the website address you want audited first.' }); return; }
-    // /seo/preflight existed but nothing called it, so a typo, a login wall or a "coming
-    // soon" page cost a full crawl and came back as a plausible-looking audit of the wrong
-    // page. Only definite verdicts stop the run: a slow site, or one that refuses the
-    // preflight's bot request but serves the crawler, still gets audited.
+    // Claim the button before the first await, so the press registers immediately rather
+    // than after the preflight round-trip. Every path out of here runs the finally below.
+    setStarting(pipeline);
     try {
-      const pf = await fetch(`/api/workspaces/${workspaceId}/seo/preflight`, {
-        method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),
-      });
-      if (pf.ok) {
-        const v = await pf.json().catch(() => null);
-        if (v && v.ok === false && ['EMPTY_URL', 'INVALID_URL', 'NOT_PUBLIC'].includes(v.code)) {
-          setToast({ msg: v.message || 'That address cannot be audited.' });
-          return;
+      // /seo/preflight existed but nothing called it, so a typo, a login wall or a "coming
+      // soon" page cost a full crawl and came back as a plausible-looking audit of the wrong
+      // page. Only definite verdicts stop the run: a slow site, or one that refuses the
+      // preflight's bot request but serves the crawler, still gets audited.
+      try {
+        const pf = await fetch(`/api/workspaces/${workspaceId}/seo/preflight`, {
+          method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),
+        });
+        if (pf.ok) {
+          const v = await pf.json().catch(() => null);
+          if (v && v.ok === false && ['EMPTY_URL', 'INVALID_URL', 'NOT_PUBLIC'].includes(v.code)) {
+            setToast({ msg: v.message || 'That address cannot be audited.' });
+            return;
+          }
+          if (v?.url) url = v.url;
         }
-        if (v?.url) url = v.url;
-      }
-    } catch { /* advisory only — never block a run because the check itself failed */ }
-    try {
-      const r = await fetch(`/api/agents/${workspaceId}/${pipeline.toLowerCase()}`, {
-        method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),
-      });
-      if (r.ok) {
-        // Only after the server accepted the run: show it as queued and open the live report.
-        (pipeline === 'SEO' ? markSeoQueued : markGeoQueued)();
-        setReportOpen(true); // the report updates live instead of the user having to go find it
-      } else if (r.status === 409) {
-        setToast({ msg: 'An audit is already running for this website.', pipeline });
-        (pipeline === 'SEO' ? refreshSeoRun : refreshGeoRun)();
-      } else {
-        const d = await r.json().catch(() => ({}));
-        setToast({ msg: d.detail || 'Could not start the audit.' });
-      }
-    } catch { setToast({ msg: 'Could not start the audit.' }); }
+      } catch { /* advisory only — never block a run because the check itself failed */ }
+
+      try {
+        const r = await fetch(`/api/agents/${workspaceId}/${pipeline.toLowerCase()}`, {
+          method: 'POST', headers: authHeaders(), body: JSON.stringify({ target_url: url }),
+        });
+        if (r.ok) {
+          // Only after the server accepted the run: show it as queued and open the live report.
+          (pipeline === 'SEO' ? markSeoQueued : markGeoQueued)();
+          setReportOpen(true); // the report updates live instead of the user having to go find it
+        } else if (r.status === 409) {
+          setToast({ msg: 'An audit is already running for this website.', pipeline });
+          (pipeline === 'SEO' ? refreshSeoRun : refreshGeoRun)();
+        } else {
+          const d = await r.json().catch(() => ({}));
+          setToast({ msg: d.detail || 'Could not start the audit.' });
+        }
+      } catch { setToast({ msg: 'Could not start the audit.' }); }
+    } finally {
+      setStarting(null);
+    }
   };
 
   const runOrWarn = (pipeline: 'SEO' | 'GEO', busy: boolean) =>
@@ -720,7 +744,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
       {/* Audit target bar. The URL input, "View Report" and the two run buttons used to be
           spread across the header and the GEO card, so the two pipelines had visibly
           unequal prominence. Every audit control now lives in one row. */}
-      <div className="glow-card" style={{ padding: '16px 18px' }}>
+      <div className="glow-card seo-shell" style={{ padding: "16px 18px" }}>
         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '9px' }}>
           AUDIT TARGET
         </label>
@@ -740,15 +764,21 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
           </button>
           <button className="seo-action" style={{ ['--pipe-accent' as string]: THEME.SEO.accent }}
             onClick={() => runOrWarn('SEO', seoRunning)} disabled={seoRunning}>
-            {seoRunning
-              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> SEO Running…</>
-              : <><Play size={14} /> Run SEO</>}
+            {/* Three states, not two: the preflight check runs before the server has accepted
+                anything, and calling that "Running" would claim an audit that has not started. */}
+            {starting === 'SEO'
+              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Checking site…</>
+              : seoRunning
+                ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> SEO Running…</>
+                : <><Play size={14} /> Run SEO</>}
           </button>
           <button className="seo-action" style={{ ['--pipe-accent' as string]: THEME.GEO.accent }}
             onClick={() => runOrWarn('GEO', geoRunning)} disabled={geoRunning}>
-            {geoRunning
-              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> GEO Running…</>
-              : <><Play size={14} /> Run GEO</>}
+            {starting === 'GEO'
+              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Checking site…</>
+              : geoRunning
+                ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> GEO Running…</>
+                : <><Play size={14} /> Run GEO</>}
           </button>
         </div>
       </div>
@@ -757,14 +787,21 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
           the whole content width before it starts wrapping. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <PipelineCard
-          pipeline="SEO" stages={SEO_STAGE_LABELS} run={seoRun} running={seoRunning}
+          pipeline="SEO" stages={SEO_STAGE_LABELS} run={seoRun} running={seoRunning} starting={starting === 'SEO'}
           onOpenReport={() => setReportOpen(true)} onRun={() => runOrWarn('SEO', seoRunning)}
         />
         <PipelineCard
-          pipeline="GEO" stages={GEO_STAGE_LABELS} run={geoRun} running={geoRunning}
+          pipeline="GEO" stages={GEO_STAGE_LABELS} run={geoRun} running={geoRunning} starting={starting === 'GEO'}
           onOpenReport={() => setReportOpen(true)} onRun={() => runOrWarn('GEO', geoRunning)}
         />
       </div>
+
+      {/* Directly under the pipelines, because it explains the thing immediately above it:
+          the five steps start at "Run the pipeline" and end at "Re-run & track", so they
+          only read as a sequence when they follow the Run buttons rather than sitting at the
+          foot of the page after the comparison and connector cards. Full width now that it
+          no longer shares a row with Connected Platforms. */}
+      <ExplainerCard />
 
       {/* The two comparison cards were stacked full-height in a 2fr column, leaving a tall
           empty gutter on the right of every one. Side by side, they fill the row. */}
@@ -774,7 +811,7 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
       </div>
 
       {/* Search Console + GA4 are analytics/tracking sources — they feed the tracking above. */}
-      <div className="glow-card">
+      <div className="glow-card seo-shell" style={{ ['--pipe-accent' as string]: THEME.GEO.accent }}>
         <CardHead
           Icon={TrendingUp}
           title="Search Console & Analytics"
@@ -788,10 +825,9 @@ export const WorkspaceSEO: React.FC<WorkspaceSEOProps> = ({ workspaceId, siteUrl
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '20px', alignItems: 'start' }}>
-        <ExplainerCard />
-        <ConnectedPlatformsCard workspaceId={workspaceId} onManageIntegrations={onManageIntegrations} />
-      </div>
+      {/* Connected Platforms stands alone here now — the two-column grid it shared with the
+          explainer is gone with it. */}
+      <ConnectedPlatformsCard workspaceId={workspaceId} onManageIntegrations={onManageIntegrations} />
 
       <SEOAgencyReportModal
         isOpen={reportOpen}

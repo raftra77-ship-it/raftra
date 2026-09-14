@@ -191,8 +191,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
     <div className="app-wrapper">
       <Navbar onOpenCreatorPortal={() => setShowCreatorPortal(true)} />
 
-      {/* Fixed Top-Right Marketplace Button — aligned with navbar */}
+      {/* Fixed Top-Right Marketplace Button — aligned with navbar.
+          Desktop only. The navbar is nudged 105px left specifically to leave the gap this
+          pill sits in, but that nudge is a desktop layout: on a phone the bar goes back to
+          full width and this pill, pinned to the same top-right corner at zIndex 1100
+          against the bar's 999, lands directly on top of the hamburger. Measured at 375px
+          it spanned x=157..341 over a bar ending at x=351, and elementFromPoint over the
+          toggle returned this button — so the menu could not be opened at all, whether or
+          not the pill had finished fading in. Hidden below the breakpoint; the mobile
+          drawer carries the same destination instead. */}
       <div
+        className="floating-marketplace-pill"
         style={{
           position: 'fixed',
           top: '16px',
@@ -259,6 +268,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
           @keyframes shimmer-slide {
             0% { left: -60%; }
             60%, 100% { left: 130%; }
+          }
+          /* 1379px, matching the Navbar's WIDE_QUERY. The pill only has a gap to sit in
+             once the bar takes its nudged wide layout; below that the bar is centred and
+             runs full width, so the pill would land on the bar's right end (on the
+             hamburger below 1200px, on the Login button between 1200 and 1379). */
+          @media (max-width: 1379px) {
+            .floating-marketplace-pill { display: none !important; }
           }
         `}</style>
       </div>

@@ -1222,7 +1222,11 @@ const ImplementChangesSection: React.FC<{ workspaceId: number | null; refreshKey
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '4px' }}>
         <h3 style={{ fontSize: highlight ? '15px' : '14px', margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {highlight && <Globe size={16} style={{ color: connectedCount > 0 ? '#00ff9d' : '#ffae00', flexShrink: 0 }} />}
-          {highlight ? 'Connect &amp; Publish Your Site' : 'Implement Approved Changes'}
+          {/* Plain '&', not '&amp;'. JSX decodes entities in text nodes but not inside a
+              JavaScript string, so this ternary printed the literal "Connect &amp; Publish
+              Your Site" in the report header. The two other '&amp;' in this file are real
+              text nodes and decode correctly. */}
+          {highlight ? 'Connect & Publish Your Site' : 'Implement Approved Changes'}
         </h3>
         {highlight && (
           <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px',

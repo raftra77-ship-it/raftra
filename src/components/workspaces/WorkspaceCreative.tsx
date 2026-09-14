@@ -153,7 +153,6 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   const [showMarketIntel, setShowMarketIntel] = useState(false);
 
   // Hero Quick Goal Selector
-  const [quickGoal, setQuickGoal] = useState<'image' | 'video' | 'carousel' | 'ai_ugc' | 'hire_ugc'>('image');
 
   // Canva / Figma Hybrid Studio Editor State
   const [editorCanvasElements, setEditorCanvasElements] = useState<Array<{
@@ -1756,8 +1755,17 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     ];
     setProductPrompt(lines.join(" "));
     setInputOption("ai_generate_image");
+    /* Hand off to Video as well as the prompt. `format` is what the generate call sends
+       (see the onGenerate config below — `format: override?.format ?? selectedAdType`), and
+       applying a framework used to leave it untouched: the brief landed in the generator
+       while the format stayed on whatever was selected before, so a framework chosen for a
+       video ad quietly produced a still. inputOption is the INPUT method ("write a prompt"
+       vs brand_kb vs upload) and does not decide the output, so these two do not conflict.
+       The toast names the format because this is a change the user did not ask for
+       directly — switching back to Image is one click, but only if they know it happened. */
+    setSelectedAdType("Video");
     setActiveTab("create");
-    triggerToast(`${tmpl.name} applied — the brief is in the generator, edit it before generating.`);
+    triggerToast(`${tmpl.name} applied — brief is in the generator and the format is set to Video. Edit it before generating.`);
   };
 
   const productPromptPresets = [
