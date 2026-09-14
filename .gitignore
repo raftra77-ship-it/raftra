@@ -28,6 +28,12 @@ backend/venv/
 
 # Secrets — never commit ( .env matches both the root .env and backend/.env )
 .env
+# A bare `.env` does not match `.env.backup-before-pooler`, `.env.local`, `.env.bak`
+# and the like — gitignore patterns are literal, not prefixes. One of those was sitting
+# untracked in backend/ with 82 lines of live credentials in it (DATABASE_URL, and the
+# Gemini / OpenAI / OpenRouter / Firecrawl / Tavily keys), one `git add -A` away from
+# being published. Cover the whole family.
+.env.*
 # ...but keep the safe placeholder file
 !.env.example
 
@@ -62,3 +68,5 @@ backend/.venv/
 
 # The nested clone of this same repo (used to fetch the branch).
 raftra/
+
+.vercel

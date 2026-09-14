@@ -32,6 +32,7 @@ class SEOState(TypedDict):
     # end-to-end run: every probe logged a correct finding and the persisted audit got none of
     # them, because the keys were not declared here.
     connections: dict           # gathered Search Console / GA4 / site-connector data
+    brand: str                  # brand voice, audience and KB excerpts, gathered once per run
     ga4: dict
     index_status: dict          # Google's own verdict on the audited URL
     content_signals: dict       # E-E-A-T + readability
@@ -667,23 +668,74 @@ async def schema_agent_node(state: SEOState) -> SEOState:
         "user message, and reply with ONLY the final, clean Markdown strategy report."
     )
 
-    # Ground the audit in this company's real brand profile + knowledge base.
-    from core.brand_context import get_brand_context
+    # Ground the audit in this company's real brand profile + knowledge base. Read from the
+    # single gather done before the graph ran (see run_seo_pipeline) rather than retrieving
+    # it again here: get_brand_context is blocking — Postgres plus a vector search — and was
+    # being awaited-less inside this async node, stalling the event loop mid-run. Falls back
+    # to a direct fetch so the node still works if invoked outside the pipeline.
     import json as _json
-    brand = get_brand_context(state["workspace_id"], query=f"SEO and content strategy for {state['target_url']}")
+    brand = state.get("brand")
+    if not brand:
+        from core.brand_context import get_brand_context
+        brand = await asyncio.to_thread(
+            get_brand_context, state["workspace_id"], f"SEO and content strategy for {state['target_url']}"
+        )
     metrics = state.get("content_metrics") or {}
     # The model has no clock, so it invents one: a report generated on 31 August was dated
     # "October 26, 2026". Hand it the real date.
     import datetime as _dtm
     audit_date = _dtm.date.today().strftime("%B %d, %Y")
+
+    # Everything the recommendation stages actually measured, handed to the model that
+    # writes the strategy report.
+    #
+    # This prompt used to carry the brand context and `content_metrics` and nothing else, so
+    # the report was written blind to the audit's own findings: the Keyword stage's real
+    # Search Console queries, the Content stage's E-E-A-T and readability signals, the
+    # Backlink stage's outbound citations, Google's index verdict and the scored categories
+    # were all computed, persisted, shown in the scorecard — and never seen by the model
+    # asked to turn them into strategy. That is why recommendations read as generic SEO
+    # advice rather than advice about this site.
+    #
+    # Each entry is the node that produced it, so a finding can be traced back to its stage.
+    # Volumes are trimmed: the model needs the shape of the evidence, not every row, and the
+    # deterministic scorecard is prepended to the report separately for the exact numbers.
+    audit = state.get("audit") or {}
+    keywords = state.get("keyword_clusters") or {}
+    real_q = (keywords.get("real_search_queries") or {})
+    findings = {
+        "keyword_stage": {
+            "on_page_top_terms": (keywords.get("top_keywords") or [])[:10],
+            "real_search_queries": {
+                "source": real_q.get("source"),
+                "message": real_q.get("message"),
+                "totals": real_q.get("totals"),
+                "queries": (real_q.get("queries") or [])[:15],
+            },
+        },
+        "content_stage": state.get("content_signals") or {},
+        "internal_linking_stage": {"links": (state.get("internal_links") or [])[:15]},
+        "backlink_stage": state.get("backlink_strategy") or {},
+        "index_status": state.get("index_status") or {},
+        "analytics": state.get("ga4") or {},
+        "scored_categories": (audit.get("seo") or {}).get("categories") or [],
+        "priority_issues": (audit.get("priority_issues") or [])[:15],
+    }
+
     prompt = (
         f"AUDIT DATE: {audit_date} (use exactly this date wherever the report shows a date)\n\n"
         f"Target URL / Query: {state['target_url']}\n\n"
         f"COMPANY CONTEXT (use this to tailor the audit to the brand, its audience and offerings):\n{brand}\n\n"
         f"MEASURED ON-PAGE METRICS from crawling the site (base your technical findings on these REAL numbers, "
         f"do not invent different ones):\n{_json.dumps(metrics, indent=2)}\n\n"
+        f"MEASURED FINDINGS from each audit stage — these are this run's real results. Judge every one of them "
+        f"against the COMPANY CONTEXT above: whether the queries this site wins are the ones its stated audience "
+        f"would search, whether its content serves that audience, and which issues matter most given what this "
+        f"company actually sells. Where a field says the data source is missing or not connected, say so plainly "
+        f"and do not substitute an estimate:\n{_json.dumps(findings, indent=2, default=str)[:12000]}\n\n"
         f"Please run a comprehensive SEO Strategy audit and provide a detailed markdown report tailored to this company, "
-        f"referencing the measured metrics above where relevant."
+        f"referencing the measured metrics and stage findings above where relevant. Prioritise recommendations by their "
+        f"impact on this company's stated audience and offering, not by generic SEO importance."
     )
 
     try:
@@ -896,6 +948,17 @@ async def run_seo_pipeline(workspace_id: int, target_url: str):
     intro = summary_line(initial_state["connections"])
     initial_state["logs"].append(intro)
     await manager.broadcast_agent_log("SEO Agent", intro, "running")
+
+    # The workspace's own strategy — brand voice, target audience, guidelines and the
+    # relevant knowledge-base excerpts — gathered once here for the same reason connections
+    # are: one retrieval per run rather than one per node. Only schema_agent_node fetched it
+    # before, on its own, so eight of the nine SEO nodes audited the site with no idea what
+    # the brand sells or who it sells to. It is blocking work (Postgres + vector search), so
+    # it runs in a thread rather than stalling the event loop.
+    from core.brand_context import get_brand_context
+    initial_state["brand"] = await asyncio.to_thread(
+        get_brand_context, workspace_id, f"SEO and content strategy for {target_url}"
+    )
 
     try:
         result = await seo_graph.ainvoke(initial_state)
@@ -1173,10 +1236,14 @@ async def geo_knowledge_graph_agent_node(state: SEOState) -> SEOState:
     profiles = (state.get("authority_signals") or {}).get("profiles") or []
     description = ""
     try:
+        # Deliberately its own narrow retrieval rather than state["brand"]: this needs a
+        # one-line description of the company for the JSON-LD `description` field, not the
+        # run's full strategy context. Moved onto a thread because get_brand_context is
+        # blocking (Postgres + vector search) and this is an async node.
         from core.brand_context import get_brand_context
-        description = (get_brand_context(state["workspace_id"],
-                                         query="one sentence describing what this company does")
-                       or "")[:300]
+        description = (await asyncio.to_thread(
+            get_brand_context, state["workspace_id"],
+            "one sentence describing what this company does") or "")[:300]
     except Exception:
         description = ""
 
@@ -1237,9 +1304,13 @@ async def geo_optimization_agent_node(state: SEOState) -> SEOState:
 
     brand = ""
     try:
+        # Off the event loop for the same reason as the other nodes: get_brand_context is a
+        # blocking Postgres + vector-search call and this is an async node.
         from core.brand_context import get_brand_context
-        brand = get_brand_context(state["workspace_id"],
-                                  query=f"AI answer-engine visibility for {state['target_url']}")
+        brand = await asyncio.to_thread(
+            get_brand_context, state["workspace_id"],
+            f"AI answer-engine visibility for {state['target_url']}"
+        )
     except Exception:
         brand = ""
 
@@ -1293,8 +1364,16 @@ async def geo_reporting_agent_node(state: SEOState) -> SEOState:
     state["status"] = "pending_approval"
 
     # Generate a REAL, brand-grounded GEO report via the LLM (was a hardcoded mock).
+    # Its own retrieval rather than state["brand"] on purpose: the run-level gather asks for
+    # positioning and audience, this asks for AI-visibility material, and the two return
+    # different knowledge-base excerpts. Moved onto a thread because get_brand_context is
+    # blocking (Postgres + vector search) and this is an async node — it was stalling the
+    # event loop, and every other broadcast on this worker with it.
     from core.brand_context import get_brand_context
-    brand = get_brand_context(state["workspace_id"], query=f"generative engine optimization and AI visibility for {state['target_url']}")
+    brand = await asyncio.to_thread(
+        get_brand_context, state["workspace_id"],
+        f"generative engine optimization and AI visibility for {state['target_url']}"
+    )
     geo_system = (
         "You are a Generative Engine Optimization (GEO/AEO) specialist. You improve how a brand "
         "is represented and cited by AI answer engines (ChatGPT, Gemini, Perplexity, Claude). "
@@ -1495,6 +1574,14 @@ async def run_geo_pipeline(workspace_id: int, target_url: str):
     intro = summary_line(initial_state["connections"])
     initial_state["logs"].append(intro)
     await manager.broadcast_agent_log("GEO Agent", intro, "running")
+
+    # Same single gather as the SEO pipeline — see run_seo_pipeline. It matters more here:
+    # every GEO probe asks a model what it knows about this brand, and the brand's own
+    # positioning and audience are what those answers should be judged against.
+    from core.brand_context import get_brand_context
+    initial_state["brand"] = await asyncio.to_thread(
+        get_brand_context, workspace_id, f"brand positioning and audience for {target_url}"
+    )
 
     try:
         result = await geo_graph.ainvoke(initial_state)

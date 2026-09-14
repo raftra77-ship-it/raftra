@@ -129,3 +129,27 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+
+      # Rate limiting (middleware.py) needs Redis. It was never declared here, so
+      # REDIS_URL has been unset in production and the limiter fails open on every
+      # request — after five failures it disables itself for the process. That leaves
+      # /api/auth/login with no brute-force protection and the LLM endpoints with no
+      # cap. Point this at a Render Redis or Upstash instance; until it is set the API
+      # runs with no rate limiting at all.
+      - key: REDIS_URL
+        sync: false
+
+      # Vector store for the RAG index (core/vector_store.py). Both of these have
+      # working auto-detected defaults, and are declared so the deploy states them
+      # rather than relying on inference:
+      #   VECTOR_BACKEND     = pgvector   (Postgres + pgvector 0.8.2, already installed
+      #                                    on the Supabase instance. 'qdrant' is the
+      #                                    alternative and needs a reachable QDRANT_URL,
+      #                                    which no deployed instance has.)
+      #   EMBEDDING_PROVIDER = gemini     (hosted embeddings; 'local' needs
+      #                                    sentence-transformers, which requirements-deploy
+      #                                    omits because torch does not fit in 512MB)
+      - key: VECTOR_BACKEND
+        sync: false
+      - key: EMBEDDING_PROVIDER
+        sync: false
