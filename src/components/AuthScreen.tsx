@@ -65,7 +65,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: email, password })
+        // The tab is sent so the server can say "this is a Brand account" rather than
+        // issuing a brand token for a Creator sign-in and letting RequireAuth bounce the
+        // user to /dashboard with no explanation. It never decides the session's role —
+        // that still comes from the account, read back off the JWT below.
+        body: JSON.stringify({ identifier: email, password, role: isCreator ? 'creator' : 'brand' })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

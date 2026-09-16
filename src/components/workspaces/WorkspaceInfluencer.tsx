@@ -19,7 +19,11 @@ const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[])
 
 import { BrandPostedDealsView } from './PostedDealsWorkflow';
 
-export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspaceId }) => {
+/* workspaceId is nullable because this component is mounted on two routes: inside the
+   dashboard, where a workspace is always resolved, and on the public /influencer-marketplace
+   page, where a signed-out visitor has none. Every authenticated fetch below must therefore
+   check it — see loadCreatorsData, which did not and fired a 401 on every public visit. */
+export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ workspaceId }) => {
   // Every deal route is behind get_current_user. The proposal and release calls below were
   // written without a token, so the server rejected them and the UI showed success anyway.
   const authHeaders = (): HeadersInit => {
@@ -165,9 +169,14 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
 
   const loadCreatorsData = () => {
     const token = localStorage.getItem('token');
+    // Both are required: the endpoint is workspace-scoped and token-guarded, so calling it
+    // without either is a guaranteed 401. The public marketplace has neither until the
+    // visitor signs in, and the browse experience does not depend on this call — it only
+    // enriches the listing with this brand's own saved/contacted creators.
+    if (!workspaceId || !token) return;
     fetch(`/api/workspaces/${workspaceId}/influencers`, {
       headers: { 'Authorization': `Bearer ${token}` }
-    }).then(r => r.json()).then(data => {
+    }).then(r => (r.ok ? r.json() : null)).then(data => {
       if (Array.isArray(data) && data.length > 0) {
         const enriched = INITIAL_CREATORS.map(c => {
           const matched = data.find((inf: any) => inf.handle === c.handle || inf.id?.toString() === c.id || inf.name?.toLowerCase() === c.name?.toLowerCase());
@@ -710,7 +719,7 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
       </div>
 
       {mainSubTab === 'posted_deals' && (
-        isLoggedIn ? (
+        isLoggedIn && workspaceId ? (
           <BrandPostedDealsView
             workspaceId={workspaceId}
             onOpenChatWithCreator={(handle) => {
@@ -743,7 +752,7 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number }> = ({ workspa
       )}
 
       {mainSubTab === 'my_collaborations' && (
-        isLoggedIn ? (
+        isLoggedIn && workspaceId ? (
           <BrandPostedDealsView
             workspaceId={workspaceId}
             mode="my_collaborations"

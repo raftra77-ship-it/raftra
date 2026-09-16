@@ -1,8 +1,8 @@
 """
 The two scheduled external syncs, and the single place that writes their results.
 
-    market trends    every 2 weeks   Google Trends + YouTube    -> market_trend_reports
-    competitor ads   every 4 weeks   Meta Ad Library (or Apify) -> competitor_ads
+    market trends    every 30 days   Google Trends + YouTube    -> market_trend_reports
+    competitor ads   every 15 days   Meta Ad Library (or Apify) -> competitor_ads
 
 Both follow the same rules, and they are the rules that make this trustworthy rather than
 decorative:

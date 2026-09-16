@@ -190,6 +190,23 @@ def login(user_in: schemas.UserLogin, request: Request, db: Session = Depends(da
         _log_auth_event(db, "login_failed", user=user, detail="wrong password", request=request)
         raise HTTPException(status_code=401, detail="Incorrect email/username or password")
 
+    # The form's tab, when it sent one. An account has exactly one role (models.User.role is
+    # a single column), so signing in from the wrong tab cannot work — and used to fail
+    # silently: a brand account picked from the Creator tab got a brand token, and
+    # RequireAuth then redirected to /dashboard with nothing explaining why the Creator
+    # Portal never opened. Say it plainly instead. 403 rather than 401: the credentials were
+    # correct, the account is just the other kind.
+    wanted = (user_in.role or "").strip().lower()
+    if wanted in ("brand", "creator") and user.role != wanted:
+        _log_auth_event(db, "login_failed", user=user,
+                        detail=f"role mismatch: account={user.role}, requested={wanted}",
+                        request=request)
+        other = "Creator" if user.role == "creator" else "Brand"
+        raise HTTPException(
+            status_code=403,
+            detail=f"This account is registered as a {other} account. "
+                   f"Use the {other} tab to sign in.")
+
     _log_auth_event(db, "login", user=user, detail=f"role={user.role}", request=request)
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
     return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user": {"id": user.id, "email": user.email}}

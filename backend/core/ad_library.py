@@ -1,5 +1,5 @@
 """
-Competitor ad ingestion from the Meta Ad Library, on a fortnightly cadence.
+Competitor ad ingestion from the Meta Ad Library, on a 15-day cadence (see core/scheduler.py).
 
 What is actually available, because this is the part that gets over-promised:
 

@@ -209,19 +209,24 @@ def start_scheduler():
     if intel:
         from core.intel_sync import run_all_competitor_ad_syncs, run_all_market_trend_syncs
 
-        # Interval rather than cron: the cadences are "every 2 weeks" and "every 4 weeks",
-        # and a cron day-of-month rule drifts against that in every month that is not 28
-        # days long. The first run is deferred by an hour so a redeploy does not fire both
-        # syncs for every workspace the moment the process boots.
+        # Interval rather than cron: a cron day-of-month rule drifts against a fixed day
+        # count in every month that is not 28 days long. The first run is deferred by an
+        # hour so a redeploy does not fire both syncs for every workspace the moment the
+        # process boots.
         #
-        # The two were the wrong way round: market trends ran every 4 weeks and competitor
-        # ads every 2, which inverts the spec. Trends move faster than a rival's creative
-        # rotation, so the fortnightly slot belongs to trends.
+        # Cadences are the product's, not inferred: market trends every 30 days, competitor
+        # ads every 15. An earlier comment here argued the reverse — that trends move faster
+        # than a rival's creative rotation, so trends deserved the shorter slot — and swapped
+        # them on that reasoning. That is backwards for this product: a competitor's live ad
+        # set is the thing that changes week to week and is worth catching early, while a
+        # market trend report is a slower, broader read. Changing these two numbers changes
+        # how often external APIs are billed, so they are stated in days to match the spec
+        # exactly rather than in weeks that approximate it.
         first = datetime.utcnow() + timedelta(hours=1)
         _scheduler.add_job(
             run_all_market_trend_syncs,
-            IntervalTrigger(weeks=2, start_date=first),
-            id="biweekly_market_trend_sync",
+            IntervalTrigger(days=30, start_date=first),
+            id="monthly_market_trend_sync",
             replace_existing=True,
             misfire_grace_time=6 * 3600,
             coalesce=True,
@@ -229,15 +234,15 @@ def start_scheduler():
         )
         _scheduler.add_job(
             run_all_competitor_ad_syncs,
-            IntervalTrigger(weeks=4, start_date=first + timedelta(hours=2)),
-            id="four_weekly_competitor_ad_sync",
+            IntervalTrigger(days=15, start_date=first + timedelta(hours=2)),
+            id="fortnightly_competitor_ad_sync",
             replace_existing=True,
             misfire_grace_time=6 * 3600,
             coalesce=True,
             max_instances=1,
         )
-        print("[scheduler] Intelligence syncs started (market trends every 2 weeks, "
-              "competitor ads every 4 weeks; first run ~1h from boot).")
+        print("[scheduler] Intelligence syncs started (market trends every 30 days, "
+              "competitor ads every 15 days; first run ~1h from boot).")
 
     # Campaign Optimization Rules enforcement. Opt-in for the same reason the audits are:
     # this one PAUSES live advertising without the user present, so it must be a deliberate

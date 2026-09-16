@@ -22,12 +22,16 @@ from core import tenancy
 
 router = APIRouter(prefix="/api/workspaces", tags=["intelligence"])
 
-# The cadences the pipeline promises, used to show when a refresh is next due. These must
-# match the intervals registered in core/scheduler.py: market trends every 2 weeks,
-# competitor ads every 4. They were the other way round in both places, so the screen also
-# advertised the wrong refresh dates.
-TREND_SYNC_DAYS = 14
-AD_SYNC_DAYS = 28
+# The cadences the pipeline promises, used to show when a refresh is next due. These MUST
+# match the intervals registered in core/scheduler.py — the scheduler decides when a sync
+# actually runs, these decide what the screen tells the user, and a mismatch means the UI
+# advertises a refresh date that never arrives.
+#
+# Market trends every 30 days, competitor ads every 15: a rival's live ad set turns over
+# faster than a market read does, so the shorter slot belongs to competitors. Both of these
+# were previously inverted (14 / 28) on the opposite argument.
+TREND_SYNC_DAYS = 30
+AD_SYNC_DAYS = 15
 
 
 def _require_workspace(workspace_id: int, db: Session, current_user: models.User):
@@ -416,6 +420,69 @@ async def harvest_site_assets(workspace_id: int, max_images: int = 24,
     db.commit()
 
     return {"status": "success", "imported": len(found), "replaced": replaced}
+
+
+@router.post("/{workspace_id}/assets/import-meta")
+async def import_meta_ad_creatives(
+    workspace_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Pull the brand's own published ad creatives from its connected Meta ad account.
+
+    Mirrors the site harvest above — same MediaAsset rows, same replace-don't-append rule,
+    scoped to `source == "meta"` so it never touches scraped, Drive or uploaded assets.
+
+    This reads the Marketing API for an account the workspace owns and has authorised, NOT
+    the public Ad Library. See core/meta_ads.list_ad_creatives for why that distinction is
+    load-bearing: the Ad Library API only serves commercial ads in the EU, so for an
+    India-based brand it would return nothing at all.
+    """
+    ws = _require_workspace(workspace_id, db, current_user)
+
+    conn = (db.query(models.MetaAdsConnection)
+              .filter(models.MetaAdsConnection.workspace_id == workspace_id)
+              .first())
+    if not conn or not conn.access_token:
+        raise HTTPException(status_code=400,
+                            detail="Meta is not connected for this workspace. Connect it under Integrations first.")
+    if not conn.ad_account_id:
+        raise HTTPException(status_code=400,
+                            detail="No Meta ad account is selected. Pick one under Integrations, then try again.")
+
+    from core import meta_ads
+    try:
+        creatives = await meta_ads.list_ad_creatives(conn)
+    except Exception as e:
+        # 502 rather than 500: the failure is Meta's side of the call, and the message is
+        # the only thing that tells the user whether to re-authorise or just retry.
+        raise HTTPException(status_code=502, detail="Could not read Meta ad creatives: %s" % e)
+
+    if not creatives:
+        return {"status": "success", "imported": 0, "replaced": 0,
+                "note": "The connected ad account has no image creatives yet."}
+
+    replaced = (db.query(models.MediaAsset)
+                  .filter(models.MediaAsset.workspace_id == workspace_id,
+                          models.MediaAsset.source == "meta")
+                  .delete(synchronize_session=False))
+
+    for item in creatives:
+        db.add(models.MediaAsset(
+            workspace_id=workspace_id,
+            category="ad_creative",
+            source="meta",
+            filename=item["name"],
+            storage_url=item["url"],
+            # Where it came from, so the vault can link back to the account rather than
+            # showing a creative with no provenance.
+            source_url=f"https://business.facebook.com/adsmanager/manage/ads?act={conn.ad_account_id}",
+            alt_text=item["name"],
+            tags=["ad_creative", "meta"],
+        ))
+    db.commit()
+
+    return {"status": "success", "imported": len(creatives), "replaced": replaced}
 
 
 class ImportedAsset(BaseModel):

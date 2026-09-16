@@ -9,6 +9,36 @@ export const InfluencerMarketplacePage: React.FC = () => {
 
   const isLoggedIn = Boolean(localStorage.getItem('token'));
 
+  /* The brand whose collaborations and saved creators this page should show.
+     ------------------------------------------------------------------
+     This used to be `workspaceId={1}` — a literal. Two things were wrong with it.
+
+     This route is public (App.tsx mounts /influencer-marketplace outside RequireAuth), but
+     /api/workspaces/{id}/influencers requires a token, so every signed-out visitor fired it
+     twice and got a pair of 401s in the console — the error on this screen.
+
+     Worse for anyone signed in: workspace 1 is not their workspace. The page asked the API
+     for another tenant's creator list on every load, and only the backend's ownership check
+     stopped it being returned.
+
+     Resolved from /api/workspaces, the same call BrandDashboard uses, and left null while
+     signed out so the authenticated fetch never runs. */
+  const [workspaceId, setWorkspaceId] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    let cancelled = false;
+    fetch('/api/workspaces', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(list => {
+        if (cancelled || !Array.isArray(list) || !list.length) return;
+        setWorkspaceId(list[0].id);
+      })
+      .catch(() => { /* signed-out browsing still works; the list just stays unenriched */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const handleDashboardClick = () => {
     if (isLoggedIn) {
       navigate('/dashboard');
@@ -59,7 +89,7 @@ export const InfluencerMarketplacePage: React.FC = () => {
 
       {/* Main Content Body */}
       <main style={{ flex: 1, padding: '24px 32px', width: '100%', boxSizing: 'border-box' }}>
-        <WorkspaceInfluencer workspaceId={1} />
+        <WorkspaceInfluencer workspaceId={workspaceId} />
       </main>
     </div>
   );

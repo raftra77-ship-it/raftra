@@ -311,6 +311,19 @@ class BrandKit(BaseModel):
     audience_summary: str = Field(default="", description="Who this brand sells to, one sentence")
     target_audiences: List[Persona] = Field(default_factory=list)
     key_messages: List[str] = Field(default_factory=list)
+    # The Brand Knowledge Vault has always rendered a "Markets" section ("Where the brand
+    # sells"), but no field produced it and kit_to_guidelines never wrote the key — so that
+    # panel was empty for every brand and a re-sync could never fill it. Same failure the
+    # visual_identity field above was added to fix.
+    #
+    # Deliberately "only if the site states it": shipping destinations, a country selector
+    # or an address are evidence; a .in domain is not, and guessing a market wrong is worse
+    # than leaving the section blank for someone to type.
+    markets: str = Field(
+        default="",
+        description="Countries or regions the brand sells to, only if the site states them "
+                    "(shipping/delivery pages, a country or currency selector, a stated address). "
+                    "Leave blank if the site does not say.")
 
     @field_validator("product_categories", "usps", "benefits", "personality",
                      "tone_of_voice", "key_messages", mode="before")
@@ -341,7 +354,7 @@ Return ONLY a JSON object with exactly these keys, no code fence, no commentary:
   "visual_identity": "",
   "product_categories": [], "usps": [], "benefits": [], "personality": [],
   "tone_of_voice": [], "audience_summary": "", "target_audiences": [{"persona": "", "hook": ""}],
-  "key_messages": []
+  "key_messages": [], "markets": ""
 }
 
 Rules:
@@ -351,6 +364,9 @@ Rules:
 - "usps" must be concrete and checkable (a certification, a warranty length, a technology),
   never generic praise like "great quality".
 - "target_audiences": up to 4 segments. Each "hook" is one line you could run as an ad.
+- "markets": only where the site says it sells - a shipping or delivery page, a country
+  or currency selector, a stated address. A domain suffix is not evidence. Leave "" if
+  the site does not say.
 - "visual_identity": how the site presents itself visually and what that signals - layout,
   imagery, density, use of colour and type, and the impression it creates. Describe only
   what is evident from the page; leave "" if the content gives you nothing to go on.
@@ -461,9 +477,12 @@ def kit_to_guidelines(kit: BrandKit) -> dict:
     put("usps", "\n".join("- " + u for u in kit.usps))
     put("features", "\n".join("- " + b for b in kit.benefits))
     put("personality", ", ".join(kit.personality))
+    # "tone" is the section id the vault reads. It was also written as "tone_of_voice",
+    # which nothing has ever read — a duplicate of the same value under a key with no
+    # consumer, bloating the stored guidelines blob on every sync.
     put("tone", ", ".join(kit.tone_of_voice))
-    put("tone_of_voice", kit.tone_of_voice)
     put("key_messages", kit.key_messages)
+    put("markets", kit.markets)
     if kit.target_audiences:
         out["target_audiences"] = [p.model_dump() for p in kit.target_audiences]
     return out

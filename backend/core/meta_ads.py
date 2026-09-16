@@ -395,6 +395,63 @@ async def fetch_insights(conn, date_preset="last_7d") -> dict:
     return out
 
 
+async def list_ad_creatives(conn, limit: int = 200) -> list:
+    """Every image creative already on the connected ad account.
+
+    This is the brand's OWN published ad media, read from the Marketing API using the ad
+    account the workspace has already connected — deliberately not the Ad Library.
+
+    core/ad_library.py explains why that distinction matters: Meta's public Ad Library API
+    (`/ads_archive`) only returns commercial ads when `ad_reached_countries` is an EU member
+    state, because the DSA compels it there. For an India-based brand it is restricted to
+    POLITICAL_AND_ISSUE_ADS, so asking it for a brand's own commercial creatives returns an
+    empty list — correctly, not as a bug. The Marketing API has no such limit for an account
+    you own and have authorised, which is what makes this the route that actually works.
+
+    Creatives carry their image in one of several shapes depending on how the ad was built,
+    so each is tried in turn: a plain `image_url`, the link-ad `object_story_spec`, or a
+    carousel's `child_attachments`. `thumbnail_url` is the last resort — it is real but
+    small, and preferring it would fill the vault with 64px stamps of usable artwork.
+    """
+    if not conn.ad_account_id:
+        raise RuntimeError("No Meta ad account selected.")
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(f"{GRAPH}/act_{conn.ad_account_id}/adcreatives", params={
+            "fields": "id,name,image_url,thumbnail_url,object_story_spec,asset_feed_spec,status",
+            "limit": min(int(limit or 200), 500),
+            **_auth(conn.access_token),
+        })
+    body = _check(r, "Could not list ad creatives")
+
+    out, seen = [], set()
+    for c in body.get("data", []):
+        spec = c.get("object_story_spec") or {}
+        link = spec.get("link_data") or {}
+        video = spec.get("video_data") or {}
+        urls = [c.get("image_url"), link.get("picture"), video.get("image_url")]
+        # Carousels keep one image per card rather than a single creative-level image.
+        for child in (link.get("child_attachments") or []):
+            urls.append(child.get("picture"))
+        # asset_feed_spec is how Advantage+ / dynamic creatives carry their images.
+        for img in ((c.get("asset_feed_spec") or {}).get("images") or []):
+            urls.append(img.get("url"))
+        urls.append(c.get("thumbnail_url"))
+
+        url = next((u for u in urls if u), None)
+        # One creative can repeat an image across cards, and a dedupe here is cheaper than
+        # writing duplicate vault rows and reconciling them later.
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append({
+            "creative_id": c.get("id"),
+            "name": (c.get("name") or "").strip() or f"Meta creative {c.get('id')}",
+            "url": url,
+            "status": c.get("status"),
+        })
+    return out
+
+
 async def list_pages(conn) -> list:
     """Facebook Pages the user manages (needed to run an ad)."""
     async with httpx.AsyncClient(timeout=20) as client:

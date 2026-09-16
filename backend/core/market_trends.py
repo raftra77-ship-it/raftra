@@ -1,5 +1,5 @@
 """
-Market & search-trend ingestion, on a four-weekly cadence.
+Market & search-trend ingestion, on a 30-day cadence (see core/scheduler.py).
 
 Three real sources, each optional, and the report says which ones answered:
 

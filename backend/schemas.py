@@ -15,6 +15,12 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     identifier: str
     password: str
+    # Which side of the product the login form was on ("brand" or "creator"). Optional so
+    # existing callers keep working, and advisory only — the session's role always comes
+    # from the account, never from this. It exists so that picking "Creator" and signing in
+    # with a brand account can say so, instead of silently issuing a brand token and letting
+    # the router bounce the user to the brand dashboard with no explanation.
+    role: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: int

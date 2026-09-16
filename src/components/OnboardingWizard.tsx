@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, Cpu, AlertCircle } from 'lucide-react';
+import { ArrowRight, Cpu } from 'lucide-react';
 import { GlowButton } from './GlowButton';
 
 interface OnboardingWizardProps {
@@ -10,9 +10,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
   const [step, setStep] = useState(1);
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
-  const [tone, setTone] = useState('Premium & Professional');
-  const [colors, setColors] = useState('Indigo & Obsidian');
-  const [competitorUrl, setCompetitorUrl] = useState('');
+  // Defaults, not questions: the crawl overwrites both from the site. Kept so the workspace
+  // is created with something sane before extraction finishes.
+  const [tone] = useState('Premium & Professional');
+  const [colors] = useState('Indigo & Obsidian');
   const [loadingText, setLoadingText] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
 
@@ -99,14 +100,25 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     }
   };
 
+  /* One question, then work.
+     ------------------------------------------------------------------
+     This was three input steps before the crawl started, and two of them earned nothing:
+
+     * Step 2 asked for brand voice and a colour hint. The crawl derives both from the site
+       itself — BrandKit extracts tone_of_voice and personality from the copy, and
+       extract_color_tokens reads the palette out of the CSS variables the site ships. A
+       typed guess is weaker evidence than the site, and both are editable afterwards in the
+       Brand Knowledge Vault.
+     * Step 3 asked for a competitor URL and then dropped it: `competitorUrl` was held in
+       state and never appeared in any request body. Three screens of friction, one of them
+       collecting a value that went nowhere.
+
+     The URL is the only answer the pipeline actually needs, so it is the only one asked for.
+     Everything those steps collected still reaches the profile — extracted rather than
+     typed — and every field stays editable later. */
   const handleNext = () => {
-    if (step < 3) {
-      setStep((prev) => prev + 1);
-    } else {
-      // Trigger simulation
-      setStep(4);
-      runScrapingSimulation();
-    }
+    setStep(4);
+    runScrapingSimulation();
   };
 
   /* Finishing onboarding is two fast writes: create the workspace, then commit the
@@ -157,13 +169,9 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
           <h2 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)' }}>INITIALIZE GROWTH OS</h2>
         </div>
 
-        {step < 4 && (
-          <div className="onboarding-steps">
-            <div className={`onboarding-step-indicator ${step >= 1 ? 'active' : ''}`} />
-            <div className={`onboarding-step-indicator ${step >= 2 ? 'active' : ''}`} />
-            <div className={`onboarding-step-indicator ${step >= 3 ? 'active' : ''}`} />
-          </div>
-        )}
+        {/* The three-dot progress rail is gone with the two steps it counted. Leaving it
+            would advertise two screens that no longer exist, which is the opposite of the
+            point — a one-question form should not look like the start of a sequence. */}
 
         {step === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -185,104 +193,25 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
             </div>
 
             <div className="form-group">
-              <label>Company Display Name</label>
+              <label>Company Display Name <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— optional</span></label>
               <input
                 type="text"
-                placeholder="e.g. Raftra Technologies"
+                placeholder="Left blank, we use the site's own name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
 
+            {/* Says what the crawl will do, so the two screens removed from here do not read
+                as capability that was taken away. */}
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
+              We read your site for brand voice, colours, logo, products and audience. You can
+              edit anything it gets wrong in the Brand Knowledge Vault.
+            </p>
+
             <GlowButton variant="glow" onClick={handleNext} disabled={!url} style={{ marginTop: '12px' }}>
-              Analyze URL <ArrowRight size={16} />
+              Analyse my site <ArrowRight size={16} />
             </GlowButton>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div>
-              <h3 style={{ marginBottom: '8px', fontSize: '18px' }}>Brand Voice & Guidelines</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Configure the baseline style for the copywriters and creative designers.
-              </p>
-            </div>
-
-            <div className="form-group">
-              <label>Brand Voice Tone</label>
-              <select value={tone} onChange={(e) => setTone(e.target.value)}>
-                <option>Premium & Elegant</option>
-                <option>Tech-Forward & Modern</option>
-                <option>Bold, Urgent & Converting</option>
-                <option>Friendly, Casual & Trustworthy</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Dominant Color Palette Hint</label>
-              <select value={colors} onChange={(e) => setColors(e.target.value)}>
-                <option>Electric Blue & Indigo</option>
-                <option>Emerald Green & Deep Obsidian</option>
-                <option>Minimalist Slate & White</option>
-                <option>Sunset Orange & Charcoal</option>
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-              <button className="btn btn-secondary" onClick={() => setStep(1)} style={{ flex: 1 }}>
-                Back
-              </button>
-              <GlowButton variant="glow" onClick={handleNext} style={{ flex: 2 }}>
-                Continue <ArrowRight size={16} />
-              </GlowButton>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div>
-              <h3 style={{ marginBottom: '8px', fontSize: '18px' }}>Competitive Context</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Our marketing agent will crawl competitor sites to study ad formats and find keywords they occupy.
-              </p>
-            </div>
-
-            <div className="form-group">
-              <label>Primary Competitor Website URL</label>
-              <input
-                type="url"
-                placeholder="https://competitor.com"
-                value={competitorUrl}
-                onChange={(e) => setCompetitorUrl(e.target.value)}
-              />
-            </div>
-
-            <div
-              style={{
-                background: 'rgba(90, 82, 255, 0.05)',
-                border: '1px solid rgba(90, 82, 255, 0.1)',
-                borderRadius: 'var(--radius-md)',
-                padding: '14px',
-                display: 'flex',
-                gap: '10px',
-              }}
-            >
-              <AlertCircle size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '2px' }} />
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Sandbox integrations: Onboarding registers testing keys for Facebook and Google Ads sandboxes. No real advertising spend will occur during simulation.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-              <button className="btn btn-secondary" onClick={() => setStep(2)} style={{ flex: 1 }}>
-                Back
-              </button>
-              <GlowButton variant="glow" onClick={handleNext} style={{ flex: 2 }}>
-                Initialize AI Agents <ArrowRight size={16} />
-              </GlowButton>
-            </div>
           </div>
         )}
 
