@@ -31,13 +31,17 @@ export const AuthCallback: React.FC<AuthCallbackProps> = ({ onLoginComplete }) =
     const finish = async () => {
       let hasWorkspace = false;
       if (!isCreator) {
+        // Same question the password form asks. "Has a workspace" is true before the crawl
+        // finishes, so routing on it sent Google users past onboarding they had not done,
+        // or back into a wizard they had already completed.
         try {
-          const wsRes = await fetch('/api/workspaces', {
+          const stRes = await fetch('/api/workspaces/onboarding-state', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
-          if (wsRes.ok) {
-            const wsData = await wsRes.json();
-            if (wsData && wsData.length > 0) hasWorkspace = true;
+          if (stRes.ok) {
+            const st = await stRes.json();
+            hasWorkspace = !!st.is_onboarded;
+            try { localStorage.setItem('raftra_onboarded', hasWorkspace ? '1' : '0'); } catch { /* private mode */ }
           }
         } catch (e) {}
       }

@@ -156,6 +156,11 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
   // which is what keeps this component usable in isolation (storybook, design review).
   const [live, setLive] = useState<GrowthPayload | null>(null);
 
+  // Sample copy (insight text, budget split, alerts) is for design review outside a
+  // workspace only. Keyed on workspaceId rather than `live` so a real brand never sees the
+  // fixtures, not even for the moment before the API answers.
+  const isSample = !workspaceId;
+
   useEffect(() => {
     if (!workspaceId) return;
     const token = localStorage.getItem('token');
@@ -500,8 +505,24 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       }))
     : sampleCreators.map(c => ({ ...c, conversions: c.conversions as number | null }));
 
+  /* Measured spend split for the Budget Efficiency card. Only Meta, Google and creator
+     bookings report spend, so those are the only slices; null when nothing was spent. */
+  const liveSpendSplit = useMemo(() => {
+    if (!live) return null;
+    const spendOf = (name: string) => live.channels.find(c => c.name === name)?.spend || 0;
+    const meta = spendOf('Meta Ads');
+    const google = spendOf('Google Ads');
+    const ugc = spendOf('Influencer / UGC');
+    const total = meta + google + ugc;
+    if (total <= 0) return null;
+    const pct = (v: number) => Math.round((v / total) * 100);
+    return { meta: pct(meta), google: pct(google), ugc: pct(ugc) };
+  }, [live]);
+
   // ── Growth Alerts Data ──
-  const growthAlerts = [
+  // a1-a3 are fixtures with invented deltas; nothing in the backend detects CPA spikes or
+  // creative fatigue yet, so a real workspace only gets the Search Console alert.
+  const sampleAlerts = [
     {
       id: 'a1',
       icon: '🟢',
@@ -535,6 +556,19 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
       type: 'info'
     }
   ];
+
+  const growthAlerts = isSample
+    ? sampleAlerts
+    : [{
+        id: 'a4',
+        icon: '🟣',
+        label: isGscConnected
+          ? 'Search Console is linked — open the SEO report for this window'
+          : 'Organic search sync pending — connect Search Console for GEO telemetry',
+        action: isGscConnected ? 'View SEO Report' : 'Connect GSC',
+        targetTab: isGscConnected ? 'seo' : 'integrations',
+        type: 'info'
+      }];
 
   const handleAskClaudeContext = (customPrompt?: string) => {
     const prompt = customPrompt || `Analyze my ${timeframe} Growth Analysis metrics (Revenue: ${kpis[0].value}, ROAS: ${kpis[2].value}, Spend: ${kpis[1].value}). Recommend specific budget shifts between Meta Ads and Google Ads to maximize profit.`;
@@ -867,7 +901,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
+                  tickFormatter={(val) => fmtINR(val)}
                 />
                 <RechartsTooltip
                   content={({ active, payload, label }) => {
@@ -939,7 +973,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
+                  tickFormatter={(val) => fmtINR(val)}
                 />
                 <RechartsTooltip
                   contentStyle={{ background: '#0e0e16', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
@@ -1097,7 +1131,13 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
             </div>
 
             {/* Dynamic Synthesis content */}
-            {hasAnyConnection ? (
+            {hasAnyConnection && !isSample ? (
+              /* No backend produces a written synthesis yet, so a real workspace is pointed
+                 at Ask Claude instead of reading the sample paragraph as its own result. */
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                Ask Claude to read this {timeframe} window — it answers from the connected sources above, not a template.
+              </div>
+            ) : hasAnyConnection ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ fontSize: '13.5px', color: '#fff', lineHeight: 1.5, background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
                   <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>
@@ -1138,7 +1178,9 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
           {hasAnyConnection && (
             <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
               <button
-                onClick={() => handleAskClaudeContext('Tell me more about the recommended budget shift between Meta and Google Ads.')}
+                onClick={() => handleAskClaudeContext(isSample
+                  ? 'Tell me more about the recommended budget shift between Meta and Google Ads.'
+                  : `Summarise my growth for the last ${timeframe}: what is working, what is wasting budget, and what should I change?`)}
                 style={{
                   flex: 1,
                   background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)',
@@ -1158,7 +1200,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
               >
                 <Zap size={14} /> Ask Claude
               </button>
-              <button
+              {isSample && <button
                 onClick={() => setShowInsightAnalysisModal(true)}
                 style={{
                   background: 'rgba(255, 255, 255, 0.06)',
@@ -1172,7 +1214,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                 }}
               >
                 View Analysis
-              </button>
+              </button>}
             </div>
           )}
         </div>
@@ -1202,13 +1244,51 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                   Budget Efficiency
                 </h3>
               </div>
-              <span style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 700 }}>
-                {simulatedRoas}x Projected ROAS
-              </span>
+              {isSample ? (
+                <span style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 700 }}>
+                  {simulatedRoas}x Projected ROAS
+                </span>
+              ) : liveSpendSplit && liveKpi.get('roas') ? (
+                <span style={{ fontSize: '11.5px', color: '#00E676', fontWeight: 700 }}>
+                  {liveKpi.get('roas')} Blended ROAS
+                </span>
+              ) : null}
             </div>
 
+            {/* A real workspace sees its measured spend split. The projection, the fixed
+                45/30/15 split and the "Google 5.48x" recommendation are sample copy, and the
+                simulator's per-channel ROAS weights are invented, so all of it stays in the
+                design-review build. */}
+            {!isSample && (
+              liveSpendSplit ? (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Measured Spend Split ({timeframe})</span>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>Meta ({liveSpendSplit.meta}%) • Google ({liveSpendSplit.google}%) • UGC ({liveSpendSplit.ugc}%)</span>
+                  </div>
+                  <div style={{ height: '10px', borderRadius: '100px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex', gap: '2px' }}>
+                    <div style={{ width: `${liveSpendSplit.meta}%`, background: '#1877F2' }} title={`Meta: ${liveSpendSplit.meta}%`} />
+                    <div style={{ width: `${liveSpendSplit.google}%`, background: '#4285F4' }} title={`Google: ${liveSpendSplit.google}%`} />
+                    <div style={{ width: `${liveSpendSplit.ugc}%`, background: '#FF5296' }} title={`Influencer: ${liveSpendSplit.ugc}%`} />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '24px 16px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '12px', border: '1px dashed rgba(255, 255, 255, 0.1)' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 14px 0' }}>
+                    No ad or creator spend recorded in this {timeframe} window yet.
+                  </p>
+                  <button
+                    onClick={() => onNavigateTab?.('integrations')}
+                    style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '100px', padding: '6px 16px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Connect Platforms
+                  </button>
+                </div>
+              )
+            )}
+
             {/* Current Allocation Visual Multi-bar */}
-            <div style={{ marginBottom: '16px' }}>
+            {isSample && <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>Active Capital Distribution</span>
                 <span style={{ fontFamily: 'var(--font-mono)' }}>Meta ({budgetMeta}%) • Google ({budgetGoogle}%) • UGC ({budgetInfluencer}%)</span>
@@ -1220,21 +1300,21 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
                 <div style={{ width: `${budgetInfluencer}%`, background: '#FF5296' }} title={`Influencer: ${budgetInfluencer}%`} />
                 <div style={{ width: `${budgetOther}%`, background: '#7C75FF', borderRadius: '0 100px 100px 0' }} title={`Other: ${budgetOther}%`} />
               </div>
-            </div>
+            </div>}
 
             {/* AI Recommendation Box */}
-            <div style={{ background: 'rgba(255, 255, 255, 0.025)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '12px', padding: '12px 14px', marginBottom: '14px' }}>
+            {isSample && <div style={{ background: 'rgba(255, 255, 255, 0.025)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '12px', padding: '12px 14px', marginBottom: '14px' }}>
               <div style={{ fontSize: '11px', color: '#00D2FF', fontWeight: 800, textTransform: 'uppercase', marginBottom: '3px' }}>
                 AI Recommendation
               </div>
               <p style={{ fontSize: '12.5px', color: '#fff', margin: 0, lineHeight: 1.4 }}>
                 “Google is currently generating the highest ROAS (5.48x). Consider testing a <strong>10–15% budget shift</strong> from Meta to Google Search clusters.”
               </p>
-            </div>
+            </div>}
           </div>
 
           {/* Simulate Budget Button */}
-          <button
+          {isSample && <button
             onClick={() => setShowSimulateModal(true)}
             style={{
               width: '100%',
@@ -1254,7 +1334,7 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
             }}
           >
             <Sliders size={14} /> Simulate Budget
-          </button>
+          </button>}
         </div>
 
         {/* ── 6. INFLUENCER PERFORMANCE (UPGRADED TOP CREATORS) ──────── */}

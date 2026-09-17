@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRazorpay } from 'react-razorpay';
 import type { LogLine } from '../components/TerminalFeed';
@@ -22,6 +22,7 @@ const WorkspaceSettings = lazy(() => import('../components/workspaces/WorkspaceS
 const WorkspaceReports = lazy(() => import('../components/workspaces/WorkspaceReports').then(m => ({ default: m.WorkspaceReports })));
 const WorkspaceScheduler = lazy(() => import('../components/workspaces/WorkspaceScheduler').then(m => ({ default: m.WorkspaceScheduler })));
 const WorkspaceAssets = lazy(() => import('../components/workspaces/WorkspaceAssets').then(m => ({ default: m.WorkspaceAssets })));
+const WorkspaceIntegrations = lazy(() => import('../components/workspaces/WorkspaceIntegrations').then(m => ({ default: m.WorkspaceIntegrations })));
 const BrandKnowledgeBase = lazy(() => import('../components/workspaces/BrandKnowledgeBase').then(m => ({ default: m.BrandKnowledgeBase })));
 
 // Type-only imports are erased at build time, so these create no runtime dependency and
@@ -173,371 +174,6 @@ function VectorDatastores({ workspaceId, reindexing }: { workspaceId: number | n
   );
 }
 
-// Live connector status for the Integrations Hub. These cards used to be a hardcoded list
-// that read "Connected" for every platform no matter what was actually linked - and two of
-// the six had no backend connector at all. Each card now reads the same /status endpoint its
-// own connector panel uses, so green means genuinely connected for this workspace.
-type IntegrationView = {
-  configured: boolean;     // are the server-side app credentials present at all?
-  connected: boolean;      // does this workspace hold a live token?
-  detail: string | null;   // which account / site is linked
-  incomplete: string | null; // connected, but a required selection is still missing
-};
-
-const INTEGRATIONS: {
-  key: string;
-  name: string;
-  /** Which key of GET /api/connectors/{ws}/status carries this connector's payload.
-   *  Two rows can share one (GA4 rides on the Search Console grant). */
-  batchKey: string;
-  read: (s: any) => IntegrationView;
-  connectTab: NavigationTab;
-  connectLabel: string;
-  unconfiguredHint: string;
-  // Present only where the connector can be started from here in one click. Shopify and
-  // WordPress need a shop domain / site details first, so they keep sending you to the
-  // tab that can ask for them.
-  authorizePath?: (ws: number) => string;
-  disconnectPath?: (ws: number) => string;
-  disconnectMethod?: 'POST' | 'DELETE';
-  // Shown in the confirm dialog so the consequence is stated before it happens.
-  disconnectWarning?: string;
-}[] = [
-  {
-    key: 'meta',
-    authorizePath: (ws) => `/api/connectors/meta/${ws}/authorize`,
-    disconnectPath: (ws) => `/api/connectors/meta/${ws}/disconnect`,
-    disconnectMethod: 'POST',
-    disconnectWarning: 'Raftra loses access to this ad account. Campaigns already created in Meta keep running.',
-    name: 'Meta Ads',
-    batchKey: 'meta',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.name || s.ad_account_id || null,
-      // Publishing needs BOTH an ad account and a Page - the backend folds that into
-      // ready_to_publish, so a token alone is not a finished connection.
-      incomplete: s.connected && !s.ready_to_publish ? 'Ad account and Page not selected yet'
-        // Meta cannot renew the token, so warn before it lapses rather than after.
-        : s.connected && s.token_expiring_soon ? `Connection expires in ${s.token_expires_in_days} day(s) — reconnect to keep publishing`
-        // "Ready" only means a paused campaign can be created; this is whether it can run.
-        : s.connected && s.can_spend === false ? 'No payment method on the ad account — ads won’t run'
-        : null,
-    }),
-    connectTab: 'campaign',
-    connectLabel: 'Campaign Manager',
-    unconfiguredHint: 'Server is missing META_APP_ID / META_APP_SECRET.',
-  },
-  {
-    key: 'google-ads',
-    authorizePath: (ws) => `/api/connectors/google-ads/${ws}/authorize`,
-    disconnectPath: (ws) => `/api/connectors/google-ads/${ws}`,
-    disconnectMethod: 'DELETE',
-    disconnectWarning: 'Revokes the grant with Google. Campaigns already created keep running.',
-    name: 'Google Ads',
-    batchKey: 'google_ads',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.email || s.customer_id || null,
-      incomplete: s.connected && !s.customer_id ? 'Ads account not selected yet'
-        // Campaigns can't be created inside a manager account; the server now refuses it too.
-        : s.connected && s.is_manager_account ? 'Manager (MCC) account selected — pick a client ad account'
-        : null,
-    }),
-    connectTab: 'campaign',
-    connectLabel: 'Campaign Manager',
-    unconfiguredHint: 'Server is missing GOOGLE_ADS_CLIENT_ID / SECRET / DEVELOPER_TOKEN.',
-  },
-  {
-    key: 'search-console',
-    authorizePath: (ws) => `/api/connectors/search-console/${ws}/authorize`,
-    disconnectPath: (ws) => `/api/connectors/search-console/${ws}/disconnect`,
-    disconnectMethod: 'POST',
-    disconnectWarning: 'Revokes the grant with Google. Google Analytics uses the same grant, so it disconnects too.',
-    name: 'Google Search Console',
-    batchKey: 'search_console',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.site_url || s.email || null,
-      incomplete: s.connected && !s.site_url ? 'Site not selected yet' : null,
-    }),
-    connectTab: 'seo',
-    connectLabel: 'SEO + GEO',
-    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
-  },
-  {
-    key: 'ga4',
-    name: 'Google Analytics 4',
-    // GA4 rides on the Search Console OAuth grant, so it shares that status payload. It only
-    // counts as connected once a property id is saved too - the same gate the GA4 panel uses.
-    batchKey: 'search_console',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.ga4_property_id ? `Property ${s.ga4_property_id}` : null,
-      incomplete: s.connected && !s.ga4_property_id ? 'GA4 property id not set yet' : null,
-    }),
-    connectTab: 'seo',
-    connectLabel: 'SEO + GEO',
-    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
-  },
-  {
-    key: 'gdrive',
-    // Drive was missing from this hub entirely, even though the Assets tab has always had a
-    // Drive picker — so there was no place to see whether it was connected, and no way to
-    // disconnect it. It is its own OAuth grant (drive.readonly), separate from the Search
-    // Console one, hence a separate row rather than a detail on that connection.
-    authorizePath: (ws) => `/api/connectors/gdrive/${ws}/authorize`,
-    disconnectPath: (ws) => `/api/connectors/gdrive/${ws}/disconnect`,
-    disconnectMethod: 'POST',
-    disconnectWarning: 'Assets you already imported stay in the vault — they are copies stored here, not links into Drive.',
-    name: 'Google Drive',
-    batchKey: 'gdrive',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.email || s.folder_name || null,
-      incomplete: null,
-    }),
-    connectTab: 'kb_assets',
-    connectLabel: 'Asset Vault',
-    unconfiguredHint: 'Server is missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.',
-  },
-  {
-    key: 'wordpress',
-    name: 'WordPress',
-    batchKey: 'wordpress',
-    // DELETE /connectors/wordpress/{ws} has always existed; this row just never referenced
-    // it, so a connected WordPress showed no button at all — nothing to press, and no way
-    // to disconnect it from the hub.
-    disconnectPath: (ws) => `/api/connectors/wordpress/${ws}`,
-    disconnectMethod: 'DELETE',
-    disconnectWarning: 'Raftra loses access to the site. Published posts stay published.',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.site_name || s.site_url || null,
-      incomplete: null,
-    }),
-    connectTab: 'seo',
-    connectLabel: 'SEO + GEO',
-    unconfiguredHint: '',
-  },
-  {
-    key: 'shopify',
-    name: 'Shopify',
-    batchKey: 'shopify',
-    disconnectPath: (ws) => `/api/connectors/shopify/${ws}`,
-    disconnectMethod: 'DELETE',
-    disconnectWarning: 'Raftra loses access to the store. Published content stays published.',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.shop_name || s.shop_domain || null,
-      incomplete: s.connected && !s.blog_id ? 'Blog not selected yet' : null,
-    }),
-    connectTab: 'seo',
-    connectLabel: 'SEO + GEO',
-    unconfiguredHint: 'Server is missing SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET.',
-  },
-  {
-    key: 'github',
-    authorizePath: (ws) => `/api/connectors/github/${ws}/authorize`,
-    disconnectPath: (ws) => `/api/connectors/github/${ws}`,
-    disconnectMethod: 'DELETE',
-    disconnectWarning: 'Raftra can no longer read or open pull requests on your repository.',
-    name: 'GitHub',
-    batchKey: 'github',
-    read: (s) => ({
-      configured: !!s.configured,
-      connected: !!s.connected,
-      detail: s.repo_full_name || s.login || null,
-      incomplete: s.connected && !s.repo_full_name ? 'Repository not selected yet' : null,
-    }),
-    connectTab: 'seo',
-    connectLabel: 'SEO + GEO',
-    unconfiguredHint: 'Server is missing GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET.',
-  },
-];
-
-function IntegrationsHub({ workspaceId, onConnect, status, statusFailed, onRefresh }: {
-  workspaceId: number | null;
-  onConnect: (tab: NavigationTab) => void;
-  /** All connectors' status, fetched once by the dashboard. Null while it is in flight. */
-  status: Record<string, any> | null;
-  statusFailed: boolean;
-  /** Re-fetches it, so a disconnect is reflected without a reload. */
-  onRefresh: () => void;
-}) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-
-  const loading = !status && !statusFailed;
-
-  /* Derived, not fetched. Each row used to be its own status request — eight of them,
-     every time this tab opened — and this component then fetched the batched endpoint a
-     second time on top of the copy the Home overview had already loaded.
-
-     'error' stays distinct from "not connected": a status call that failed tells us
-     nothing, and guessing in either direction is what produced the old wrong badges. */
-  const states: Record<string, IntegrationView | 'error'> = useMemo(() => {
-    if (!status) return {};
-    return Object.fromEntries(INTEGRATIONS.map((i) => {
-      const payload = status[i.batchKey];
-      return [i.key, payload ? i.read(payload) : 'error'] as [string, IntegrationView | 'error'];
-    }));
-  }, [status]);
-
-  const authHdrs = (): HeadersInit => {
-    const t = localStorage.getItem('token');
-    return t ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
-             : { 'Content-Type': 'application/json' };
-  };
-
-  // The connector returns the provider's consent URL; we hand the browser over to it.
-  const startConnect = async (i: typeof INTEGRATIONS[number]) => {
-    if (!workspaceId || !i.authorizePath) return;
-    setBusy(i.key); setNote(null);
-    try {
-      const r = await fetch(i.authorizePath(workspaceId), { headers: authHdrs() });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.url) { window.location.href = d.url; return; }
-      setNote(d.detail || `Could not start the ${i.name} connection.`);
-    } catch {
-      setNote('Could not reach the server. Please try again.');
-    }
-    setBusy(null);
-  };
-
-  const doDisconnect = async (i: typeof INTEGRATIONS[number]) => {
-    if (!workspaceId || !i.disconnectPath) return;
-    if (!window.confirm(`Disconnect ${i.name}?\n\n${i.disconnectWarning || ''}\n\nYou can reconnect at any time.`)) return;
-    setBusy(i.key); setNote(null);
-    try {
-      const r = await fetch(i.disconnectPath(workspaceId), {
-        method: i.disconnectMethod || 'POST', headers: authHdrs(),
-      });
-      const d = await r.json().catch(() => ({}));
-      setNote(r.ok ? `${i.name} disconnected.` : (d.detail || `Could not disconnect ${i.name}.`));
-      if (r.ok) onRefresh();
-    } catch {
-      setNote('Could not reach the server. Please try again.');
-    }
-    setBusy(null);
-  };
-
-  if (!workspaceId) {
-    return <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>No workspace loaded yet.</p>;
-  }
-
-  return (
-    <>
-      {note && (
-        <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '8px', fontSize: '12.5px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-          {note}
-        </div>
-      )}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))', gap: '20px' }}>
-      {INTEGRATIONS.map((i) => {
-        const st = states[i.key];
-        const view = st && st !== 'error' ? st : null;
-        const connected = !!view && view.connected && !view.incomplete;
-        const warning = !!view && view.connected && !!view.incomplete;
-
-        const label = loading || !st ? 'Checking…'
-          : st === 'error' ? 'Status unavailable'
-          : warning ? 'Setup incomplete'
-          : connected ? 'Connected'
-          : view && view.configured ? 'Not connected'
-          : 'Not configured';
-
-        const sub = !view ? null
-          : warning ? view.incomplete
-          : connected ? view.detail
-          : view.configured ? null
-          : (i.unconfiguredHint || null);
-
-        const color = connected ? 'var(--success)' : warning ? 'var(--warning)' : 'var(--text-muted)';
-
-        return (
-          <div key={i.key} className="glow-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-            <div style={{ minWidth: 0 }}>
-              <h4 style={{ fontSize: '14px' }}>{i.name}</h4>
-              <span style={{ fontSize: '11px', color, display: 'block' }}>{label}</span>
-              {sub && (
-                <span title={sub} style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginTop: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '190px' }}>
-                  {sub}
-                </span>
-              )}
-              {/* One-click OAuth where the connector supports it; otherwise send the
-                  user to the tab that can collect the shop domain or site details. */}
-              {view && view.configured && !view.connected && (
-                i.authorizePath ? (
-                  <button
-                    onClick={() => startConnect(i)}
-                    disabled={busy === i.key}
-                    style={{ marginTop: '8px', background: 'var(--accent-glow)', border: '1px solid var(--accent)', borderRadius: '6px', padding: '5px 12px', cursor: busy === i.key ? 'default' : 'pointer', fontSize: '11.5px', fontWeight: 600, color: 'var(--accent)', opacity: busy === i.key ? 0.6 : 1 }}
-                  >
-                    {busy === i.key ? 'Opening…' : `Connect ${i.name}`}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => onConnect(i.connectTab)}
-                    style={{ marginTop: '6px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
-                  >
-                    Connect in {i.connectLabel} →
-                  </button>
-                )
-              )}
-
-              {/* A connector whose setup is unfinished needs a route to finish it. Shopify
-                  sits in exactly this state ("Blog not selected yet"): it counts as
-                  connected, so the Connect branch above is hidden, and before this there was
-                  nothing on the card to press. */}
-              {view && view.connected && view.incomplete && (
-                <button
-                  onClick={() => onConnect(i.connectTab)}
-                  style={{ marginTop: '6px', display: 'block', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
-                >
-                  Finish setup in {i.connectLabel} →
-                </button>
-              )}
-
-              {view && view.connected && i.disconnectPath && (
-                <button
-                  onClick={() => doDisconnect(i)}
-                  disabled={busy === i.key}
-                  style={{ marginTop: '8px', background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.35)', borderRadius: '6px', padding: '4px 10px', cursor: busy === i.key ? 'default' : 'pointer', fontSize: '11px', fontWeight: 600, color: '#ff4757', opacity: busy === i.key ? 0.6 : 1 }}
-                >
-                  {busy === i.key ? 'Working…' : 'Disconnect'}
-                </button>
-              )}
-
-              {/* GA4 has no grant of its own — it rides on the Search Console OAuth — so it
-                  has no disconnect endpoint to offer. Without this the card was connected
-                  with no control on it whatsoever. */}
-              {view && view.connected && !i.disconnectPath && (
-                <button
-                  onClick={() => onConnect(i.connectTab)}
-                  style={{ marginTop: '8px', display: 'block', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '10.5px', color: '#8B85FF' }}
-                >
-                  Manage in {i.connectLabel} →
-                </button>
-              )}
-            </div>
-            {connected ? <span className="badge-pulse success" />
-              : warning ? <span className="badge-pulse warning" />
-              : <span style={{ width: '8px', height: '8px', borderRadius: '50%', border: '1px solid var(--text-muted)', flexShrink: 0 }} />}
-          </div>
-        );
-      })}
-    </div>
-    </>
-  );
-}
-
 // node_update frames carry the pipeline that emitted them; agent_tasks rows are keyed by
 // agent_type. This maps one to the other so live node progress lands on the right card.
 const PIPELINE_TO_AGENT: Record<string, string> = {
@@ -585,8 +221,13 @@ export function BrandDashboard() {
      entries that Back has to chew through one at a time. */
   const [activeTab, setActiveTabState] = useState<NavigationTab>(() => {
     try {
-      const t = new URLSearchParams(window.location.search).get('tab');
-      return t && (VALID_TABS as readonly string[]).includes(t) ? (t as NavigationTab) : 'control';
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get('tab');
+      if (t && (VALID_TABS as readonly string[]).includes(t)) return t as NavigationTab;
+      // Returning from a connector sign-in (?meta=connected, ?github=error, ...): open the
+      // Integrations hub, which reports the outcome, instead of Home, which said nothing.
+      if (['meta', 'gads', 'github', 'shopify', 'wordpress'].some(k => params.has(k))) return 'integrations';
+      return 'control';
     } catch {
       return 'control';
     }
@@ -1654,7 +1295,9 @@ export function BrandDashboard() {
       return;
     }
 
-    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+    // The server returns the key that pairs with its own secret, so a test key on the
+    // frontend can never meet a live secret on the backend. The env var is only a fallback.
+    const rzpKey = order.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID;
     if (!rzpKey || rzpKey === 'rzp_test_placeholder') {
       alert("Payment gateway is not configured. Please contact support.");
       return;
@@ -1687,7 +1330,7 @@ export function BrandDashboard() {
           alert(`Top-up successful! Active Credits: ${curr === 'USD' ? '$' + result.balance : '₹' + Math.round(result.balance * 83).toLocaleString()}`);
         } catch (err: any) {
           console.error("Payment verification failed:", err);
-          alert("We couldn't confirm your payment. If any amount was deducted, it will be refunded automatically. Please contact support if this persists.");
+          alert("We couldn't confirm your payment yet. If money was deducted, it will be credited to your account automatically once Razorpay confirms it (usually within a few minutes). Contact support if it does not appear.");
         }
       },
       theme: {
@@ -2872,21 +2515,13 @@ export function BrandDashboard() {
           )}
 
           {activeTab === 'integrations' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div>
-                <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>Integrations Hub</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Live connection status for every platform this workspace can publish to or pull data from.
-                </p>
-              </div>
-              <IntegrationsHub
-                workspaceId={workspaceId}
-                onConnect={setActiveTab}
-                status={connectorStatus}
-                statusFailed={connectorStatusFailed}
-                onRefresh={refreshConnectorStatus}
-              />
-            </div>
+            <WorkspaceIntegrations
+              workspaceId={workspaceId}
+              status={connectorStatus}
+              statusFailed={connectorStatusFailed}
+              onRefresh={refreshConnectorStatus}
+              onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
+            />
           )}
 
           {activeTab === 'settings' && (

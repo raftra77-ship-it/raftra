@@ -93,11 +93,18 @@ class ConnectionManager:
 
     async def broadcast(self, message: str, workspace_id: Optional[int] = None):
         # Resolve the target workspace: explicit arg wins, else the running
-        # pipeline's context. If it's still unknown, this is a genuinely global
-        # system message (heartbeat/startup) - those never carry tenant data.
+        # pipeline's context.
         ws_id = workspace_id if workspace_id is not None else current_workspace_id.get()
+        if ws_id is None:
+            # Fail closed. Every caller of this is a pipeline emitting tenant data (agent logs,
+            # node updates, generated creatives, audit results); none sends a global message.
+            # This used to deliver an unscoped frame to EVERY connected user on the platform,
+            # so one pipeline that forgot to set current_workspace_id would leak one brand's
+            # work to all others. Dropping it loses a live progress line, never data.
+            print("[ws] dropped a broadcast with no workspace scope: %s" % message[:120])
+            return
         for conn in list(self.active_connections):
-            if ws_id is not None and ws_id not in conn.workspaces:
+            if ws_id not in conn.workspaces:
                 continue
             try:
                 await conn.ws.send_text(message)

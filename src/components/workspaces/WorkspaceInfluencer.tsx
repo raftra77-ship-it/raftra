@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, AlertTriangle, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2, ArrowUpDown } from 'lucide-react';
+import { Search, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
 import parsedCreatorsData from '../../data/influencers_parsed.json';
@@ -314,8 +314,11 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
 
     // Connect to backend WebSocket room
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-    const ws = new WebSocket(`${protocol}://${wsHost}/ws/chat/${roomKey}`);
+    // Dev: same origin (Vite proxies /ws). Production: VITE_WS_URL, because Vercel's
+    // rewrites do not proxy WebSocket upgrades.
+    const wsBase = (import.meta.env.VITE_WS_URL as string | undefined)?.replace(/\/$/, '')
+      || `${protocol}://${window.location.host}/ws`;
+    const ws = new WebSocket(`${wsBase}/chat/${roomKey}`);
     brandWsRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -501,8 +504,6 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
     // Recommended default: Sort by total Reach / Avg Views (High to Low)
     return parseReachNum(b.avgViews || '') - parseReachNum(a.avgViews || '');
   });
-
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!activeChat) return;

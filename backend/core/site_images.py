@@ -19,6 +19,7 @@ Two decisions worth stating:
 """
 import asyncio
 import io
+import os
 import re
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
@@ -78,9 +79,20 @@ def resolve_base(html: str, page_url: str) -> str:
 
 
 def _first_from_srcset(value: str) -> str:
-    """srcset is "a.jpg 400w, b.jpg 1200w" - take the LAST (largest) candidate."""
-    parts = [p.strip().split(" ")[0] for p in (value or "").split(",") if p.strip()]
-    return parts[-1] if parts else ""
+    """srcset is "a.jpg 400w, b.jpg 1200w" - take the largest candidate by its descriptor,
+    falling back to the last one. Order is only a convention; "big 2x, small 1x" is valid."""
+    best, best_size = "", -1.0
+    for part in (value or "").split(","):
+        bits = part.strip().split()
+        if not bits:
+            continue
+        try:
+            size = float(bits[1][:-1]) if len(bits) > 1 else 0.0
+        except ValueError:
+            size = 0.0
+        if size >= best_size:
+            best, best_size = bits[0], size
+    return best
 
 
 def collect_image_refs(html: str, base_url: str, limit: int = 60) -> List[dict]:
@@ -117,16 +129,126 @@ def collect_image_refs(html: str, base_url: str, limit: int = 60) -> List[dict]:
         if len(out) >= limit:
             break
 
+    def add(raw: str, context: str, alt: str = "") -> None:
+        raw = (raw or "").strip().strip("'\"")
+        if not raw or raw.startswith("data:") or len(out) >= limit or _JUNK_RE.search(raw):
+            return
+        absolute = urljoin(base_url, raw)
+        if urlparse(absolute).scheme not in ("http", "https"):
+            return
+        key = absolute.split("?")[0]
+        if key in seen:
+            return
+        seen.add(key)
+        out.append({"url": absolute, "alt": alt[:200], "context": context + " " + raw})
+
     # og:image is the brand's chosen representative picture, so keep it even if the page
     # never renders it in an <img>.
     m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']',
                   html, re.I)
     if m:
-        absolute = urljoin(base_url, m.group(1))
-        if absolute.split("?")[0] not in seen:
-            out.append({"url": absolute, "alt": "", "context": "og:image banner"})
+        add(m.group(1), "og:image banner")
+
+    # <picture><source srcset> carries the art-directed hero and product crops that the
+    # fallback <img> often points at a tiny placeholder for.
+    for m in re.finditer(r'<source\b[^>]*\bsrcset\s*=\s*["\']([^"\']+)["\']', html, re.I):
+        add(_first_from_srcset(m.group(1)), "picture source")
+
+    # Hero sections and banners are very often CSS backgrounds rather than <img> tags.
+    for m in re.finditer(r'background(?:-image)?\s*:\s*url\(\s*([^)]+?)\s*\)', html, re.I):
+        add(m.group(1), "background banner")
+
+    # Product JSON-LD lists the catalogue photography even when the gallery is lazy-loaded
+    # by script and absent from the markup.
+    for m in re.finditer(r'"image"\s*:\s*(\[[^\]]*\]|"[^"]+")', html):
+        for u in re.findall(r'"(https?:[^"]+|/[^"]+)"', m.group(1)):
+            add(u.replace("\\/", "/"), "product jsonld")
 
     return out
+
+
+_BUNDLE_IMG_RE = re.compile(
+    r'["\'`]((?:https?:)?//[^"\'`\s]+?\.(?:png|jpe?g|webp|gif|avif)|'
+    r'/[^"\'`\s]*?\.(?:png|jpe?g|webp|gif|avif))(?:\?[^"\'`\s]*)?["\'`]', re.I)
+
+
+async def _bundle_image_refs(client, html: str, url: str, limit: int) -> List[dict]:
+    """Image paths referenced inside a site's own JavaScript bundles.
+
+    Bundlers rewrite `import hero from './hero.png'` to a string like "/assets/hero-3f2a.png"
+    in the built JS, so this finds images on every route of an SPA without rendering each
+    one. Only same-site scripts are read; third-party SDKs are not the brand's assets.
+    """
+    base = resolve_base(html, url)
+    host = (urlparse(base).netloc or "").lower()
+    refs, seen = [], set()
+    scripts = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html or "", re.I)
+    for src in scripts[:6]:
+        script_url = urljoin(base, src)
+        if (urlparse(script_url).netloc or "").lower() != host:
+            continue
+        try:
+            r = await client.get(script_url, timeout=25)
+            if r.status_code != 200 or len(r.content) > 8 * 1024 * 1024:
+                continue
+        except Exception:
+            continue
+        for m in _BUNDLE_IMG_RE.finditer(r.text):
+            raw = m.group(1)
+            if _JUNK_RE.search(raw):
+                continue
+            absolute = urljoin(base, raw)
+            key = absolute.split("?")[0]
+            if key in seen or urlparse(absolute).scheme not in ("http", "https"):
+                continue
+            seen.add(key)
+            refs.append({"url": absolute, "alt": "", "context": "bundle " + raw})
+            if len(refs) >= limit:
+                return refs
+    return refs
+
+
+async def _store_feed_refs(client, url: str, limit: int) -> List[dict]:
+    """Product photography from a store's public catalogue feed, when it has one.
+
+    Shopify (/products.json) and WooCommerce (Store API) both publish every product image
+    without authentication. On a D2C store that is the bulk of the brand's photography,
+    and most of it is never on the handful of pages a crawl can afford to open.
+    """
+    origin = "{0.scheme}://{0.netloc}".format(urlparse(url))
+    refs: List[dict] = []
+    feeds = (
+        ("%s/products.json?limit=250" % origin, "shopify"),
+        ("%s/wp-json/wc/store/v1/products?per_page=100" % origin, "woocommerce"),
+    )
+    for feed, kind in feeds:
+        try:
+            r = await client.get(feed, timeout=20)
+            if r.status_code != 200 or "json" not in (r.headers.get("content-type") or ""):
+                continue
+            data = r.json()
+        except Exception:
+            continue
+        products = data.get("products", []) if kind == "shopify" and isinstance(data, dict) \
+            else (data if isinstance(data, list) else [])
+        for p in products:
+            if not isinstance(p, dict):
+                continue
+            title = str(p.get("title") or p.get("name") or "").strip()
+            for img in p.get("images") or []:
+                src = img.get("src") if isinstance(img, dict) else None
+                if src:
+                    # Shopify states each image's size, so these need no download to
+                    # measure. WooCommerce does not, and they are probed like page images.
+                    refs.append({"url": urljoin(origin, src), "alt": title[:200],
+                                 "context": "product " + title,
+                                 "width": int(img.get("width") or 0),
+                                 "height": int(img.get("height") or 0)})
+                    if len(refs) >= limit:
+                        return refs
+        if refs:
+            break
+    return refs
 
 
 def categorise(context: str, width: int, height: int) -> str:
@@ -211,6 +333,14 @@ def _image_page_links(html: str, base_url: str, limit: int) -> List[str]:
     return candidates[:limit]
 
 
+# Wall-clock budget for one harvest. In production the browser reaches this API through
+# Vercel's /api rewrite, which gives up after 120 seconds (ROUTER_EXTERNAL_TARGET_ERROR),
+# and a sleeping Render instance can spend 30-60 of those waking up. A slow origin used to
+# be able to run the harvest past that: the user saw an error while the rows were still
+# written. Past the budget the harvest stops starting new work and returns what it has.
+HARVEST_BUDGET_S = float(os.getenv("HARVEST_BUDGET_SECONDS", "55"))
+
+
 async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[dict]:
     """Fetch a site and return its usable images with real dimensions and a category.
 
@@ -218,6 +348,12 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[di
     better outcome than an onboarding run that dies because one CDN was slow.
     """
     import httpx
+    import time
+
+    started = time.monotonic()
+
+    def over_budget() -> bool:
+        return time.monotonic() - started > HARVEST_BUDGET_S
 
     if not url:
         return []
@@ -241,14 +377,46 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[di
 
             refs = collect_image_refs(html, url, limit=max_images * 3)
 
+            # A client-rendered site (React/Vite/Next SPA) ships an empty <div id="root">,
+            # so the fetched HTML has no images at all. Render it like a browser, and read
+            # the JS bundles, which reference every image the app imports on any route.
+            if len(refs) < 5:
+                known = {r["url"].split("?")[0] for r in refs}
+                try:
+                    from core import browser_render
+                    if browser_render.is_available():
+                        rendered = await browser_render.render(url, screenshot=False)
+                        if rendered.get("html"):
+                            html = rendered["html"]
+                            for ref in collect_image_refs(html, url, limit=max_images * 3):
+                                if ref["url"].split("?")[0] not in known:
+                                    known.add(ref["url"].split("?")[0])
+                                    refs.append(ref)
+                except Exception as e:
+                    print("[site_images] render fallback failed for %s: %s" % (url, e))
+                for ref in await _bundle_image_refs(client, page.text, url, max_images * 2):
+                    if ref["url"].split("?")[0] not in known:
+                        known.add(ref["url"].split("?")[0])
+                        refs.append(ref)
+
+            # Catalogue feed after the homepage's own images: the homepage carries the
+            # banners and logo, the feed carries the product photography, and a cap reached
+            # on feed images alone would leave the vault with no banners at all.
+            feed_refs = await _store_feed_refs(client, url, max_images * 2)
+            if feed_refs:
+                known = {r["url"].split("?")[0] for r in refs}
+                refs = refs + [r for r in feed_refs if r["url"].split("?")[0] not in known]
+
             # max_pages was accepted but never used, so a harvest only ever read the
             # landing page. On a store that is the hero banner and little else - the
             # product photography lives on the collection and product pages the homepage
             # links to, which is most of what a brand would expect in its vault.
-            if max_pages > 1:
+            # A store feed already lists the catalogue, so crawling product pages for the
+            # same photos would only add slow duplicates at other sizes.
+            if max_pages > 1 and len(feed_refs) < max_images:
                 seen_refs = {r["url"] for r in refs}
                 for link in _image_page_links(html, url, max_pages - 1):
-                    if len(refs) >= max_images * 3:
+                    if len(refs) >= max_images * 3 or over_budget():
                         break
                     try:
                         sub = await client.get(link)
@@ -262,6 +430,20 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[di
                             refs.append(ref)
 
             async def one(ref: dict) -> Optional[dict]:
+                w, h = ref.get("width") or 0, ref.get("height") or 0
+                if w and h:
+                    if w < MIN_DIMENSION or h < MIN_DIMENSION:
+                        return None
+                    ext = urlparse(ref["url"]).path.rsplit(".", 1)[-1].upper()
+                    fmt = "JPEG" if ext in ("JPG", "JPEG") else ext
+                    return {
+                        "source_url": ref["url"], "alt": ref["alt"],
+                        "category": categorise(ref["context"], w, h),
+                        "width": w, "height": h,
+                        "mime_type": "image/%s" % fmt.lower(),
+                        "format": fmt, "file_size_kb": None,
+                        "filename": (urlparse(ref["url"]).path.rsplit("/", 1)[-1] or "image")[:120],
+                    }
                 try:
                     r = await client.get(ref["url"], timeout=20)
                     if r.status_code != 200:
@@ -292,19 +474,40 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[di
                 except Exception:
                     return None
 
-            # Bounded concurrency: 6 at a time keeps a 24-image harvest to a few seconds
+            # Each candidate costs a download, and many are rejected (too small, duplicates),
+            # so fetch a bounded surplus rather than every reference the pages listed.
+            refs = refs[:max_images * 3]
+
+            # Bounded concurrency: 8 at a time keeps a full harvest to well under a minute
             # without hammering the origin.
-            sem = asyncio.Semaphore(6)
+            sem = asyncio.Semaphore(8)
 
             async def guarded(ref):
                 async with sem:
                     return await one(ref)
 
-            for item in await asyncio.gather(*(guarded(r) for r in refs)):
-                if item:
+            # In batches, so the harvest stops downloading as soon as the cap is met rather
+            # than fetching every surplus candidate and discarding the results.
+            seen_bytes = set()
+            batch = 24
+            for i in range(0, len(refs), batch):
+                if over_budget():
+                    print("[site_images] harvest of %s hit its %.0fs budget with %d images"
+                          % (url, HARVEST_BUDGET_S, len(results)))
+                    break
+                for item in await asyncio.gather(*(guarded(r) for r in refs[i:i + batch])):
+                    if not item:
+                        continue
+                    # The same image under two CDN size variants measures identically.
+                    sig = (item["filename"].split("?")[0], item["width"], item["height"])
+                    if sig in seen_bytes:
+                        continue
+                    seen_bytes.add(sig)
                     results.append(item)
                     if len(results) >= max_images:
                         break
+                if len(results) >= max_images:
+                    break
     except SiteUnreachable:
         # Surfaced to the caller: "we could not read your site" is actionable, and the
         # empty-vault fallback below would report it as "no images big enough".

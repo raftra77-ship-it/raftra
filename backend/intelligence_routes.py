@@ -360,8 +360,8 @@ def search_assets(workspace_id: int, q: str, limit: int = 12,
 
 
 @router.post("/{workspace_id}/assets/harvest")
-async def harvest_site_assets(workspace_id: int, max_images: int = 24,
-                              max_pages: int = 6,
+async def harvest_site_assets(workspace_id: int, max_images: int = 150,
+                              max_pages: int = 20,
                               db: Session = Depends(database.get_db),
                               current_user: models.User = Depends(auth.get_current_user)):
     """Pull every usable image off the workspace's own website into the vault.
@@ -378,6 +378,10 @@ async def harvest_site_assets(workspace_id: int, max_images: int = 24,
                             detail="This workspace has no website URL set, so there is nothing to harvest.")
 
     from core import site_images
+    # Clamped: every candidate is downloaded to measure it, and the API runs on a small
+    # instance, so "all images" is bounded at a size a single request can finish.
+    max_images = max(1, min(max_images, 300))
+    max_pages = max(1, min(max_pages, 40))
     try:
         found = await site_images.harvest(ws.company_url, max_images=max_images,
                                           max_pages=max_pages)
@@ -425,64 +429,139 @@ async def harvest_site_assets(workspace_id: int, max_images: int = 24,
 @router.post("/{workspace_id}/assets/import-meta")
 async def import_meta_ad_creatives(
     workspace_id: int,
+    country: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """Pull the brand's own published ad creatives from its connected Meta ad account.
+    """Pull the brand's ad creatives from Meta into the vault, from every source available.
 
-    Mirrors the site harvest above — same MediaAsset rows, same replace-don't-append rule,
-    scoped to `source == "meta"` so it never touches scraped, Drive or uploaded assets.
+    1. The connected ad account (Marketing API) - the brand's own creatives, drafts and
+       paused ads included. Needs Meta connected with an ad account picked.
+    2. The public Ad Library - the brand's own ACTIVE ads, via the Apify actor. Needs
+       APIFY_TOKEN; the official /ads_archive API returns no images, and outside the EU no
+       commercial ads (see core/ad_library.py).
 
-    This reads the Marketing API for an account the workspace owns and has authorised, NOT
-    the public Ad Library. See core/meta_ads.list_ad_creatives for why that distinction is
-    load-bearing: the Ad Library API only serves commercial ads in the EU, so for an
-    India-based brand it would return nothing at all.
+    Either one is enough. Rows are replaced, not appended, scoped to `source == "meta"`.
+    Images are COPIED into our storage: Meta serves creatives from signed fbcdn URLs that
+    expire within days, so storing the link would leave the vault full of broken pictures.
     """
-    ws = _require_workspace(workspace_id, db, current_user)
+    import os
+    import httpx
+    from fastapi.concurrency import run_in_threadpool
+    import storage
+    from core import ad_library, meta_ads
 
+    ws = _require_workspace(workspace_id, db, current_user)
     conn = (db.query(models.MetaAdsConnection)
               .filter(models.MetaAdsConnection.workspace_id == workspace_id)
               .first())
-    if not conn or not conn.access_token:
-        raise HTTPException(status_code=400,
-                            detail="Meta is not connected for this workspace. Connect it under Integrations first.")
-    if not conn.ad_account_id:
-        raise HTTPException(status_code=400,
-                            detail="No Meta ad account is selected. Pick one under Integrations, then try again.")
+    account_ready = bool(conn and conn.access_token and conn.ad_account_id)
+    library_ready = bool(os.getenv("APIFY_TOKEN"))
+    if not account_ready and not library_ready:
+        raise HTTPException(status_code=400, detail=(
+            "Connect Meta under Integrations and pick an ad account to import your ad "
+            "creatives. (Importing from the public Ad Library also needs APIFY_TOKEN set on "
+            "the server.)"))
 
-    from core import meta_ads
-    try:
-        creatives = await meta_ads.list_ad_creatives(conn)
-    except Exception as e:
-        # 502 rather than 500: the failure is Meta's side of the call, and the message is
-        # the only thing that tells the user whether to re-authorise or just retry.
-        raise HTTPException(status_code=502, detail="Could not read Meta ad creatives: %s" % e)
+    found: List[dict] = []
+    errors: List[str] = []
+    sources: List[str] = []
 
-    if not creatives:
-        return {"status": "success", "imported": 0, "replaced": 0,
-                "note": "The connected ad account has no image creatives yet."}
+    if account_ready:
+        try:
+            for c in await meta_ads.list_ad_creatives(conn):
+                found.append({"url": c["url"], "name": c["name"],
+                              "ref": "https://business.facebook.com/adsmanager/manage/ads?act=%s"
+                                     % conn.ad_account_id,
+                              "tag": "ad_account"})
+            sources.append("ad account")
+        except Exception as e:
+            errors.append("Ad account: %s" % e)
+
+    if not library_ready:
+        errors.append("The public Ad Library was not searched: set APIFY_TOKEN on the server to enable it.")
+    else:
+        from core.intel_sync import DEFAULT_COUNTRY
+        brand = (ws.name or "").strip() or (ws.company_url or "")
+        try:
+            for c in await ad_library.fetch_brand_ad_images(
+                    brand, (country or DEFAULT_COUNTRY).upper(), limit=50):
+                found.append({"url": c["url"], "name": c["name"],
+                              "ref": c["library_url"], "tag": "ad_library"})
+            sources.append("Ad Library")
+        except Exception as e:
+            errors.append("Ad Library: %s" % e)
+
+    if not sources:
+        # Every configured source failed; say why rather than reporting "0 imported".
+        raise HTTPException(status_code=502,
+                            detail="Could not read Meta ad creatives. " + " ".join(errors))
+
+    # Same image from both sources (an active ad on the connected account) is stored once.
+    unique, seen = [], set()
+    for item in found:
+        key = item["url"].split("?")[0]
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    unique = unique[:120]
+
+    stored: List[dict] = []
+    failed = 0
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for item in unique:
+            try:
+                r = await client.get(item["url"])
+                ctype = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
+                if r.status_code != 200 or not ctype.startswith("image/") or not r.content:
+                    failed += 1
+                    continue
+                ext = {"image/png": "png", "image/webp": "webp", "image/gif": "gif"}.get(ctype, "jpg")
+                url = await run_in_threadpool(
+                    storage.store_bytes, r.content, "meta-creative.%s" % ext, ctype,
+                    workspace_id, None, "assets")
+                stored.append({**item, "stored_url": url, "mime": ctype,
+                               "format": ext.upper(), "kb": round(len(r.content) / 1024, 1),
+                               "bytes": r.content})
+            except Exception:
+                failed += 1
+
+    if not stored:
+        note = ("No image creatives found in the %s." % " or ".join(sources)
+                if not unique else "Found %d creatives but none could be downloaded." % len(unique))
+        if errors:
+            note += " " + " ".join(errors)
+        return {"status": "success", "imported": 0, "replaced": 0, "note": note}
 
     replaced = (db.query(models.MediaAsset)
                   .filter(models.MediaAsset.workspace_id == workspace_id,
                           models.MediaAsset.source == "meta")
                   .delete(synchronize_session=False))
 
-    for item in creatives:
+    from core import site_images
+    for item in stored:
+        w, h, _ = site_images._probe(item.pop("bytes"))
         db.add(models.MediaAsset(
             workspace_id=workspace_id,
             category="ad_creative",
             source="meta",
             filename=item["name"],
-            storage_url=item["url"],
-            # Where it came from, so the vault can link back to the account rather than
-            # showing a creative with no provenance.
-            source_url=f"https://business.facebook.com/adsmanager/manage/ads?act={conn.ad_account_id}",
+            storage_url=item["stored_url"],
+            # Where it came from, so the vault can link back rather than showing a creative
+            # with no provenance.
+            source_url=item["ref"] or None,
             alt_text=item["name"],
-            tags=["ad_creative", "meta"],
+            mime_type=item["mime"],
+            file_format=item["format"],
+            width=w or None,
+            height=h or None,
+            file_size_kb=item["kb"],
+            tags=["ad_creative", "meta", item["tag"]],
         ))
     db.commit()
 
-    return {"status": "success", "imported": len(creatives), "replaced": replaced}
+    return {"status": "success", "imported": len(stored), "replaced": replaced,
+            "sources": sources, "failed": failed, "warnings": errors}
 
 
 class ImportedAsset(BaseModel):

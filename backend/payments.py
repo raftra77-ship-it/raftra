@@ -1,31 +1,69 @@
-import razorpay
-import os
+"""Razorpay payments: Pro subscription checkout and credit top-ups.
+
+Flow: POST /create-order records a Transaction (amount and purpose decided HERE, never by
+the client) -> Razorpay Checkout in the browser -> POST /verify-payment checks the signature
+and applies the purchase. The `payment.captured` / `order.paid` webhooks apply the same
+purchase independently, so a customer who pays and closes the tab before the browser calls
+verify-payment is still credited.
+
+Production rules this module enforces:
+* No default keys or secrets. A missing RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET answers 503
+  ("payments are not configured") instead of calling Razorpay with placeholder credentials,
+  and a missing RAZORPAY_WEBHOOK_SECRET refuses webhooks - with a guessable default secret,
+  anyone could sign a forged event.
+* Applying a purchase is idempotent (one conditional UPDATE), so verify-payment and the webhook (or two
+  verify calls) racing on one order credit it exactly once.
+* The public key id the browser opens Checkout with comes from this server, so the frontend
+  can never pair a test key with a live secret or the other way round.
+"""
+import json
 import logging
+import os
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
-import jwt
 
-import auth, database, models, schemas
+import jwt
+import razorpay
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+import auth, database, models
 
 logger = logging.getLogger("raftra.payments")
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "test_key")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "test_secret")
-
-# Initialize Razorpay Client
-client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-
-SUBSCRIPTION_PRICE_INR = 2000.0
+SUBSCRIPTION_PRICE_INR = float(os.getenv("SUBSCRIPTION_PRICE_INR", "2000"))
 
 # billing_balance is tracked in USD-equivalent credits (see BrandDashboard.tsx), but
 # Razorpay always charges in INR. This must match the $1 = ₹83 rate hardcoded on the
 # frontend (BrandDashboard.tsx), which is what amount_inr was derived from.
 USD_TO_INR_RATE = 83
+
+# Razorpay's own minimum is ₹1. The maximum is ours: a typo'd or tampered amount should be
+# refused here, not discovered on a card statement.
+MIN_TOPUP_INR = 1.0
+MAX_TOPUP_INR = float(os.getenv("MAX_TOPUP_INR", "500000"))
+
+_PLACEHOLDERS = {"", "test_key", "test_secret", "rzp_test_placeholder"}
+
+
+def _keys():
+    key_id = (os.getenv("RAZORPAY_KEY_ID") or "").strip()
+    secret = (os.getenv("RAZORPAY_KEY_SECRET") or "").strip()
+    if key_id in _PLACEHOLDERS or secret in _PLACEHOLDERS:
+        return None, None
+    return key_id, secret
+
+
+def _client() -> razorpay.Client:
+    key_id, secret = _keys()
+    if not key_id:
+        raise HTTPException(status_code=503,
+                            detail="Payments are not configured on the server. Please contact support.")
+    return razorpay.Client(auth=(key_id, secret))
 
 
 def get_optional_user(token: str = Depends(auth.oauth2_scheme), db: Session = Depends(database.get_db)):
@@ -56,24 +94,84 @@ class VerifyPaymentRequest(BaseModel):
     email: Optional[str] = None
 
 
+def _apply_paid(db: Session, order_id: str, payment_id: Optional[str], source: str) -> Optional[models.Transaction]:
+    """Mark the order paid and grant what was bought - once.
+
+    verify-payment and the webhook routinely arrive together for one order, and Razorpay can
+    deliver a webhook more than once. A read-then-write check lets two of them both see
+    "created" and both grant the credit. Instead the status flip is one conditional UPDATE:
+    the database lets exactly one caller change "created"/"failed" to "paid", and only that
+    caller grants. The balance is incremented in SQL for the same reason. Returns the
+    transaction (paid either now or earlier), or None if the order is unknown.
+    """
+    tx = (db.query(models.Transaction)
+            .filter(models.Transaction.razorpay_order_id == order_id).first())
+    if not tx:
+        return None
+
+    won = (db.query(models.Transaction)
+             .filter(models.Transaction.id == tx.id, models.Transaction.status != "paid")
+             .update({models.Transaction.status: "paid"}, synchronize_session=False))
+    if not won:
+        db.commit()
+        db.refresh(tx)
+        return tx
+
+    if payment_id:
+        (db.query(models.Transaction)
+           .filter(models.Transaction.id == tx.id, models.Transaction.razorpay_payment_id.is_(None))
+           .update({models.Transaction.razorpay_payment_id: payment_id}, synchronize_session=False))
+    if tx.purpose == "topup":
+        (db.query(models.User).filter(models.User.id == tx.owner_id)
+           .update({models.User.billing_balance:
+                    func.coalesce(models.User.billing_balance, 0) + tx.amount / USD_TO_INR_RATE},
+                   synchronize_session=False))
+    else:
+        (db.query(models.User).filter(models.User.id == tx.owner_id)
+           .update({models.User.payment_status: "paid"}, synchronize_session=False))
+    db.commit()
+    db.refresh(tx)
+    logger.info("Payment applied via %s: order=%s user=%s purpose=%s amount=%s",
+                source, order_id, tx.owner_id, tx.purpose, tx.amount)
+    return tx
+
+
+@router.get("/config")
+def payments_config():
+    """Whether checkout can run, and the public key id to open it with."""
+    key_id, _ = _keys()
+    return {"enabled": bool(key_id), "key_id": key_id or None,
+            "mode": ("live" if key_id.startswith("rzp_live_") else "test") if key_id else None}
+
+
 @router.post("/create-order")
 def create_order(
     payload: CreateOrderRequest,
     db: Session = Depends(database.get_db),
     current_user: Optional[models.User] = Depends(get_optional_user),
 ):
+    client = _client()
+    key_id, _ = _keys()
+
+    if payload.purpose not in ("subscription", "topup"):
+        raise HTTPException(status_code=400, detail="Unknown payment purpose.")
+
     user = current_user
     if user is None:
-        if not payload.email:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        user = db.query(models.User).filter(models.User.email == payload.email).first()
+        # The logged-out pricing page can buy the subscription for an existing account by
+        # email. Top-ups change a balance, so they require the account to be signed in.
+        if payload.purpose != "subscription" or not payload.email:
+            raise HTTPException(status_code=401, detail="Please sign in to continue.")
+        user = (db.query(models.User)
+                  .filter(models.User.email == payload.email.strip().lower()).first())
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=404, detail="No account found for that email.")
 
     if payload.purpose == "topup":
-        if not payload.amount_inr or payload.amount_inr <= 0:
-            raise HTTPException(status_code=400, detail="amount_inr is required for topup orders")
-        amount_rupees = payload.amount_inr
+        amount_rupees = round(float(payload.amount_inr or 0), 2)
+        if not (MIN_TOPUP_INR <= amount_rupees <= MAX_TOPUP_INR):
+            raise HTTPException(status_code=400,
+                                detail=f"Top-up amount must be between ₹{MIN_TOPUP_INR:,.0f} and ₹{MAX_TOPUP_INR:,.0f}.")
     else:
         amount_rupees = SUBSCRIPTION_PRICE_INR
 
@@ -83,12 +181,21 @@ def create_order(
         order = client.order.create(dict(
             amount=order_amount_paise,
             currency="INR",
-            receipt=f"{payload.purpose}_{user.id}_{int(datetime.utcnow().timestamp())}",
+            # Razorpay caps receipt at 40 characters.
+            receipt=f"{payload.purpose[:3]}_{user.id}_{int(datetime.utcnow().timestamp())}"[:40],
             payment_capture=1,
             notes={"purpose": payload.purpose, "user_id": str(user.id)},
         ))
     except Exception as e:
+        # print as well as log: this logger has no handler configured, so the reason for a
+        # failed checkout never reached the server output - which is how revoked keys went
+        # unnoticed.
+        print(f"[payments] Razorpay order creation failed for user {user.id}: {e}")
         logger.error(f"Razorpay order creation failed for user {user.id}: {e}")
+        if "authentication failed" in str(e).lower():
+            # Our credentials are wrong, not the customer's card: retrying cannot help.
+            raise HTTPException(status_code=503,
+                                detail="Payments are temporarily unavailable. Please contact support.")
         raise HTTPException(status_code=502, detail="Unable to start payment. Please try again.")
 
     # Persist the order server-side (amount + purpose) so verify-payment can trust
@@ -104,21 +211,19 @@ def create_order(
     db.add(tx)
     db.commit()
 
-    return {"id": order["id"], "amount": order["amount"], "currency": order["currency"]}
+    return {"id": order["id"], "amount": order["amount"], "currency": order["currency"],
+            # The browser opens Checkout with this key, so key and secret are always a pair.
+            "key_id": key_id}
 
 
 @router.post("/verify-payment")
 def verify_payment(payload: VerifyPaymentRequest, db: Session = Depends(database.get_db)):
+    client = _client()
     tx = db.query(models.Transaction).filter(
         models.Transaction.razorpay_order_id == payload.razorpay_order_id
     ).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Order not found")
-
-    if tx.status == "paid":
-        # Already processed — respond the same way so a duplicate client call is harmless.
-        user = tx.owner
-        return {"status": "success", "balance": user.billing_balance, "payment_status": user.payment_status}
 
     try:
         client.utility.verify_payment_signature({
@@ -127,61 +232,83 @@ def verify_payment(payload: VerifyPaymentRequest, db: Session = Depends(database
             'razorpay_signature': payload.razorpay_signature,
         })
     except Exception as e:
+        print(f"[payments] signature verification failed for order {payload.razorpay_order_id}: {e}")
         logger.warning(f"Razorpay signature verification failed for order {payload.razorpay_order_id}: {e}")
-        tx.status = "failed"
-        db.commit()
+        # Not marked failed: an invalid signature proves nothing about the real payment, and
+        # anyone holding the order id could otherwise flip a genuine order to "failed".
         raise HTTPException(status_code=400, detail="Payment verification failed")
 
+    tx = _apply_paid(db, payload.razorpay_order_id, payload.razorpay_payment_id, "verify-payment")
     user = tx.owner
-    tx.razorpay_payment_id = payload.razorpay_payment_id
-    tx.status = "paid"
-
-    if tx.purpose == "topup":
-        user.billing_balance += tx.amount / USD_TO_INR_RATE
-    else:
-        user.payment_status = "paid"
-
-    db.commit()
     db.refresh(user)
-
-    logger.info(f"Payment verified for user {user.id}: purpose={tx.purpose} amount={tx.amount}")
-
     return {"status": "success", "balance": user.billing_balance, "payment_status": user.payment_status}
 
 
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(database.get_db)):
-    # Verify signature
-    webhook_secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "test_secret")
-    webhook_signature = request.headers.get("X-Razorpay-Signature")
-    payload = await request.body()
+    webhook_secret = (os.getenv("RAZORPAY_WEBHOOK_SECRET") or "").strip()
+    if webhook_secret in _PLACEHOLDERS:
+        # Refuse rather than verify against a guessable secret. Razorpay retries non-2xx
+        # deliveries, so events are not lost while this is being configured.
+        logger.error("Razorpay webhook received but RAZORPAY_WEBHOOK_SECRET is not set.")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
 
+    body = await request.body()
+    signature = request.headers.get("X-Razorpay-Signature") or ""
     try:
-        client.utility.verify_webhook_signature(payload.decode('utf-8'), webhook_signature, webhook_secret)
+        razorpay.Utility(None).verify_webhook_signature(body.decode("utf-8"), signature, webhook_secret)
     except Exception as e:
         logger.warning(f"Razorpay webhook signature verification failed: {e}")
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
-    data = await request.json()
-    event = data.get("event")
+    try:
+        data = json.loads(body)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    # Handle subscription events
-    if event == "subscription.charged":
-        sub_id = data['payload']['subscription']['entity']['id']
-        sub = db.query(models.Subscription).filter(models.Subscription.razorpay_subscription_id == sub_id).first()
-        if sub:
-            sub.status = "active"
-            sub.current_period_end = datetime.fromtimestamp(data['payload']['subscription']['entity']['current_end'])
-            # Reset usage limits
-            sub.usage_campaigns = 0
-            sub.usage_ai_generations = 0
-            db.commit()
-    elif event == "subscription.halted" or event == "subscription.cancelled":
-        sub_id = data['payload']['subscription']['entity']['id']
-        sub = db.query(models.Subscription).filter(models.Subscription.razorpay_subscription_id == sub_id).first()
-        if sub:
-            sub.status = "canceled"
-            db.commit()
+    event = data.get("event") or ""
+    entity = lambda kind: (((data.get("payload") or {}).get(kind) or {}).get("entity") or {})
+
+    # From here on, a malformed or unrelated event is acknowledged with 200. A 5xx would make
+    # Razorpay retry it for 24 hours and eventually disable the webhook.
+    try:
+        if event in ("payment.captured", "order.paid"):
+            payment = entity("payment")
+            order_id = payment.get("order_id") or entity("order").get("id")
+            if order_id:
+                if not _apply_paid(db, order_id, payment.get("id"), f"webhook:{event}"):
+                    logger.info("Webhook %s for unknown order %s ignored", event, order_id)
+        elif event == "payment.failed":
+            order_id = entity("payment").get("order_id")
+            tx = (db.query(models.Transaction)
+                    .filter(models.Transaction.razorpay_order_id == order_id).first()) if order_id else None
+            # A failed attempt does not close the order - the customer can retry on it - so
+            # only an order that never succeeded is marked.
+            if tx and tx.status == "created":
+                tx.status = "failed"
+                db.commit()
+        elif event == "subscription.charged":
+            sub_entity = entity("subscription")
+            sub = db.query(models.Subscription).filter(
+                models.Subscription.razorpay_subscription_id == sub_entity.get("id")).first()
+            if sub:
+                sub.status = "active"
+                if sub_entity.get("current_end"):
+                    sub.current_period_end = datetime.utcfromtimestamp(sub_entity["current_end"])
+                sub.usage_campaigns = 0
+                sub.usage_ai_generations = 0
+                db.commit()
+        elif event in ("subscription.halted", "subscription.cancelled"):
+            sub = db.query(models.Subscription).filter(
+                models.Subscription.razorpay_subscription_id == entity("subscription").get("id")).first()
+            if sub:
+                sub.status = "canceled"
+                db.commit()
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Razorpay webhook %s could not be applied: %s", event, e)
+        # This one IS worth a retry: the event was genuine, applying it failed (e.g. DB down).
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
 
     return {"status": "success"}
 

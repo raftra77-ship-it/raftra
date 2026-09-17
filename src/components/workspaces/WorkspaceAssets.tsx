@@ -20,7 +20,8 @@ import {
   Image as ImageIcon,
   Sparkles,
   Layers,
-  FolderOpen
+  FolderOpen,
+  Megaphone
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import {
@@ -48,7 +49,7 @@ interface AssetItem {
    *  what it actually was - the URLs carry no extension to support that. */
   format: string;
   size: string;
-  source: 'generated' | 'scraped' | 'gdrive' | 'device';
+  source: 'generated' | 'scraped' | 'gdrive' | 'device' | 'meta';
   sourceUrl?: string;
   tag: string;
   /** Saved to the Ad Library (an approved creative) rather than left as a draft. */
@@ -217,9 +218,12 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     dimensions: a.dimensions || '—',
     format: (a.format === 'JPEG' ? 'JPG' : (a.format || 'PNG')) as AssetItem['format'],
     size: a.size_kb ? `${(a.size_kb / 1024).toFixed(2)} MB` : '—',
-    source: a.source === 'scraped' ? 'scraped' : a.source === 'gdrive' ? 'gdrive' : 'device',
+    source: a.source === 'scraped' ? 'scraped' : a.source === 'gdrive' ? 'gdrive'
+      : a.source === 'meta' ? 'meta' : 'device',
     sourceUrl: a.source_url || undefined,
-    tag: a.source === 'scraped' ? 'From your website' : 'Imported',
+    tag: a.source === 'scraped' ? 'From your website'
+      : a.source === 'meta' ? ((a.tags || []).includes('ad_library') ? 'Meta Ad Library' : 'Meta ad account')
+      : 'Imported',
   });
 
   const loadVault = React.useCallback(() => {
@@ -246,7 +250,7 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     setHarvesting(true);
     setVaultNote('');
     try {
-      const r = await fetch(`/api/workspaces/${workspaceId}/assets/harvest?max_images=24`, {
+      const r = await fetch(`/api/workspaces/${workspaceId}/assets/harvest?max_images=150&max_pages=20`, {
         method: 'POST', headers: authHeaders(),
       });
       const d = await r.json().catch(() => ({}));
@@ -260,29 +264,91 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     }
   };
 
+  /** Pulls the brand's ad creatives from Meta: the connected ad account and, when the
+   *  server has an Ad Library source configured, the brand's own active public ads. The
+   *  server copies each image, because Meta's image links expire within days. */
+  const [importingMeta, setImportingMeta] = useState(false);
+  const handleImportMeta = async () => {
+    if (!workspaceId) return;
+    setImportingMeta(true);
+    setVaultNote('');
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/assets/import-meta`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Meta import failed (${r.status})`);
+      const bits = [d.note || `Imported ${d.imported} Meta creative${d.imported === 1 ? '' : 's'}${d.sources?.length ? ` from your ${d.sources.join(' and ')}` : ''}.`];
+      if (d.failed) bits.push(`${d.failed} could not be downloaded.`);
+      if (d.warnings?.length) bits.push(d.warnings.join(' '));
+      setVaultNote(bits.join(' '));
+      loadVault();
+      if (d.imported) setActiveCategory('meta');
+    } catch (e) {
+      setVaultNote(e instanceof Error ? e.message : 'Could not import from Meta.');
+    } finally {
+      setImportingMeta(false);
+    }
+  };
+
+  /** Uploads device files to storage and records them in the vault, so they survive a
+   *  refresh. These used to be `blob:` URLs held in this tab and nothing else. */
+  const [uploading, setUploading] = useState(false);
+  const uploadFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (!workspaceId) {
+      setUploadNote('Open a workspace before uploading.');
+      return;
+    }
+    setUploading(true);
+    setUploadNote('');
+    const stored: { filename: string; url: string; category: string; source: string;
+                    mime_type?: string; file_format?: string; size_kb?: number }[] = [];
+    const failed: string[] = [];
+    for (const file of files) {
+      try {
+        const form = new FormData();
+        form.append('file', file);
+        const r = await fetch('/api/media/upload', { method: 'POST', headers: authHeaders(), body: form });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.url) throw new Error(d.detail || `upload failed (${r.status})`);
+        stored.push({
+          filename: file.name, url: d.url, category: 'product_shots', source: 'device',
+          mime_type: file.type || undefined,
+          file_format: file.name.split('.').pop()?.toUpperCase(),
+          size_kb: Math.round(file.size / 102.4) / 10,
+        });
+      } catch (err) {
+        failed.push(`${file.name}: ${err instanceof Error ? err.message : 'upload failed'}`);
+      }
+    }
+    try {
+      if (stored.length) {
+        const r = await fetch(`/api/workspaces/${workspaceId}/assets/import`, {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(stored),
+        });
+        if (!r.ok) throw new Error(`Could not save to the vault (${r.status})`);
+        loadVault();
+        setShowUploadModal(false);
+        setActiveCategory('device');
+      }
+      const bits: string[] = [];
+      if (stored.length) bits.push(`${stored.length} file${stored.length === 1 ? '' : 's'} uploaded to the vault.`);
+      if (failed.length) bits.push(`${failed.length} failed — ${failed.join('  •  ')}`);
+      setUploadNote(bits.join(' '));
+    } catch (err) {
+      setUploadNote(err instanceof Error ? err.message : 'Upload failed.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const newUploaded: AssetItem[] = Array.from(files).map((file, i) => ({
-      id: `device-${Date.now()}-${i}`,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      category: 'product',
-      url: URL.createObjectURL(file),
-      dimensions: 'Original Upload',
-      format: (file.name.split('.').pop()?.toUpperCase() as any) || 'PNG',
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      source: 'device',
-      tag: 'Device Upload'
-    }));
-
-    setAssets(prev => [...newUploaded, ...prev]);
-    setShowUploadModal(false);
-    // These are object URLs held in this tab, not uploads: nothing is sent anywhere, and
-    // they are gone on refresh. Saying "Successfully imported" implied a library that
-    // persisted them. Server-side storage needs SUPABASE_URL / SUPABASE_KEY set and
-    // media_routes mounted - neither is true yet.
-    setUploadNote(`${files.length} file${files.length > 1 ? 's' : ''} added for this session. They are not uploaded, so they will be gone if you refresh.`);
+    if (e.target.files) uploadFiles(e.target.files);
   };
 
   /** Hands the browser to Google's consent screen; the connector stores the grant. */
@@ -379,6 +445,7 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
     // Images harvested from the brand's own site. The bucket existed as a source but had
     // no tab, so a harvest's results could only be found by scrolling All Assets.
     { id: 'scraped', label: `Website (${assets.filter(a => a.source === 'scraped').length})` },
+    { id: 'meta', label: `Meta Ads (${assets.filter(a => a.source === 'meta').length})` },
     { id: 'gdrive', label: `Google Drive (${assets.filter(a => a.source === 'gdrive').length})` },
     { id: 'device', label: `Uploaded (${assets.filter(a => a.source === 'device').length})` }
   ];
@@ -437,7 +504,7 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
             Brand Assets & Media Library
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0, maxWidth: '750px', lineHeight: 1.5 }}>
-            Every creative generated for this workspace, plus anything you import from Drive or your device.
+            Every creative generated for this workspace, plus images from your website, your Meta ads, Google Drive and your device.
           </p>
         </div>
 
@@ -463,6 +530,26 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
           >
             <RefreshCw size={14} className={harvesting ? 'spin-animation' : undefined} />
             {harvesting ? 'Reading your site…' : 'Import from Website'}
+          </button>
+
+          {/* Import ad creatives from Meta (ad account + public Ad Library) */}
+          <button
+            onClick={handleImportMeta}
+            disabled={importingMeta || !workspaceId}
+            title={workspaceId ? 'Import your ad creatives from your Meta ad account and the Meta Ad Library'
+                               : 'Open a workspace first'}
+            style={{
+              background: 'rgba(24, 119, 242, 0.14)',
+              border: '1px solid rgba(24, 119, 242, 0.42)',
+              color: '#fff', padding: '9px 18px', borderRadius: '100px',
+              fontSize: '13px', fontWeight: 700,
+              cursor: importingMeta || !workspaceId ? 'default' : 'pointer',
+              opacity: importingMeta || !workspaceId ? 0.6 : 1,
+              display: 'flex', alignItems: 'center', gap: '6px',
+            }}
+          >
+            <Megaphone size={14} />
+            {importingMeta ? 'Reading Meta ads…' : 'Import from Meta Ads'}
           </button>
 
           {/* Connect / Connected Google Drive */}
@@ -644,11 +731,11 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                     fontWeight: 700,
                     padding: '3px 8px',
                     borderRadius: '100px',
-                    background: asset.source === 'gdrive' ? 'rgba(52,168,83,0.85)' : asset.source === 'device' ? 'rgba(124,117,255,0.85)' : 'rgba(90,82,255,0.85)',
+                    background: asset.source === 'gdrive' ? 'rgba(52,168,83,0.85)' : asset.source === 'device' ? 'rgba(124,117,255,0.85)' : asset.source === 'meta' ? 'rgba(24,119,242,0.85)' : 'rgba(90,82,255,0.85)',
                     color: '#fff',
                     backdropFilter: 'blur(4px)'
                   }}>
-                    {asset.source === 'gdrive' ? 'Google Drive' : asset.source === 'device' ? 'Device' : 'Generated'}
+                    {asset.source === 'gdrive' ? 'Google Drive' : asset.source === 'device' ? 'Device' : asset.source === 'meta' ? 'Meta' : asset.source === 'scraped' ? 'Website' : 'Generated'}
                   </span>
                   <span style={{
                     fontSize: '10px',
@@ -1168,14 +1255,16 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                 type="file"
                 ref={fileInputRef}
                 multiple
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp,image/gif"
                 onChange={handleFileUpload}
                 style={{ display: 'none' }}
               />
 
               {/* Dropzone container */}
               <div
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); if (!uploading) uploadFiles(e.dataTransfer.files); }}
                 style={{
                   padding: '40px 20px',
                   background: 'rgba(255, 255, 255, 0.02)',
@@ -1195,10 +1284,10 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                 </div>
                 <div>
                   <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
-                    Click to browse or drag & drop files
+                    {uploading ? 'Uploading…' : 'Click to browse or drag & drop files'}
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    High-res product photos, lifestyle shoots, or brand banners (Max 25MB each)
+                    PNG, JPG, WEBP or GIF — product photos, lifestyle shoots or banners (max 25MB each)
                   </div>
                 </div>
               </div>
@@ -1210,8 +1299,8 @@ export const WorkspaceAssets: React.FC<WorkspaceAssetsProps> = ({ creatives = []
                 >
                   Cancel
                 </button>
-                <GlowButton variant="glow" onClick={() => fileInputRef.current?.click()} style={{ fontSize: '13px', padding: '9px 24px' }}>
-                  Select Files from Computer
+                <GlowButton variant="glow" onClick={() => !uploading && fileInputRef.current?.click()} style={{ fontSize: '13px', padding: '9px 24px' }}>
+                  {uploading ? 'Uploading…' : 'Select Files from Computer'}
                 </GlowButton>
               </div>
             </motion.div>

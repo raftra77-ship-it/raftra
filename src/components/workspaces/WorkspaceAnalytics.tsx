@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Search, BarChart3, Globe, Users, Award, Zap, Activity, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
+import { Send, Search, Globe, Zap, MessageSquare, UploadCloud, Database, CheckCircle } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 // PieChart/Pie/Cell are gone with the donut — the budget split is a ranked horizontal bar
 // now, built from plain divs, because it is a magnitude comparison (see the 'pie' branch).
@@ -187,11 +187,6 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
   // Recessive chart furniture — grid and axes must not compete with the marks.
   const AXIS = '#52525b';
-  const GRID = 'rgba(255,255,255,0.06)';
-  const TOOLTIP_STYLE = {
-    background: '#0a0a0c', border: '1px solid var(--border-color)',
-    borderRadius: '8px', color: '#fff', fontSize: '12px',
-  } as const;
 
   // Drafts have never spent anything, so they are excluded from every money figure below.
   const liveCampaigns = React.useMemo(

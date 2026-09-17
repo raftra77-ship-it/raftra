@@ -85,6 +85,27 @@ async def global_exception_handler(request: Request, exc: Exception):
 def read_root():
     return {"status": "Raftra Engine Backend Running"}
 
+
+@app.get("/health")
+def health():
+    """Liveness for uptime pings and platform health checks. Deliberately touches nothing
+    (no database, no model), so a keep-alive ping cannot itself be slow or fail on a
+    dependency - and it answers during a cold start as soon as uvicorn is up."""
+    return {"status": "ok"}
+
+
+@app.on_event("startup")
+async def warn_on_ephemeral_storage():
+    """Uploads, Drive imports and Meta creative copies go to Supabase Storage when it is
+    configured and to local disk when it is not. On Render the local disk is wiped on every
+    deploy and every restart of a sleeping instance, so without Supabase those assets
+    vanish and the vault shows broken images. Say so loudly at boot rather than silently."""
+    from storage import supabase
+    if not supabase and (os.getenv("RENDER") or os.getenv("ENVIRONMENT", "").lower() == "production"):
+        print("[startup] WARNING: SUPABASE_URL / SUPABASE_KEY are not set. Uploaded and imported "
+              "media will be written to this instance's ephemeral disk and lost on the next "
+              "deploy or restart. Set them (and SUPABASE_BUCKET) in the Render dashboard.")
+
 @app.on_event("startup")
 async def preload_embedding_model():
     """

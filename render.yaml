@@ -22,7 +22,9 @@ services:
     plan: free
     buildCommand: pip install -r requirements-deploy.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /docs
+    # /health answers without touching the database or building the OpenAPI schema, so a
+    # cold instance passes its health check as soon as uvicorn is up.
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9      # matches backend/.python-version
@@ -110,6 +112,17 @@ services:
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
+      # Required for the payment.captured / order.paid webhooks, which credit customers who pay
+      # and close the tab before the browser confirms. Without it the API refuses webhooks
+      # (503) rather than trusting unsigned events. Create the webhook in Razorpay Dashboard ->
+      # Settings -> Webhooks: URL https://raftra-api.onrender.com/api/payments/webhook, events
+      # payment.captured, order.paid, payment.failed; use the same secret here.
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: SUBSCRIPTION_PRICE_INR   # defaults to 2000
+        sync: false
+      - key: MAX_TOPUP_INR            # defaults to 500000
+        sync: false
 
       # ── These three MUST change from the localhost values in backend/.env ──
       # BACKEND_URL drives every OAuth redirect URI, so it has to be the public
@@ -153,3 +166,37 @@ services:
         sync: false
       - key: EMBEDDING_PROVIDER
         sync: false
+
+      # Media storage for the Asset Vault: device uploads, Google Drive imports and the copies
+      # of Meta ad creatives. Without these, files go to the instance's local disk, which
+      # Render wipes on every deploy and restart - the vault then shows broken images. The
+      # API logs a WARNING at boot when they are missing.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET        # defaults to raftra-media; the bucket must be public-read
+        sync: false
+
+      # "Import from Meta Ads" -> public Ad Library half. Optional: without it the import still
+      # reads the connected ad account and says the Ad Library was not searched.
+      - key: APIFY_TOKEN
+        sync: false
+      - key: DEFAULT_MARKET_COUNTRY # ISO code for Ad Library searches, defaults to IN
+        sync: false
+
+      # Both long-running imports answer inside Vercel's 120s proxy limit by default
+      # (harvest 55s, Ad Library run 60s). Only raise these if the frontend calls the API
+      # directly rather than through the Vercel /api rewrite.
+      - key: HARVEST_BUDGET_SECONDS
+        sync: false
+      - key: APIFY_VAULT_TIMEOUT_SECONDS
+        sync: false
+
+# ── Vercel (frontend) environment variables ──────────────────────────────────────────
+# Set in the Vercel project settings; they are inlined at build time, so redeploy after
+# changing them.
+#   VITE_WS_URL          = wss://raftra-api.onrender.com/ws
+#                          Vercel rewrites do not proxy WebSocket upgrades. Without this the
+#                          agent activity feed and brand<->creator chat never connect.
+#   VITE_RAZORPAY_KEY_ID = the public Razorpay key id

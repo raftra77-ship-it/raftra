@@ -37,7 +37,8 @@ export function Checkout({ onComplete }: CheckoutProps) {
       }
 
       // 2. Setup Razorpay options
-      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      // The server returns the key that pairs with its own secret; the env var is a fallback.
+      const rzpKey = order.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID;
 
       if (!rzpKey || rzpKey === 'rzp_test_placeholder') {
         alert("Payment gateway is not configured. Please contact support.");
@@ -73,7 +74,7 @@ export function Checkout({ onComplete }: CheckoutProps) {
                 onComplete();
             } catch (e: any) {
                 console.error("Payment verification failed:", e);
-                alert("We couldn't confirm your payment. If any amount was deducted, it will be refunded automatically. Please contact support if this persists.");
+                alert("We couldn't confirm your payment yet. If money was deducted, it will be credited to your account automatically once Razorpay confirms it (usually within a few minutes). Contact support if it does not appear.");
             }
         },
         prefill: {

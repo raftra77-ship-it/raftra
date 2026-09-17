@@ -2790,6 +2790,11 @@ def get_my_chats(db: Session = Depends(database.get_db), current_user: models.Us
 
 @router.post("/influencer/me/chats/{workspace_id}")
 async def send_my_chat(workspace_id: int, msg: ChatMessageCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # Legacy sender, kept only so old clients get a clear answer. It wrote into ANY workspace's
+    # inbox with no check that this creator had a relationship with the brand. Messaging now
+    # goes through POST /api/inbox/creator/{workspace_id}, which enforces that.
+    raise HTTPException(status_code=410,
+                        detail="This endpoint was retired. Send messages through /api/inbox/creator/{workspace_id}.")
     inf = db.query(models.Influencer).filter(models.Influencer.user_id == current_user.id).first()
     if not inf:
         raise HTTPException(status_code=404, detail="Influencer profile not found")

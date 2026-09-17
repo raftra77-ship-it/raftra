@@ -144,6 +144,24 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     database.enter_tenant_scope(db, user.id)
     return user
 
+def _unique_username(db: Session, base: str) -> str:
+    """A username that is free, derived from `base` ("john" -> "john", "john1", ...)."""
+    import re as _re
+    stem = _re.sub(r"[^a-z0-9._]", "", (base or "").strip().lower())[:30] or "user"
+    candidate, n = stem, 1
+    while db.query(models.User.id).filter(func.lower(models.User.username) == candidate).first():
+        candidate = "%s%d" % (stem, n)
+        n += 1
+    return candidate
+
+
+@router.get("/providers")
+def auth_providers():
+    """Which sign-in providers this server can actually complete, so the login page does not
+    offer a Google button that ends on a 503."""
+    return {"google": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)}
+
+
 @router.post("/register")
 def register(user_in: schemas.UserCreate, request: Request, db: Session = Depends(database.get_db)):
     # Normalize email so 'A@x.com' and 'a@x.com' are treated as the same account.
@@ -153,15 +171,22 @@ def register(user_in: schemas.UserCreate, request: Request, db: Session = Depend
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    role = (user_in.role or "brand").strip().lower()
+    if role not in ("brand", "creator"):
+        raise HTTPException(status_code=400, detail="Role must be 'brand' or 'creator'.")
+
     hashed_pwd = get_password_hash(user_in.password)
     user = models.User(
         email=email,
-        username=user_in.username,
+        # users.username is UNIQUE, and callers derive it from the email's local part, so
+        # john@gmail.com and john@yahoo.com used to collide and the second signup 500'd
+        # after nothing had explained why.
+        username=_unique_username(db, user_in.username or email.split("@")[0]),
         first_name=user_in.first_name,
         last_name=user_in.last_name,
         hashed_password=hashed_pwd,
         is_active=True,
-        role=user_in.role or "brand",
+        role=role,
         # clerk_id can be left blank or used as a random string since we removed clerk
         clerk_id=f"custom_{email}"
     )
@@ -170,11 +195,14 @@ def register(user_in: schemas.UserCreate, request: Request, db: Session = Depend
     db.refresh(user)
     _log_auth_event(db, "register", user=user, detail=f"role={user.role}", request=request)
 
-    if user_in.role == "creator":
-        from celery_app import process_creator_profile
-        process_creator_profile.delay(user.id, user_in.category, user_in.price)
-    
-    access_token = create_access_token(data={"sub": str(user.id), "role": user_in.role})
+    # Creator signup used to dispatch a Celery task here. With no broker reachable (no Redis
+    # locally, or a sleeping Upstash) .delay() retried for tens of seconds and then raised, so
+    # the request 500'd AFTER the account was committed: the creator saw "Signup failed", a
+    # retry said "Email already registered", and the Creator Portal never opened. The task
+    # only wrote a placeholder profile with mock posts and a 95 fit score; GET
+    # /api/workspaces/influencer/me already creates the real, empty profile on first load.
+
+    access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
     return {"access_token": access_token, "token_type": "bearer", "user": {"id": user.id, "email": user.email}}
 
 @router.post("/login")
@@ -390,7 +418,7 @@ def _get_or_create_oauth_user(db: Session, email: str, first_name: str, last_nam
         return user, False
     user = models.User(
         email=email,
-        username=email.split("@")[0],
+        username=_unique_username(db, email.split("@")[0]),
         first_name=first_name or "User",
         last_name=last_name or "",
         hashed_password=None,
@@ -403,12 +431,7 @@ def _get_or_create_oauth_user(db: Session, email: str, first_name: str, last_nam
     db.commit()
     db.refresh(user)
 
-    if role == "creator":
-        try:
-            from celery_app import process_creator_profile
-            process_creator_profile.delay(user.id, None, None)
-        except Exception as e:
-            print(f"Could not queue creator profile task: {e}")
+    # No Celery dispatch: see register(). The portal creates the profile on first load.
     return user, True
 
 def _finish_oauth_login(user: models.User) -> RedirectResponse:
@@ -466,6 +489,16 @@ async def google_callback(state: str, request: Request, code: str = None, error:
         return _login_redirect_error("Your Google account has no verified email.")
 
     user, created = _get_or_create_oauth_user(db, email, info.get("given_name", ""), info.get("family_name", ""), "google", role)
+    # Same rule as the password form. An existing account keeps its one role, so choosing the
+    # Creator tab with a brand account's Google login used to land silently on the brand
+    # dashboard - which read as "the Creator Portal does not open".
+    if not created and role in ("brand", "creator") and user.role != role:
+        _log_auth_event(db, "login_failed", user=user,
+                        detail=f"role mismatch via google: account={user.role}, requested={role}",
+                        request=request)
+        other = "Creator" if user.role == "creator" else "Brand / Agency"
+        return _login_redirect_error(
+            f"{email} is registered as a {other} account. Choose the {other} tab to sign in.")
     if created:
         _log_auth_event(db, "register", user=user, detail=f"role={user.role} via google", request=request)
     _log_auth_event(db, "login", user=user, detail=f"role={user.role} via google", request=request)

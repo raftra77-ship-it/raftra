@@ -270,7 +270,9 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   useEffect(() => {
     if (!myHandle) { setCreatorDeals([]); setCreatorPayouts([]); setMyCollabs([]); return; }
     const list = (url: string, set: (rows: any[]) => void) =>
-      fetch(url).then(r => (r.ok ? r.json() : [])).then(d => set(Array.isArray(d) ? d : [])).catch(() => {});
+      // These routes identify the creator from the bearer token; without it every call was a
+      // 401 and the dashboard's deals, payouts and collaborations always read empty.
+      fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }).then(r => (r.ok ? r.json() : [])).then(d => set(Array.isArray(d) ? d : [])).catch(() => {});
     list('/api/deals/mine', setCreatorDeals);
     list('/api/payouts/mine', setCreatorPayouts);
     list('/api/posted-deals/mine', setMyCollabs);
@@ -291,8 +293,13 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     // one up into the same chat room.
     if (!myHandle) { setChatMessages([]); return; }
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-    const ws = new WebSocket(`${protocol}://${wsHost}/ws/chat/${activeRoomKey}`);
+    // Dev: same origin, Vite proxies /ws to the API. Production: Vercel's rewrites do not
+    // proxy WebSocket upgrades, so the socket must address the API host directly via
+    // VITE_WS_URL (e.g. wss://raftra-api.onrender.com/ws) - the same variable the agent
+    // feed uses. Without it the chat silently never connected in production.
+    const wsBase = (import.meta.env.VITE_WS_URL as string | undefined)?.replace(/\/$/, '')
+      || `${protocol}://${window.location.host}/ws`;
+    const ws = new WebSocket(`${wsBase}/chat/${activeRoomKey}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -460,11 +467,11 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
   const handleAcceptProposal = async (amount: number) => {
     // Notify backend database that creator has accepted the deal & locked escrow
     try {
-      const res = await fetch('/api/deals/mine');
+      const res = await fetch('/api/deals/mine', { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
       const deals = await res.json();
       if (Array.isArray(deals) && deals.length > 0) {
         const pendingDeal = deals.find((d: any) => d.status === 'pending') || deals[0];
-        await fetch(`/api/deals/${pendingDeal.id}/accept`, { method: 'POST' });
+        await fetch(`/api/deals/${pendingDeal.id}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
       }
     } catch (err) {
       console.warn("Backend deal acceptance sync notice:", err);

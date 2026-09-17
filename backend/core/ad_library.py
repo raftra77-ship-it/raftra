@@ -185,6 +185,121 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (text or "").lower())
 
 
+async def _apify_items(client: httpx.AsyncClient, term: str, country: str,
+                       limit: int, run_timeout: Optional[int] = None) -> List[dict]:
+    """Raw Ad Library items for a keyword search, via the Apify actor. Shared by the
+    competitor sync (which wants copy) and the vault import (which wants images)."""
+    from urllib.parse import urlencode
+
+    token = os.getenv("APIFY_TOKEN")
+    actor = os.getenv("APIFY_META_ADS_ACTOR", "apify~facebook-ads-scraper")
+    library_url = "https://www.facebook.com/ads/library/?" + urlencode({
+        "active_status": "active", "ad_type": "all", "country": country.upper(),
+        "q": term, "search_type": "keyword_unordered", "media_type": "all",
+    })
+    url = "https://api.apify.com/v2/acts/%s/run-sync-get-dataset-items" % actor
+    payload = {"startUrls": [{"url": library_url}], "resultsLimit": limit,
+               "activeStatus": "active", "isDetailsPerAd": False, "onlyTotal": False}
+    # run-sync waits up to 300s on Apify's side before handing back a timeout. A caller on a
+    # user request passes run_timeout: Apify aborts the run at that point, which keeps the
+    # request inside the Vercel proxy's 120s limit instead of dying at the proxy.
+    params = {"token": token}
+    if run_timeout:
+        params["timeout"] = run_timeout
+    r = await client.post(url, params=params, json=payload,
+                          timeout=(run_timeout + 15) if run_timeout else 320)
+    if r.status_code not in (200, 201):
+        raise AdLibraryError("Apify actor %s returned %s: %s" % (actor, r.status_code, r.text[:200]))
+
+    items = [i for i in (r.json() or []) if isinstance(i, dict)]
+    failures = [i for i in items if i.get("error")]
+    items = [i for i in items if not i.get("error")]
+    if failures and not items:
+        f = failures[0]
+        raise AdLibraryError("Apify actor %s could not read the Ad Library: %s %s"
+                             % (actor, f.get("error"), f.get("errorDescription") or ""))
+    return items
+
+
+def _item_image_urls(item: dict) -> List[str]:
+    """Every creative image one Ad Library item carries: single images, carousel cards and
+    video poster frames. The actor passes Meta's snapshot through, so keys arrive in
+    snake_case, with camelCase from older actor versions accepted too."""
+    snap = item.get("snapshot") if isinstance(item.get("snapshot"), dict) else {}
+
+    def first(d: dict, *keys) -> str:
+        for k in keys:
+            v = d.get(k) if isinstance(d, dict) else None
+            if isinstance(v, str) and v.startswith("http"):
+                return v
+        return ""
+
+    urls: List[str] = []
+    for img in snap.get("images") or []:
+        urls.append(first(img, "original_image_url", "originalImageUrl",
+                          "resized_image_url", "resizedImageUrl"))
+    for card in snap.get("cards") or []:
+        urls.append(first(card, "original_image_url", "originalImageUrl",
+                          "resized_image_url", "resizedImageUrl",
+                          "video_preview_image_url", "videoPreviewImageUrl"))
+    for vid in snap.get("videos") or []:
+        urls.append(first(vid, "video_preview_image_url", "videoPreviewImageUrl"))
+    seen, out = set(), []
+    for u in urls:
+        if u and u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+async def fetch_brand_ad_images(brand: str, country: str = "IN",
+                                limit: int = 50) -> List[dict]:
+    """Image creatives from the brand's OWN active ads in the public Ad Library.
+
+    Needs APIFY_TOKEN: the official /ads_archive API returns no images at all (only a
+    snapshot page link), and outside the EU no commercial ads either. Unlike the competitor
+    sync, keyword matches from other advertisers are dropped rather than kept - another
+    brand's creative in this vault would be presented as this brand's own asset.
+    """
+    brand = (brand or "").strip()
+    if not brand:
+        raise AdLibraryError("This workspace has no brand name or website to search the Ad Library for.")
+    if not os.getenv("APIFY_TOKEN"):
+        raise AdLibraryError(
+            "Ad Library import needs APIFY_TOKEN on the server. Meta's official Ad Library "
+            "API does not return ad images.")
+
+    term = _search_term(brand)
+    wanted = _norm(term)
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        # Runs on the "Import from Meta Ads" request itself, so it must answer well inside
+        # the proxy window; the competitor sync runs in the scheduler and keeps the full 300s.
+        items = await _apify_items(client, term, country, limit,
+                                   run_timeout=int(os.getenv("APIFY_VAULT_TIMEOUT_SECONDS", "60")))
+
+    out, seen = [], set()
+    for item in items:
+        snap = item.get("snapshot") if isinstance(item.get("snapshot"), dict) else {}
+        page = _norm(str(item.get("pageName") or item.get("page_name")
+                         or snap.get("page_name") or ""))
+        if not (wanted and page and (wanted in page or page in wanted)):
+            continue
+        archive_id = str(item.get("adArchiveID") or item.get("adArchiveId") or item.get("id") or "")
+        title = str(snap.get("title") or "").strip()
+        for i, url in enumerate(_item_image_urls(item)):
+            if url in seen:
+                continue
+            seen.add(url)
+            out.append({
+                "url": url,
+                "name": (title or "Ad Library creative %s" % archive_id)[:120]
+                        + (" (%d)" % (i + 1) if i else ""),
+                "library_url": ("https://www.facebook.com/ads/library/?id=%s" % archive_id
+                                if archive_id else ""),
+            })
+    return out
+
+
 async def _fetch_apify(client: httpx.AsyncClient, competitor: str, country: str,
                        limit: int) -> List[dict]:
     """Run the Apify Facebook Ads Library actor synchronously and map its items onto our shape.
@@ -197,25 +312,12 @@ async def _fetch_apify(client: httpx.AsyncClient, competitor: str, country: str,
     use, so a configured token would still have stored ads with no copy, no headline and no
     run time. Older/alternative keys are kept as fallbacks for other actors.
     """
-    from urllib.parse import urlencode
-
-    token = os.getenv("APIFY_TOKEN")
     actor = os.getenv("APIFY_META_ADS_ACTOR", "apify~facebook-ads-scraper")
-    if not token:
+    if not os.getenv("APIFY_TOKEN"):
         return []
 
     term = _search_term(competitor)
-    library_url = "https://www.facebook.com/ads/library/?" + urlencode({
-        "active_status": "active", "ad_type": "all", "country": country.upper(),
-        "q": term, "search_type": "keyword_unordered", "media_type": "all",
-    })
-    url = "https://api.apify.com/v2/acts/%s/run-sync-get-dataset-items" % actor
-    payload = {"startUrls": [{"url": library_url}], "resultsLimit": limit,
-               "activeStatus": "active", "isDetailsPerAd": False, "onlyTotal": False}
-    # run-sync waits up to 300s on Apify's side before handing back a timeout.
-    r = await client.post(url, params={"token": token}, json=payload, timeout=320)
-    if r.status_code not in (200, 201):
-        raise AdLibraryError("Apify actor %s returned %s: %s" % (actor, r.status_code, r.text[:200]))
+    items = await _apify_items(client, term, country, limit)
 
     def pick(item: dict, *keys):
         for k in keys:
@@ -223,14 +325,6 @@ async def _fetch_apify(client: httpx.AsyncClient, competitor: str, country: str,
             if v not in (None, "", [], {}):
                 return v
         return ""
-
-    items = [i for i in (r.json() or []) if isinstance(i, dict)]
-    failures = [i for i in items if i.get("error")]
-    items = [i for i in items if not i.get("error")]
-    if failures and not items:
-        f = failures[0]
-        raise AdLibraryError("Apify actor %s could not read the Ad Library: %s %s"
-                             % (actor, f.get("error"), f.get("errorDescription") or ""))
 
     rows = []
     for item in items:

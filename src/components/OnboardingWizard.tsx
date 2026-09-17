@@ -17,42 +17,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
   const [loadingText, setLoadingText] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
 
-  // Onboarding is the only place a workspace gets created — without this the user
-  // lands on a dashboard with no workspace and nothing works.
-  const ensureWorkspace = async (brand: { url: string; name: string; tone: string; colors: string }) => {
-    const token = localStorage.getItem('token');
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-    try {
-      // Don't create a second workspace if this account already has one.
-      const existing = await fetch('/api/workspaces', { headers });
-      if (existing.ok) {
-        const list = await existing.json();
-        if (Array.isArray(list) && list.length > 0) return true;
-      }
-      const res = await fetch('/api/workspaces', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          name: brand.name,
-          company_url: brand.url,
-          brand_color: brand.colors,
-          brand_voice: brand.tone
-        })
-      });
-      if (!res.ok) {
-        console.error('Workspace creation failed:', res.status, await res.text());
-        return false;
-      }
-      return true;
-    } catch (err) {
-      console.error('Workspace creation failed:', err);
-      return false;
-    }
-  };
-
   /** Commits the onboarded flag so the wizard never reappears, and kicks off the brand
    *  crawl against the real workspace. Without this nothing ever set is_onboarded, so
    *  login sent the user back here every time. */

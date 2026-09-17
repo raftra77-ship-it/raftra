@@ -16,6 +16,18 @@ from agents.influencers import run_influencer_pipeline
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
+
+def _require_workspace(workspace_id: int, db: Session, user: models.User) -> None:
+    """Every trigger below runs an AI pipeline that reads and WRITES this workspace - and the
+    publish triggers push content to its connected WordPress / Shopify site. None of them
+    checked the caller could reach the workspace, so any signed-in user could run (and bill)
+    pipelines against, or publish to, another organisation's brand by changing the id."""
+    from core import tenancy
+    ok = db.query(models.Workspace.id).filter(models.Workspace.id == workspace_id,
+                                              tenancy.visible_workspace(user)).first()
+    if not ok:
+        raise HTTPException(status_code=403, detail="Workspace access denied")
+
 class OnboardTrigger(BaseModel):
     brand_url: str
 
@@ -77,7 +89,8 @@ async def trigger_onboarding(request: OnboardTrigger,
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{workspace_id}/creative")
-async def trigger_creative(workspace_id: int, request: CreativeTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_creative(workspace_id: int, request: CreativeTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     background_tasks.add_task(
         run_ad_generation_task,
         workspace_id=workspace_id,
@@ -92,7 +105,8 @@ async def trigger_creative(workspace_id: int, request: CreativeTrigger, backgrou
     return {"message": "Creative chat workflow triggered", "prompt": request.prompt}
 
 @router.post("/{workspace_id}/campaign")
-async def trigger_campaign(workspace_id: int, request: schemas.CampaignAgentTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_campaign(workspace_id: int, request: schemas.CampaignAgentTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     from agents.creative_nodes.campaign_graph import run_campaign_planning_task
     background_tasks.add_task(
         run_campaign_planning_task,
@@ -106,7 +120,8 @@ async def trigger_campaign(workspace_id: int, request: schemas.CampaignAgentTrig
     return {"status": "success", "message": "Campaign Manager agent pipeline triggered."}
 
 @router.post("/{workspace_id}/seo")
-async def trigger_seo(workspace_id: int, request: SEOTrigger, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_seo(workspace_id: int, request: SEOTrigger, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     import asyncio
     from core.agent_status import is_running, register_task, reconcile_stale_running
     reconcile_stale_running(workspace_id, "SEO")
@@ -117,7 +132,8 @@ async def trigger_seo(workspace_id: int, request: SEOTrigger, current_user: mode
     return {"status": "success", "message": "SEO agent pipeline triggered."}
 
 @router.post("/{workspace_id}/seo/publish")
-async def trigger_seo_publish(workspace_id: int, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_seo_publish(workspace_id: int, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     background_tasks.add_task(
         run_seo_publish_pipeline,
         workspace_id=workspace_id
@@ -125,7 +141,8 @@ async def trigger_seo_publish(workspace_id: int, background_tasks: BackgroundTas
     return {"status": "success", "message": "SEO Publishing sequence triggered."}
 
 @router.post("/{workspace_id}/geo")
-async def trigger_geo(workspace_id: int, request: SEOTrigger, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_geo(workspace_id: int, request: SEOTrigger, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     import asyncio
     from core.agent_status import is_running, register_task, reconcile_stale_running
     reconcile_stale_running(workspace_id, "GEO")
@@ -136,7 +153,8 @@ async def trigger_geo(workspace_id: int, request: SEOTrigger, current_user: mode
     return {"status": "success", "message": "GEO agent pipeline triggered."}
 
 @router.post("/{workspace_id}/geo/publish")
-async def trigger_geo_publish(workspace_id: int, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_geo_publish(workspace_id: int, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     background_tasks.add_task(
         run_geo_publish_pipeline,
         workspace_id=workspace_id
@@ -144,7 +162,8 @@ async def trigger_geo_publish(workspace_id: int, background_tasks: BackgroundTas
     return {"status": "success", "message": "GEO Publishing sequence triggered."}
 
 @router.post("/{workspace_id}/analytics")
-async def trigger_analytics(workspace_id: int, request: AnalyticsTrigger, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_analytics(workspace_id: int, request: AnalyticsTrigger, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     """Runs synchronously (not backgrounded) - this is a chat reply the user is waiting on,
     not a long audit, so the real generated text can go straight back in the response."""
     try:
@@ -154,7 +173,8 @@ async def trigger_analytics(workspace_id: int, request: AnalyticsTrigger, curren
     return {"status": "success", "sender": "claude", "text": result.get("explanation", "")}
 
 @router.post("/{workspace_id}/social")
-async def trigger_social(workspace_id: int, request: SocialTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_social(workspace_id: int, request: SocialTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     background_tasks.add_task(
         run_social_pipeline,
         workspace_id=workspace_id,
@@ -164,7 +184,8 @@ async def trigger_social(workspace_id: int, request: SocialTrigger, background_t
     return {"status": "success", "message": "Social Hub agent pipeline triggered."}
 
 @router.post("/{workspace_id}/influencer")
-async def trigger_influencer(workspace_id: int, request: InfluencerTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user)):
+async def trigger_influencer(workspace_id: int, request: InfluencerTrigger, background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    _require_workspace(workspace_id, db, current_user)
     background_tasks.add_task(
         run_influencer_pipeline,
         workspace_id=workspace_id,
@@ -179,6 +200,10 @@ async def trigger_monthly_audits(background_tasks: BackgroundTasks, current_user
     """Manually run the same job the monthly scheduler runs (SEO + GEO for every
     workspace with a site URL). Lets the founder test the automation without
     waiting for the 1st of the month."""
+    # It audits EVERY workspace on the platform, so it is an operator action: any signed-in
+    # user could previously start a full-platform LLM run.
+    if (current_user.role or "") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can run the platform-wide audit.")
     from core.scheduler import run_monthly_audits
     background_tasks.add_task(run_monthly_audits)
     return {"status": "success", "message": "Monthly SEO/GEO audit run triggered for all workspaces."}

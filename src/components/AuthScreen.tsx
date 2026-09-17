@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sparkles, ArrowRight, Lock } from 'lucide-react';
@@ -18,9 +18,12 @@ const GoogleIcon = () => (
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [isCreator, setIsCreator] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The tab and the mode live in the URL, so /login?role=creator&mode=signup can be linked
+  // from the creator side of the site and a refresh keeps the tab the user chose. Both were
+  // plain state that always started on Brand / Sign in.
+  const [isSignUp, setIsSignUp] = useState(searchParams.get('mode') === 'signup');
+  const [isCreator, setIsCreator] = useState(searchParams.get('role') === 'creator');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +31,50 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
 
   const [error, setError] = useState(searchParams.get('error') || '');
   const [loading, setLoading] = useState(false);
+  // null until the server answers: the Google button is offered only when the backend can
+  // actually complete the flow, instead of sending the user to a 503.
+  const [googleEnabled, setGoogleEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/providers')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled) setGoogleEnabled(d ? !!d.google : false); })
+      .catch(() => { if (!cancelled) setGoogleEnabled(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const syncUrl = (creator: boolean, signUp: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('error');
+    if (creator) next.set('role', 'creator'); else next.delete('role');
+    if (signUp) next.set('mode', 'signup'); else next.delete('mode');
+    setSearchParams(next, { replace: true });
+  };
+  const chooseRole = (creator: boolean) => {
+    setIsCreator(creator);
+    setError('');
+    syncUrl(creator, isSignUp);
+  };
+  const toggleMode = () => {
+    setIsSignUp(!isSignUp);
+    setError('');
+    syncUrl(isCreator, !isSignUp);
+  };
+
+  const copy = isCreator
+    ? {
+        title: isSignUp ? 'Join as a creator' : 'Creator sign in',
+        subtitle: isSignUp ? 'Get discovered by brands and manage paid collaborations.'
+                           : 'Open your Creator Portal: deals, messages and payouts.',
+        emailPlaceholder: 'you@example.com',
+      }
+    : {
+        title: isSignUp ? 'Create your brand account' : 'Welcome back',
+        subtitle: isSignUp ? 'Start building AI-powered campaigns.'
+                           : 'Enter your details to access your workspace.',
+        emailPlaceholder: 'you@company.com',
+      };
 
   const handleSocialLogin = (provider: 'google') => {
     const role = isCreator ? 'creator' : 'brand';
@@ -40,10 +87,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
     setLoading(true);
 
     try {
+      let token: string | undefined;
       if (isSignUp) {
-        const parts = name.split(' ');
-        const first = parts[0] || 'User';
-        const last = parts.slice(1).join(' ') || 'Name';
+        // No invented names: this used to store "User" / "Name" when a part was missing,
+        // which then showed on the creator card and in brand chats.
+        const parts = name.trim().split(/\s+/);
+        const first = parts[0] || '';
+        const last = parts.slice(1).join(' ');
+        if (!first) throw new Error('Please enter your name.');
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -60,23 +111,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.detail || 'Signup failed. Please try again.');
         }
+        // Register already returns a session, so a second round trip to /login is not
+        // needed to sign the new account in.
+        token = (await res.json().catch(() => ({}))).access_token;
       }
 
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // The tab is sent so the server can say "this is a Brand account" rather than
-        // issuing a brand token for a Creator sign-in and letting RequireAuth bounce the
-        // user to /dashboard with no explanation. It never decides the session's role —
-        // that still comes from the account, read back off the JWT below.
-        body: JSON.stringify({ identifier: email, password, role: isCreator ? 'creator' : 'brand' })
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || 'Incorrect email or password.');
+      if (!token) {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // The tab is sent so the server can say "this is a Brand account" rather than
+          // issuing a brand token for a Creator sign-in and letting RequireAuth bounce the
+          // user to /dashboard with no explanation. It never decides the session's role —
+          // that still comes from the account, read back off the JWT below.
+          body: JSON.stringify({ identifier: email, password, role: isCreator ? 'creator' : 'brand' })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || 'Incorrect email or password.');
+        }
+        const data = await res.json();
+        token = data.access_token;
       }
-      const data = await res.json();
-      const token = data.access_token;
       if (!token) throw new Error('Login failed: no token returned.');
 
       localStorage.setItem('token', token);
@@ -136,10 +192,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
             <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--primary)' }}>raftra.ai</span>
           </div>
           <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-heading)', margin: 0, background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.5))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            {isSignUp ? 'Create your account' : 'Welcome back'}
+            {copy.title}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '8px' }}>
-            {isSignUp ? 'Start building AI-powered campaigns.' : 'Enter your details to access your workspace.'}
+            {copy.subtitle}
           </p>
           {error && <p style={{ color: 'var(--accent)', fontSize: '13px', marginTop: '12px' }}>{error}</p>}
         </div>
@@ -148,13 +204,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '24px' }}>
           <button 
             type="button"
-            onClick={() => setIsCreator(false)}
+            onClick={() => chooseRole(false)}
             style={{ flex: 1, padding: '8px', border: 'none', background: !isCreator ? 'rgba(90,82,255,0.2)' : 'transparent', color: !isCreator ? '#fff' : 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: !isCreator ? 600 : 400, transition: 'all 0.2s' }}>
             Brand / Agency
           </button>
           <button 
             type="button"
-            onClick={() => setIsCreator(true)}
+            onClick={() => chooseRole(true)}
             style={{ flex: 1, padding: '8px', border: 'none', background: isCreator ? 'rgba(90,82,255,0.2)' : 'transparent', color: isCreator ? '#fff' : 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: isCreator ? 600 : 400, transition: 'all 0.2s' }}>
             Creator
           </button>
@@ -182,7 +238,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ width: '100%', padding: '14px 16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', outline: 'none', transition: 'border-color 0.2s' }}
-              placeholder="you@company.com"
+              placeholder={copy.emailPlaceholder}
             />
           </div>
           <div className="form-group">
@@ -239,17 +295,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
           <button
             type="button"
             onClick={() => handleSocialLogin('google')}
-            style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s' }}
+            disabled={googleEnabled === false}
+            title={googleEnabled === false ? 'Google sign-in is not configured on this server' : undefined}
+            style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: 500, cursor: googleEnabled === false ? 'not-allowed' : 'pointer', opacity: googleEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s' }}
           >
-            <GoogleIcon /> Continue with Google
+            <GoogleIcon /> Continue with Google{isCreator ? ' as a creator' : ''}
           </button>
         </div>
+        {googleEnabled === false && (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center', margin: '8px 0 0' }}>
+            Google sign-in is unavailable right now. Use your email and password.
+          </p>
+        )}
 
         <div style={{ marginTop: '24px', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button 
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={toggleMode}
               style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', padding: 0 }}
             >
               {isSignUp ? 'Sign in' : 'Create one'}
