@@ -1,15 +1,29 @@
 name: Render Keep Alive Ping
 
+# Render's free instances spin down after ~15 minutes with no traffic, and the next request
+# pays the full container + Python import boot. Measured on raftra-api: 103 seconds for the
+# first login after an idle period, then 1.5s once warm. That cold start is what "login is
+# taking so much time" actually is - it dwarfs anything in the query path.
+#
+# The previous version of this file pinged raftraone.onrender.com, which is NOT the backend
+# the app talks to (vercel.json rewrites /api/* to raftra-api.onrender.com). So it kept an
+# unrelated service warm while the real one went to sleep.
+#
+# Note this only narrows the window - GitHub's scheduled runners are best-effort and can be
+# delayed well past the interval, and schedules are disabled entirely on repos with no
+# activity for 60 days. The dependable fix is a paid Render instance that never spins down.
+
 on:
   schedule:
-    # Har 10 minute me trigger hoga
+    # Every 10 minutes, comfortably inside Render's ~15 minute idle timeout.
     - cron: '*/10 * * * *'
-  workflow_dispatch: # Manual run button bhi dega
+  workflow_dispatch:   # manual run button
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Render Backend Health Endpoint
+      - name: Ping Render backend health endpoint
         run: |
-          curl -s -f -m 30 "https://raftraone.onrender.com/health" || echo "Ping failed or server waking up"
+          curl -s -f -m 60 "https://raftra-api.onrender.com/health" \
+            || echo "Ping failed or server waking up"
