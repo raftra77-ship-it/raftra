@@ -13,6 +13,7 @@ import secrets
 import hashlib
 import smtplib
 import threading
+import traceback
 from email.mime.text import MIMEText
 from email.utils import formataddr
 import httpx
@@ -463,46 +464,56 @@ async def google_callback(state: str, request: Request, code: str = None, error:
     if role is None:
         return _login_redirect_error("That sign-in link expired. Please try again.")
 
-    async with httpx.AsyncClient() as client:
-        token_res = await client.post("https://oauth2.googleapis.com/token", data={
-            "code": code,
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "redirect_uri": GOOGLE_REDIRECT_URI,
-            "grant_type": "authorization_code",
-        })
-        if token_res.status_code != 200:
-            print(f"Google token exchange failed: {token_res.text}")
-            return _login_redirect_error("Google login failed. Please try again.")
-        access_token = token_res.json().get("access_token")
+    # Everything from here on talks to Google or the database. Without this net, any
+    # unhandled error (a Google timeout, a DB hiccup) fell through to the app's generic
+    # exception handler, which answers on this host with a bare JSON error instead of a
+    # redirect - stranding the browser on the Render backend URL instead of bouncing it
+    # back to the frontend the way every *anticipated* failure above already does.
+    try:
+        async with httpx.AsyncClient() as client:
+            token_res = await client.post("https://oauth2.googleapis.com/token", data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            })
+            if token_res.status_code != 200:
+                print(f"Google token exchange failed: {token_res.text}")
+                return _login_redirect_error("Google login failed. Please try again.")
+            access_token = token_res.json().get("access_token")
 
-        userinfo_res = await client.get(
-            "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        if userinfo_res.status_code != 200:
-            return _login_redirect_error("Could not fetch your Google profile.")
-        info = userinfo_res.json()
+            userinfo_res = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if userinfo_res.status_code != 200:
+                return _login_redirect_error("Could not fetch your Google profile.")
+            info = userinfo_res.json()
 
-    email = info.get("email")
-    if not email or not info.get("email_verified", False):
-        return _login_redirect_error("Your Google account has no verified email.")
+        email = info.get("email")
+        if not email or not info.get("email_verified", False):
+            return _login_redirect_error("Your Google account has no verified email.")
 
-    user, created = _get_or_create_oauth_user(db, email, info.get("given_name", ""), info.get("family_name", ""), "google", role)
-    # Same rule as the password form. An existing account keeps its one role, so choosing the
-    # Creator tab with a brand account's Google login used to land silently on the brand
-    # dashboard - which read as "the Creator Portal does not open".
-    if not created and role in ("brand", "creator") and user.role != role:
-        _log_auth_event(db, "login_failed", user=user,
-                        detail=f"role mismatch via google: account={user.role}, requested={role}",
-                        request=request)
-        other = "Creator" if user.role == "creator" else "Brand / Agency"
-        return _login_redirect_error(
-            f"{email} is registered as a {other} account. Choose the {other} tab to sign in.")
-    if created:
-        _log_auth_event(db, "register", user=user, detail=f"role={user.role} via google", request=request)
-    _log_auth_event(db, "login", user=user, detail=f"role={user.role} via google", request=request)
-    return _finish_oauth_login(user)
+        user, created = _get_or_create_oauth_user(db, email, info.get("given_name", ""), info.get("family_name", ""), "google", role)
+        # Same rule as the password form. An existing account keeps its one role, so choosing the
+        # Creator tab with a brand account's Google login used to land silently on the brand
+        # dashboard - which read as "the Creator Portal does not open".
+        if not created and role in ("brand", "creator") and user.role != role:
+            _log_auth_event(db, "login_failed", user=user,
+                            detail=f"role mismatch via google: account={user.role}, requested={role}",
+                            request=request)
+            other = "Creator" if user.role == "creator" else "Brand / Agency"
+            return _login_redirect_error(
+                f"{email} is registered as a {other} account. Choose the {other} tab to sign in.")
+        if created:
+            _log_auth_event(db, "register", user=user, detail=f"role={user.role} via google", request=request)
+        _log_auth_event(db, "login", user=user, detail=f"role={user.role} via google", request=request)
+        return _finish_oauth_login(user)
+    except Exception as e:
+        print(f"Google OAuth callback failed: {e}")
+        traceback.print_exc()
+        return _login_redirect_error("Something went wrong signing you in with Google. Please try again.")
 
 # ---------------------------------------------------------------------------
 # Forgot / reset password (works for both brand and creator accounts)
