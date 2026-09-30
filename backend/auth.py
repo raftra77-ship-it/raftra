@@ -97,6 +97,27 @@ def _client_ip(request: Request = None):
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else None
 
+def _log_auth_event_deferred(event_type: str, user_id: int = None, email: str = None,
+                             detail: str = None, ip_address: str = None):
+    """The same audit write, run after the response has been sent.
+
+    Against a Supabase instance in ap-northeast-1 the insert+commit measured ~410ms, and on
+    a successful login it sat on the critical path for no reason: it is an audit record, not
+    something the caller's result depends on. Opens its own session because the request's
+    was already closed by the get_db dependency when the response finished.
+
+    Only success paths use this. A failed login still logs synchronously - a raised
+    HTTPException means background tasks never run, and a slow failure is not a problem.
+    """
+    try:
+        with database.SessionLocal() as db:
+            db.add(models.AuthEvent(user_id=user_id, email=email, event_type=event_type,
+                                    detail=detail, ip_address=ip_address))
+            db.commit()
+    except Exception as e:
+        print(f"Failed to log auth event ({event_type}): {e}")
+
+
 def _log_auth_event(db: Session, event_type: str, user: models.User = None,
                     email: str = None, detail: str = None, request: Request = None):
     """Record an account activity event (register / login / password reset) for auditing.
@@ -207,7 +228,8 @@ def register(user_in: schemas.UserCreate, request: Request, db: Session = Depend
     return {"access_token": access_token, "token_type": "bearer", "user": {"id": user.id, "email": user.email}}
 
 @router.post("/login")
-def login(user_in: schemas.UserLogin, request: Request, db: Session = Depends(database.get_db)):
+def login(user_in: schemas.UserLogin, request: Request, background_tasks: BackgroundTasks,
+          db: Session = Depends(database.get_db)):
     user = db.query(models.User).filter(
         (models.User.email == user_in.identifier) | (models.User.username == user_in.identifier)
     ).first()
@@ -236,9 +258,35 @@ def login(user_in: schemas.UserLogin, request: Request, db: Session = Depends(da
             detail=f"This account is registered as a {other} account. "
                    f"Use the {other} tab to sign in.")
 
-    _log_auth_event(db, "login", user=user, detail=f"role={user.role}", request=request)
+    # Audit the success after the response goes out - see _log_auth_event_deferred.
+    background_tasks.add_task(_log_auth_event_deferred, "login", user_id=user.id,
+                              email=user.email, detail=f"role={user.role}",
+                              ip_address=_client_ip(request))
+
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user": {"id": user.id, "email": user.email}}
+    resp = {"access_token": access_token, "token_type": "bearer", "role": user.role,
+            "user": {"id": user.id, "email": user.email}}
+
+    # Where to land, answered here rather than in a second call. The client used to follow
+    # every login with GET /workspaces/onboarding-state, which re-authenticated (another user
+    # lookup) before running these same two queries - a whole extra sequential round trip to
+    # Tokyo on the one path where the user is staring at a spinner. Creators skip it: they go
+    # to the Creator Portal and never read this.
+    if user.role != "creator":
+        try:
+            ws_ids = [w.id for w in db.query(models.Workspace.id)
+                                      .filter(tenancy.visible_workspace(user)).all()]
+            onboarded = bool(ws_ids) and bool(
+                db.query(models.BrandProfile.id)
+                  .filter(models.BrandProfile.workspace_id.in_(ws_ids),
+                          models.BrandProfile.is_onboarded.is_(True)).first())
+            resp["has_workspace"] = bool(ws_ids)
+            resp["is_onboarded"] = onboarded
+        except Exception as e:
+            # The client falls back to its own /onboarding-state call if these are absent.
+            print(f"login: could not resolve onboarding state: {e}")
+
+    return resp
 
 # Keep the billing endpoints from original auth.py
 class UnlockNodeRequest(BaseModel):

@@ -19,8 +19,12 @@ from .markdown_html import markdown_to_html
 SHOPIFY_CLIENT_ID = os.getenv("SHOPIFY_CLIENT_ID", "")
 SHOPIFY_CLIENT_SECRET = os.getenv("SHOPIFY_CLIENT_SECRET", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
+from core.oauth_base import callback_url  # noqa: E402
 
-REDIRECT_URI = f"{BACKEND_URL}/api/connectors/shopify/callback"
+# Resolved through core.oauth_base so every connector agrees on one origin, and so a
+# deployment can move them off the API host onto the app's own domain by setting
+# CONNECTOR_REDIRECT_BASE. Unset, this is byte-identical to the previous value.
+REDIRECT_URI = callback_url("/api/connectors/shopify/callback")
 API_VERSION = "2024-10"
 # read_content/write_content cover blog posts and pages. read_themes/write_themes are
 # needed for theme-level SEO fixes (title/meta/canonical/OG/Twitter/JSON-LD tags live in

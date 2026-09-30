@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import json
+import asyncio
 import os
 import re
 from typing import Optional
@@ -30,6 +31,13 @@ from .spec import BASE_NEGATIVES, CreativeSpec, VideoPlan
 _GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/models/"
                "{model}:generateContent")
 _DEFAULT_MODEL = os.getenv("CREATIVE_ANALYZER_MODEL", "gemini-2.5-flash")
+
+# This call is the only thing standing between a brand-grounded creative and a generic one,
+# so it gets a retry. 120s rather than 90s because a populated vault makes the request
+# meaningfully larger, and a timeout here costs the whole brand grounding.
+_ANALYZER_TIMEOUT_SEC = float(os.getenv("CREATIVE_ANALYZER_TIMEOUT_SEC", "120"))
+_ANALYZER_ATTEMPTS = int(os.getenv("CREATIVE_ANALYZER_ATTEMPTS", "2"))
+_ANALYZER_RETRY_DELAY_SEC = float(os.getenv("CREATIVE_ANALYZER_RETRY_DELAY_SEC", "2"))
 
 _SYSTEM = """You are an advertising creative director who outputs ONLY JSON.
 
@@ -173,7 +181,8 @@ def _heuristic_spec(prompt: str, media_type: str, platform: Optional[str],
 
 async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[str] = None,
                   placement: Optional[str] = None, reference_image_url: str = "",
-                  brand_context: str = "", model: Optional[str] = None) -> CreativeSpec:
+                  brand_context: str = "", model: Optional[str] = None,
+                  input_method: str = "") -> CreativeSpec:
     """Raw request -> CreativeSpec. Exactly one model call."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key or not (prompt or "").strip():
@@ -187,12 +196,72 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
         instruction.append(f"Target platform: {platform}"
                            + (f" ({placement})" if placement else ""))
     if brand_context:
-        instruction.append(f"Known brand context (use ONLY if relevant):\n{brand_context[:1500]}")
+        # This used to read "use ONLY if relevant" and cut the context at 1500 chars.
+        #
+        # Both were wrong. The hedge invited the model to discard the vault - and combined
+        # with the system rule "NEVER invent a brand name, claim or audience", it read as a
+        # reason to avoid brand facts altogether, so Creative Studio produced generic
+        # creative for a fully populated workspace. The truncation then threw away over half
+        # of a measured 3,643-char context, and the brand kit's product names and
+        # technologies sit near the end of it - exactly the part being cut.
+        #
+        # The budget was never the constraint: this context is ~900 tokens against a model
+        # that accepts far more, and the earlier token problem was output-side (fixed by
+        # disabling thinking, see below), not input-side.
+        instruction.append(
+            "VERIFIED BRAND KNOWLEDGE for this workspace. This was extracted from the "
+            "brand's own website and is given to you as fact - using it is NOT inventing, "
+            "and the rule about never inventing a brand does not apply to anything below.\n"
+            "Ground the spec in it:\n"
+            "- `visual_concept` is what actually reaches the image model, so the grounding "
+            "must land THERE, not only in `product`. Make the hero subject a real product "
+            "from this brand's catalogue when one fits the request and name it in "
+            "`visual_concept`: \"the Vomero 18 road-running shoe, engineered mesh upper, "
+            "visible air-cushioned midsole\" - not \"a running shoe\".\n"
+            "- Put the brand's named technologies and materials into `visual_concept` too; "
+            "they are what make the creative look like this brand's product rather than a "
+            "competitor's.\n"
+            "- Set `color_direction` from the brand's stated palette, and `mood`/`style` "
+            "from its stated visual language and positioning.\n"
+            "- Do NOT render the brand name, wordmark or logo as text in the image unless "
+            "`text_in_image` is true; grounding the subject is separate from drawing a logo.\n"
+            "- If a brand fact contradicts the user's request, the user's request wins.\n\n"
+            f"{brand_context[:6000]}")
     if reference_image_url:
         instruction.append(
             "A reference image is attached. Describe its product, colours, shape and framing "
             "in the spec so the generated creative stays faithful to it. Treat it as a visual "
             "source  do not restyle or distort the actual product.")
+
+    # Which of the Creative Studio input routes this came from.
+    #
+    # The four routes ask for genuinely different things, and the analyser could not tell
+    # them apart from the prompt text: "use the brand kit as the subject" and "keep the
+    # photo I gave you and style it on-brand" arrived identical, so they produced identical
+    # specs. Stated plainly here so the spec differs where the intent differs.
+    _ROUTE_DIRECTIVE = {
+        "brand_kb":
+            "INPUT ROUTE: brand knowledge. There is no user photo and the brief below IS the "
+            "brand kit. Pick the hero subject from this brand's own catalogue and name it in "
+            "`visual_concept` with its materials and technologies; do not fall back to a "
+            "generic category object.",
+        "vault_assets":
+            "INPUT ROUTE: an existing brand asset. The attached image is this brand's own "
+            "product shot and is the subject. Keep the product identical - its shape, "
+            "colourway, proportions and markings - and let the spec change only the "
+            "environment, lighting, composition and mood around it.",
+        "upload_image":
+            "INPUT ROUTE: a user-supplied photo. The attached image is the subject and must "
+            "be preserved exactly; do not substitute a catalogue product for it. Use the "
+            "brand knowledge for palette, mood and styling around it only.",
+        "ai_generate_image":
+            "INPUT ROUTE: the user's own prompt leads. Their described scene and subject take "
+            "priority; use the brand knowledge for palette, mood, styling and product naming "
+            "where it does not contradict what they asked for.",
+    }
+    directive = _ROUTE_DIRECTIVE.get((input_method or "").strip().lower())
+    if directive:
+        instruction.append(directive)
 
     parts: list[dict] = [{"text": _SYSTEM + "\n\n" + "\n".join(instruction)}]
     if reference_image_url:
@@ -214,18 +283,45 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
                              "thinkingConfig": {"thinkingBudget": 0}},
     }
     url = _GEMINI_URL.format(model=(model or _DEFAULT_MODEL))
-    try:
-        async with httpx.AsyncClient(timeout=90) as client:
-            r = await client.post(url, params={"key": api_key}, json=payload)
-        if r.status_code != 200:
-            print(f"[creative.analyzer] Gemini {r.status_code}: {r.text[:200]}")
-            return _heuristic_spec(prompt, media_type, platform, reference_image_url, placement)
-        body = r.json()
-        candidate = (body.get("candidates") or [{}])[0]
-        finish = candidate.get("finishReason")
-        text = ((candidate.get("content") or {}).get("parts") or [{}])[0].get("text", "")
-    except Exception as e:
-        print(f"[creative.analyzer] call failed: {e}")
+
+    # Retry the transient failures instead of silently falling back.
+    #
+    # Falling back means _heuristic_spec, which echoes the user's raw prompt with generic
+    # polish and NO brand knowledge - a plausible-looking spec that quietly discards the
+    # whole vault. Any non-200 took that path immediately, so one 503 ("The request timed
+    # out", observed live on this workspace) turned a brand-grounded creative into a generic
+    # one with nothing on screen to say why. 503/429/500 and network errors are worth one
+    # more try; a 400 or 403 is not, and still degrades at once.
+    body = None
+    finish = None
+    text = ""
+    last_problem = ""
+    for attempt in range(_ANALYZER_ATTEMPTS):
+        try:
+            async with httpx.AsyncClient(timeout=_ANALYZER_TIMEOUT_SEC) as client:
+                r = await client.post(url, params={"key": api_key}, json=payload)
+            if r.status_code == 200:
+                body = r.json()
+                candidate = (body.get("candidates") or [{}])[0]
+                finish = candidate.get("finishReason")
+                text = ((candidate.get("content") or {}).get("parts") or [{}])[0].get("text", "")
+                break
+            last_problem = f"HTTP {r.status_code}: {r.text[:160]}"
+            if r.status_code not in (429, 500, 502, 503, 504):
+                break        # a client error will not fix itself
+        except Exception as e:
+            last_problem = f"{type(e).__name__}: {e}"
+        if attempt + 1 < _ANALYZER_ATTEMPTS:
+            print(f"[creative.analyzer] {last_problem} - retrying "
+                  f"({attempt + 2}/{_ANALYZER_ATTEMPTS})")
+            await asyncio.sleep(_ANALYZER_RETRY_DELAY_SEC)
+
+    if body is None:
+        # Loud on purpose: the creative that follows will carry no brand knowledge, and that
+        # is worth knowing rather than discovering from a generic-looking image.
+        print(f"[creative.analyzer] GIVING UP after {_ANALYZER_ATTEMPTS} attempts "
+              f"({last_problem}). Falling back to the verbatim prompt - this creative will "
+              f"NOT use brand knowledge.")
         return _heuristic_spec(prompt, media_type, platform, reference_image_url, placement)
 
     data = _extract_json(text)

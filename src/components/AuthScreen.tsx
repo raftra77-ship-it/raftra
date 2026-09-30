@@ -116,6 +116,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         token = (await res.json().catch(() => ({}))).access_token;
       }
 
+      // Set from the login response when the server resolved it there; stays null on the
+      // signup path and against an older backend, both of which fall back to the separate call.
+      let loginOnboarded: boolean | null = null;
+
       if (!token) {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -132,6 +136,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
         }
         const data = await res.json();
         token = data.access_token;
+        if (typeof data.is_onboarded === 'boolean') loginOnboarded = data.is_onboarded;
       }
       if (!token) throw new Error('Login failed: no token returned.');
 
@@ -148,22 +153,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginComplete }) => {
       } catch(e) {}
 
       if (!actualIsCreator) {
-        try {
-          // Asks the server where to land rather than inferring it from the workspace list.
+        // Login now answers this itself. Following it with GET /workspaces/onboarding-state
+        // meant a second sequential round trip to a database in ap-northeast-1 - ~600ms of
+        // spinner, on top of the login call, before anything rendered.
+        if (loginOnboarded !== null) {
+          hasWorkspace = loginOnboarded;
+          try { localStorage.setItem('raftra_onboarded', hasWorkspace ? '1' : '0'); } catch { /* private mode */ }
+        } else {
+          // Older backend, or the server could not resolve it: ask separately as before.
           // "Has a workspace" is not the same question as "finished onboarding": a workspace
           // row exists before the crawl completes, so the old check sent users who had
           // already onboarded back through the wizard on every login.
-          const stRes = await fetch('/api/workspaces/onboarding-state', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (stRes.ok) {
-            const st = await stRes.json();
-            hasWorkspace = !!st.is_onboarded;
-            // Cached so the homepage CTA can route without repeating this call, which is a
-            // round trip to a remote database and takes seconds.
-            try { localStorage.setItem('raftra_onboarded', hasWorkspace ? '1' : '0'); } catch { /* private mode */ }
-          }
-        } catch (e) {}
+          try {
+            const stRes = await fetch('/api/workspaces/onboarding-state', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (stRes.ok) {
+              const st = await stRes.json();
+              hasWorkspace = !!st.is_onboarded;
+              try { localStorage.setItem('raftra_onboarded', hasWorkspace ? '1' : '0'); } catch { /* private mode */ }
+            }
+          } catch (e) {}
+        }
       }
 
       onLoginComplete(hasWorkspace, actualIsCreator);

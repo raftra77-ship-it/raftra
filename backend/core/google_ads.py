@@ -32,7 +32,11 @@ CLIENT_SECRET = os.getenv("GOOGLE_ADS_CLIENT_SECRET", "")
 DEVELOPER_TOKEN = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
 LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
-REDIRECT_URI = f"{BACKEND_URL}/api/connectors/google-ads/callback"
+from core.oauth_base import callback_url  # noqa: E402
+# Resolved through core.oauth_base so every connector agrees on one origin, and so a
+# deployment can move them off the API host onto the app's own domain by setting
+# CONNECTOR_REDIRECT_BASE. Unset, this is byte-identical to the previous value.
+REDIRECT_URI = callback_url("/api/connectors/google-ads/callback")
 # `adwords` alone is enough to run the Ads API, but fetch_user_email() below reads
 # oauth2/v3/userinfo, which is gated on openid+email. Without them that call 401s and
 # returns "", so a fully connected account rendered as "Google Ads connected ·" with a

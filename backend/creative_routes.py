@@ -43,6 +43,12 @@ class GenerateBody(BaseModel):
     platform: Optional[str] = None
     placement: Optional[str] = None
     reference_image: Optional[str] = None     # URL or data: URL from the upload endpoint
+    # Which Step-2 route the request came from: brand_kb | vault_assets | upload_image |
+    # ai_generate_image. The four have genuinely different intents - one asks for the brand
+    # kit to drive the image, two supply the subject as a photo that must be preserved, and
+    # one leads with the user's own idea - and the analyser cannot tell them apart from the
+    # prompt text alone. Optional, so older clients behave exactly as before.
+    input_method: Optional[str] = None
     # Lets the user run an edited optimized prompt instead of the generated one.
     optimized_prompt_override: Optional[str] = None
     options: dict = Field(default_factory=dict)
@@ -106,20 +112,81 @@ def creative_templates(workspace_id: int, db: Session = Depends(database.get_db)
     bp = (db.query(models.BrandProfile)
             .filter(models.BrandProfile.workspace_id == workspace_id).first())
     guidelines = (bp.guidelines if bp else None) or {}
-    categories = [str(c) for c in (guidelines.get("categories") or []) if str(c).strip()]
-    usps_raw = guidelines.get("usps") or ""
-    usps = [u.lstrip("- ").strip() for u in str(usps_raw).splitlines() if u.strip()]
+
+    # Read the structured layer first and fall back to the flat one.
+    #
+    # This used to read only `categories` and the newline-joined `usps` string, so a brand
+    # whose kit has four fully-specified differentiators, three personas with objections
+    # and a messaging framework was described to the user from two legacy fields - the
+    # richest thing onboarding extracts went unused by the frameworks that most need it.
+    # Fallbacks are kept because a brand onboarded before the structured schema has only
+    # the flat fields, and those workspaces must not lose grounding.
+    def _texts(rows, *keys):
+        out = []
+        for r in rows if isinstance(rows, list) else []:
+            if not isinstance(r, dict):
+                continue
+            for k in keys:
+                v = str(r.get(k) or "").strip()
+                if v:
+                    out.append(v)
+                    break
+        return out
+
+    catalogue = guidelines.get("catalogue") or []
+    categories = ([str(c.get("name") or "").strip() for c in catalogue
+                   if isinstance(c, dict) and str(c.get("name") or "").strip()]
+                  or [str(c) for c in (guidelines.get("categories") or []) if str(c).strip()])
+
+    structured = guidelines.get("structured_usps") or []
+    # A differentiator reads best as "benefit, because feature" - the pair is the whole
+    # reason the structured schema separates them.
+    usps = []
+    for u in structured if isinstance(structured, list) else []:
+        if not isinstance(u, dict):
+            continue
+        benefit, feature = str(u.get("benefit") or "").strip(), str(u.get("feature") or "").strip()
+        name = str(u.get("name") or "").strip()
+        if benefit and feature:
+            usps.append(f"{benefit} ({feature})")
+        elif name or benefit or feature:
+            usps.append(name or benefit or feature)
+    if not usps:
+        usps = [u.lstrip("- ").strip()
+                for u in str(guidelines.get("usps") or "").splitlines() if u.strip()]
+
+    personas = _texts(guidelines.get("target_audiences"), "persona")
+    objections = []
+    for pr in (guidelines.get("target_audiences") or []):
+        if isinstance(pr, dict):
+            objections += [str(o).strip() for o in (pr.get("objections") or []) if str(o).strip()]
+
+    jobs = guidelines.get("jobs_to_be_done") or []
+    pains = _texts(jobs, "problem", "situation")
+
+    messaging = guidelines.get("messaging") if isinstance(guidelines.get("messaging"), dict) else {}
+    angles = [str(a).strip() for a in (messaging.get("angles") or []) if str(a).strip()]
+    core_message = str(messaging.get("core_message") or "").strip()
+
+    claims = [str(c).strip() for c in (guidelines.get("verified_claims") or []) if str(c).strip()]
 
     product = categories[0] if categories else (ws.name or "your product")
     usp = usps[0] if usps else ""
     brand = ws.name or "your brand"
+    persona = personas[0] if personas else ""
+    pain = pains[0] if pains else ""
+    objection = objections[0] if objections else ""
 
     generated = (db.query(models.AdAsset)
                    .filter(models.AdAsset.workspace_id == workspace_id).count())
 
     frameworks = [
         {"key": "pas", "name": "Problem-Agitate-Solution (PAS)",
-         "desc": "Open on the pain your buyer already feels, make it concrete, then show "
+         # The pain comes from jobs_to_be_done when the kit has it: a real extracted
+         # problem beats asking the user to imagine one.
+         "desc": ("Open on %s, make it concrete, then show %s as the fix." % (pain, product))
+                 if pain else
+                 "Open on the pain your buyer already feels, make it concrete, then show "
                  "%s as the fix." % product},
         {"key": "before_after", "name": "Before vs After Showcase",
          "desc": "Show the situation without %s beside the situation with it. Strongest "
@@ -131,19 +198,50 @@ def creative_templates(workspace_id: int, db: Session = Depends(database.get_db)
          "desc": "A dated offer on %s with the deadline visible in the first frame. Use for "
                  "retargeting, not cold traffic." % product},
         {"key": "proof", "name": "Proof & Credibility",
-         "desc": ("Lead with %s." % usp) if usp else
+         # Prefer a claim the site actually states over a differentiator, since this is the
+         # framework whose whole job is being checkable.
+         "desc": ("Lead with %s - the site states it, so an ad can repeat it." % claims[0])
+                 if claims else
+                 ("Lead with %s." % usp) if usp else
                  "Lead with a checkable claim - a certification, a warranty, a test result."},
         {"key": "scenario", "name": "Scenario / Use-Case Series",
          "desc": "One everyday moment per creative, each ending on %s. Builds a repeatable "
                  "series rather than a single ad." % brand},
     ]
 
+    # Frameworks the structured layer makes possible at all. They are appended rather than
+    # mixed in above so a brand without the structured kit sees exactly the previous six.
+    if persona:
+        frameworks.append(
+            {"key": "persona_direct", "name": "Speak To One Segment",
+             "desc": "Address %s by name and need, not the whole market. The kit records "
+                     "what they compare on, so the creative can answer it directly." % persona})
+    if objection:
+        frameworks.append(
+            {"key": "objection", "name": "Handle The Objection",
+             "desc": "Lead with the reason they do not buy - \"%s\" - and answer it in "
+                     "frame one." % objection})
+    if angles:
+        frameworks.append(
+            {"key": "angle_test", "name": "Messaging Angle Test",
+             "desc": "Run the same offer across your recorded angles (%s) and let spend "
+                     "decide which lands." % ", ".join(angles[:3])})
+
+    grounded = bool(categories or usps or personas or jobs or angles or claims)
     return {
         "frameworks": frameworks,
         # Honest, workspace-real context instead of a fabricated per-framework CTR.
         "assets_generated": generated,
-        "brand_grounded": bool(categories or usps),
-        "note": "" if (categories or usps) else
+        "brand_grounded": grounded,
+        # What the frameworks above were actually built from, so the user can see which
+        # part of the kit is carrying them - and which part is empty.
+        "grounded_on": {
+            "categories": len(categories), "differentiators": len(usps),
+            "personas": len(personas), "customer_jobs": len(jobs),
+            "messaging_angles": len(angles), "verified_claims": len(claims),
+        },
+        "core_message": core_message,
+        "note": "" if grounded else
                 "Run Sync Knowledge Graph so these frameworks can reference your own "
                 "products and USPs instead of generic wording.",
     }
@@ -161,7 +259,8 @@ async def analyze_only(body: GenerateBody, db: Session = Depends(database.get_db
     spec = await service.plan(
         workspace_id=body.workspace_id, prompt=body.prompt, media_type=_media_type(body.type),
         platform=body.platform, placement=body.placement,
-        reference_image_url=body.reference_image or "", options=body.options)
+        reference_image_url=body.reference_image or "", options=body.options,
+        input_method=body.input_method or "")
     prompts = optimizer.build_prompts(spec)
     return {"success": True, "creative_spec": spec.summary(),
             "optimized_prompt": prompts["image_prompt"],
@@ -186,7 +285,8 @@ async def generate(body: GenerateBody, background: BackgroundTasks,
     spec = await service.plan(
         workspace_id=body.workspace_id, prompt=body.prompt, media_type=media_type,
         platform=body.platform, placement=body.placement,
-        reference_image_url=body.reference_image or "", options=body.options)
+        reference_image_url=body.reference_image or "", options=body.options,
+        input_method=body.input_method or "")
 
     prompts = optimizer.build_prompts(spec)
     # An edited prompt from the preview panel wins over the generated one.

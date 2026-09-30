@@ -20,6 +20,9 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+# Reused rather than redefined: the same row-to-object shim the connector hub uses.
+from connector_routes import _JsonRow
 
 import auth
 import database
@@ -136,18 +139,44 @@ def _source_states(db: Session, workspace_id: int, meta: Optional[dict],
     Search Console share one Google grant - the row is the Search Console connection, and
     GA4 counts as live only once a property has actually been chosen on it.
     """
-    def _row(model):
-        try:
-            return db.query(model).filter(model.workspace_id == workspace_id).first()
-        except Exception as e:
-            # Same encrypted-credential caveat as the connector helpers above.
-            print("[analytics] %s unreadable for ws %s: %s" % (model.__name__, workspace_id, e))
-            return None
+    # All four rows in ONE statement. They used to be four separate .first() calls, and
+    # against a database in ap-northeast-1 each is a round trip: measured at 817ms for this
+    # helper alone, the largest single piece of the Growth section's load. The rows are
+    # independent single-row lookups, so there is no reason to pay four latencies for them.
+    # Same technique as connector_routes.all_connector_status.
+    wanted = [
+        ("gsc", models.SearchConsoleConnection),
+        ("shop", models.ShopifyConnection),
+        ("meta", models.MetaAdsConnection),
+        ("gads", models.GoogleAdsConnection),
+    ]
+    rows = {}
+    try:
+        selects = ", ".join(
+            f"(SELECT row_to_json(t) FROM {model.__tablename__} t "
+            f"WHERE t.workspace_id = :ws LIMIT 1) AS {key}"
+            for key, model in wanted
+        )
+        result = db.execute(text(f"SELECT {selects}"), {"ws": workspace_id}).mappings().first()
+        for key, model in wanted:
+            data = result[key] if result else None
+            rows[key] = _JsonRow(data, model) if data else None
+    except Exception as e:
+        # Same encrypted-credential caveat as the connector helpers above. One unreadable
+        # row used to cost only that connector; keep that by falling back per-model.
+        print("[analytics] batched connector read failed for ws %s: %s" % (workspace_id, e))
+        db.rollback()
+        for key, model in wanted:
+            try:
+                rows[key] = db.query(model).filter(model.workspace_id == workspace_id).first()
+            except Exception as inner:
+                print("[analytics] %s unreadable for ws %s: %s" % (model.__name__, workspace_id, inner))
+                rows[key] = None
 
-    gsc_conn = _row(models.SearchConsoleConnection)
-    shop_conn = _row(models.ShopifyConnection)
-    meta_conn = _row(models.MetaAdsConnection)
-    gads_conn = _row(models.GoogleAdsConnection)
+    gsc_conn = rows.get("gsc")
+    shop_conn = rows.get("shop")
+    meta_conn = rows.get("meta")
+    gads_conn = rows.get("gads")
 
     # Read `connected` from the connection row, not from whether the insights call parsed.
     # _meta_totals/_google_totals return None both when nothing is linked AND when a linked
@@ -293,8 +322,11 @@ async def growth_analytics(workspace_id: int, timeframe: str = Query("30D"),
     # the workspace DOES have, so the screen is not blank for a brand that has campaigns
     # planned but nothing running yet.
     if meta is None and google is None:
-        campaigns = (db.query(models.Campaign)
-                       .filter(models.Campaign.workspace_id == workspace_id).all())
+        # COUNT, not .all(): only len() was ever taken from this, so loading whole Campaign
+        # rows to measure the list is work that grows with the workspace for no benefit.
+        from sqlalchemy import func as _func
+        campaigns_stored = (db.query(_func.count(models.Campaign.id))
+                              .filter(models.Campaign.workspace_id == workspace_id).scalar() or 0)
         return {
             "timeframe": timeframe,
             "sources": sources,
@@ -305,7 +337,7 @@ async def growth_analytics(workspace_id: int, timeframe: str = Query("30D"),
             "channels": _channel_rows(None, None, influencer),
             "influencers": influencer["creators"],
             "influencer_spend": influencer["spend"],
-            "campaigns_stored": len(campaigns),
+            "campaigns_stored": campaigns_stored,
             "note": ("No ad platform is connected to this workspace, so there is no spend or "
                      "revenue to report. Connect Meta or Google Ads under Integrations."),
         }

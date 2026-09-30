@@ -19,8 +19,12 @@ import httpx
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
+from core.oauth_base import callback_url  # noqa: E402
 
-REDIRECT_URI = f"{BACKEND_URL}/api/connectors/github/callback"
+# Resolved through core.oauth_base so every connector agrees on one origin, and so a
+# deployment can move them off the API host onto the app's own domain by setting
+# CONNECTOR_REDIRECT_BASE. Unset, this is byte-identical to the previous value.
+REDIRECT_URI = callback_url("/api/connectors/github/callback")
 API = "https://api.github.com"
 # 'repo' scope allows reading and writing repository contents (needed to commit + PR).
 SCOPE = "repo"

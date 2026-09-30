@@ -10,8 +10,18 @@ regenerate from, or attach a variation to — results could only be discovered o
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import os
+
+# Ceiling on the brand-context lookup. It grounds the creative but is not required for one,
+# so it may add latency up to this point and no further.
+# The Postgres half: profile, brand kit and brand graph. Worth waiting for - it is the
+# brand. Measured at 13s cold on a live workspace, near-instant once cached.
+_BRAND_FACTS_TIMEOUT_SEC = 30.0
+# The vector half: knowledge-base excerpts. Supplementary, and it loads the embedding
+# model on first use, so it gets a short budget and is dropped if it overruns.
+_BRAND_VECTOR_TIMEOUT_SEC = 6.0
 from typing import Optional
 
 import models
@@ -68,20 +78,59 @@ class CreativeService:
 
     async def plan(self, *, workspace_id: int, prompt: str, media_type: str = "image",
                    platform: Optional[str] = None, placement: Optional[str] = None,
-                   reference_image_url: str = "", options: Optional[dict] = None) -> CreativeSpec:
+                   reference_image_url: str = "", options: Optional[dict] = None,
+                   input_method: str = "") -> CreativeSpec:
         """Analyze only — no generation, no DB write. Powers the prompt-preview panel so the
         user can inspect and edit the optimized prompt before spending a generation."""
         options = options or {}
+        # Brand grounding, fetched in two halves with separate budgets.
+        #
+        # This was one call behind one 8s timeout. Measured on a live workspace that
+        # call takes 41s: 13s for the Postgres half (profile, brand kit, brand graph -
+        # 11.5KB of real brand knowledge) and 28s for the vector half, which loads the
+        # local embedding model to return a single passage. The timeout therefore fired
+        # on EVERY request and discarded BOTH halves, so the analyser was told nothing
+        # about the brand no matter how complete the kit was. That is why generated
+        # images ignored it.
+        #
+        # The facts half IS the brand, so it is waited for properly and cached per
+        # workspace (only the first request pays). The vector half is supplementary and
+        # bounded tightly - if it is slow we generate from the kit rather than nothing.
         brand = ""
         try:
-            from core.brand_context import get_brand_context
-            brand = get_brand_context(workspace_id, query="brand voice and visual identity")
+            from core.brand_context import brand_facts_context
+            brand = await asyncio.wait_for(
+                asyncio.to_thread(brand_facts_context, workspace_id),
+                timeout=_BRAND_FACTS_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            print(f"creative: brand facts slower than {_BRAND_FACTS_TIMEOUT_SEC}s; "
+                  f"analysing without them.")
         except Exception:
-            brand = ""   # knowledge base offline — analyse without it rather than fail
+            pass   # knowledge base offline - analyse without it rather than fail
+
+        try:
+            from core.brand_context import brand_excerpts
+            # The retrieval query is the user's own brief plus the identity terms, not
+            # the identity terms alone. A fixed query returned the same voice/colour
+            # passages for every request, so the part of the kit that mattered to this
+            # brief was never pulled in. The suffix keeps voice and identity in range.
+            brand_query = (prompt or "").strip()[:240]
+            brand_query = (f"{brand_query} brand voice and visual identity"
+                           if brand_query else "brand voice and visual identity")
+            extra = await asyncio.wait_for(
+                asyncio.to_thread(brand_excerpts, workspace_id, brand_query),
+                timeout=_BRAND_VECTOR_TIMEOUT_SEC)
+            if extra:
+                brand = f"{brand}\n\n{extra}" if brand else extra
+        except asyncio.TimeoutError:
+            print(f"creative: brand excerpts slower than {_BRAND_VECTOR_TIMEOUT_SEC}s; "
+                  f"using the brand kit alone.")
+        except Exception:
+            pass
 
         spec = await analyze(prompt, media_type=media_type, platform=platform,
                              placement=placement, reference_image_url=reference_image_url,
-                             brand_context=brand)
+                             brand_context=brand, input_method=input_method)
         # Caller-supplied overrides win: these come from explicit UI controls.
         if options.get("style"):
             spec.style = options["style"]
@@ -147,30 +196,50 @@ class CreativeService:
                 image_url=spec.reference_image_url or None,
             )
 
-        try:
-            image_url = await _make(provider_name)
-            await log("Media Generator", "Image generated.", "completed")
-        except Exception as e:
-            # The routed provider can be configured and still refuse. Generating one
-            # creative per framework returned "402: You have depleted your monthly included
-            # credits" from Hugging Face on four of six — the token is present so the router
-            # keeps choosing it, and Creative Studio had no fallback at all, so those four
-            # produced nothing. Campaign Manager already retries keyless for exactly this;
-            # this is the same rule, in the path that generates most of the product's images.
-            if provider_name == "flux_schnell":
-                error = f"Image generation failed: {e}"
-                await log("Media Generator", error, "failed")
-            else:
+        # Walk the provider chain, best first, instead of trying one and then only the
+        # keyless floor.
+        #
+        # The old shape was: routed provider, and on any failure retry flux_schnell.
+        # That assumed Pollinations always works. It no longer does - anonymous callers
+        # now get HTTP 402 on most requests - so once Hugging Face credits ran out the
+        # chain was 402 then 402 and every generation produced nothing, even when
+        # another provider was configured. A provider that answers a hard refusal is
+        # also put on cooldown so the next generation does not pay for the same round
+        # trip again.
+        from agents.creative_nodes.router import (
+            image_provider_chain, mark_exhausted, is_hard_refusal, exhausted_reason)
+
+        chain = [provider_name] + [n for n in image_provider_chain() if n != provider_name]
+        failures = []
+        for candidate in chain:
+            skip = exhausted_reason(candidate)
+            if skip and candidate != chain[-1]:
+                failures.append(f"{candidate}: skipped ({skip})")
+                continue
+            try:
+                image_url = await _make(candidate)
+                provider_name = candidate
+                await log("Media Generator", f"Image generated on {candidate}.", "completed")
+                break
+            except Exception as e:
+                detail = str(e)
+                failures.append(f"{candidate}: {detail[:120]}")
+                if is_hard_refusal(detail):
+                    mark_exhausted(candidate, detail)
                 await log("Media Generator",
-                          f"{provider_name} refused ({str(e)[:90]}); retrying on the keyless provider.",
+                          f"{candidate} refused ({detail[:90]}); trying the next provider.",
                           "running")
-                try:
-                    image_url = await _make("flux_schnell")
-                    provider_name = "flux_schnell"
-                    await log("Media Generator", "Image generated on the fallback provider.", "completed")
-                except Exception as e2:
-                    error = f"Image generation failed: {e2}"
-                    await log("Media Generator", error, "failed")
+
+        if not image_url:
+            # Name every provider and why it refused. A generic 'generation failed' sent
+            # the user looking for a bug in the prompt when the real answer is that no
+            # image provider on this deployment is funded.
+            error = ("Image generation failed - no image provider is currently usable. "
+                     + " | ".join(failures)
+                     + ". Fix: enable billing on the Gemini API key and set "
+                       "GEMINI_IMAGE_ENABLED=true (best quality), or top up "
+                       "HUGGINGFACE_API_KEY, or set OPENAI_API_KEY.")
+            await log("Media Generator", error, "failed")
 
         if spec.media_type == "video" and image_url:
             await log("Video Agent", "Animating the generated creative into a video...")

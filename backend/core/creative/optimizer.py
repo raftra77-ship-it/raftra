@@ -27,18 +27,143 @@ _IMAGE_FIELD_ORDER = (
 )
 
 
+_HEX_RE = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
+# Typeface instructions. An image model cannot set type, and where it tries it produces the
+# malformed lettering the negative prompt then has to fight.
+_FONT_RE = re.compile(
+    r",?\s*(?:with|in|using)?\s*(?:a|the)?\s*[A-Za-z0-9 ]{0,24}?"
+    r"\b(?:font|typeface|typography)\b[^,.]*", re.IGNORECASE)
+
+
+# The colour words _hex_to_words can produce. Used to spot a design-token label sitting
+# immediately in front of one.
+_COLOUR_WORDS = (
+    r"(?:near-white|near-black|light grey|dark grey|mid grey|"
+    r"(?:pale |deep |vivid )?(?:red|orange|amber|green|teal|sky blue|blue|violet|magenta))"
+)
+# "Accent Color", "Bg Primary", "Text Primary", "Color Primary 500" - one to three
+# capitalised words that are plainly a token name, when a colour word follows them.
+_TOKEN_LABEL_RE = re.compile(
+    r"\b(?:[A-Z][A-Za-z0-9]*\s+){0,2}"
+    # Tertiary/Muted/Subtle/Inverse are as common in design systems as Primary, and leaving
+    # them out let "Bg Tertiary near-white" through while "Bg Primary near-white" was caught.
+    r"(?:Color|Colour|Primary|Secondary|Tertiary|Quaternary|Accent|Bg|Background|Surface|"
+    r"Foreground|Text|Muted|Subtle|Inverse|Neutral|Base|Brand)\s+"
+    # Design systems number their shades ("Color Primary 500"), and the digits sit between
+    # the label and the colour, so the label has to tolerate one before the lookahead.
+    r"(?:\d{2,4}\s+)?"
+    r"(?=" + _COLOUR_WORDS + r")",
+)
+
+
+def _hex_to_words(hex_code: str) -> str:
+    """A colour a diffusion model can actually act on.
+
+    Brand design tokens arrive as hex, and the analyzer faithfully writes them into the
+    visual fields - a live prompt contained "#38bdf8 for key elements and text in #212529,
+    set against a background of #ffffff or #f8f9fa". None of that means anything to an image
+    model: it tokenises "38bdf8" as noise and spends attention on it. Naming the colour keeps
+    the brand's actual palette in the picture while giving the model something it understands.
+    """
+    h = hex_code.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return ""
+    import colorsys
+    hue, light, sat = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+    if light > 0.92:
+        return "near-white"
+    if light < 0.10:
+        return "near-black"
+    if sat < 0.12:
+        return "light grey" if light > 0.6 else "dark grey" if light < 0.4 else "mid grey"
+    names = [(0.04, "red"), (0.11, "orange"), (0.18, "amber"), (0.30, "green"),
+             (0.46, "teal"), (0.56, "sky blue"), (0.70, "blue"), (0.80, "violet"),
+             (0.92, "magenta"), (1.01, "red")]
+    base = next(n for edge, n in names if hue <= edge)
+    if light > 0.72:
+        return f"pale {base}"
+    if light < 0.28:
+        return f"deep {base}"
+    return f"vivid {base}" if sat > 0.65 else base
+
+
 def _clean(value: str) -> str:
-    return " ".join((value or "").split()).strip(" .,")
+    """Normalise whitespace, and remove what an image model cannot use.
+
+    Hex codes become colour names; typeface instructions are dropped entirely. Both were
+    being passed through verbatim from the brand's design tokens, adding length and noise to
+    a prompt whose subject already competes for attention.
+    """
+    text = " ".join((value or "").split())
+    text = _HEX_RE.sub(lambda m: _hex_to_words(m.group(0)) or "", text)
+    text = _FONT_RE.sub("", text)
+    # Design-token LABELS, now that the hex beside them has become a colour name. The brand
+    # kit stores tokens as name+hex ("Bg Primary #f8f9fa"), and the analyzer carries the name
+    # across too, leaving "a palette dominated by Bg Primary near-white, Text Primary dark
+    # grey". The label is the name of a CSS variable - it describes nothing visual and only
+    # competes for the model's attention.
+    text = _TOKEN_LABEL_RE.sub("", text)
+    # The substitutions can leave doubled separators behind.
+    text = re.sub(r"\s*,\s*(,\s*)+", ", ", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip(" .,")
+
+
+# Words that carry no visual meaning, so repeating them is harmless and they must not make a
+# clause look "already covered".
+_STOPWORDS = {
+    "a", "an", "the", "and", "or", "of", "in", "on", "at", "to", "for", "with", "its",
+    "is", "are", "be", "as", "by", "from", "that", "this", "it", "into", "over", "under",
+}
+
+
+def _adds_something(clause: str, seen: set) -> bool:
+    """True when `clause` contributes words the prompt does not already have.
+
+    visual_concept comes back as a complete sentence - subject, setting and action - and the
+    fields after it describe the same picture from different angles, so most of their words
+    are already present. Measured on a live spec: 'dawn' three times, 'wet city streets'
+    twice, and the brand-specific subject reduced to 20 of 84 words. Diffusion models spread
+    attention across the whole prompt, so those repeats actively cost the subject its weight.
+    A clause is kept only when at least half its meaningful words are new.
+    """
+    words = [w.strip(".,").lower() for w in clause.split()]
+    meaningful = [w for w in words if len(w) > 2 and w not in _STOPWORDS]
+    if not meaningful:
+        return False
+    fresh = [w for w in meaningful if w not in seen]
+    return len(fresh) * 2 >= len(meaningful)
 
 
 def build_image_prompt(spec: CreativeSpec) -> str:
-    """One paragraph, subject first, polish last."""
+    """One paragraph, subject first, polish last, each idea stated once."""
     parts: list[str] = []
+    seen: set = set()
     for prefix, field in _IMAGE_FIELD_ORDER:
         raw = spec.subject_line() if field == "subject_line" else getattr(spec, field, "")
         text = _clean(raw)
-        if text:
-            parts.append(f"{prefix}{text}")
+        if not text:
+            continue
+        # The subject always leads; everything after it has to earn its place.
+        if field != "subject_line" and not _adds_something(text, seen):
+            continue
+        # mood / style / color_direction come back as comma-separated attribute lists, and a
+        # clause can clear the threshold above while still repeating individual items
+        # ("energetic" in mood and again in style). Dropping the repeats keeps the useful
+        # half of the clause instead of discarding it whole.
+        if field in ("mood", "style", "color_direction", "composition"):
+            kept = [item for item in (i.strip() for i in text.split(","))
+                    if item and item.lower() not in seen]
+            if not kept:
+                continue
+            text = ", ".join(kept)
+        parts.append(f"{prefix}{text}")
+        seen.update(w.strip(".,").lower() for w in text.split())
+        seen.update(i.strip().lower() for i in text.split(","))
 
     prompt = ", ".join(parts)
 

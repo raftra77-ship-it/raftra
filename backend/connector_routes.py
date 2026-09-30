@@ -13,12 +13,14 @@ import os
 import datetime
 import jwt
 import httpx
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
+# Aliased: a local variable named `text` is used elsewhere in this module, and
+# DateTime is only needed to recognise timestamp columns in _JsonRow.
+from sqlalchemy import text, DateTime as sa_DateTime
 from pydantic import BaseModel
 
 import database, auth, models
@@ -273,6 +275,30 @@ def _wp_status_payload(conn) -> dict:
     }
 
 
+class _JsonRow:
+    """Attribute access over a row_to_json dict, so the payload builders above work unchanged.
+
+    row_to_json renders timestamps as ISO strings, but _drive_status_payload calls
+    .isoformat() on last_import_at. Rather than weaken that to str(), the model's own column
+    types say which fields are datetimes and those are parsed back, so the builders keep
+    seeing exactly the types the ORM gave them.
+    """
+    def __init__(self, data: dict, model):
+        self._data = data
+        self._datetimes = {c.name for c in model.__table__.columns
+                           if isinstance(c.type, sa_DateTime)}
+
+    def __getattr__(self, name):
+        # Only reached for names not found normally, so _data/_datetimes never recurse.
+        value = self._data.get(name)
+        if value is not None and name in self._datetimes and isinstance(value, str):
+            try:
+                return datetime.datetime.fromisoformat(value)
+            except ValueError:
+                return None
+        return value
+
+
 # The connectors the Integrations Hub shows, and how to read each one's row.
 _ALL_CONNECTORS = [
     ("meta", models.MetaAdsConnection, _meta_status_payload),
@@ -304,22 +330,40 @@ def all_connector_status(workspace_id: int, db: Session = Depends(database.get_d
 
     The per-connector endpoints stay as they are: other screens (Campaign Manager, the Asset
     Vault's Drive picker) read a single connector and should not pay for seven.
+
+    Update: this used to fan the seven reads out across a ThreadPoolExecutor, each on its own
+    SessionLocal(). That traded round trips for connections, and connections turned out to be
+    the scarcer resource. Supabase's pooler runs in SESSION mode with a hard ceiling of 15
+    clients for the whole project, while this process alone may hold pool_size 5 + overflow 5.
+    Seven simultaneous extra checkouts per page load pushed it over, and Postgres answered:
+
+        FATAL: (EMAXCONNSESSION) max clients reached in session mode
+               - max clients are limited to pool_size: 15
+
+    Measured against the live database, that fan-out took 26 SECONDS before failing, which is
+    the reported "reload takes forever". Reading them one after another on the request's own
+    session fixed the exhaustion but still cost seven sequential round trips (2.7-7.5s).
+
+    So all seven rows now come back in ONE statement and ONE round trip, as seven scalar
+    subqueries, using the connection this request already holds. No extra checkouts, nothing
+    to exhaust, and the cost no longer scales with the number of connectors.
     """
     _require_workspace(workspace_id, db, current_user)
 
-    def read_one(entry):
-        key, model, to_payload = entry
-        # Its own session: a SQLAlchemy Session is not safe to share across threads, and
-        # each one returns its connection to the pool immediately after the read.
-        s = database.SessionLocal()
-        try:
-            return key, to_payload(s.query(model).filter(model.workspace_id == workspace_id).first())
-        finally:
-            s.close()
+    # Seven scalar subqueries in a single row. Table names come from the mapped models, not
+    # from strings, so adding a connector to _ALL_CONNECTORS is still the only edit needed.
+    selects = ", ".join(
+        f'(SELECT row_to_json(t) FROM {model.__tablename__} t '
+        f'WHERE t.workspace_id = :ws LIMIT 1) AS {key}'
+        for key, model, _ in _ALL_CONNECTORS
+    )
+    row = db.execute(text(f"SELECT {selects}"), {"ws": workspace_id}).mappings().first()
 
-    with ThreadPoolExecutor(max_workers=len(_ALL_CONNECTORS)) as pool:
-        results = list(pool.map(read_one, _ALL_CONNECTORS))
-    return dict(results)
+    out = {}
+    for key, model, to_payload in _ALL_CONNECTORS:
+        data = row[key] if row else None
+        out[key] = to_payload(_JsonRow(data, model) if data else None)
+    return out
 
 
 # ---------------------------------------------------------------- status
@@ -572,21 +616,21 @@ def gh_disconnect(workspace_id: int, db: Session = Depends(database.get_db),
 async def gh_callback(state: str, code: str = None, error: str = None, db: Session = Depends(database.get_db)):
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{frontend}/dashboard?github=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&github=error")
     try:
         payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("purpose") != "github_oauth":
             raise ValueError("bad purpose")
         workspace_id = int(payload["workspace_id"])
     except Exception:
-        return RedirectResponse(f"{frontend}/dashboard?github=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&github=error")
 
     try:
         token = await gh.exchange_code(code)
         login = await gh.fetch_login(token)
     except Exception as e:
         print(f"GitHub OAuth failed: {e}")
-        return RedirectResponse(f"{frontend}/dashboard?github=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&github=error")
 
     conn = _get_gh(workspace_id, db)
     if not conn:
@@ -595,7 +639,7 @@ async def gh_callback(state: str, code: str = None, error: str = None, db: Sessi
     conn.access_token = token
     conn.login = login
     db.commit()
-    return RedirectResponse(f"{frontend}/dashboard?github=connected")
+    return RedirectResponse(f"{frontend}/dashboard?tab=integrations&github=connected")
 
 
 @router.get("/github/{workspace_id}/repos")
@@ -1067,20 +1111,20 @@ def meta_authorize(workspace_id: int, db: Session = Depends(database.get_db), cu
 async def meta_callback(state: str, code: str = None, error: str = None, db: Session = Depends(database.get_db)):
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{frontend}/dashboard?meta=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&meta=error")
     try:
         payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("purpose") != "meta_oauth":
             raise ValueError("bad purpose")
         workspace_id = int(payload["workspace_id"])
     except Exception:
-        return RedirectResponse(f"{frontend}/dashboard?meta=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&meta=error")
     try:
         tok = await meta.exchange_code(code)
         name = await meta.fetch_user_name(tok["access_token"])
     except Exception as e:
         print(f"Meta OAuth failed: {e}")
-        return RedirectResponse(f"{frontend}/dashboard?meta=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&meta=error")
     conn = _get_meta(workspace_id, db)
     if not conn:
         conn = models.MetaAdsConnection(workspace_id=workspace_id)
@@ -1089,7 +1133,7 @@ async def meta_callback(state: str, code: str = None, error: str = None, db: Ses
     conn.token_expiry = datetime.datetime.utcnow() + datetime.timedelta(seconds=int(tok.get("expires_in", 5184000)))
     conn.connected_name = name
     db.commit()
-    return RedirectResponse(f"{frontend}/dashboard?meta=connected")
+    return RedirectResponse(f"{frontend}/dashboard?tab=integrations&meta=connected")
 
 
 import time as _time
@@ -1499,20 +1543,20 @@ def gads_authorize(workspace_id: int, db: Session = Depends(database.get_db), cu
 async def gads_callback(state: str, code: str = None, error: str = None, db: Session = Depends(database.get_db)):
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{frontend}/dashboard?gads=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gads=error")
     try:
         payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("purpose") != "gads_oauth":
             raise ValueError("bad purpose")
         workspace_id = int(payload["workspace_id"])
     except Exception:
-        return RedirectResponse(f"{frontend}/dashboard?gads=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gads=error")
     try:
         tok = await gads.exchange_code(code)
         email = await gads.fetch_user_email(tok["access_token"])
     except Exception as e:
         print(f"Google Ads OAuth failed: {e}")
-        return RedirectResponse(f"{frontend}/dashboard?gads=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gads=error")
     conn = _get_gads(workspace_id, db)
     if not conn:
         conn = models.GoogleAdsConnection(workspace_id=workspace_id)
@@ -1525,7 +1569,7 @@ async def gads_callback(state: str, code: str = None, error: str = None, db: Ses
     conn.token_expiry = datetime.datetime.utcnow() + datetime.timedelta(seconds=int(tok.get("expires_in", 3600)))
     conn.connected_email = email
     db.commit()
-    return RedirectResponse(f"{frontend}/dashboard?gads=connected")
+    return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gads=connected")
 
 
 def _gads_ready(workspace_id: int, db: Session, need_account: bool = True) -> "models.GoogleAdsConnection":
@@ -1765,20 +1809,20 @@ async def drive_callback(state: str, code: str = None, error: str = None,
     """Public: Google redirects the browser here, so the workspace rides in the signed state."""
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{frontend}/dashboard?gdrive=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gdrive=error")
     try:
         payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("purpose") != "gdrive_oauth":
             raise ValueError("bad purpose")
         workspace_id = int(payload["workspace_id"])
     except Exception:
-        return RedirectResponse(f"{frontend}/dashboard?gdrive=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gdrive=error")
 
     try:
         tokens = await gdrive.exchange_code(code)
     except Exception as e:
         print(f"Drive token exchange failed: {e}")
-        return RedirectResponse(f"{frontend}/dashboard?gdrive=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gdrive=error")
 
     access_token = tokens.get("access_token")
     email = (await gdrive.fetch_userinfo(access_token)).get("email") if access_token else None
@@ -1798,7 +1842,7 @@ async def drive_callback(state: str, code: str = None, error: str = None,
     db.commit()
     # kb_assets is the dashboard's own name for the Asset Vault tab; "assets" is not a tab
     # the router recognises, so it would have landed on Home.
-    return RedirectResponse(f"{frontend}/dashboard?gdrive=connected&tab=kb_assets")
+    return RedirectResponse(f"{frontend}/dashboard?tab=integrations&gdrive=connected&tab=kb_assets")
 
 
 @router.get("/gdrive/{workspace_id}/folders")
@@ -2131,7 +2175,7 @@ def shop_authorize(workspace_id: int, body: ShopSelect, db: Session = Depends(da
 async def shop_callback(state: str, code: str = None, error: str = None, db: Session = Depends(database.get_db)):
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{frontend}/dashboard?shopify=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&shopify=error")
     try:
         payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("purpose") != "shopify_oauth":
@@ -2139,14 +2183,14 @@ async def shop_callback(state: str, code: str = None, error: str = None, db: Ses
         workspace_id = int(payload["workspace_id"])
         shop_domain = payload["shop"]
     except Exception:
-        return RedirectResponse(f"{frontend}/dashboard?shopify=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&shopify=error")
 
     try:
         token = await shop.exchange_code(shop_domain, code)
         info = await shop.fetch_shop_info(shop_domain, token)
     except Exception as e:
         print(f"Shopify OAuth failed: {e}")
-        return RedirectResponse(f"{frontend}/dashboard?shopify=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&shopify=error")
 
     conn = _get_shop(workspace_id, db)
     if not conn:
@@ -2156,7 +2200,7 @@ async def shop_callback(state: str, code: str = None, error: str = None, db: Ses
     conn.shop_name = info.get("name")
     conn.access_token = token
     db.commit()
-    return RedirectResponse(f"{frontend}/dashboard?shopify=connected")
+    return RedirectResponse(f"{frontend}/dashboard?tab=integrations&shopify=connected")
 
 
 @router.get("/shopify/{workspace_id}/blogs")
@@ -2663,14 +2707,14 @@ async def wpcom_callback(state: str, code: str = None, error: str = None,
                          db: Session = Depends(database.get_db)):
     frontend = os.getenv("FRONTEND_URL", "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{frontend}/dashboard?wordpress=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&wordpress=error")
     try:
         payload = jwt.decode(state, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("purpose") != "wpcom_oauth":
             raise ValueError("bad purpose")
         workspace_id = int(payload["workspace_id"])
     except Exception:
-        return RedirectResponse(f"{frontend}/dashboard?wordpress=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&wordpress=error")
 
     try:
         tokens = await wpcom.exchange_code(code)
@@ -2678,7 +2722,7 @@ async def wpcom_callback(state: str, code: str = None, error: str = None,
         who = await wpcom.current_user(tokens["access_token"])
     except Exception as e:
         print(f"WordPress.com token exchange failed: {e}")
-        return RedirectResponse(f"{frontend}/dashboard?wordpress=error")
+        return RedirectResponse(f"{frontend}/dashboard?tab=integrations&wordpress=error")
 
     conn = _get_wp(workspace_id, db)
     if not conn:
@@ -2697,7 +2741,7 @@ async def wpcom_callback(state: str, code: str = None, error: str = None,
     conn.username = None
     conn.app_password = None
     db.commit()
-    return RedirectResponse(f"{frontend}/dashboard?wordpress=connected")
+    return RedirectResponse(f"{frontend}/dashboard?tab=integrations&wordpress=connected")
 
 
 @router.get("/wordpress/{workspace_id}/pages")

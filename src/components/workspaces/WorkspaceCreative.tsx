@@ -3,7 +3,8 @@ import {
   Sparkles, Video, 
   ShieldCheck, CheckCircle2, TrendingUp, Zap, 
   Upload, Image as ImageIcon, Wand2, RefreshCw, BarChart2, Search, 
-  Play, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save
+  Play, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save,
+  Layers
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 import { MarketTrendsCompetitorModal } from '../MarketTrendsCompetitorModal';
@@ -285,9 +286,18 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         if (!d) return;
         setFrameworks(Array.isArray(d.frameworks) ? d.frameworks : []);
         setTemplatesNote(d.note || '');
+        setTemplatesGrounding(d.grounded_on || null);
+        setTemplatesCoreMessage(d.core_message || '');
       })
       .catch(() => {});
   }, [workspaceId]);
+
+  /** Which parts of the brand kit the frameworks were built from. Shown so the tab says
+   *  what is carrying it - and, just as usefully, which section of Brand Knowledge is
+   *  still empty. */
+  const [templatesGrounding, setTemplatesGrounding] =
+    useState<Record<string, number> | null>(null);
+  const [templatesCoreMessage, setTemplatesCoreMessage] = useState<string>('');
 
   const [aiPromptInstruction, setAiPromptInstruction] = useState<string>('');
   const [isProcessingStudioAi, setIsProcessingStudioAi] = useState<boolean>(false);
@@ -612,6 +622,144 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     }
   });
 
+  /** Export the canvas as layered SVG, for editing in Figma or Canva.
+   *
+   *  The PNG export flattens everything into pixels: imported into Figma or Canva the
+   *  headline is no longer text, so changing one word means regenerating the whole creative
+   *  and spending another generation. SVG keeps each element a real object - text imports as
+   *  editable text with its font, size and colour; shapes and buttons import as vector - so
+   *  copy and layout can be changed in the design tool for free.
+   *
+   *  The background image is embedded as a data URI rather than linked, because a link to a
+   *  Pollinations or CDN URL breaks the moment that URL expires, and a design handed to a
+   *  designer has to keep working. Same reason the PNG path exists at all.
+   */
+  const [exportingSvg, setExportingSvg] = useState(false);
+
+  /* Build the layered SVG for the current canvas.
+     ------------------------------------------------------------------
+     Split out of handleExportSvg so the same markup can go somewhere other than a
+     file. Figma has no write API - the REST API is read-only, and only a plugin
+     running inside the editor can add layers - so the closest thing to "the design
+     appears in Figma" is putting the SVG on the clipboard: Figma turns pasted SVG
+     into real layers, with text still editable. That makes the hand-off one Ctrl+V
+     instead of a download, a file manager and a drag. */
+  const buildEditorSvg = async (): Promise<string> => {
+      const w = canvasAspectRatio === '16:9' ? 1920 : 1080;
+      const h = canvasAspectRatio === '1:1' ? 1080
+        : canvasAspectRatio === '9:16' ? 1920
+        : canvasAspectRatio === '4:5' ? 1350 : 1080;
+
+      // The on-screen canvas is a fixed CSS box; element coordinates are relative to it, so
+      // they scale linearly to the export size.
+      const chassis = canvasChassisRef.current;
+      const sx = chassis ? w / chassis.clientWidth : 1;
+      const sy = chassis ? h / chassis.clientHeight : 1;
+
+      const esc = (s: string) => String(s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      /** Fetch an image as a data URI so the SVG stays valid once CDN links expire. */
+      const inline = async (url: string): Promise<string> => {
+        try {
+          const r = await fetch(url);
+          if (!r.ok) return '';
+          const blob = await r.blob();
+          return await new Promise<string>(res => {
+            const fr = new FileReader();
+            fr.onloadend = () => res(String(fr.result || ''));
+            fr.onerror = () => res('');
+            fr.readAsDataURL(blob);
+          });
+        } catch { return ''; }
+      };
+
+      const ordered = [...editorCanvasElements]
+        .filter(el => el.visible !== false)
+        .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+
+      const parts: string[] = [];
+      for (const el of ordered) {
+        const x = el.x * sx;
+        const y = el.y * sy;
+        const ew = (el.width || 0) * sx;
+        const eh = (el.height || 0) * sy;
+        const rot = el.rotation
+          ? ` transform="rotate(${el.rotation} ${x + ew / 2} ${y + eh / 2})"` : '';
+        const op = el.opacity != null && el.opacity !== 1 ? ` opacity="${el.opacity}"` : '';
+
+        if (el.type === 'image') {
+          const href = el.content.startsWith('data:') ? el.content : await inline(el.content);
+          if (!href) continue;   // a broken link would import as an empty frame
+          parts.push(
+            `<image x="${x}" y="${y}" width="${ew}" height="${eh}" href="${esc(href)}" ` +
+            `preserveAspectRatio="xMidYMid slice"${rot}${op}/>`);
+          continue;
+        }
+
+        // Badges, buttons and shapes are a filled rounded rect; badges and buttons then
+        // carry a label on top.
+        if (el.type !== 'text') {
+          const r = (el.borderRadius || 0) * sx;
+          const stroke = el.borderColor
+            ? ` stroke="${esc(el.borderColor)}" stroke-width="${(el.borderWidth || 1) * sx}"` : '';
+          parts.push(
+            `<rect x="${x}" y="${y}" width="${ew}" height="${eh || 0}" rx="${r}" ry="${r}" ` +
+            `fill="${esc(el.bgColor || 'none')}"${stroke}${rot}${op}/>`);
+        }
+
+        if (el.type === 'text' || el.type === 'badge' || el.type === 'button') {
+          const fs = (el.fontSize || 16) * sy;
+          // Text sits on the vertical centre for a badge/button, on its own baseline for text.
+          const ty = el.type === 'text' ? y + fs : y + (eh || fs) / 2;
+          const anchor = el.type === 'text' ? 'start' : 'middle';
+          const tx = el.type === 'text' ? x : x + ew / 2;
+          const lines = String(el.content || '').split('\n');
+          const tspans = lines.map((line, i) =>
+            `<tspan x="${tx}" dy="${i === 0 ? 0 : fs * 1.2}">${esc(line)}</tspan>`).join('');
+          parts.push(
+            `<text x="${tx}" y="${ty}" font-family="${esc(el.fontFamily || 'Inter, sans-serif')}" ` +
+            `font-size="${fs}" font-weight="${el.fontWeight || 400}" ` +
+            `fill="${esc(el.color || '#ffffff')}" text-anchor="${anchor}" ` +
+            `dominant-baseline="${el.type === 'text' ? 'auto' : 'middle'}"${rot}${op}>` +
+            `${tspans}</text>`);
+        }
+      }
+
+      const svg =
+        `<?xml version="1.0" encoding="UTF-8"?>\n` +
+        `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
+        `width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n` +
+        `<rect width="${w}" height="${h}" fill="#0a0a12"/>\n` +
+        parts.join('\n') + `\n</svg>`;
+      return svg;
+    };
+
+  /** Download the layered SVG. */
+  const handleExportSvg = async (opts?: { silent?: boolean }) => {
+    setExportingSvg(true);
+    try {
+      const svg = await buildEditorSvg();
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Raftra_Ad_${Date.now()}.svg`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      if (!opts?.silent) {
+        triggerToast('Downloaded an editable SVG — import it into Figma or Canva and the text stays text.');
+      }
+    } catch (e) {
+      triggerToast('Could not export the SVG. The PNG export still works.');
+      throw e;   // the caller must not claim a successful hand-off
+    } finally {
+      setExportingSvg(false);
+    }
+  };
+
   // Export active Canvas to 4K PNG file download
   const handleExport4KPng = async () => {
     const dataUrl = await renderCanvasToDataUrl();
@@ -631,13 +779,44 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   };
 
   // Step 2 Input Method
-  const [inputOption, setInputOption] = useState<'brand_kb' | 'upload_image' | 'ai_generate_image'>('brand_kb');
+  // 'vault_assets' is the third generation route: use an image the workspace already owns
+  // (site crawl, Meta Ad Library import, Drive, or a device upload) as the generator's
+  // reference. The existing 'brand_kb' card uses the brand's TEXT knowledge only - there was
+  // no way to generate from the vault's actual pictures, which is what "generate using
+  // assets from the Brand Knowledge Vault" means. Selecting an asset and also writing a
+  // prompt is the "brand assets + AI" route; the panel says so rather than adding a fourth
+  // card for what is one extra field.
+  const [inputOption, setInputOption] = useState<'brand_kb' | 'vault_assets' | 'upload_image' | 'ai_generate_image'>('brand_kb');
+  const [vaultAssets, setVaultAssets] = useState<{ id: number; url: string; filename: string; category: string; description?: string; alt_text?: string }[] | null>(null);
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [selectedVaultAssetId, setSelectedVaultAssetId] = useState<number | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [productPrompt, setProductPrompt] = useState('');
   /* The reference image the backend is actually given. It has to be a URL the server can
      fetch: `uploadedImage` above is a `blob:` handle that only resolves inside this browser
      tab, so an uploaded product photo used to be shown as "uploaded" and then dropped. */
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
+
+  /** Load the workspace's own images when the vault route is chosen.
+   *  Lazy rather than on mount: most sessions never open this card, and the vault can hold
+   *  hundreds of scraped images. */
+  useEffect(() => {
+    if (inputOption !== 'vault_assets' || !workspaceId || vaultAssets !== null) return;
+    let live = true;
+    setVaultError(null);
+    const token = localStorage.getItem('token');
+    fetch(`/api/workspaces/${workspaceId}/assets`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async r => {
+        if (!live) return;
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { setVaultError(d.detail || `Could not load the asset vault (${r.status}).`); return; }
+        setVaultAssets(Array.isArray(d.assets) ? d.assets : []);
+      })
+      .catch(() => { if (live) setVaultError('Could not reach the server to load your assets.'); });
+    return () => { live = false; };
+  }, [inputOption, workspaceId, vaultAssets]);
   const [uploadingReference, setUploadingReference] = useState(false);
 
   // "Use in Creative Studio" in the Media vault lands here: the asset becomes the reference
@@ -1025,26 +1204,128 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      does not exist — there is no Canva or Figma connector anywhere in this product, nothing
      is sent, and nothing comes back. The round trip is manual: design there, export, then
      upload the image onto a card with the button that does exist. */
-  const handleOpenCanva = (designType: string) => {
+  /* Handing a design off to Canva or Figma.
+     ------------------------------------------------------------------
+     These two buttons used to window.open() a generic Canva template SEARCH and an
+     unrelated Figma community file. Nothing about the user's design went with them - the
+     toast said so out loud ("Nothing syncs"), which made the buttons decorative.
+
+     They now export the design first, so there is something to hand over:
+
+       Figma  - layered SVG. Text is emitted as <text>/<tspan>, so on import the headline is
+                still editable TEXT with its font, size and colour. Changing a word costs
+                nothing instead of a regenerated creative. It is also free: no account, no
+                API key, no app review.
+       Canva  - PNG. Canva's SVG import is a paid feature, so a PNG is what every account
+                can actually take. It lands as a flat image - which is also exactly what the
+                Canva Connect API produces, the difference being this needs no API key.
+
+     Only the image editor has a single canvas to export. The carousel and video builders
+     keep their own state (editorCanvasElements is the IMAGE editor's), so exporting from
+     them would hand over the wrong artwork. Those still open the destination, and say
+     honestly that nothing is carried across. */
+  const handleOpenCanva = async (designType: string) => {
+    const kind = designType.toLowerCase();
+    const isSingleCanvas =
+      !kind.includes('carousel') && !kind.includes('video') && !kind.includes('reel');
+
     let url = 'https://www.canva.com/templates/?query=facebook-ad-banner';
-    if (designType.toLowerCase().includes('carousel')) {
+    if (kind.includes('carousel')) {
       url = 'https://www.canva.com/templates/?query=instagram-carousel-ad';
-    } else if (designType.toLowerCase().includes('video') || designType.toLowerCase().includes('reel')) {
+    } else if (kind.includes('video') || kind.includes('reel')) {
       url = 'https://www.canva.com/templates/?query=instagram-reel-ad';
     }
+
+    if (!isSingleCanvas) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      triggerToast(`Opened Canva's ${designType} templates. This builder has no single canvas to export, so nothing is carried across. 🎨`);
+      return;
+    }
+
+    // Open the tab BEFORE any await.
+    //
+    // A browser only honours window.open while it is still handling the click that caused
+    // it. The moment this function awaits the canvas export, that permission is gone and
+    // Chrome blocks the tab silently - no error, no popup icon in most cases, so the button
+    // simply appeared to do nothing. Opening first keeps the call inside the user gesture;
+    // the export then fills the download behind it.
     window.open(url, '_blank', 'noopener,noreferrer');
-    triggerToast(`Opened Canva's ${designType} templates in a new tab. Nothing syncs — design there, then upload the image back onto a card. 🎨`);
+
+    const dataUrl = await renderCanvasToDataUrl();
+    if (!dataUrl) {
+      triggerToast('Opened Canva, but the design could not be exported — a background image blocked it. Nothing was downloaded.');
+      return;
+    }
+    const link = document.createElement('a');
+    link.download = `Raftra_Canva_${Date.now()}.png`;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    triggerToast('Downloaded your design as a PNG and opened Canva. Use Uploads → add it to a design. It arrives as a flat image, so text is not editable there. 🎨');
   };
 
-  const handleOpenFigma = (designType: string) => {
-    let url = 'https://www.figma.com/community/file/1089201509930773665';
-    if (designType.toLowerCase().includes('carousel')) {
-      url = 'https://www.figma.com/community/file/1154562098438491873';
-    } else if (designType.toLowerCase().includes('video') || designType.toLowerCase().includes('reel')) {
-      url = 'https://www.figma.com/community/file/1187428389230198421';
+  const handleOpenFigma = async (designType: string) => {
+    const kind = designType.toLowerCase();
+    const isSingleCanvas =
+      !kind.includes('carousel') && !kind.includes('video') && !kind.includes('reel');
+
+    if (!isSingleCanvas) {
+      // Was two hardcoded community file ids. Both are gone - figma.com/community/file/
+      // 1154562098438491873 and .../1187428389230198421 now answer "The page you are
+      // looking for can't be found", so the button sent people to a 404. Someone else's
+      // community file is not a dependency worth pinning anyway: they get deleted, and the
+      // file was unrelated to this brand.
+      window.open('https://www.figma.com/', '_blank', 'noopener,noreferrer');
+      triggerToast(`Opened Figma. This builder has no single canvas to export, so nothing is carried across — use the image editor's Open in Figma to hand a design over. ❖`);
+      return;
     }
-    window.open(url, '_blank', 'noopener,noreferrer');
-    triggerToast(`Opened a Figma community ${designType} file in a new tab. Nothing syncs — design there, then upload the image back onto a card. ❖`);
+
+    // Opened before the export for the same reason as the Canva path above: window.open
+    // only works inside the click that triggered it, and awaiting the SVG build first meant
+    // the tab was silently blocked.
+    //
+    // The root domain, deliberately. This pointed at figma.com/files, which 404s - Figma
+    // has moved its file browser more than once, and a deep path that is right today is a
+    // dead link after their next reshuffle. The root always resolves and sends a signed-in
+    // user to their own files, which is all this needs to do: the SVG download below is the
+    // part that carries the design.
+    window.open('https://www.figma.com/', '_blank', 'noopener,noreferrer');
+
+    /* Put the design on the clipboard, so it lands IN Figma with one paste.
+       ------------------------------------------------------------------
+       Figma cannot be written to over the network: its REST API is read-only, and only a
+       plugin running inside the editor can create layers. Pasting is the one route that
+       puts artwork into a Figma file without publishing a plugin - Figma converts pasted
+       SVG into real layers, with text still editable.
+
+       navigator.clipboard.write is handed a PROMISE of the blob rather than the finished
+       blob. That matters: the clipboard, like window.open, is only writable while the
+       browser is still handling the click. Building the SVG takes an await (images are
+       inlined as data URIs), so awaiting it first would spend the click and the write would
+       be refused. Passing a promise lets the call start inside the gesture and settle
+       afterwards. Chrome supports this; Safari and Firefox do not, hence the fallback. */
+    let copied = false;
+    try {
+      const svgBlob = buildEditorSvg().then(
+        (svg) => new Blob([svg], { type: 'text/plain' }));
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': svgBlob })]);
+      copied = true;
+    } catch {
+      copied = false;   // fall through to the download below
+    }
+
+    // The file is written either way: a clipboard can be overwritten by the next copy, and
+    // a download is what survives the round trip through a file manager.
+    try {
+      await handleExportSvg({ silent: true });
+    } catch {
+      if (!copied) return;   // handleExportSvg has already explained the failure
+    }
+
+    triggerToast(copied
+      ? 'Opened Figma and copied your design — click the canvas and press Ctrl+V. It pastes as layers with the headline still editable. (An SVG was downloaded too.) ❖'
+      : 'Opened Figma and downloaded an editable SVG — drag the file onto the canvas. Your headline stays editable text. ❖');
   };
 
   // File Upload Handler
@@ -1345,7 +1626,43 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     setGenerationElapsed(0);
     setIsGenerating(true);
 
-    const job = await Promise.resolve(onGenerate((override?.prompt ?? productPrompt).trim() || brandKnowledgeBrief(), undefined, {
+    /* The brief each input method actually produces.
+       ------------------------------------------------------------------
+       `inputOption` used to change nothing but the card border and which sub-panel showed:
+       it was never sent, and never altered the prompt, so all four routes generated the
+       same thing from the same string. "Generate using Brand Knowledge" and "Upload your
+       own image" were the same request.
+
+       Now each route composes its own brief, and all four carry the brand's visual anchors
+       - a user-written prompt and a user-supplied photo still have to come out looking like
+       this brand. */
+    const typed = (override?.prompt ?? productPrompt).trim();
+    const anchor = brandVisualAnchor();
+    let composedPrompt: string;
+
+    if (override?.prompt) {
+      // Apply-pattern buttons build their own complete brief; leave it alone.
+      composedPrompt = typed;
+    } else if (inputOption === 'brand_kb') {
+      // The whole kit, plus anything typed as a steer on top of it.
+      composedPrompt = [brandKnowledgeBrief(), typed].filter(Boolean).join(' ');
+    } else if (inputOption === 'vault_assets' || inputOption === 'upload_image') {
+      // The supplied image IS the subject, so the brand brief must not talk the model into
+      // rendering a different product - only into styling this one on-brand.
+      composedPrompt = [
+        typed || `Advertising creative for ${brandName || 'this brand'}${brandSite ? ` (${brandSite})` : ''}.`,
+        'Keep the product in the supplied reference image exactly as it is; do not redesign or substitute it.',
+        ...anchor,
+      ].filter(Boolean).join(' ');
+    } else {
+      // ai_generate_image: the user's idea leads, the brand anchors follow it.
+      composedPrompt = [typed || brandKnowledgeBrief(), ...anchor].filter(Boolean).join(' ');
+    }
+
+    const job = await Promise.resolve(onGenerate(composedPrompt || brandKnowledgeBrief(), undefined, {
+      // Which of the four routes this came from, so the backend can weight the reference
+      // image against the brand kit instead of guessing from the prompt text.
+      input_method: inputOption,
       // Pass what the user actually chose. The old call sent the prompt alone, so the format,
       // platform and ratio selectors above had no effect on what the backend produced.
       format: override?.format ?? selectedAdType,
@@ -1714,13 +2031,81 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   /* The brand, written out as a brief a generator can actually use.
      Shared by "Use Framework" and by the Brand Knowledge input method, so the two cannot
      drift into describing the same brand differently. */
-  const brandBriefLines = (): string[] => {
+  /* What the brand kit contributes to a generation, read from the STRUCTURED layer.
+     ------------------------------------------------------------------
+     This used to read four shallow fields - categories, personality, tone and the audience
+     summary - and nothing else. Everything onboarding works hardest to extract went unused:
+     the value proposition, the differentiators with their feature/benefit split, the real
+     product names, the personas with their written ad hooks, the visual identity, the exact
+     brand colours, and `unsupported_topics`, which is the list of things an ad must NOT
+     claim. A "Generate using Brand Knowledge" button that sends none of the brand knowledge
+     is why the output looked like it belonged to no brand in particular. */
+  const briefParts = () => {
     const sentence = (v: string) => v.trim().replace(/[.\s]+$/, "") + ".";
+    const arr = (v: unknown): Record<string, unknown>[] =>
+      Array.isArray(v) ? (v as Record<string, unknown>[]).filter(x => x && typeof x === 'object') : [];
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+
+    // Named products beat a category name: "Air Zoom Pegasus" is a subject a model can
+    // render, "Footwear" is not.
+    const cat = arr(g.catalogue);
+    const products = cat.flatMap(c => (Array.isArray(c.products) ? c.products : []))
+      .map(x => str(x)).filter(Boolean).slice(0, 6);
+    const categoryName = str(cat[0]?.name) || brandCategory || '';
+
+    // Differentiators read as "benefit, because feature" - the pair the schema separates.
+    const usps = arr(g.structured_usps).map(u => {
+      const benefit = str(u.benefit), feature = str(u.feature), name = str(u.name);
+      if (benefit && feature) return `${benefit} (${feature})`;
+      return name || benefit || feature;
+    }).filter(Boolean).slice(0, 3);
+
+    const personas = arr(g.target_audiences);
+    const persona = str(personas[0]?.persona);
+    const hook = str(personas[0]?.hook);
+
+    const messaging = (g.messaging && typeof g.messaging === 'object'
+      ? g.messaging as Record<string, unknown> : {});
+    const coreMessage = str(messaging.core_message);
+
+    // The guardrail. An image that visually asserts something the site never establishes is
+    // the expensive kind of wrong, so it is stated to the model rather than hoped for.
+    const avoid = (Array.isArray(g.unsupported_topics) ? g.unsupported_topics : [])
+      .map(x => str(x)).filter(Boolean).slice(0, 4);
+
+    const colours = (brandProfile?.color_palette || []).filter(Boolean).slice(0, 4);
+    const visual = str(g.visual);
+
+    return {
+      sentence, products, categoryName, usps, persona, hook, coreMessage, avoid, colours, visual,
+      valueProp: str(g.value_proposition),
+    };
+  };
+
+  /** The brand's visual anchors. Attached to EVERY route, including the ones where the user
+   *  writes their own prompt or supplies their own image - those still have to look like
+   *  this brand. */
+  const brandVisualAnchor = (): string[] => {
+    const { sentence, colours, visual, avoid } = briefParts();
     return [
-      `Subject: ${sentence(brandCategory || brandName || "the product")}`,
-      brandAudience ? `Audience: ${sentence(brandAudience)}` : "",
-      brandTone ? `Tone: ${sentence(brandTone)}` : "",
-      brandTheme ? `Brand personality: ${sentence(brandTheme)}` : "",
+      visual ? `Brand visual identity: ${sentence(visual)}` : '',
+      colours.length ? `Use the brand palette: ${colours.join(', ')}.` : '',
+      brandTone ? `Tone: ${sentence(brandTone)}` : '',
+      brandTheme ? `Brand personality: ${sentence(brandTheme)}` : '',
+      avoid.length ? `Do not visually claim: ${avoid.join('; ')}.` : '',
+    ].filter(Boolean);
+  };
+
+  const brandBriefLines = (): string[] => {
+    const { sentence, products, categoryName, usps, persona, hook, coreMessage, valueProp } = briefParts();
+    return [
+      `Subject: ${sentence(products.length ? products.join(', ') : (categoryName || brandName || 'the product'))}`,
+      valueProp ? `What it offers: ${sentence(valueProp)}` : '',
+      coreMessage ? `Core message: ${sentence(coreMessage)}` : '',
+      usps.length ? `Differentiators to show: ${usps.join('; ')}.` : '',
+      persona ? `Audience: ${sentence(persona)}` : (brandAudience ? `Audience: ${sentence(brandAudience)}` : ''),
+      hook ? `Angle: ${sentence(hook)}` : '',
+      ...brandVisualAnchor(),
     ].filter(Boolean);
   };
 
@@ -2348,7 +2733,29 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
               </div>
 
-              <div 
+              <div
+                onClick={() => setInputOption('vault_assets')}
+                style={{
+                  background: inputOption === 'vault_assets' ? 'linear-gradient(135deg, rgba(0,210,255,0.18) 0%, rgba(0,210,255,0.05) 100%)' : 'rgba(255,255,255,0.02)',
+                  border: inputOption === 'vault_assets' ? '2px solid #00D2FF' : '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  cursor: 'pointer'
+                }}
+              >
+                <Layers size={24} color="#00D2FF" style={{ marginBottom: '12px' }} />
+                <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 6px 0' }}>Use Brand Vault Assets</h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.4 }}>
+                  Pick a real image this brand already owns ──► use it as the generator&rsquo;s reference ──► Ad Output.
+                </p>
+
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span>✓ Your own product shots, not stock</span>
+                  <span>✓ Add a prompt to combine assets + AI</span>
+                </div>
+              </div>
+
+              <div
                 onClick={() => setInputOption('upload_image')}
                 style={{
                   background: inputOption === 'upload_image' ? 'linear-gradient(135deg, rgba(124,117,255,0.18) 0%, rgba(90,82,255,0.06) 100%)' : 'rgba(255,255,255,0.02)',
@@ -2393,6 +2800,92 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </div>
 
             </div>
+
+            {/* Brand Vault picker. Selecting an asset sets the same referenceImageUrl the
+                device-upload route uses, so the backend path is identical — the analyzer
+                already accepts a reference image and describes its product, colours and
+                framing into the spec. Adding a prompt on top is the "assets + AI" route. */}
+            {inputOption === 'vault_assets' && (
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(0,210,255,0.25)', borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {vaultError ? (
+                  <div style={{ fontSize: '13px', color: '#ff6b7a' }}>{vaultError}</div>
+                ) : vaultAssets === null ? (
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Loading your asset vault…</div>
+                ) : vaultAssets.length === 0 ? (
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    This workspace has no assets yet. Open the <b style={{ color: '#fff' }}>Media Asset Vault</b> to
+                    import images from your website, Google Drive or your device — then they can be used here.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        {selectedVaultAssetId
+                          ? 'This asset will be the generator’s reference.'
+                          : `Choose one of your ${vaultAssets.length} asset(s) to build the creative from.`}
+                      </span>
+                      {selectedVaultAssetId && (
+                        <button
+                          onClick={() => { setSelectedVaultAssetId(null); setReferenceImageUrl(null); }}
+                          style={{ background: 'none', border: 'none', color: '#ff4757', cursor: 'pointer', fontSize: '12px' }}
+                        >
+                          Clear selection
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 100%), 1fr))', gap: '10px', maxHeight: '260px', overflowY: 'auto' }}>
+                      {vaultAssets.map(a => {
+                        const picked = selectedVaultAssetId === a.id;
+                        return (
+                          <button
+                            key={a.id}
+                            onClick={() => { setSelectedVaultAssetId(a.id); setReferenceImageUrl(a.url); }}
+                            title={a.description || a.alt_text || a.filename}
+                            style={{
+                              padding: 0, cursor: 'pointer', borderRadius: '10px', overflow: 'hidden',
+                              background: 'rgba(0,0,0,0.3)',
+                              border: picked ? '2px solid #00D2FF' : '1px solid rgba(255,255,255,0.1)',
+                              boxShadow: picked ? '0 0 0 3px rgba(0,210,255,0.18)' : 'none',
+                              display: 'flex', flexDirection: 'column',
+                            }}
+                          >
+                            <img src={a.url} alt={a.alt_text || a.filename}
+                                 style={{ width: '100%', height: '82px', objectFit: 'cover', display: 'block' }} />
+                            <span style={{ fontSize: '10px', color: picked ? '#00D2FF' : 'var(--text-muted)', padding: '5px 6px', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {a.category || a.filename}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* The third route: asset + prompt. Optional, so picking an asset alone
+                        still generates from the asset and the brand's own knowledge. */}
+                    <div>
+                      <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                        Optional — describe what to make with it (assets + AI)
+                      </label>
+                      <textarea
+                        value={productPrompt}
+                        onChange={(e) => setProductPrompt(e.target.value)}
+                        rows={2}
+                        placeholder="e.g. place this product on wet asphalt at dawn, cinematic side light"
+                        style={{
+                          width: '100%', boxSizing: 'border-box', background: 'rgba(0,0,0,0.45)',
+                          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px',
+                          color: '#fff', padding: '10px 12px', fontSize: '13px', lineHeight: 1.6,
+                          fontFamily: 'inherit', resize: 'vertical', outline: 'none',
+                        }}
+                      />
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                        Leave empty to build the ad from the asset and this brand&rsquo;s knowledge alone.
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Input Details Expansion */}
             {inputOption === 'upload_image' && (
@@ -3578,6 +4071,59 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </p>
           </div>
 
+          {/* What the frameworks above were written from. A framework that names this
+              brand's own pain point and objection is doing something a generic one cannot,
+              and this is where that becomes visible - including the zeros. */}
+          {templatesGrounding && (
+            <div style={{
+              padding: '14px 18px', borderRadius: '14px',
+              background: 'rgba(124,117,255,0.06)', border: '1px solid rgba(124,117,255,0.22)',
+              display: 'flex', flexDirection: 'column', gap: '10px',
+            }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Written from your brand knowledge
+              </div>
+              {templatesCoreMessage && (
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.88)', lineHeight: 1.55 }}>
+                  “{templatesCoreMessage}”
+                </div>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {([
+                  ['categories', 'Categories'],
+                  ['differentiators', 'Differentiators'],
+                  ['personas', 'Personas'],
+                  ['customer_jobs', 'Customer jobs'],
+                  ['messaging_angles', 'Messaging angles'],
+                  ['verified_claims', 'Verified claims'],
+                ] as [string, string][]).map(([key, label]) => {
+                  const n = templatesGrounding[key] || 0;
+                  return (
+                    <span key={key} style={{
+                      fontSize: '11.5px', fontWeight: 700, padding: '4px 11px', borderRadius: '100px',
+                      background: n ? 'rgba(0,230,118,0.12)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${n ? 'rgba(0,230,118,0.32)' : 'rgba(255,255,255,0.1)'}`,
+                      color: n ? '#00E676' : 'var(--text-muted)',
+                    }}>
+                      {label}: {n}
+                    </span>
+                  );
+                })}
+              </div>
+              {onNavigateTab && Object.values(templatesGrounding).some(v => !v) && (
+                <button
+                  onClick={() => onNavigateTab('kb_brands')}
+                  style={{
+                    alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
+                    color: '#7C75FF', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  Fill the empty sections in Brand Knowledge →
+                </button>
+              )}
+            </div>
+          )}
+
           {templatesNote && (
             <div style={{
               padding: '12px 16px', borderRadius: '10px', fontSize: '13px', lineHeight: 1.55,
@@ -4732,12 +5278,33 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
               </button>
 
               {/* 3. DOWNLOAD AD */}
-              <button 
+              <button
                 onClick={handleExport4KPng}
                 className="btn-grad"
                 style={{ padding: '7px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
               >
                 <Download size={14} /> Download Ad ⬇️
+              </button>
+
+              {/* 4. HAND OFF TO A DESIGN TOOL.
+                  The PNG above is final artwork - flattened, so changing one word in the
+                  headline means generating the creative again. This exports the same canvas
+                  as layered SVG, which Figma and Canva both import with the text still text,
+                  so copy and layout can be corrected without spending another generation. */}
+              <button
+                onClick={() => { void handleExportSvg(); }}
+                disabled={exportingSvg}
+                title="Layered SVG — text stays editable when imported into Figma or Canva"
+                style={{
+                  padding: '7px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  cursor: exportingSvg ? 'wait' : 'pointer',
+                  background: 'rgba(0,210,255,0.12)', color: '#00D2FF',
+                  border: '1px solid rgba(0,210,255,0.4)',
+                  opacity: exportingSvg ? 0.6 : 1,
+                }}
+              >
+                <Edit3 size={14} /> {exportingSvg ? 'Preparing…' : 'Edit in Figma / Canva'}
               </button>
             </div>
           </div>

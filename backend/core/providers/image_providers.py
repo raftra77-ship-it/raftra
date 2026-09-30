@@ -70,6 +70,24 @@ class NanoBananaProvider(ImageProvider):
                 return f"data:{mime};base64,{inline['data']}"
         raise ImageProviderError("Nano Banana response contained no image data.")
 
+# How long to wait for Pollinations to render before handing the URL over unwarmed.
+#
+# Measured ~19s for a successful 1024x576 render. This was 45s, which was too generous in
+# the case that actually matters: when Pollinations answers 500, the wait is pure loss and
+# it pushed media generation from 40s to 105s. 25s covers a normal render with a little
+# headroom and bounds the bad case to something a progress indicator can sit through.
+#
+# Raised to 40: 25s was below Pollinations' own spread. The same prompt measured 15s, 82s
+# and a hard timeout within minutes, so a 25s ceiling turned ordinary slowness into a
+# reported failure. 40s catches the common case; anything slower is handed to the browser
+# unwarmed rather than failed (see generate_image).
+_POLLINATIONS_WARM_TIMEOUT = float(os.getenv("POLLINATIONS_WARM_TIMEOUT_SEC", "40"))
+# Two attempts, not more: each one costs a full timeout, and a service failing twice in a
+# row is not having a momentary blip. Better to surface the error than to keep the user
+# waiting a minute for a free endpoint that is currently unwell.
+_POLLINATIONS_ATTEMPTS = int(os.getenv("POLLINATIONS_ATTEMPTS", "2"))
+
+
 class FluxSchnellProvider(ImageProvider):
     async def generate_image(self, prompt: str, aspect_ratio: str = "16:9", **kwargs) -> str:
         # Since the user couldn't log into Flux platforms, we are using Pollinations AI
@@ -100,8 +118,68 @@ class FluxSchnellProvider(ImageProvider):
         seed = random.randint(1, 1_000_000_000)
         url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true&seed={seed}"
 
-        # Pollinations returns the image directly, so we just return the URL!
-        return url
+        # Warm the URL before handing it out.
+        #
+        # Pollinations does not generate when the URL is built - it generates on the FIRST
+        # GET. Returning the URL unwarmed made this function look instant (measured: 0ms)
+        # while the real ~19 seconds was paid by the user's browser, after the backend had
+        # already reported success. The UI therefore showed a finished generation with a
+        # broken or endlessly-loading image, which is the "takes so long to reload" report.
+        #
+        # Fetching it here moves that wait into the generation step, where the progress
+        # indicator already lives, and the response is cached so the browser's own request
+        # returns immediately. A failure to warm is not fatal: the URL is still valid and
+        # the browser will simply trigger generation itself, exactly as before.
+        # Pollinations is intermittent: the same prompt measured a 500 in 15s, a 200 in 15s
+        # and a 200 in 82s within minutes of each other. A 500 is usually transient and a
+        # fresh seed clears it, so retry rather than give up - but NEVER hand back a URL
+        # that was just observed serving an error. Returning it regardless is what let a
+        # failed generation be saved as a finished creative whose image is an error body.
+        # A TIMEOUT and an ERROR mean different things here, and treating them alike was a
+        # mistake worth correcting: on a timeout Pollinations is usually still rendering, so
+        # the URL frequently works by the time the browser asks for it (measured: the same
+        # prompt returned 200 after 82s). Failing the generation in that case throws away an
+        # image that was on its way. An explicit non-200, by contrast, is a URL known to
+        # serve an error body, and handing that back as a finished creative is what this
+        # retry loop exists to prevent.
+        last_status = None
+        timed_out = False
+        for attempt in range(_POLLINATIONS_ATTEMPTS):
+            if attempt:
+                seed = random.randint(1, 1_000_000_000)
+                url = (f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                       f"?width={width}&height={height}&nologo=true&seed={seed}")
+            try:
+                async with httpx.AsyncClient(timeout=_POLLINATIONS_WARM_TIMEOUT,
+                                             follow_redirects=True) as client:
+                    r = await client.get(url)
+                last_status = r.status_code
+                if r.status_code == 200 and (r.headers.get("content-type") or "").startswith("image/"):
+                    return url
+                print(f"Pollinations attempt {attempt + 1} returned {r.status_code} "
+                      f"({r.headers.get('content-type')}); retrying with a new seed.")
+            except httpx.TimeoutException:
+                timed_out = True
+                last_status = "timeout"
+                print(f"Pollinations attempt {attempt + 1} still rendering after "
+                      f"{_POLLINATIONS_WARM_TIMEOUT}s.")
+                # Keep THIS url: the render it started is the one likely to land.
+                break
+            except Exception as e:
+                last_status = f"{type(e).__name__}"
+                print(f"Pollinations attempt {attempt + 1} failed ({type(e).__name__}: {e}).")
+
+        if timed_out:
+            # Hand back the URL unwarmed. The browser picks up the render already in flight;
+            # worst case it waits, which is the behaviour before warming existed at all.
+            print("Pollinations: handing back the URL unwarmed; the browser will wait for it.")
+            return url
+
+        raise ImageProviderError(
+            f"Pollinations did not return an image after {_POLLINATIONS_ATTEMPTS} attempts "
+            f"(last: {last_status}). It is a keyless free service with no availability "
+            f"guarantee - set HUGGINGFACE_API_KEY to use FLUX.1-schnell instead, which is "
+            f"both faster and reliable.")
 
 
 class HFFluxSchnellProvider(ImageProvider):

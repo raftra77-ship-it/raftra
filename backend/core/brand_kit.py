@@ -281,10 +281,162 @@ def extract_logos(html: str, base_url: str, limit: int = 6) -> List[dict]:
 
 # ----------------------------------------------------------- structured extraction
 
+NOT_AVAILABLE = "Not clearly available from the provided sources."
+
+# Keys inside the guidelines JSON that are bookkeeping rather than brand knowledge. Both are
+# underscore-prefixed so they cannot collide with a section id, and every reader that
+# iterates guidelines should skip them.
+USER_EDITED_KEY = "_user_edited"        # list[str]: sections a person corrected by hand
+EXTRACTION_META_KEY = "_extraction"     # dict: when/where/how this knowledge was produced
+
+# Bumped when the extraction PROMPT changes in a way that alters output shape or quality,
+# so a brand extracted under older rules is identifiable and can be re-run deliberately.
+EXTRACTION_VERSION = 2
+# Bumped when the BrandKit schema gains or changes fields.
+BRAND_KIT_SCHEMA_VERSION = 2
+
+
+class Evidence(BaseModel):
+    """Where a claim came from, and how far to trust it.
+
+    The crawl already labels every page it hands the model with a `[url]` header, so the
+    model can cite the page a claim came from - it was simply never asked to. Without this
+    the vault presented a model's inference about positioning in exactly the same visual
+    weight as a warranty length printed on the site, and nothing downstream could tell a
+    safe claim from a guess.
+    """
+    source_url: str = Field(default="", description="The [url] header of the page this came from")
+    snippet: str = Field(default="", description="Short quote from the source supporting this")
+    confidence: str = Field(default="medium", description="high | medium | low")
+    basis: str = Field(default="stated", description="'stated' if the site says it, 'inferred' if you concluded it")
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _conf(cls, v):
+        v = str(v or "medium").strip().lower()
+        return v if v in ("high", "medium", "low") else "medium"
+
+    @field_validator("basis", mode="before")
+    @classmethod
+    def _basis(cls, v):
+        v = str(v or "stated").strip().lower()
+        return "inferred" if v.startswith("infer") else "stated"
+
+
+class USP(BaseModel):
+    """A differentiator that answers: what is different, why it matters, who cares.
+
+    A bare string list produced "High quality products" and there was no structural reason
+    it could not. Forcing feature/benefit/audience separately makes a generic answer
+    obviously empty rather than merely vague.
+    """
+    name: str = Field(default="", description="The differentiator's own name, e.g. 'Dri-FIT ADV'")
+    feature: str = Field(default="", description="What it technically is")
+    benefit: str = Field(default="", description="What the customer gets, in their terms")
+    audience: str = Field(default="", description="Who specifically cares about this")
+    messaging_angle: str = Field(default="", description="How to lead with it in an ad")
+    evidence: Evidence = Field(default_factory=Evidence)
+
+
+class ProductCategory(BaseModel):
+    """A category, and why it matters to a customer - not just its name."""
+    name: str = Field(default="")
+    products: List[str] = Field(default_factory=list, description="Named products in this category")
+    features: List[str] = Field(default_factory=list)
+    benefit: str = Field(default="", description="The outcome the customer gets")
+    technologies: List[str] = Field(default_factory=list, description="Named tech or materials")
+    use_case: str = Field(default="", description="The situation it is bought for")
+    audience: str = Field(default="", description="Which persona this serves")
+    price_range: str = Field(default="", description="Only if the site shows prices")
+    evidence: Evidence = Field(default_factory=Evidence)
+
+
+class JobToBeDone(BaseModel):
+    """Situation -> problem -> desired outcome -> what the brand offers for it."""
+    situation: str = Field(default="")
+    problem: str = Field(default="")
+    desired_outcome: str = Field(default="")
+    brand_response: str = Field(default="", description="The product/technology that answers it")
+    evidence: Evidence = Field(default_factory=Evidence)
+
+
+class VoiceTrait(BaseModel):
+    """A voice characteristic made actionable: what it sounds like, and what it is not."""
+    trait: str = Field(default="")
+    sounds_like: str = Field(default="", description="How it reads in a sentence")
+    example: str = Field(default="", description="One line written in this voice")
+    avoid: str = Field(default="", description="The failure mode of this trait")
+
+
+class VoiceGuide(BaseModel):
+    """Everything a copy agent needs to write in this brand's voice without guessing."""
+    traits: List[VoiceTrait] = Field(default_factory=list)
+    formality: str = Field(default="", description="e.g. 'informal but not slangy'")
+    energy: str = Field(default="", description="e.g. 'high, imperative'")
+    sentence_style: str = Field(default="", description="e.g. 'short, verb-first'")
+    vocabulary: str = Field(default="", description="Register and the terminology it prefers")
+    use_words: List[str] = Field(default_factory=list, description="Terms the brand actually uses")
+    avoid_words: List[str] = Field(default_factory=list, description="Terms that would read wrong")
+    cta_style: str = Field(default="", description="How its calls to action are phrased")
+    dos: List[str] = Field(default_factory=list)
+    donts: List[str] = Field(default_factory=list)
+
+
+class SupportingMessage(BaseModel):
+    message: str = Field(default="")
+    proof_points: List[str] = Field(default_factory=list, description="Products/features that back it")
+
+
+class Messaging(BaseModel):
+    """The messaging framework, so agents stop re-deriving it per campaign."""
+    core_message: str = Field(default="", description="The one thing the brand wants believed")
+    supporting: List[SupportingMessage] = Field(default_factory=list)
+    emotional_benefits: List[str] = Field(default_factory=list, description="How the customer should feel")
+    functional_benefits: List[str] = Field(default_factory=list, description="What they practically get")
+    angles: List[str] = Field(default_factory=list, description="Different ways to land the same value")
+
+
+class BrandStory(BaseModel):
+    """Only what the site actually publishes. A fabricated origin story is worse than none."""
+    founding: str = Field(default="")
+    mission: str = Field(default="")
+    vision: str = Field(default="")
+    philosophy: str = Field(default="")
+    milestones: List[str] = Field(default_factory=list)
+    beliefs: List[str] = Field(default_factory=list)
+
+
+class PositioningSignals(BaseModel):
+    """Axes rather than invented competitors. Marked inferred unless the site states it."""
+    price_tier: str = Field(default="", description="premium | mid | value")
+    orientation: str = Field(default="", description="performance | lifestyle | both")
+    innovation: str = Field(default="", description="innovation-led | heritage-led")
+    reach: str = Field(default="", description="mass market | niche")
+    appeal: str = Field(default="", description="functional | emotional | both")
+    basis: str = Field(default="inferred", description="'stated' or 'inferred'")
+
+
 class Persona(BaseModel):
-    """One audience segment plus the line that would stop them scrolling."""
-    persona: str = Field(default="", description="Who they are, e.g. 'MacBook power users'")
+    """One audience segment, deep enough to brief a campaign from.
+
+    Was {persona, hook}. Two strings cannot answer "what objection does this segment have"
+    or "which products serve them", so every agent that needed those re-invented them per
+    task, inconsistently. Behaviour and need define a segment here, not demographics: the
+    site rarely states age or gender, and inventing them is the exact failure this schema
+    exists to prevent.
+    """
+    persona: str = Field(default="", description="Named by need or behaviour, not demographics")
+    need: str = Field(default="", description="The core need that defines this segment")
+    pain_points: List[str] = Field(default_factory=list)
+    goals: List[str] = Field(default_factory=list)
+    buying_motivation: str = Field(default="", description="What actually triggers the purchase")
+    categories: List[str] = Field(default_factory=list, description="Product categories they buy")
+    objections: List[str] = Field(default_factory=list, description="Why they might not buy")
+    decision_factors: List[str] = Field(default_factory=list, description="What they compare on")
+    desired_outcome: str = Field(default="")
+    messaging_angle: str = Field(default="", description="The angle that lands with them")
     hook: str = Field(default="", description="A one-line ad hook aimed at this persona")
+    evidence: Evidence = Field(default_factory=Evidence)
 
 
 class BrandKit(BaseModel):
@@ -325,6 +477,41 @@ class BrandKit(BaseModel):
                     "(shipping/delivery pages, a country or currency selector, a stated address). "
                     "Leave blank if the site does not say.")
 
+    # ---------------------------------------------------------------- structured layer
+    # Everything above is the original flat schema and is deliberately untouched: existing
+    # rows, the guidelines JSON and every downstream reader still work exactly as before.
+    # The fields below are additive and all default to empty, so a model that ignores them
+    # (or an older stored kit) degrades to precisely the previous behaviour.
+    # The brand's own name, read from its content.
+    #
+    # Nothing extracted this before: the workspace name came from onboarding (typed once) or
+    # from the domain, and neither is corrected when the site changes. A workspace re-pointed
+    # at a new site therefore kept the previous brand's name while every other field was
+    # rebuilt - the site said one brand, the name said another, and that name is what reaches
+    # agents and image generation. Read from the page (masthead, title, copyright, "about"),
+    # never from the domain, which is a guess rather than a statement.
+    brand_name: str = Field(
+        default="",
+        description="The brand's own name exactly as the site writes it. Only if the content "
+                    "states it; do not infer it from the domain.")
+    industry: str = Field(default="", description="The category the brand competes in")
+    value_proposition: str = Field(default="", description="One sentence: what it offers and to whom")
+    structured_usps: List[USP] = Field(default_factory=list)
+    catalogue: List[ProductCategory] = Field(default_factory=list)
+    jobs_to_be_done: List[JobToBeDone] = Field(default_factory=list)
+    voice: VoiceGuide = Field(default_factory=VoiceGuide)
+    messaging: Messaging = Field(default_factory=Messaging)
+    story: BrandStory = Field(default_factory=BrandStory)
+    positioning_signals: PositioningSignals = Field(default_factory=PositioningSignals)
+    # Facts a marketing agent must not get wrong, and which sites do publish.
+    verified_claims: List[str] = Field(
+        default_factory=list,
+        description="Claims the site states outright and that an ad could safely repeat "
+                    "(certifications, warranty terms, shipping/returns terms, partnerships)")
+    unsupported_topics: List[str] = Field(
+        default_factory=list,
+        description="Things an ad must NOT claim because the site never establishes them")
+
     @field_validator("product_categories", "usps", "benefits", "personality",
                      "tone_of_voice", "key_messages", mode="before")
     @classmethod
@@ -346,32 +533,123 @@ class BrandKit(BaseModel):
         return []
 
 
-EXTRACTION_PROMPT = """You are a brand strategist reading a company's own website.
+EXTRACTION_PROMPT = """You are a brand strategist building a brand intelligence brief that
+other AI agents will use to write ads, plan campaigns and answer questions about this brand.
+They cannot see the website. Everything they know comes from what you return.
+
+Each page below is preceded by its URL in square brackets, like [https://example.com/tech].
+Cite those URLs in the "evidence" objects.
 
 Return ONLY a JSON object with exactly these keys, no code fence, no commentary:
 {
+  "brand_name": "",
   "overview": "", "mission": "", "positioning": "", "business_model": "",
-  "visual_identity": "",
+  "visual_identity": "", "industry": "", "value_proposition": "",
   "product_categories": [], "usps": [], "benefits": [], "personality": [],
-  "tone_of_voice": [], "audience_summary": "", "target_audiences": [{"persona": "", "hook": ""}],
-  "key_messages": [], "markets": ""
+  "tone_of_voice": [], "audience_summary": "", "key_messages": [], "markets": "",
+
+  "structured_usps": [
+    {"name": "", "feature": "", "benefit": "", "audience": "", "messaging_angle": "",
+     "evidence": {"source_url": "", "snippet": "", "confidence": "high|medium|low",
+                  "basis": "stated|inferred"}}
+  ],
+  "catalogue": [
+    {"name": "", "products": [], "features": [], "benefit": "", "technologies": [],
+     "use_case": "", "audience": "", "price_range": "",
+     "evidence": {"source_url": "", "snippet": "", "confidence": "", "basis": ""}}
+  ],
+  "target_audiences": [
+    {"persona": "", "need": "", "pain_points": [], "goals": [], "buying_motivation": "",
+     "categories": [], "objections": [], "decision_factors": [], "desired_outcome": "",
+     "messaging_angle": "", "hook": "",
+     "evidence": {"source_url": "", "snippet": "", "confidence": "", "basis": ""}}
+  ],
+  "jobs_to_be_done": [
+    {"situation": "", "problem": "", "desired_outcome": "", "brand_response": "",
+     "evidence": {"source_url": "", "snippet": "", "confidence": "", "basis": ""}}
+  ],
+  "voice": {
+    "traits": [{"trait": "", "sounds_like": "", "example": "", "avoid": ""}],
+    "formality": "", "energy": "", "sentence_style": "", "vocabulary": "",
+    "use_words": [], "avoid_words": [], "cta_style": "", "dos": [], "donts": []
+  },
+  "messaging": {
+    "core_message": "",
+    "supporting": [{"message": "", "proof_points": []}],
+    "emotional_benefits": [], "functional_benefits": [], "angles": []
+  },
+  "story": {"founding": "", "mission": "", "vision": "", "philosophy": "",
+            "milestones": [], "beliefs": []},
+  "positioning_signals": {"price_tier": "", "orientation": "", "innovation": "",
+                          "reach": "", "appeal": "", "basis": "stated|inferred"},
+  "verified_claims": [],
+  "unsupported_topics": []
 }
 
-Rules:
-- Ground every field in the content below. Reading what a brand sells and how it talks is
-  inference and is welcome; inventing facts it never states is not.
-- "mission" only if the site actually publishes a mission or slogan. Otherwise "".
-- "usps" must be concrete and checkable (a certification, a warranty length, a technology),
-  never generic praise like "great quality".
-- "target_audiences": up to 4 segments. Each "hook" is one line you could run as an ad.
-- "markets": only where the site says it sells - a shipping or delivery page, a country
-  or currency selector, a stated address. A domain suffix is not evidence. Leave "" if
-  the site does not say.
-- "visual_identity": how the site presents itself visually and what that signals - layout,
-  imagery, density, use of colour and type, and the impression it creates. Describe only
-  what is evident from the page; leave "" if the content gives you nothing to go on.
-- Leave any field empty ("" or []) when the content does not support it. An empty field is
-  a correct answer; a plausible guess is not.
+THE RULE THAT OVERRIDES EVERY OTHER RULE:
+Never invent. An empty field is a correct answer. A plausible-sounding guess is a defect,
+because an agent will repeat it to customers as though the brand said it.
+
+Separate what you SAW from what you CONCLUDED:
+- basis "stated"   - the page says this. Quote it in "snippet".
+- basis "inferred" - you concluded it from what the page says. Still cite the page that
+  led you there, and set confidence honestly.
+Positioning, personality, tone, personas and jobs_to_be_done are almost always "inferred".
+Products, technologies, materials, prices, shipping, returns, warranty, certifications and
+partnerships must be "stated" or omitted entirely.
+
+SPECIFICITY:
+Use the brand's own vocabulary. If the site names a technology, a material, a collection
+or a product line, name it. A brief that would read identically for a competitor is a
+failed brief. "High quality products" and "innovative solutions" are failures.
+
+COVERAGE - these are the fields that carry the most weight downstream, and the ones most
+often returned empty. Work through the pages you were given and fill each one that the
+content supports. An empty field is correct ONLY when the content genuinely does not
+support it; it is not a shortcut.
+- "brand_name": read it off the page - the masthead, the <title>, a copyright line, the
+  "about" copy. NEVER derive it from the domain name.
+- "catalogue": go through every page that lists or describes what the brand sells. One
+  entry per meaningful category, and fill "products" with the ACTUAL product names printed
+  on those pages, not descriptions of them. A category with an empty "products" list on a
+  site that names its products is an incomplete answer.
+- "technologies" inside each catalogue entry: the named technologies, materials, fabrics,
+  components or processes the brand has given its own name to. These are usually
+  capitalised or trademarked on the page. Copy the name exactly.
+- "verified_claims": read the commerce and policy pages you were given - returns, exchange,
+  warranty, shipping, delivery, care, certification, partnership. Those pages state precise,
+  checkable terms, and those terms are the claims an ad may safely repeat. Quote the
+  specifics (a window, a duration, a threshold, a certification name), not a paraphrase.
+- "voice": derive the traits from how the site's own headlines and product copy are
+  actually written. Quote a real line from the site in "example" where one fits.
+
+Field notes:
+- "overview": 3-5 sentences. What it sells, who for, what makes it different, market, and
+  anything stated about origin or scale. Every other agent reads this first.
+- "value_proposition": one sentence a stranger could repeat back.
+- "structured_usps": 4-8. Each must survive: what is different -> why does it matter ->
+  who cares. If you cannot fill feature AND benefit AND audience, drop the entry.
+- "catalogue": one entry per meaningful category, with real product names where given.
+  Explain why the category matters to a customer; a bare list of names is not enough.
+- "target_audiences": 3-5 segments defined by NEED or BEHAVIOUR, never by demographics.
+  "Runners training for distance who need cushioning that lasts" - not "men 18-34". If
+  the site does not support age or gender, do not state them. "objections" is why this
+  person might NOT buy; it is the most useful and most often skipped field.
+- "jobs_to_be_done": only where a product genuinely answers a situation the site describes.
+- "voice.traits": 3-5. "example" must be a line you wrote in that voice, not a description
+  of it. "avoid" is that trait's failure mode.
+- "messaging.supporting": each message needs proof_points naming real products or features.
+- "verified_claims": things the site states outright that an ad could safely repeat -
+  certifications, warranty terms, shipping/returns terms, named partnerships.
+- "unsupported_topics": things an ad must NOT claim because this crawl never establishes
+  them (e.g. "cheapest", "clinically proven", a sustainability claim the site never makes).
+  This protects the brand; be willing to fill it.
+- "benefits": the outcome the customer gets ("stays dry through a long run"), not the
+  feature that delivers it ("Dri-FIT fabric"). Features belong in usps.
+- "markets": only where the site says it sells - a shipping page, a country or currency
+  selector, a stated address. A domain suffix is not evidence.
+- "mission"/"story": only if the site publishes them. Do not write an origin story.
+- "visual_identity": layout, imagery, density, colour and type, and what it signals.
 
 WEBSITE CONTENT:
 """
@@ -447,7 +725,13 @@ async def extract_brand_kit(llm, content: str) -> BrandKit:
     """Run the structured extraction. `llm` is any provider exposing `generate_text`."""
     raw = await llm.generate_text(
         EXTRACTION_PROMPT + (content or "")[:_EXTRACTION_CHARS],
-        system_prompt="You are a precise brand strategist. You output JSON only.")
+        system_prompt="You are a precise brand strategist. You output JSON only.",
+        # See GeminiProvider.generate_text: the structured schema is large enough that the
+        # model breaks its own quoting partway through without this - observed as
+        # "malformed JSON: Expecting ',' delimiter: line 362 column 75" on a live nike.in
+        # extraction. Providers that do not understand the flag ignore it, and the lenient
+        # parser still runs behind it either way.
+        json_mode=True)
     return parse_brand_kit(raw)
 
 
@@ -473,9 +757,20 @@ def kit_to_guidelines(kit: BrandKit) -> dict:
     put("business_model", kit.business_model)
     # Keyed "visual" to match the section id the Brand Guidelines screen renders.
     put("visual", kit.visual_identity)
-    put("categories", kit.product_categories)
-    put("usps", "\n".join("- " + u for u in kit.usps))
-    put("features", "\n".join("- " + b for b in kit.benefits))
+    put("categories", kit.product_categories or [c.name for c in kit.catalogue if c.name])
+    # The flat sections are derived from the structured ones when the model filled only the
+    # richer shape. Without this, a brand re-synced under the new prompt would come back with
+    # "Unique Selling Points" and "Key Features & Benefits" blank - the data is all there,
+    # just under structured_usps - and the vault would look like the sync had lost ground.
+    flat_usps = kit.usps or [
+        (f"{u.name}: {u.feature}" if u.name and u.feature else (u.name or u.feature))
+        for u in kit.structured_usps if (u.name or u.feature)
+    ]
+    flat_benefits = kit.benefits or [
+        u.benefit for u in kit.structured_usps if u.benefit
+    ] or [c.benefit for c in kit.catalogue if c.benefit]
+    put("usps", "\n".join("- " + u for u in flat_usps))
+    put("features", "\n".join("- " + b for b in flat_benefits))
     put("personality", ", ".join(kit.personality))
     # "tone" is the section id the vault reads. It was also written as "tone_of_voice",
     # which nothing has ever read — a duplicate of the same value under a key with no
@@ -483,6 +778,53 @@ def kit_to_guidelines(kit: BrandKit) -> dict:
     put("tone", ", ".join(kit.tone_of_voice))
     put("key_messages", kit.key_messages)
     put("markets", kit.markets)
+    # core.rag.brand_facts reads guidelines["tone_of_voice"] and hands it to every agent as
+    # "Tone of voice:". An earlier cleanup removed this write as an unread duplicate of
+    # "tone" - it was not unread, and removing it silently stripped tone guidance from every
+    # piece of copy the product generates. Both keys are written: "tone" is the vault's
+    # section id (a display string), "tone_of_voice" is the list agents consume.
+    put("tone_of_voice", list(kit.tone_of_voice))
+    # The personas were extracted on every crawl and then dropped here, so the Brand
+    # Knowledge vault had no way to show them and a re-sync could never fill them in. They
+    # are the most useful thing this extractor produces - a named segment with a written
+    # hook - and they were the one field that never reached the screen.
+    #
+    # The whole persona is stored now, not just {persona, hook}: the extra fields are what
+    # let a campaign agent answer "what objection does this segment have" without inventing
+    # an answer. Readers that only know the old two keys are unaffected - they are still
+    # present, in the same place.
+    put("target_audiences", [
+        p.model_dump() for p in kit.target_audiences if (p.persona or "").strip()
+    ])
+
+    # ------------------------------------------------------------ structured layer
+    # Namespaced under their own keys so nothing that reads the flat sections above can be
+    # disturbed by them. `put` still drops anything empty, so a model that ignored the new
+    # schema leaves the previous contents of these keys untouched on a re-sync.
+    put("brand_name", kit.brand_name)
+    put("industry", kit.industry)
+    put("value_proposition", kit.value_proposition)
+    put("structured_usps", [u.model_dump() for u in kit.structured_usps if (u.name or u.feature or "").strip()])
+    put("catalogue", [c.model_dump() for c in kit.catalogue if (c.name or "").strip()])
+    put("jobs_to_be_done", [j.model_dump() for j in kit.jobs_to_be_done if (j.problem or "").strip()])
+    put("verified_claims", list(kit.verified_claims))
+    put("unsupported_topics", list(kit.unsupported_topics))
+
+    # Nested objects: written only when they carry something, so an empty VoiceGuide never
+    # overwrites a voice a user edited by hand.
+    voice = kit.voice.model_dump()
+    if any(voice.values()):
+        out["voice"] = voice
+    messaging = kit.messaging.model_dump()
+    if any(messaging.values()):
+        out["messaging"] = messaging
+    story = kit.story.model_dump()
+    if any(story.values()):
+        out["story"] = story
+    signals = kit.positioning_signals.model_dump()
+    # basis defaults to "inferred", so test the axes rather than the whole object.
+    if any(v for k, v in signals.items() if k != "basis"):
+        out["positioning_signals"] = signals
     if kit.target_audiences:
         out["target_audiences"] = [p.model_dump() for p in kit.target_audiences]
     return out
@@ -906,3 +1248,155 @@ async def screenshot_color_tokens(screenshot: bytes, limit: int = 4) -> List[dic
                     "role": "Painted on the page (%d%%)" % round(c["share"] * 100),
                     "source": "screenshot-kmeans", "share": c["share"]})
     return out
+
+
+# --------------------------------------------------------------- quality report
+
+# Phrases that could be said about any company. A brief built from these is worthless to a
+# copy agent because it constrains nothing, so they are counted against specificity.
+_GENERIC_PHRASES = (
+    "high quality", "high-quality", "great quality", "best quality", "top quality",
+    "innovative solutions", "wide range", "world class", "world-class", "cutting edge",
+    "cutting-edge", "customer satisfaction", "excellent service", "trusted brand",
+    "leading provider", "one-stop", "affordable prices", "value for money",
+    "state of the art", "state-of-the-art", "seamless experience", "premium quality",
+)
+
+
+def _norm_claim(text: str) -> str:
+    """Lowercased, punctuation-stripped form, for spotting the same claim written twice."""
+    return re.sub(r"[^a-z0-9 ]+", "", str(text or "").lower()).strip()
+
+
+def assess_brand_kit(kit: "BrandKit", page_count: int = 0) -> dict:
+    """Score a kit against rules that actually inspect it.
+
+    Deliberately not a vibe. Every number below is computed from the kit's own contents, so
+    a thin extraction cannot report 90% and a rich one cannot be dragged down by an empty
+    optional field. The report is for operators and for the UI's confidence indicators; it
+    is never shown as a marketing number.
+    """
+    # -------- completeness: sections that carry real weight, each worth the same
+    checks = {
+        "overview": bool((kit.overview or "").strip()),
+        "value_proposition": bool((kit.value_proposition or "").strip()),
+        "positioning": bool((kit.positioning or "").strip()),
+        "audience_summary": bool((kit.audience_summary or "").strip()),
+        "personas": len(kit.target_audiences) >= 2,
+        "structured_usps": len(kit.structured_usps) >= 3,
+        "catalogue": len(kit.catalogue) >= 1,
+        "voice": len(kit.voice.traits) >= 2,
+        "messaging": bool((kit.messaging.core_message or "").strip()),
+        "jobs_to_be_done": len(kit.jobs_to_be_done) >= 1,
+        "verified_claims": len(kit.verified_claims) >= 1,
+        "markets": bool((kit.markets or "").strip()),
+    }
+    completeness = round(100 * sum(1 for v in checks.values() if v) / len(checks))
+
+    # -------- evidence coverage: of the claims that CAN carry a citation, how many do
+    evidence_bearing = (
+        [u.evidence for u in kit.structured_usps]
+        + [c.evidence for c in kit.catalogue]
+        + [p.evidence for p in kit.target_audiences]
+        + [j.evidence for j in kit.jobs_to_be_done]
+    )
+    cited = sum(1 for e in evidence_bearing if (e.source_url or "").strip())
+    evidence_coverage = round(100 * cited / len(evidence_bearing)) if evidence_bearing else 0
+
+    # -------- specificity: generic filler anywhere in the prose the agents will quote
+    prose = " ".join([
+        kit.overview, kit.value_proposition, kit.positioning, kit.audience_summary,
+        " ".join(kit.usps), " ".join(kit.benefits), " ".join(kit.key_messages),
+        " ".join(u.benefit + " " + u.feature for u in kit.structured_usps),
+    ]).lower()
+    generic_hits = sorted({g for g in _GENERIC_PHRASES if g in prose})
+    # A USP is "thin" when it fails the what/why/who test the schema exists to enforce.
+    thin_usps = [u.name or u.feature for u in kit.structured_usps
+                 if not ((u.feature or "").strip() and (u.benefit or "").strip()
+                         and (u.audience or "").strip())]
+    if generic_hits or thin_usps:
+        specificity = "low" if (len(generic_hits) + len(thin_usps)) > 3 else "medium"
+    else:
+        specificity = "high"
+
+    # -------- duplication: the same sentence appearing across sections
+    claims = ([_norm_claim(u) for u in kit.usps]
+              + [_norm_claim(b) for b in kit.benefits]
+              + [_norm_claim(m) for m in kit.key_messages]
+              + [_norm_claim(s.message) for s in kit.messaging.supporting])
+    # >= 8, not > 12: at 12 the rule missed "high quality" repeated verbatim across usps,
+    # benefits and key_messages, which is the single most common duplication in practice.
+    claims = [c for c in claims if len(c) >= 8]
+    duplicates = len(claims) - len(set(claims))
+
+    # -------- hallucination risk: assertions with no citation and no hedge
+    unsupported = [
+        u.name or u.feature for u in kit.structured_usps
+        if not (u.evidence.source_url or "").strip() and u.evidence.basis == "stated"
+    ]
+
+    # -------- usefulness: can an agent answer the questions it is actually asked
+    answerable = {
+        "who is this brand targeting": len(kit.target_audiences) >= 1,
+        "what should be promoted to a segment": any(p.categories for p in kit.target_audiences),
+        "what tone should copy use": len(kit.voice.traits) >= 1,
+        "what are the differentiators": len(kit.structured_usps) >= 1,
+        "what claims are safe": len(kit.verified_claims) >= 1,
+        "what must an ad avoid": len(kit.unsupported_topics) >= 1,
+        "what is the positioning": bool((kit.positioning or "").strip()),
+        "what messaging angles exist": len(kit.messaging.angles) >= 1,
+    }
+
+    # -------- connectedness: can the knowledge answer a RELATIONAL question
+    #
+    # Everything above counts whether facts exist. A vault can score well on that and still
+    # be unusable, because knowing five personas and five categories does not tell an agent
+    # which product to put in front of which segment - and that is the question campaigns
+    # and creative actually ask. core.brand_graph resolves those links from the stored
+    # records, so the share of personas it can reach an offer for measures something the
+    # presence checks cannot.
+    connected_pct = 0
+    orphan_personas: list = []
+    orphan_categories: list = []
+    try:
+        from core.brand_graph import build_graph
+        graph = build_graph({
+            "catalogue": [c.model_dump() for c in kit.catalogue],
+            "structured_usps": [u.model_dump() for u in kit.structured_usps],
+            "target_audiences": [p.model_dump() for p in kit.target_audiences],
+            "jobs_to_be_done": [j.model_dump() for j in kit.jobs_to_be_done],
+        })
+        rows = graph.get("personas") or []
+        linked = [r for r in rows if r.get("products") or r.get("differentiators")]
+        connected_pct = round(100 * len(linked) / len(rows)) if rows else 0
+        orphan_personas = graph.get("personas_without_products") or []
+        orphan_categories = graph.get("unmatched_categories") or []
+    except Exception as e:      # never let the report fail the profile
+        print("brand quality: relationship pass skipped: %s" % e)
+
+    return {
+        "completeness_pct": completeness,
+        "completeness_missing": sorted(k for k, v in checks.items() if not v),
+        # How much of the knowledge is actually joined up, and where it is not.
+        "connected_pct": connected_pct,
+        "personas_without_offer": orphan_personas,
+        "categories_without_audience": orphan_categories,
+        "evidence_coverage_pct": evidence_coverage,
+        "specificity": specificity,
+        "generic_phrases": generic_hits,
+        "thin_usps": thin_usps,
+        "duplicate_claims": duplicates,
+        "unsupported_claims": unsupported,
+        "counts": {
+            "personas": len(kit.target_audiences),
+            "product_categories": len(kit.catalogue),
+            "products": sum(len(c.products) for c in kit.catalogue),
+            "usps": len(kit.structured_usps),
+            "jobs_to_be_done": len(kit.jobs_to_be_done),
+            "voice_traits": len(kit.voice.traits),
+            "verified_claims": len(kit.verified_claims),
+            "source_pages": page_count,
+        },
+        "agent_questions_answerable": answerable,
+        "agent_readiness_pct": round(100 * sum(1 for v in answerable.values() if v) / len(answerable)),
+    }

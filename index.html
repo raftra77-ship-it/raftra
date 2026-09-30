@@ -34,12 +34,22 @@
   <meta property="og:title" content="Raftra AI — Growth Operating System for Premium Brands" />
   <meta property="og:description"
     content="Your entire growth team, powered by AI. Ads, campaigns, SEO + GEO, analytics, social and influencers in one workspace." />
-  <!-- Raster, 1200x630: WhatsApp, Slack and LinkedIn previews do not render SVG. -->
-  <meta property="og:image" content="/og-image.png" />
+  <!-- Canonical address of the page being shared. Without it a link shared with tracking
+       parameters or from a preview/deployment-hash domain can be scraped under that URL
+       instead of this one. -->
+  <meta property="og:url" content="https://raftra-wmlp.vercel.app/" />
+  <!-- Raster, 1200x630: WhatsApp, Slack and LinkedIn previews do not render SVG.
+       ABSOLUTE, not "/og-image.png". Open Graph requires a fully-qualified URL: the
+       scrapers fetch the image from their own servers, where a root-relative path has no
+       host to resolve against, so the image silently failed and the card collapsed to a
+       bare link. It resolves fine in a browser, which is why it looks correct locally.
+       Update this host (and og:url above) when a custom domain is added. -->
+  <meta property="og:image" content="https://raftra-wmlp.vercel.app/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Raftra AI — Growth Operating System for Premium Brands" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="/og-image.png" />
+  <meta name="twitter:image" content="https://raftra-wmlp.vercel.app/og-image.png" />
   <meta name="twitter:title" content="Raftra AI — Growth Operating System for Premium Brands" />
   <meta name="twitter:description"
     content="Your entire growth team, powered by AI. Ads, campaigns, SEO + GEO, analytics, social and influencers in one workspace." />

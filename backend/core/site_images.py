@@ -341,6 +341,34 @@ def _image_page_links(html: str, base_url: str, limit: int) -> List[str]:
 HARVEST_BUDGET_S = float(os.getenv("HARVEST_BUDGET_SECONDS", "55"))
 
 
+async def _firecrawl_html(client, url: str) -> str:
+    """Rendered HTML via Firecrawl, or "" when it is unavailable or fails.
+
+    Requests `html` rather than markdown: this module needs <img> tags, srcset and CSS
+    background declarations to find pictures, and markdown has already thrown those away.
+    """
+    import os
+    key = (os.getenv("FIRECRAWL_API_KEY") or "").strip()
+    if not key:
+        return ""
+    try:
+        r = await client.post(
+            "https://api.firecrawl.dev/v1/scrape",
+            headers={"Authorization": "Bearer %s" % key,
+                     "Content-Type": "application/json"},
+            json={"url": url, "formats": ["html"]},
+            timeout=60,
+        )
+        if r.status_code != 200:
+            print("[site_images] firecrawl %s for %s" % (r.status_code, url))
+            return ""
+        data = (r.json() or {}).get("data") or {}
+        return data.get("html") or data.get("rawHtml") or ""
+    except Exception as e:
+        print("[site_images] firecrawl failed for %s: %s" % (url, e))
+        return ""
+
+
 async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[dict]:
     """Fetch a site and return its usable images with real dimensions and a category.
 
@@ -364,16 +392,29 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[di
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=25,
                                      headers={"User-Agent": _UA}) as client:
+            html = ""
+            direct_problem = ""
             try:
                 page = await client.get(url)
-                if page.status_code != 200:
-                    raise SiteUnreachable(
-                        "%s returned HTTP %d" % (url, page.status_code))
-                html = page.text
-            except SiteUnreachable:
-                raise
+                if page.status_code == 200:
+                    html = page.text
+                else:
+                    direct_problem = "HTTP %d" % page.status_code
             except Exception as e:
-                raise SiteUnreachable("could not load %s (%s)" % (url, e)) from e
+                direct_problem = str(e)
+
+            if not html:
+                # Fall back to Firecrawl, exactly as the content crawler does.
+                #
+                # This harvester only ever fetched directly, so any site behind bot
+                # protection returned nothing: nike.in answers a plain request with 403
+                # while the onboarding crawler reads it happily through Firecrawl. The
+                # result was a workspace with twelve pages of brand knowledge and an empty
+                # Asset Vault, for a site full of product photography. Same key, same
+                # service, same site - only this path had not been given it.
+                html = await _firecrawl_html(client, url)
+                if not html:
+                    raise SiteUnreachable("%s returned %s" % (url, direct_problem or "no content"))
 
             refs = collect_image_refs(html, url, limit=max_images * 3)
 
@@ -517,3 +558,60 @@ async def harvest(url: str, max_images: int = 24, max_pages: int = 6) -> List[di
         return []
 
     return results
+
+
+async def harvest_into_vault(workspace_id: int, url: str, *, max_images: int = 150,
+                             max_pages: int = 20) -> dict:
+    """Harvest a site's images and persist them as this workspace's scraped assets.
+
+    The same work POST /{ws}/assets/harvest does, lifted out so onboarding can run it too.
+    Entering a brand URL is supposed to fill the Asset Vault, but nothing in the onboarding
+    pipeline ever called the harvester - it existed only behind a button in the Asset Vault
+    screen, so a freshly onboarded workspace had brand knowledge and an empty vault, and the
+    "generate from your own assets" route had nothing to offer.
+
+    Replaces scraped rows rather than appending, so a re-crawl reflects the site as it is
+    now. Uploads, Drive imports and generated creatives are never touched. Never raises:
+    onboarding must not fail because a site blocked an image request.
+    """
+    from database import SessionLocal
+    import models
+
+    try:
+        found = await harvest(url, max_images=max_images, max_pages=max_pages)
+    except SiteUnreachable as e:
+        return {"imported": 0, "replaced": 0, "error": "site unreachable: %s" % e}
+    except Exception as e:
+        return {"imported": 0, "replaced": 0, "error": str(e)}
+
+    if not found:
+        return {"imported": 0, "replaced": 0,
+                "error": "no images met the %dpx minimum" % MIN_DIMENSION}
+
+    try:
+        with SessionLocal() as db:
+            replaced = (db.query(models.MediaAsset)
+                          .filter(models.MediaAsset.workspace_id == workspace_id,
+                                  models.MediaAsset.source == "scraped")
+                          .delete(synchronize_session=False))
+            for item in found:
+                db.add(models.MediaAsset(
+                    workspace_id=workspace_id,
+                    category=item["category"],
+                    source="scraped",
+                    filename=item["filename"],
+                    storage_url=item["source_url"],
+                    source_url=url,
+                    alt_text=item.get("alt") or None,
+                    mime_type=item.get("mime_type"),
+                    file_format=item.get("format"),
+                    width=item.get("width") or None,
+                    height=item.get("height") or None,
+                    file_size_kb=item.get("file_size_kb"),
+                    tags=[item["category"]],
+                ))
+            db.commit()
+        return {"imported": len(found), "replaced": replaced, "error": None}
+    except Exception as e:
+        print("[site_images] could not store harvested assets for ws %s: %s" % (workspace_id, e))
+        return {"imported": 0, "replaced": 0, "error": str(e)}

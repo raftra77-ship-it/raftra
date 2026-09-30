@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { TabErrorBoundary } from '../components/TabErrorBoundary';
 import { useNavigate } from 'react-router-dom';
 import { useRazorpay } from 'react-razorpay';
 import type { LogLine } from '../components/TerminalFeed';
@@ -945,6 +946,9 @@ export function BrandDashboard() {
           type: String(config?.format || 'Video').toLowerCase().includes('video') ? 'video' : 'image',
           platform: config?.platform || null,
           reference_image: config?.reference_image || null,
+          // Which Step-2 route the user chose. The backend weights the reference image
+          // against the brand kit with it; without it every route analysed identically.
+          input_method: config?.input_method || null,
           optimized_prompt_override: config?.optimized_prompt_override || null,
           options: { duration: parseInt(String(config?.length || '15s'), 10) || 15 },
         })
@@ -2246,6 +2250,7 @@ export function BrandDashboard() {
         {/* Dashboard core views. One Suspense boundary covers every tab — each workspace
             is a lazy chunk now, so this catches whichever one is loading. */}
         <div className="dashboard-content">
+          <TabErrorBoundary>
           <Suspense fallback={<TabFallback />}>
           {activeTab === 'control' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '35px' }}>
@@ -2486,7 +2491,6 @@ export function BrandDashboard() {
             <WorkspaceReports
               onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
               brandName={brandProfile?.name || 'Demo Brand'}
-              workspaceId={workspaceId}
             />
           )}
 
@@ -2548,6 +2552,7 @@ export function BrandDashboard() {
             />
           )}
           </Suspense>
+          </TabErrorBoundary>
         </div>
       </main>
 

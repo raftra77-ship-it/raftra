@@ -98,25 +98,60 @@ def _is_useful_page(text: str) -> bool:
 # whatever the header happened to link first - usually login, cart and legal - while the
 # pages that actually describe the brand were never opened.
 _LINK_PRIORITY = (
-    (100, r"/(about|about-us|our-story|company|who-we-are|mission|why-us)"),
+    (100, r"/(about|about-us|our-story|company|who-we-are|mission|why-us|sustainab|impact)"),
+    (95,  r"/(technolog|innovation|materials|craft|how-its-made|science)"),
     (90,  r"/(product|products|shop|store|collection|catalog|catalogue|menu)"),
     (85,  r"/(service|services|solution|solutions|what-we-do|features|platform)"),
-    (75,  r"/(pricing|plans|packages)"),
-    (60,  r"/(faq|faqs|help|support|how-it-works)"),
-    (45,  r"/(contact|contact-us|locations)"),
+    (80,  r"/(pricing|plans|packages|price)"),
+    # Commerce policy pages. These were PENALISED, which was backwards: warranty length,
+    # return window, shipping threshold and care/claims terms are the most checkable facts
+    # a brand publishes, and they are precisely what "verified_claims" needs. Evidence from
+    # the live nike.in run: the strongest stated citation came from
+    # /cp/india-consumer-care-policy, a page the old penalty list demoted by 80 points and
+    # which was only crawled because Firecrawl happened to pick it up.
+    # No leading "/" on this group: these words appear mid-segment in real URLs, and
+    # anchoring on the slash made the rule miss the very page that motivated it -
+    # /cp/india-consumer-care-policy scored 6 instead of 70 because the segment starts
+    # with "india-", not with "consumer-".
+    (70,  r"(warrant|guarantee|returns?|refund|exchange|shipping|delivery|consumer-care|"
+          r"care-policy|certif|compliance)"),
+    (60,  r"/(faq|faqs|help|support|how-it-works|size-guide|sizing)"),
+    (45,  r"/(contact|contact-us|locations|stores?)"),
     (30,  r"/(blog|resources|case-stud|customers|testimonial|press)"),
 )
 # Pages that are almost always boilerplate: they describe the internet, not the brand.
-_LINK_PENALTY = r"/(privacy|terms|cookie|legal|refund|shipping|returns|disclaimer|sitemap|" \
+# Deliberately no longer includes shipping/returns/refund - see the 70-point rule above.
+_LINK_PENALTY = r"/(privacy|terms|cookie|legal|disclaimer|sitemap|" \
                 r"login|signin|sign-in|signup|register|account|cart|checkout|wishlist|" \
                 r"careers|jobs|unsubscribe|admin)"
+
+# Not pages. The live crawl spent one of twelve slots on /manifest.json.
+_NON_PAGE_RE = re.compile(
+    r"\.(json|xml|txt|pdf|zip|rss|atom|ico|png|jpe?g|gif|svg|webp|css|js|woff2?|ttf|eot|mp4|webm)"
+    r"(\?|$)", re.I)
+
+
+def _page_key(url: str) -> str:
+    """Identity of a page for de-duplication: host + path, query string ignored.
+
+    The live nike.in crawl fetched /shop-all-sale/c/99440 twice because two links to it
+    carried different tracking parameters. Two of twelve slots, same content.
+    """
+    import urllib.parse
+    p = urllib.parse.urlparse(url)
+    host = (p.netloc or "").lower().replace("www.", "")
+    return host + (p.path or "/").rstrip("/").lower()
 
 
 def _score_link(url: str) -> int:
     """Higher is more worth crawling. Shallow paths win ties - a section index usually says
     more about the brand than one deep item inside it."""
     import re, urllib.parse
-    path = (urllib.parse.urlparse(url).path or "/").lower()
+    parsed = urllib.parse.urlparse(url)
+    path = (parsed.path or "/").lower()
+    # Assets are not pages and can never contribute to a brand kit.
+    if _NON_PAGE_RE.search(path):
+        return -100
     score = 10
     for weight, pattern in _LINK_PRIORITY:
         if re.search(pattern, path):
@@ -236,6 +271,7 @@ async def _firecrawl_crawl(client, url: str, limit: int, key: str) -> list:
             status = pj.get("status")
             if status == "completed":
                 out = []
+                seen_keys = set()
                 # Scan the whole result set rather than the first `limit` entries: if the
                 # crawl surfaced error pages early, we still want `limit` good ones.
                 for d in (pj.get("data") or []):
@@ -251,6 +287,17 @@ async def _firecrawl_crawl(client, url: str, limit: int, key: str) -> list:
                     if not _is_useful_page(md):
                         print(f"Firecrawl: skipping {src} (error page or near-empty)")
                         continue
+                    # Same page under two different query strings, or an asset Firecrawl
+                    # rendered as text - both observed on the live nike.in crawl, each
+                    # costing one of only twelve slots.
+                    key = _page_key(src)
+                    if key in seen_keys:
+                        print(f"Firecrawl: skipping {src} (duplicate of a page already taken)")
+                        continue
+                    if _NON_PAGE_RE.search(src):
+                        print(f"Firecrawl: skipping {src} (asset, not a page)")
+                        continue
+                    seen_keys.add(key)
                     out.append({"url": src, "content": md[:_PER_PAGE_CHARS]})
                     if len(out) >= limit:
                         break
@@ -361,9 +408,15 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
                 if links and remaining > 0:
                     await manager.broadcast_agent_log(
                         "Brand Intelligence", f"Trying {len(links)} more page(s) on the site...", "thinking")
+                # Identity ignores the query string, so two links to the same page carrying
+                # different tracking parameters cannot take two of the limited slots.
+                fetched_keys = {_page_key(p.get("url", "")) for p in pages}
                 for link in links:
                     if len(pages) >= _MAX_KB_PAGES:
                         break
+                    key = _page_key(link)
+                    if key in fetched_keys:
+                        continue
                     page_text, _ = await _fetch_text(client, link)
                     # Near-empty pages, and error pages that are wordy enough to clear the
                     # word threshold, must not take one of the limited page slots.
@@ -371,6 +424,7 @@ async def brand_intelligence_node(state: OnboardingState) -> OnboardingState:
                             and not _looks_like_error_page(page_text)):
                         pages.append({"url": link, "content": page_text[:_PER_PAGE_CHARS]})
                         have.add(link.rstrip("/"))
+                        fetched_keys.add(key)
 
             # 3) Optional external search context (Tavily) as one extra entry.
             if tavily_key:
@@ -809,8 +863,11 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
     # so every brand's vault showed one paragraph and seven empty sections. The schema lets
     # a field come back empty, which is what keeps a thin site from producing a fabricated
     # mission statement just to fill the panel.
+    import datetime as _datetime
     from core.brand_kit import (extract_brand_kit, extract_brand_kit_with_vision,
-                                kit_to_guidelines, BrandKit)
+                                kit_to_guidelines, BrandKit,
+                                USER_EDITED_KEY, EXTRACTION_META_KEY,
+                                EXTRACTION_VERSION, BRAND_KIT_SCHEMA_VERSION)
 
     kit = BrandKit()
     # When the headless render produced a screenshot, the extractor also LOOKS at the page.
@@ -925,12 +982,97 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
             # thinner second crawl cannot blank out what a richer first one found - or what
             # a user typed by hand.
             existing = dict(bp.guidelines or {})
-            existing.update(kit_to_guidelines(kit))
+            fresh = kit_to_guidelines(kit)
+
+            # Fields the user corrected by hand are NOT overwritten by a later crawl.
+            #
+            # The comment above was half true: the merge protected against a thinner crawl
+            # blanking a field, but a crawl that returned something non-empty still replaced
+            # a human correction with the model's opinion. Someone who fixed the tone to
+            # "Confident, energetic, but never aggressive" lost that on the next sync and had
+            # no way to know. _user_edited is written by the PATCH endpoint whenever a person
+            # saves a section; extraction now steps around those keys and reports what it
+            # skipped rather than silently winning.
+            protected = set(existing.get(USER_EDITED_KEY) or [])
+            overruled = sorted(k for k in fresh if k in protected)
+            for k in overruled:
+                fresh.pop(k, None)
+
+            existing.update(fresh)
             existing.update(state.get("brand_facts") or {})
+
+            # Provenance, so stale knowledge is visible as stale instead of being presented
+            # as current. The website can change under us; nothing recorded when this was
+            # last read, from how many pages, or under which extraction rules.
+            existing[EXTRACTION_META_KEY] = {
+                "last_crawled": _datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "last_extracted": _datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "source_pages": len(state.get("scraped_pages") or []),
+                "source_urls": [p.get("url") for p in (state.get("scraped_pages") or [])][:20],
+                "extraction_version": EXTRACTION_VERSION,
+                "schema_version": BRAND_KIT_SCHEMA_VERSION,
+                "crawled_url": state.get("brand_url") or "",
+                "preserved_user_edits": overruled,
+            }
             bp.guidelines = existing
+            if overruled:
+                await manager.broadcast_agent_log(
+                    "Brand Strategist",
+                    "Kept your edits to: %s (the new crawl did not overwrite them)."
+                    % ", ".join(overruled), "completed")
             keep(bp, "brand_guidelines_summary", summary)
             keep(bp, "target_audience", state["target_audience"])
+
+            # Keep the workspace's NAME consistent with the site it now points at.
+            #
+            # The name was set once at onboarding and never revisited, so a workspace
+            # re-pointed at a different website kept the old brand's name while every other
+            # field was rebuilt from the new one. That name is what brand_facts hands to
+            # every agent, so generated copy and creative announced the wrong brand.
+            #
+            # Only applied when the site actually states a name, and only when the current
+            # name is empty or plainly does not belong to this domain - a name the user
+            # deliberately chose for a matching site is left alone.
+            extracted_name = (kit.brand_name or "").strip()
+            if extracted_name:
+                current = (ws.name or "").strip().lower()
+                host = _page_key(ws.company_url or "").split("/")[0]
+                stem = host.split(".")[0] if host else ""
+                belongs = bool(current) and (current in host or (stem and stem in current))
+                if not current or not belongs:
+                    print(f"[onboarding] workspace name {ws.name!r} -> {extracted_name!r} "
+                          f"(read from the site, not the domain)")
+                    ws.name = extracted_name[:120]
+
             bp.is_onboarded = True
+
+            # Fill the Asset Vault from the same site we just read.
+            #
+            # The harvester existed only behind a button on the Asset Vault screen, so
+            # onboarding produced brand knowledge and an empty vault - and "generate from
+            # your own assets" had nothing to offer on a workspace that had just been set
+            # up. Providing a URL is meant to populate both.
+            #
+            # Deliberately after is_onboarded and inside its own try: a site that blocks
+            # image requests must cost the workspace its pictures, not its brand knowledge.
+            try:
+                from core import site_images
+                await manager.broadcast_agent_log(
+                    "Asset Vault", "Collecting images from the site...", "running")
+                result = await site_images.harvest_into_vault(
+                    state["workspace_id"], state.get("brand_url") or ws.company_url)
+                if result.get("imported"):
+                    await manager.broadcast_agent_log(
+                        "Asset Vault",
+                        "Stored %d image(s) from the site." % result["imported"], "completed")
+                else:
+                    await manager.broadcast_agent_log(
+                        "Asset Vault",
+                        "No images stored (%s). You can import from Drive or your device in "
+                        "the Media Asset Vault." % (result.get("error") or "none found"),
+                        "completed")
+            except Exception as e:
+                print("[onboarding] asset harvest skipped: %s" % e)
             db.commit()
     except Exception as e:
         db.rollback()

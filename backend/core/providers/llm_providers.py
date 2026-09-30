@@ -48,7 +48,17 @@ def _is_rate_limit(err: Exception) -> bool:
 #
 # In-process and deliberately short-lived: this is a latency optimisation, not bookkeeping. A
 # restart, or the cooldown expiring, simply tries the model again and re-learns the answer.
-_MODEL_COOLDOWN_SEC = int(os.getenv("LLM_MODEL_COOLDOWN_SEC", "900"))
+#
+# 900s was tuned for the DAILY cap, but Gemini also enforces a PER-MINUTE limit, and both
+# arrive as a bare 429. Two generations in quick succession therefore benched a perfectly
+# healthy model for a quarter of an hour: verified by probing all seven ids directly (every
+# one answered OK) moments after a run had just sidelined four of them. The pipeline then
+# fell through to the weakest model for the next 15 minutes and everything got slower.
+#
+# 90s clears a per-minute limit. A genuine daily cap simply re-triggers the cooldown on the
+# next attempt, costing one wasted request every 90s instead of wrongly benching a working
+# model - the cheaper mistake of the two.
+_MODEL_COOLDOWN_SEC = int(os.getenv("LLM_MODEL_COOLDOWN_SEC", "90"))
 _model_cooldown: dict = {}
 
 
@@ -72,13 +82,34 @@ def _cross_provider_enabled() -> bool:
     return os.getenv("LLM_CROSS_PROVIDER_FALLBACK", "true").strip().lower() in ("1", "true", "yes", "on")
 
 
+# Model ids Google has retired. Unlike a quota, this never recovers, so it is remembered
+# for the life of the process rather than for a cooldown window.
+#
+# Only rate limits were being remembered. A retired id was re-requested on EVERY call, and
+# since gemini-2.0-flash - retired - was the default model in four places in the creative
+# pipeline, every single generation opened with a guaranteed-useless round trip. Measured on
+# the live pipeline: three LLM calls, three wasted 404s, and because the first call also had
+# to walk four rate-limited models behind it, strategy alone took 65 seconds.
+_retired_models: set = set()
+
+
+def _mark_retired(model: str) -> None:
+    if model not in _retired_models:
+        _retired_models.add(model)
+        print(f"LLM: {model} is retired; it will not be requested again this process.")
+
+
 def _order_models(model_name: str) -> list:
-    """Requested model first, then the fallbacks — minus anything cooling down. Never returns
-    an empty list: if everything is on cooldown, try the original order rather than fail
-    without asking."""
+    """Requested model first, then the fallbacks — minus anything retired or cooling down.
+    Never returns an empty list: if everything is unavailable, try the original order rather
+    than fail without asking."""
     ordered = [model_name] + [m for m in _GEMINI_FALLBACK_MODELS if m != model_name]
-    live = [m for m in ordered if not _on_cooldown(m)]
-    return live or ordered
+    live = [m for m in ordered if m not in _retired_models and not _on_cooldown(m)]
+    if live:
+        return live
+    # Everything is retired or cooling down. Retired ids genuinely cannot work, so drop
+    # those before falling back, rather than re-walking a list of certain 404s.
+    return [m for m in ordered if m not in _retired_models] or ordered
 
 
 def _is_model_unavailable(err: Exception) -> bool:
@@ -130,7 +161,20 @@ class GeminiProvider(LLMProvider):
 
         # No cap by default (existing callers - analytics/SEO/social - rely on long-form
         # output). Callers that want short, fast output (ad strategy/copy) pass this in.
-        generation_config = genai.GenerationConfig(max_output_tokens=max_output_tokens) if max_output_tokens else None
+        #
+        # json_mode makes Gemini emit syntactically valid JSON by construction. Brand-kit
+        # extraction needs it: the structured schema produces a ~25KB object, and at that
+        # size the model reliably breaks quoting somewhere in the middle - an observed
+        # failure, not a theoretical one ("malformed JSON: Expecting ',' delimiter: line 362
+        # column 75"). No amount of repair heuristics fixes that as well as not generating
+        # broken JSON in the first place. Callers opt in, so every existing prose caller is
+        # untouched.
+        _cfg: dict = {}
+        if max_output_tokens:
+            _cfg["max_output_tokens"] = max_output_tokens
+        if kwargs.get("json_mode"):
+            _cfg["response_mime_type"] = "application/json"
+        generation_config = genai.GenerationConfig(**_cfg) if _cfg else None
 
         # Try the requested model first, then fall through to models with separate quotas.
         models_to_try = _order_models(model_name)
@@ -152,11 +196,13 @@ class GeminiProvider(LLMProvider):
                 last_err = e
                 if _is_rate_limit(e):
                     _mark_exhausted(m)
-                    print(f"Gemini {m} rate-limited (daily quota); skipping it for "
+                    print(f"Gemini {m} rate-limited (429); benching it for "
                           f"{_MODEL_COOLDOWN_SEC}s and trying the next model...")
                     continue
                 if _is_model_unavailable(e):
-                    print(f"Gemini {m} is retired/unavailable, trying next model...")
+                    # Remembered, not just reported: a retired id can never succeed, so
+                    # requesting it again on the next call is pure latency.
+                    _mark_retired(m)
                     continue
                 # Anything else (bad request, auth) - other models won't help.
                 print(f"Gemini Error ({m}): {e}")

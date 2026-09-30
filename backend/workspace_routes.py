@@ -240,7 +240,65 @@ def _brand_profile_json(ws, bp) -> dict:
         "typography": (bp.typography if bp else None) or {},
         "guidelines": (bp.guidelines if bp else None) or {},
         "is_onboarded": bool(bp.is_onboarded) if bp else False,
+        # How good this brand's knowledge actually is, computed from the stored kit rather
+        # than asserted. The vault shows it so a thin extraction is visible as thin instead
+        # of looking finished, and so someone can see WHICH sections are missing.
+        "quality": _brand_quality(bp),
     }
+
+
+def _brand_quality(bp) -> dict:
+    """Run the quality rules over the stored guidelines.
+
+    Rebuilds a BrandKit from what is in the database rather than scoring the live crawl,
+    so the report describes what agents will actually be given - including for brands
+    onboarded before the structured schema existed, which is exactly the case worth
+    surfacing. Never raises: a report is a nice-to-have, the profile is not.
+    """
+    if not bp or not (bp.guidelines or {}):
+        return {}
+    try:
+        from core.brand_kit import BrandKit, assess_brand_kit
+        g = bp.guidelines or {}
+
+        def _lines(text):
+            return [l.lstrip("- ").strip() for l in str(text or "").split("\n") if l.strip()]
+
+        def _csv(text):
+            if isinstance(text, list):
+                return [str(t).strip() for t in text if str(t).strip()]
+            return [p.strip() for p in str(text or "").split(",") if p.strip()]
+
+        kit = BrandKit(
+            overview=g.get("overview") or "",
+            positioning=g.get("competitive") or "",
+            business_model=g.get("business_model") or "",
+            visual_identity=g.get("visual") or "",
+            markets=g.get("markets") or "",
+            audience_summary=(bp.target_audience or ""),
+            product_categories=g.get("categories") or [],
+            usps=_lines(g.get("usps")),
+            benefits=_lines(g.get("features")),
+            personality=_csv(g.get("personality")),
+            tone_of_voice=_csv(g.get("tone_of_voice") or g.get("tone")),
+            key_messages=g.get("key_messages") or [],
+            target_audiences=g.get("target_audiences") or [],
+            industry=g.get("industry") or "",
+            value_proposition=g.get("value_proposition") or "",
+            structured_usps=g.get("structured_usps") or [],
+            catalogue=g.get("catalogue") or [],
+            jobs_to_be_done=g.get("jobs_to_be_done") or [],
+            voice=g.get("voice") or {},
+            messaging=g.get("messaging") or {},
+            story=g.get("story") or {},
+            positioning_signals=g.get("positioning_signals") or {},
+            verified_claims=g.get("verified_claims") or [],
+            unsupported_topics=g.get("unsupported_topics") or [],
+        )
+        return assess_brand_kit(kit)
+    except Exception as e:
+        print("brand quality assessment failed: %s" % e)
+        return {}
 
 
 @router.delete("/{workspace_id}")
@@ -300,11 +358,77 @@ def update_brand_profile(workspace_id: int, body: BrandProfileUpdate,
         bp = models.BrandProfile(workspace_id=workspace_id)
         db.add(bp)
 
-    for k, v in body.model_dump(exclude_unset=True).items():
+    from core.brand_kit import USER_EDITED_KEY
+
+    payload = body.model_dump(exclude_unset=True)
+
+    # Record WHICH sections a person changed, so the next Sync Knowledge Graph steps around
+    # them instead of replacing a human correction with the model's opinion. The client
+    # sends the whole guidelines object, so "what changed" is computed here by comparing
+    # against what is stored rather than trusted from the request.
+    if "guidelines" in payload and isinstance(payload["guidelines"], dict):
+        previous = dict(bp.guidelines or {})
+        incoming = dict(payload["guidelines"])
+        edited = set(previous.get(USER_EDITED_KEY) or [])
+        for key, value in incoming.items():
+            if key.startswith("_"):
+                continue            # bookkeeping keys are not brand content
+            if previous.get(key) != value:
+                edited.add(key)
+        incoming[USER_EDITED_KEY] = sorted(edited)
+        # Bookkeeping the client never sends back must survive the round trip.
+        for key in previous:
+            if key.startswith("_") and key not in incoming:
+                incoming[key] = previous[key]
+        payload["guidelines"] = incoming
+
+    # A profile column the user typed is an edit too - target_audience is edited this way.
+    if any(k in payload for k in ("target_audience", "brand_guidelines_summary")):
+        g = dict(payload.get("guidelines") or bp.guidelines or {})
+        edited = set(g.get(USER_EDITED_KEY) or [])
+        for k in ("target_audience", "brand_guidelines_summary"):
+            if k in payload and payload[k] != getattr(bp, k, None):
+                edited.add(k)
+        g[USER_EDITED_KEY] = sorted(edited)
+        payload["guidelines"] = g
+
+    for k, v in payload.items():
         setattr(bp, k, v)
     db.commit()
     db.refresh(bp)
+
+    # Drop the cached brand context for this workspace.
+    #
+    # core.brand_context caches the Postgres half of the context for five minutes, because
+    # building it costs ~13s and the creative pipeline asks for it on every generation.
+    # Without this, a correction made here would not reach a generated image until the TTL
+    # expired - the edit would look saved and be ignored, which is the worst of both.
+    try:
+        from core.brand_context import invalidate_brand_context
+        invalidate_brand_context(workspace_id)
+    except Exception:
+        pass   # a stale cache entry for a few minutes must not fail the save
+
     return _brand_profile_json(ws, bp)
+
+
+def _brand_domain(url: Optional[str]) -> str:
+    """The registrable host of a workspace URL, for deciding whether two URLs are the same
+    brand. "https://www.nike.in/men" and "nike.in" are; nike.in and ambraneindia.com are not."""
+    from urllib.parse import urlparse
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    if "//" not in raw:
+        raw = "https://" + raw
+    host = (urlparse(raw).netloc or "").lower().split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def _name_from_url(url: Optional[str]) -> str:
+    """A readable workspace name from a domain: nike.in -> "Nike"."""
+    host = _brand_domain(url)
+    return host.split(".")[0].replace("-", " ").title() if host else ""
 
 
 @router.post("/{workspace_id}/reindex")
@@ -316,8 +440,67 @@ def reindex_workspace(workspace_id: int, req: schemas.ReindexRequest, background
     # Update initial values immediately
     from agents.seo_geo import normalize_target_url
     clean_url = normalize_target_url(req.url) or req.url
+    previous_url = ws.company_url
     ws.company_url = clean_url
     ws.brand_voice = req.tone
+
+    # Pointing a workspace at a different brand makes everything the previous site produced
+    # wrong, not stale. The onboarding pipeline overwrites the brand profile and voice, but
+    # it only ever *adds* scraped assets and knowledge chunks, so the old brand's product
+    # shots and RAG passages survived the switch - a workspace re-onboarded from
+    # ambraneindia.com onto nike.in kept serving power-bank imagery and fed power-bank
+    # passages to every agent that retrieves brand context. Clear what the old domain
+    # produced before the new crawl starts.
+    if _brand_domain(previous_url) and _brand_domain(previous_url) != _brand_domain(clean_url):
+        # Only the scraped assets: gdrive/device/generated ones are the user's own files and
+        # belong to them, not to whichever URL the workspace pointed at when they arrived.
+        db.query(models.MediaAsset).filter(
+            models.MediaAsset.workspace_id == workspace_id,
+            models.MediaAsset.source == "scraped").delete(synchronize_session=False)
+        db.query(models.KnowledgeChunk).filter(
+            models.KnowledgeChunk.workspace_id == workspace_id,
+            models.KnowledgeChunk.kind.in_(("media_asset", "onboarding_scrape"))
+        ).delete(synchronize_session=False)
+        # Competitors and market trends are derived from the brand, so they describe the old
+        # one. Deleting them lets the next scheduled sync rebuild against the new brand.
+        for model in (models.CompetitorAd, models.CompetitorAdStrategy, models.MarketTrendReport):
+            db.query(model).filter(model.workspace_id == workspace_id).delete(
+                synchronize_session=False)
+        # The WRITTEN knowledge has to go too.
+        #
+        # Purging assets and chunks was only half the job. kit_to_guidelines merges over what
+        # is already stored and omits its own empty fields - deliberately, so a thin re-crawl
+        # cannot blank a rich one. On a change of BRAND that protection works against us: any
+        # section the new site does not fill keeps the previous brand's answer, so a
+        # workspace could show one brand's overview beside another's USPs and personas.
+        #
+        # Bookkeeping keys are dropped as well. _user_edited protects hand-written
+        # corrections from being overwritten, but those corrections were about the old brand,
+        # so carrying them forward would pin the wrong brand's text in place permanently.
+        bp = (db.query(models.BrandProfile)
+                .filter(models.BrandProfile.workspace_id == workspace_id).first())
+        if bp:
+            bp.guidelines = {}
+            bp.brand_guidelines_summary = None
+            bp.target_audience = None
+            # Visual identity belongs to the old site's markup, not this one.
+            bp.color_palette = []
+            bp.color_tokens = []
+            bp.typography = {}
+            bp.logos = []
+            bp.is_onboarded = False      # until the new crawl finishes
+
+        # The name was typed for the old brand and nothing else ever rewrites it, which is
+        # why the workspace stayed called "ambrane" while every panel below it said Nike.
+        #
+        # Cleared rather than derived from the domain: extraction reads the brand's real name
+        # off the page, and a domain-derived placeholder would look like it "belongs" to the
+        # new host, which is exactly the test onboarding uses to decide whether to replace it.
+        # A guess here would therefore block the real answer.
+        ws.name = ""
+        ws.brand_voice = None
+        ws.brand_color = None
+
     db.commit()
 
     # Fire off the onboarding background task to actually scrape and update the knowledge base
@@ -508,22 +691,52 @@ def recent_actions(workspace_id: int, db: Session = Depends(database.get_db), cu
     if not ws:
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
+    # Every query below selects COLUMNS, not entities. Loading whole rows made this the
+    # slowest call on the dashboard by a wide margin: ad_assets.image_url holds base64 data
+    # URIs (measured ~900KB per row on a live workspace), so fetching the five most recent
+    # creatives dragged roughly 4MB across the wire from ap-northeast-1 - 16.9 SECONDS - to
+    # read an id and a headline. The other four tables have the same shape of problem in
+    # miniature: long recommendation, caption and body columns nobody reads in full here.
     actions = []
     # Generated ad creatives (no created_at column, so id is the recency proxy)
-    for a in db.query(models.AdAsset).filter(models.AdAsset.workspace_id == workspace_id).order_by(models.AdAsset.id.desc()).limit(5).all():
-        actions.append({"sort": a.id, "type": "creative", "title": "Generated Ad Creative", "detail": (a.headline or "")[:90]})
+    for a_id, headline in (db.query(models.AdAsset.id, models.AdAsset.headline)
+                             .filter(models.AdAsset.workspace_id == workspace_id)
+                             .order_by(models.AdAsset.id.desc()).limit(5).all()):
+        actions.append({"sort": a_id, "type": "creative", "title": "Generated Ad Creative",
+                        "detail": (headline or "")[:90]})
     # SEO audits (has created_at)
-    for s in db.query(models.SEOAudit).filter(models.SEOAudit.workspace_id == workspace_id).order_by(models.SEOAudit.created_at.desc()).limit(3).all():
-        actions.append({"sort": int(s.created_at.timestamp()) if s.created_at else s.id, "type": "seo", "title": f"SEO Audit (score {s.score})", "detail": (s.recommendation or "")[:90]})
+    for s_id, created_at, score, rec in (
+            db.query(models.SEOAudit.id, models.SEOAudit.created_at,
+                     models.SEOAudit.score, models.SEOAudit.recommendation)
+              .filter(models.SEOAudit.workspace_id == workspace_id)
+              .order_by(models.SEOAudit.created_at.desc()).limit(3).all()):
+        actions.append({"sort": int(created_at.timestamp()) if created_at else s_id,
+                        "type": "seo", "title": f"SEO Audit (score {score})",
+                        "detail": (rec or "")[:90]})
     # Social posts
-    for p in db.query(models.SocialPost).filter(models.SocialPost.workspace_id == workspace_id).order_by(models.SocialPost.id.desc()).limit(3).all():
-        actions.append({"sort": p.id, "type": "social", "title": f"{p.platform} Post Drafted", "detail": (p.caption or "")[:90]})
+    for p_id, platform, caption in (
+            db.query(models.SocialPost.id, models.SocialPost.platform, models.SocialPost.caption)
+              .filter(models.SocialPost.workspace_id == workspace_id)
+              .order_by(models.SocialPost.id.desc()).limit(3).all()):
+        actions.append({"sort": p_id, "type": "social", "title": f"{platform} Post Drafted",
+                        "detail": (caption or "")[:90]})
     # Campaigns
-    for c in db.query(models.Campaign).filter(models.Campaign.workspace_id == workspace_id).order_by(models.Campaign.id.desc()).limit(3).all():
-        actions.append({"sort": c.id, "type": "campaign", "title": f"Campaign ({c.platform})", "detail": f"Status: {c.status}"})
+    for c_id, platform, c_status in (
+            db.query(models.Campaign.id, models.Campaign.platform, models.Campaign.status)
+              .filter(models.Campaign.workspace_id == workspace_id)
+              .order_by(models.Campaign.id.desc()).limit(3).all()):
+        actions.append({"sort": c_id, "type": "campaign", "title": f"Campaign ({platform})",
+                        "detail": f"Status: {c_status}"})
     # Content drafts
-    for d in db.query(models.ContentDraft).filter(models.ContentDraft.workspace_id == workspace_id).order_by(models.ContentDraft.id.desc()).limit(3).all():
-        actions.append({"sort": int(d.created_at.timestamp()) if d.created_at else d.id, "type": "content", "title": f"Content: {d.title[:50]}", "detail": f"{d.content_type} - {d.status}"})
+    for d_id, created_at, title, ctype, d_status in (
+            db.query(models.ContentDraft.id, models.ContentDraft.created_at,
+                     models.ContentDraft.title, models.ContentDraft.content_type,
+                     models.ContentDraft.status)
+              .filter(models.ContentDraft.workspace_id == workspace_id)
+              .order_by(models.ContentDraft.id.desc()).limit(3).all()):
+        actions.append({"sort": int(created_at.timestamp()) if created_at else d_id,
+                        "type": "content", "title": f"Content: {(title or '')[:50]}",
+                        "detail": f"{ctype} - {d_status}"})
 
     actions.sort(key=lambda x: x["sort"], reverse=True)
     return {"actions": [{k: v for k, v in a.items() if k != "sort"} for a in actions[:8]]}

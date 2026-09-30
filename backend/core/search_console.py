@@ -33,9 +33,13 @@ SCOPES = [GSC_SCOPE, GA4_SCOPE]
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
+from core.oauth_base import callback_url  # noqa: E402
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
-REDIRECT_URI = f"{BACKEND_URL}/api/connectors/search-console/callback"
+# Resolved through core.oauth_base so every connector agrees on one origin, and so a
+# deployment can move them off the API host onto the app's own domain by setting
+# CONNECTOR_REDIRECT_BASE. Unset, this is byte-identical to the previous value.
+REDIRECT_URI = callback_url("/api/connectors/search-console/callback")
 
 
 def is_configured() -> bool:

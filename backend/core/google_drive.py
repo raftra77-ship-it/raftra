@@ -29,10 +29,14 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
+from core.oauth_base import callback_url  # noqa: E402
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/drive/v3"
 
-REDIRECT_URI = f"{BACKEND_URL}/api/connectors/gdrive/callback"
+# Resolved through core.oauth_base so every connector agrees on one origin, and so a
+# deployment can move them off the API host onto the app's own domain by setting
+# CONNECTOR_REDIRECT_BASE. Unset, this is byte-identical to the previous value.
+REDIRECT_URI = callback_url("/api/connectors/gdrive/callback")
 
 # Only formats a browser will render, and only what the vault can show. A Drive folder full
 # of PSDs or RAW files would otherwise import as unopenable rows.

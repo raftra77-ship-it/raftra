@@ -33,7 +33,11 @@ GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
 META_APP_ID = os.getenv("META_APP_ID", "")
 META_APP_SECRET = os.getenv("META_APP_SECRET", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8005")
-REDIRECT_URI = f"{BACKEND_URL}/api/connectors/meta/callback"
+from core.oauth_base import callback_url  # noqa: E402
+# Resolved through core.oauth_base so every connector agrees on one origin, and so a
+# deployment can move them off the API host onto the app's own domain by setting
+# CONNECTOR_REDIRECT_BASE. Unset, this is byte-identical to the previous value.
+REDIRECT_URI = callback_url("/api/connectors/meta/callback")
 # ads_* alone is not enough. Creating an ad requires a Page, and:
 #   pages_show_list      — /me/accounts, i.e. letting the user pick their Page
 #   pages_read_engagement— reading that Page (and its linked Instagram account)

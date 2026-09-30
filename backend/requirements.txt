@@ -65,3 +65,14 @@ playwright
 # malformed markup real sites ship).
 beautifulsoup4
 lxml
+
+# Pinned, and only because of Windows. uuid-utils ships a compiled Rust extension that
+# langsmith and langchain-core both import at module load. On a machine with Windows Smart
+# App Control / Application Control enabled, loading the 0.17.0 build is refused outright -
+#     ImportError: DLL load failed while importing _uuid_utils:
+#     An Application Control policy has blocked this file.
+# - which takes the entire backend down before it can serve a request. The policy is
+# reputation-based, so older, more widely distributed builds are allowed; 0.14.0 loads
+# cleanly. Linux deploys are unaffected either way, so this pin costs nothing there.
+# Upper bound <1.0 is langsmith's own constraint.
+uuid-utils==0.14.0

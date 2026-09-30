@@ -16,12 +16,137 @@ import models
 # raw ad request into a fully-specified commercial ad-photography scene (hero subject, premium
 # lighting, clean negative space for headline/CTA, no text/logos so the image works as pure
 # creative behind overlaid copy).
+# The model the creative pipeline asks for when the caller does not pin one.
+#
+# This was "gemini-2.0-flash" in four places - an id Google retired, which 404s. Every
+# generation therefore opened with a request that could not succeed, and because the
+# fallback loop re-learned that on each of the three LLM calls, it cost three wasted round
+# trips per generation. Kept as one constant so the next retirement is a one-line change.
+_DEFAULT_LLM_MODEL = os.getenv("CREATIVE_LLM_MODEL", "gemini-flash-latest")
+
+# Ceiling on the optional vector-retrieval step. Generation must never wait longer than this
+# for context it is designed to work without.
+_VECTOR_SEARCH_TIMEOUT_SEC = float(os.getenv("VECTOR_SEARCH_TIMEOUT_SEC", "8"))
+
+
+def _brand_visual_brief(workspace_id) -> str:
+    """What the Brand Knowledge vault knows about how this brand looks, as prompt text.
+
+    Visual facts only. An image model cannot act on tone of voice or a messaging framework,
+    and stuffing prose into a diffusion prompt is what made an earlier version of this
+    pipeline produce pictures unrelated to the request. Products and technologies ARE
+    included, because naming a real product line is what makes generated creative look like
+    this brand's catalogue rather than stock photography.
+
+    Returns "" for a workspace with no knowledge, so behaviour is unchanged there.
+    """
+    if not workspace_id or workspace_id == 0:
+        return ""
+    try:
+        from core.rag import brand_facts
+        f = brand_facts(workspace_id) or {}
+    except Exception as e:
+        print(f"image brief: brand facts unavailable for ws {workspace_id}: {e}")
+        return ""
+
+    bits = []
+    if f.get("name"):
+        bits.append(f"The brand is {f['name']}.")
+    guidelines_visual = ""
+    try:
+        import models
+        from database import SessionLocal
+        with SessionLocal() as db:
+            bp = (db.query(models.BrandProfile)
+                    .filter(models.BrandProfile.workspace_id == workspace_id).first())
+            guidelines_visual = ((bp.guidelines or {}).get("visual") or "") if bp else ""
+    except Exception:
+        pass
+    if guidelines_visual:
+        bits.append(f"Its visual language: {guidelines_visual[:320]}")
+
+    # Real product names and technologies, which is what stops the image being stock.
+    products, technologies = [], []
+    for cat in (f.get("catalogue") or [])[:4]:
+        products.extend([str(p) for p in (cat.get("products") or [])[:3]])
+        technologies.extend([str(t) for t in (cat.get("technologies") or [])[:3]])
+
+    # Fallback for brands onboarded before the structured catalogue existed. Their named
+    # products are not lost, they are just parenthesised inside the category strings -
+    # "Collections (Nike 24.7 Collection, Moon Shoe, Vomero 18, Air Max)". Reading the
+    # category list verbatim handed the model one long string it then truncated mid-name,
+    # so the distinctive names never survived into the prompt while the generic head of
+    # the string ("Footwear", "Apparel") always did. Pull the names out instead.
+    categories = [str(c) for c in (f.get("categories") or [])]
+    category_names = []
+    for c in categories:
+        head, _, tail = c.partition("(")
+        if head.strip():
+            category_names.append(head.strip())
+        for item in tail.rstrip(")").split(","):
+            item = item.strip()
+            if item:
+                products.append(item)
+
+    # Longest-first: "Pegasus Premium" identifies the brand far better than "Shoes" does,
+    # and the budget below is small enough that ordering decides what survives.
+    products = sorted(dict.fromkeys(p for p in products if p), key=len, reverse=True)
+
+    def _fit(items, budget):
+        """Whole items up to a character budget - never a truncated product name."""
+        out, used = [], 0
+        for item in items:
+            if used + len(item) + 2 > budget:
+                continue
+            out.append(item)
+            used += len(item) + 2
+        return out
+
+    if category_names:
+        bits.append("Categories: " + ", ".join(_fit(category_names, 120)) + ".")
+    if products:
+        bits.append("Named products in its catalogue (use one of these as the hero subject "
+                    "when it fits the request): " + ", ".join(_fit(products, 260)) + ".")
+    if technologies:
+        bits.append("Named technologies/materials: "
+                    + ", ".join(_fit(list(dict.fromkeys(technologies)), 180)) + ".")
+
+    if f.get("positioning"):
+        bits.append(f"Positioning: {f['positioning'][:200]}")
+    personality = f.get("personality")
+    if personality:
+        as_text = personality if isinstance(personality, str) else ", ".join(str(p) for p in personality)
+        bits.append(f"It should feel: {as_text[:140]}.")
+
+    if not bits:
+        return ""
+    return ("\n\nBRAND GROUNDING (make the image look like it belongs to THIS brand's own "
+            "catalogue and art direction; never render the brand name or a logo as text):\n"
+            + " ".join(bits))
+
+
 CREATIVE_DIRECTOR_PROMPT = """You are an award-winning Creative Director specializing in high-converting commercial advertising.
 
 Create a premium advertisement-quality image.
 
 User Request:
 {user_prompt}
+{brand_brief}
+HOW TO USE THE BRAND FACTS ABOVE (when present):
+- They describe a REAL brand with a REAL catalogue. Use them to decide what the hero
+  subject actually is: its product type, its materials, its construction, its colourway,
+  the setting that brand's own photography uses.
+- When the request describes a product type and the catalogue lists a NAMED product of that
+  type, make that named product the hero subject and say its name in the scene description.
+  "the Vomero 18 road-running shoe, engineered mesh upper, visible air-cushioned midsole"
+  beats "a running shoe". A generic subject when a named one was available is the exact
+  failure this section exists to prevent.
+- Carry the named technologies and materials into the description of the subject itself -
+  they are what makes it look like this brand's product rather than any competitor's.
+- "Avoid brand names" further down means do not RENDER the wordmark, logo or any lettering
+  as graphics in the image. It does NOT mean ignore these facts. Let them shape the
+  subject and the art direction; just never draw the name.
+- If a brand fact contradicts the User Request, the User Request wins.
 
 CRITICAL — the User Request above is the source of truth:
 - Preserve every explicit subject, object, color, setting, and style choice the user stated.
@@ -190,15 +315,30 @@ async def fetch_context_node(state: GenerationState) -> GenerationState:
         from core import vector_store
 
         query_text = f"{state.get('prompt', '')} {state.get('strategy', '')}"
+
+        # Bounded, and off the event loop.
+        #
+        # vector_store.search is synchronous and, on the local embedding backend, loads
+        # sentence-transformers - which contacts huggingface.co to revalidate the model
+        # even when the weights are already cached. With no DNS for that host it retries
+        # with exponential backoff, and this "optional enrichment" measured 166 SECONDS,
+        # 57% of a 288-second generation, for context the pipeline is explicitly written to
+        # work without. A timeout is the honest fix: this step may help, it may never block.
+        def _search():
+            return vector_store.search(state.get("workspace_id"), query_text, [], 3)
+
         # kinds=[] means every kind this workspace has indexed — the brand scrape, the
         # competitor ad vault and the trend reports are all fair context for a generation.
-        hits = [h.get("content", "") for h
-                in vector_store.search(state.get("workspace_id"), query_text, [], 3)
-                if h.get("content")]
+        raw_hits = await asyncio.wait_for(
+            asyncio.to_thread(_search), timeout=_VECTOR_SEARCH_TIMEOUT_SEC)
+        hits = [h.get("content", "") for h in (raw_hits or []) if h.get("content")]
         if hits:
             for idx, h in enumerate(hits):
                 context_parts.append(f"[RELATED {idx + 1}] {h}")
             sources.append(f"{len(hits)} vector match(es)")
+    except asyncio.TimeoutError:
+        print(f"Knowledge-base enrichment skipped: slower than "
+              f"{_VECTOR_SEARCH_TIMEOUT_SEC}s; generating from the brand profile alone.")
     except Exception as e:
         # Logged, never surfaced into the prompt: an error string pasted in there reads to
         # the model as a fact about the brand.
@@ -228,7 +368,7 @@ async def strategy_and_router_node(state: GenerationState) -> GenerationState:
     state["logs"].append(msg)
     await manager.broadcast_agent_log("Creative Director", msg, "thinking")
     
-    llm_model = state.get("model", "gemini-2.0-flash")
+    llm_model = state.get("model") or _DEFAULT_LLM_MODEL
     if "gemini" in llm_model.lower():
         from core.providers.llm_providers import GeminiProvider
         llm = GeminiProvider()
@@ -272,7 +412,7 @@ async def copywriting_node(state: GenerationState) -> GenerationState:
     msg = f"Writing ad copy in brand voice..."
     await manager.broadcast_agent_log("Copywriter", msg, "thinking")
     
-    llm_model = state.get("model", "gemini-2.0-flash")
+    llm_model = state.get("model") or _DEFAULT_LLM_MODEL
     if "gemini" in llm_model.lower():
         from core.providers.llm_providers import GeminiProvider
         llm = GeminiProvider()
@@ -346,10 +486,18 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
     # appended here - an image model can't use prose, it latches onto scattered words, so
     # the picture looked unrelated to the request. Use a "creative director" LLM call to
     # turn the request into a premium, poster-quality visual scene description instead.
-    llm_model = state.get("model", "gemini-2.0-flash")
+    llm_model = state.get("model") or _DEFAULT_LLM_MODEL
     art_llm = GeminiProvider() if "gemini" in llm_model.lower() else OpenRouterProvider()
     brand_colors = state.get("cached_colors") or []
     color_hint = f" Incorporate brand colors {', '.join(brand_colors[:3])}." if brand_colors else ""
+    # Everything the Brand Knowledge vault knows about how this brand LOOKS.
+    #
+    # Up to three hex codes was the entire brand signal reaching image generation - no
+    # products, no visual language, no positioning - which is why generated creative came
+    # back generic for a workspace with a fully populated vault. The brief below is
+    # deliberately visual-only: an image model cannot use tone of voice or messaging, and
+    # padding the prompt with prose is what made earlier versions latch onto stray words.
+    brand_brief = _brand_visual_brief(state.get("workspace_id"))
     try:
         # 60 words / 150 tokens was too tight: a detailed request had to be summarised to fit,
         # and summarising is exactly where the user's specific subjects, colours and style
@@ -357,7 +505,14 @@ async def media_generation_node(state: GenerationState) -> GenerationState:
         # handle long prompts fine (FLUX takes up to ~512 tokens), so give it room and tell
         # the model to ENRICH rather than condense.
         image_prompt = await art_llm.generate_text(
-            CREATIVE_DIRECTOR_PROMPT.format(user_prompt=state['prompt']) + color_hint,
+            # brand_brief goes INSIDE the template now, directly under the user request.
+            # Appended at the end it sat after "everything below is polish ... must never
+            # replace" and after "avoid: brand names", so the art director dutifully
+            # discarded it: a live test produced a prompt containing no product name, no
+            # technology and no colourway from a fully populated vault.
+            CREATIVE_DIRECTOR_PROMPT.format(user_prompt=state['prompt'],
+                                            brand_brief=brand_brief)
+            + color_hint,
             system_prompt="You are an art director writing prompts for an image-generation model. "
                           "Output ONLY the final image prompt itself (one paragraph, 60-150 words) - "
                           "no labels, no headers, no marketing copy, no text-overlay instructions. "
@@ -481,7 +636,7 @@ workflow.add_edge("media_generation", END)
 
 generation_graph = workflow.compile()
 
-async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: dict = None, model: str = "gemini-2.0-flash", ad_format: str = "Video", ad_ratio: str = "9:16", ad_length: str = "15s", engine_mode: str = "Video Ad"):
+async def run_ad_generation_task(workspace_id: int, prompt: str, reference_ad: dict = None, model: str = "", ad_format: str = "Video", ad_ratio: str = "9:16", ad_length: str = "15s", engine_mode: str = "Video Ad"):
     """
     Wrapper to execute the generation_graph and push final asset to WebSocket clients.
     """

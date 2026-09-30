@@ -53,6 +53,15 @@ def route(query: str) -> dict:
 
 # ------------------------------------------------------------------ relational side
 
+def _as_list(value) -> list:
+    """A list, whether the stored value was already one or a comma-joined display string."""
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str):
+        return [p.strip() for p in value.split(",") if p.strip()]
+    return []
+
+
 def brand_facts(workspace_id: int) -> dict:
     """Exact, non-negotiable brand values, straight from Postgres."""
     from database import SessionLocal
@@ -75,11 +84,32 @@ def brand_facts(workspace_id: int) -> dict:
             "usps": guidelines.get("usps") or "",
             "mission": guidelines.get("slogan") or "",
             "positioning": guidelines.get("competitive") or "",
-            "tone_of_voice": guidelines.get("tone_of_voice") or [],
+            # Falls back to "tone". kit_to_guidelines writes both now, but every brand
+            # onboarded before that fix has only "tone" stored, and without this fallback
+            # they would keep generating copy with no tone guidance until someone happened
+            # to re-run Sync Knowledge Graph.
+            #
+            # _as_list matters here: "tone" is a comma-joined DISPLAY string, and
+            # format_brand_kit iterates this value. Handed the raw string it iterated
+            # characters and emitted "Tone of voice: D, i, r, e, c, t, ...".
+            "tone_of_voice": _as_list(guidelines.get("tone_of_voice")
+                                      or guidelines.get("tone")),
             "personality": guidelines.get("personality") or "",
             "target_audiences": guidelines.get("target_audiences") or [],
             "audience": (bp.target_audience if bp else "") or "",
             "categories": guidelines.get("categories") or [],
+            # Structured layer. Absent for brands onboarded before it existed, which is why
+            # every consumer below is written to skip what is missing rather than assume it.
+            "industry": guidelines.get("industry") or "",
+            "value_proposition": guidelines.get("value_proposition") or "",
+            "structured_usps": guidelines.get("structured_usps") or [],
+            "catalogue": guidelines.get("catalogue") or [],
+            "jobs_to_be_done": guidelines.get("jobs_to_be_done") or [],
+            "voice": guidelines.get("voice") or {},
+            "messaging": guidelines.get("messaging") or {},
+            "positioning_signals": guidelines.get("positioning_signals") or {},
+            "verified_claims": guidelines.get("verified_claims") or [],
+            "unsupported_topics": guidelines.get("unsupported_topics") or [],
         }
 
 
@@ -111,10 +141,88 @@ def format_brand_kit(facts: dict) -> str:
         lines.append("Personality: " + str(facts["personality"]))
     if facts.get("audience"):
         lines.append("Audience: " + facts["audience"])
-    for p in (facts.get("target_audiences") or [])[:4]:
-        lines.append("Persona: %s - hook: %s" % (p.get("persona", ""), p.get("hook", "")))
+    # Personas: the whole segment when the richer shape is stored, so an agent asked
+    # "what objection does this group have" has an answer instead of improvising one.
+    # Falls back to the old persona/hook pair for brands onboarded before the change.
+    for p in (facts.get("target_audiences") or [])[:5]:
+        bits = ["Persona: %s" % p.get("persona", "")]
+        for label, key in (("need", "need"), ("motivation", "buying_motivation"),
+                           ("angle", "messaging_angle"), ("hook", "hook")):
+            if p.get(key):
+                bits.append("%s: %s" % (label, p[key]))
+        for label, key in (("pain points", "pain_points"), ("objections", "objections"),
+                           ("buys", "categories")):
+            if p.get(key):
+                bits.append("%s: %s" % (label, "; ".join(str(x) for x in p[key][:4])))
+        lines.append(" | ".join(bits))
+
     if facts.get("categories"):
         lines.append("Product categories: " + ", ".join(str(c) for c in facts["categories"]))
+
+    # ---- structured layer, each block skipped entirely when absent
+    if facts.get("value_proposition"):
+        lines.append("Value proposition: " + facts["value_proposition"])
+    if facts.get("industry"):
+        lines.append("Industry: " + facts["industry"])
+
+    for u in (facts.get("structured_usps") or [])[:8]:
+        ev = u.get("evidence") or {}
+        lines.append(
+            "Differentiator: %s | feature: %s | benefit: %s | for: %s | angle: %s%s"
+            % (u.get("name", ""), u.get("feature", ""), u.get("benefit", ""),
+               u.get("audience", ""), u.get("messaging_angle", ""),
+               " | source: %s" % ev["source_url"] if ev.get("source_url") else ""))
+
+    for c in (facts.get("catalogue") or [])[:8]:
+        lines.append(
+            "Category: %s | products: %s | benefit: %s | for: %s%s"
+            % (c.get("name", ""), ", ".join(str(x) for x in (c.get("products") or [])[:6]),
+               c.get("benefit", ""), c.get("audience", ""),
+               " | price: %s" % c["price_range"] if c.get("price_range") else ""))
+
+    for j in (facts.get("jobs_to_be_done") or [])[:5]:
+        lines.append("Job to be done: %s -> %s -> wants: %s -> brand answers with: %s"
+                     % (j.get("situation", ""), j.get("problem", ""),
+                        j.get("desired_outcome", ""), j.get("brand_response", "")))
+
+    voice = facts.get("voice") or {}
+    if voice.get("traits"):
+        lines.append("VOICE (write in this voice, do not describe it):")
+        for t in voice["traits"][:5]:
+            lines.append("  - %s: sounds like %s. e.g. \"%s\". Avoid: %s"
+                         % (t.get("trait", ""), t.get("sounds_like", ""),
+                            t.get("example", ""), t.get("avoid", "")))
+    for label, key in (("Formality", "formality"), ("Energy", "energy"),
+                       ("Sentence style", "sentence_style"), ("CTA style", "cta_style")):
+        if voice.get(key):
+            lines.append("%s: %s" % (label, voice[key]))
+    if voice.get("use_words"):
+        lines.append("Prefer these words: " + ", ".join(str(w) for w in voice["use_words"][:12]))
+    if voice.get("avoid_words"):
+        lines.append("Never use these words: " + ", ".join(str(w) for w in voice["avoid_words"][:12]))
+
+    msg = facts.get("messaging") or {}
+    if msg.get("core_message"):
+        lines.append("Core message: " + msg["core_message"])
+    for sm in (msg.get("supporting") or [])[:6]:
+        lines.append("  Supporting: %s (proof: %s)"
+                     % (sm.get("message", ""), ", ".join(str(p) for p in (sm.get("proof_points") or [])[:4])))
+    if msg.get("angles"):
+        lines.append("Messaging angles: " + " | ".join(str(a) for a in msg["angles"][:6]))
+
+    sig = facts.get("positioning_signals") or {}
+    axes = [f"{k}: {v}" for k, v in sig.items() if k != "basis" and v]
+    if axes:
+        lines.append("Positioning signals (%s): %s" % (sig.get("basis", "inferred"), ", ".join(axes)))
+
+    # The two lists that keep generated copy out of trouble.
+    if facts.get("verified_claims"):
+        lines.append("SAFE TO CLAIM (the site states these):")
+        lines.extend("  - %s" % c for c in facts["verified_claims"][:10])
+    if facts.get("unsupported_topics"):
+        lines.append("DO NOT CLAIM (nothing in this brand's content supports these):")
+        lines.extend("  - %s" % c for c in facts["unsupported_topics"][:10])
+
     return "\n".join(lines)
 
 

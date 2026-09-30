@@ -115,7 +115,6 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
     ifscCode: '',
     upiId: ''
   });
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [creatorDeals, setCreatorDeals] = useState<any[]>([]);
   const [creatorPayouts, setCreatorPayouts] = useState<any[]>([]);
 
@@ -1684,55 +1683,6 @@ export const CreatorPortal: React.FC<CreatorPortalProps> = ({ onLogout }) => {
 
       </div>
 
-      {/* TAX INVOICE DOWNLOAD MODAL FOR CREATOR */}
-      {showInvoiceModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)', padding: '20px' }}>
-          <div className="glow-card" style={{ width: '600px', background: '#0a0a0d', border: '1px solid #00E676', borderRadius: '20px', padding: '32px', position: 'relative' }}>
-            <button onClick={() => setShowInvoiceModal(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#fff', fontSize: '24px', cursor: 'pointer' }}>&times;</button>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
-              <div>
-                <h3 style={{ fontSize: '20px', margin: 0, color: '#fff', fontFamily: 'var(--font-heading)' }}>OFFICIAL TAX INVOICE & PAYOUT RECEIPT</h3>
-                <div style={{ fontSize: '12px', color: '#00E676', fontWeight: 700, marginTop: '2px' }}>INV-RAFTRA-2026-84920</div>
-              </div>
-              <div style={{ padding: '6px 12px', background: 'rgba(0,230,118,0.15)', color: '#00E676', borderRadius: '8px', fontSize: '11px', fontWeight: 800, border: '1px solid #00E676' }}>
-                PAID & DISBURSED
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '13px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px' }}>
-              <div><span style={{ color: 'var(--text-muted)' }}>Billed To:</span> <br/><b style={{ color: '#fff' }}>Ambrane India (Brand Partner)</b></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Creator Beneficiary:</span> <br/><b style={{ color: '#fff' }}>Ankit Kumar (@ankrena)</b></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Bank Name:</span> <b style={{ color: '#fff' }}>{bankDetails.bankName}</b></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Account No:</span> <b style={{ color: '#fff' }}>{bankDetails.accountNumber}</b></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>UPI ID:</span> <b style={{ color: '#fff' }}>{bankDetails.upiId}</b></div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Human Audit Stamp:</span> <b style={{ color: '#00C4CC' }}>Team Raftra Verified 🔍</b></div>
-            </div>
-
-            <div style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '14px 0', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Gross Campaign Deal Value:</span>
-                <span style={{ color: '#fff', fontWeight: 700 }}>₹10,000</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Raftra AI Platform Fee (10%):</span>
-                <span style={{ color: '#f87171' }}>- ₹1,000</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 800, color: '#00E676', paddingTop: '8px', borderTop: '1px dashed rgba(255,255,255,0.1)' }}>
-                <span>Net Disbursed Payout:</span>
-                <span>₹9,000</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => window.print()}
-              style={{ width: '100%', padding: '14px', background: '#00E676', color: '#000', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
-            >
-              🖨️ Print / Save PDF Invoice
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

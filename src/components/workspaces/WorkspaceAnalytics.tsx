@@ -261,42 +261,6 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
     [metaInsights]
   );
 
-  /* The headline numbers, computed from the same rows the charts below use.
-     These are stat tiles rather than a chart on purpose: "what is my ROAS" is a single
-     magnitude, and the honest form for one number is the number. Previously the page opened
-     with a chat box and a reader had to scroll past three sections to reach any figure at
-     all — on an analytics page the summary belongs first.
-     Spend prefers Meta's reported spend and falls back to the entered budget, matching how
-     pieData and wasterRows already resolve it, so the tiles cannot disagree with the charts. */
-  const kpis = React.useMemo(() => {
-    const spentByCampaign = new Map<string, number>();
-    metaInsights.forEach(r => { if (r.campaign_name) spentByCampaign.set(r.campaign_name, Number(r.spend) || 0); });
-
-    let spend = 0, revenue = 0, purchases = 0, measured = 0;
-    liveCampaigns.forEach(c => {
-      const s = spentByCampaign.get(c.name) ?? (Number(c.budget) || 0);
-      spend += s;
-      const roas = Number(c.roas) || 0;
-      if (roas > 0) { revenue += roas * s; measured += 1; }
-    });
-    metaInsights.forEach(r => { purchases += Number(r.purchases) || 0; });
-
-    const inr = (v: number) =>
-      `₹${Math.round(v).toLocaleString('en-IN')}`;
-    return [
-      { key: 'spend', label: 'Ad Spend', value: spend > 0 ? inr(spend) : '—',
-        note: spend > 0 ? `${liveCampaigns.length} live campaign${liveCampaigns.length === 1 ? '' : 's'}` : 'no live campaigns' },
-      { key: 'revenue', label: 'Attributed Revenue', value: revenue > 0 ? inr(revenue) : '—',
-        note: measured ? `from ${measured} measured campaign${measured === 1 ? '' : 's'}` : 'no ROAS measured yet' },
-      { key: 'roas', label: 'Blended ROAS', value: spend > 0 && revenue > 0 ? `${(revenue / spend).toFixed(2)}×` : '—',
-        note: spend > 0 && revenue > 0 ? 'revenue ÷ spend' : 'needs spend and ROAS' },
-      { key: 'purchases', label: 'Purchases', value: purchases > 0 ? purchases.toLocaleString('en-IN') : '—',
-        note: purchases > 0 ? 'reported by Meta' : 'connect Meta to report' },
-      { key: 'cac', label: 'Cost per Purchase', value: purchases > 0 && spend > 0 ? inr(spend / purchases) : '—',
-        note: purchases > 0 && spend > 0 ? 'spend ÷ purchases' : 'needs purchases' },
-    ];
-  }, [liveCampaigns, metaInsights]);
-
   /** Shown in place of a chart when a workspace has nothing to plot yet. */
   const EmptyVisual: React.FC<{ title: string; hint: string; cta?: string; tab?: string }> = ({ title, hint, cta, tab }) => (
     <div style={{ marginTop: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '20px', textAlign: 'center' }}>
@@ -462,38 +426,6 @@ export const WorkspaceAnalytics: React.FC<WorkspaceAnalyticsProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px', paddingBottom: '40px' }}>
       <style>{`@keyframes analyst-blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }`}</style>
-
-      {/* 1. HEADLINE NUMBERS.
-          The page's summary, first — see the `kpis` memo for why these are tiles and not a
-          chart. Every tile shows an em dash and says what is missing rather than a zero: a
-          "₹0" and a "0.00x" are indistinguishable from a measured result of zero, and this
-          screen used to report exactly that for workspaces with nothing connected. */}
-      <div>
-        <h2 style={{ fontSize: '20px', fontFamily: 'var(--font-heading)', color: '#fff', margin: '0 0 4px 0' }}>
-          Performance Summary
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 16px 0' }}>
-          Across this workspace's live campaigns. Drafts are excluded — they have never spent.
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '14px' }}>
-          {kpis.map(k => (
-            <div key={k.key} className="glow-card" style={{ padding: '18px 20px' }}>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                {k.label}
-              </div>
-              <div style={{
-                fontSize: 'clamp(22px, 3vw, 30px)', fontWeight: 700, color: '#fff',
-                margin: '8px 0 4px', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1,
-              }}>
-                {k.value}
-              </div>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>{k.note}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
 
       {/* 2. Claude MCP Query Engine */}
       <div>

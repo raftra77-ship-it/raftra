@@ -13,6 +13,14 @@ import {
   Plus
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
+import { BrandStructuredEditor, type StructuredKind } from './BrandStructuredEditor';
+
+/** One audience segment plus the line written to stop them scrolling. Mirrors the
+ *  backend's Persona model in core/brand_kit.py. */
+interface Persona {
+  persona?: string;
+  hook?: string;
+}
 
 interface BrandProfile {
   name: string;
@@ -31,6 +39,29 @@ interface BrandProfile {
   typography: Record<string, string>;
   guidelines: Record<string, unknown>;
   is_onboarded: boolean;
+  /** Computed by the backend from the stored kit - see core/brand_kit.assess_brand_kit. */
+  quality?: BrandQuality;
+}
+
+/** Every number here is calculated from the kit's own contents, never asserted. */
+interface BrandQuality {
+  completeness_pct: number;
+  completeness_missing: string[];
+  evidence_coverage_pct: number;
+  specificity: 'high' | 'medium' | 'low';
+  generic_phrases: string[];
+  thin_usps: string[];
+  duplicate_claims: number;
+  unsupported_claims: string[];
+  counts: Record<string, number>;
+  agent_questions_answerable: Record<string, boolean>;
+  agent_readiness_pct: number;
+  /** How much of the knowledge is actually JOINED UP - the share of personas the system can
+   *  reach a product or differentiator for. Presence and usability are different things: a
+   *  vault can list five personas and five categories and still not say which goes with which. */
+  connected_pct?: number;
+  personas_without_offer?: string[];
+  categories_without_audience?: string[];
 }
 
 interface BrandKnowledgeBaseProps {
@@ -50,7 +81,9 @@ interface BrandKnowledgeBaseProps {
  *  - text    : a string inside the guidelines JSON
  *  - list    : a string[] inside guidelines, edited one item per line
  *  - profile : a string column on the brand profile itself, not inside guidelines */
-type SectionKind = 'text' | 'list' | 'profile';
+type SectionKind = 'text' | 'list' | 'profile' | 'personas'
+  // Structured sections read their own object out of guidelines rather than a string.
+  | 'usps' | 'catalogue' | 'jtbd' | 'voice' | 'messaging' | 'claims';
 
 /** Section ids and titles. The first nine are the reference's, so the tab strip reads
  *  identically; the rest are fields onboarding has always extracted but which had no way
@@ -70,15 +103,372 @@ const SECTION_TITLES: { id: string; title: string; kind: SectionKind; hint?: str
   { id: 'tone', title: 'Tone of Voice', kind: 'text' },
   { id: 'target_audience', title: 'Target Audience', kind: 'profile',
     hint: 'Who this brand sells to. Used by every agent that writes copy.' },
+  // The crawl has always produced target_audiences - a list of {persona, hook} pairs, the
+  // single richest thing it extracts - and kit_to_guidelines never mapped it to a section,
+  // so four named segments with a written ad hook each sat in the JSON, invisible.
+  { id: 'target_audiences', title: 'Audience Personas', kind: 'personas',
+    hint: 'One per line, written as "Persona — hook". The hook is the line that would stop that segment scrolling.' },
   { id: 'categories', title: 'Product Categories', kind: 'list',
     hint: 'One per line.' },
   { id: 'key_messages', title: 'Key Messages', kind: 'list',
     hint: 'One per line.' },
   { id: 'markets', title: 'Markets', kind: 'text',
     hint: 'Where the brand sells.' },
+  // Structured sections. These read an object out of guidelines rather than a string, and
+  // only appear when a crawl has actually produced them - a brand onboarded before the
+  // structured schema existed simply does not show these tabs, rather than showing empties.
+  { id: 'structured_usps', title: 'Differentiators', kind: 'usps' },
+  { id: 'catalogue', title: 'Products & Services', kind: 'catalogue' },
+  { id: 'jobs_to_be_done', title: 'Customer Jobs', kind: 'jtbd' },
+  { id: 'voice', title: 'Voice Guide', kind: 'voice' },
+  { id: 'messaging', title: 'Messaging', kind: 'messaging' },
+  { id: 'verified_claims', title: 'Claims & Guardrails', kind: 'claims' },
 ];
 
+/** Kinds whose data is an object/array in guidelines, not an editable string. */
+const STRUCTURED_KINDS: SectionKind[] = ['usps', 'catalogue', 'jtbd', 'voice', 'messaging', 'claims'];
+
+/** Kinds edited by BrandStructuredEditor rather than a textarea.
+ *
+ *  'personas' is included even though it renders as text: its old textarea rewrote every
+ *  persona as {persona, hook} and silently dropped the ten other fields the schema defines
+ *  - including `categories`, which is the link the brand graph uses to answer "what should
+ *  we promote to this segment". Editing it structurally is what stops that data loss. */
+const EDITABLE_STRUCTURED: SectionKind[] = [...STRUCTURED_KINDS, 'personas'];
+
 const SECTION_BY_ID = Object.fromEntries(SECTION_TITLES.map(s => [s.id, s]));
+
+const EMPTY_SECTION =
+  'Nothing recorded for this section yet — run Sync Knowledge Graph to extract it from the site, or Edit to write it yourself.';
+
+/** A small "stated / inferred · confidence" marker.
+ *
+ *  The point of the whole evidence layer: a warranty length the site prints and a model's
+ *  read on positioning used to look identical on screen. Now they do not. */
+const EvidenceMark: React.FC<{ ev?: { source_url?: string; snippet?: string; confidence?: string; basis?: string } }> = ({ ev }) => {
+  if (!ev || (!ev.source_url && !ev.basis)) return null;
+  const inferred = ev.basis === 'inferred';
+  const conf = ev.confidence || 'medium';
+  const colour = inferred ? '#FFB300' : '#00E676';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+      <span style={{
+        fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em',
+        color: colour, background: `${colour}1f`, border: `1px solid ${colour}55`,
+        padding: '2px 8px', borderRadius: '100px',
+      }}>
+        {inferred ? 'Inferred' : 'Stated'} · {conf}
+      </span>
+      {ev.source_url && (
+        <a href={ev.source_url} target="_blank" rel="noopener noreferrer"
+           title={ev.snippet || ev.source_url}
+           style={{ fontSize: '11px', color: 'var(--text-muted)', textDecoration: 'none',
+                    display: 'inline-flex', alignItems: 'center', gap: '4px', maxWidth: '100%',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <ExternalLink size={10} /> source
+        </a>
+      )}
+    </div>
+  );
+};
+
+const KCard: React.FC<{ accent: string; children: React.ReactNode }> = ({ accent, children }) => (
+  <div style={{
+    background: `${accent}0f`, border: `1px solid ${accent}38`, borderRadius: '14px',
+    padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '8px',
+  }}>
+    {children}
+  </div>
+);
+
+const KLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase',
+                 letterSpacing: '0.05em', color: 'var(--text-muted)' }}>{children}</span>
+);
+
+const KChips: React.FC<{ items: unknown[]; accent: string }> = ({ items, accent }) => (
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+    {items.map((v, i) => (
+      <span key={i} style={{
+        fontSize: '11.5px', color: accent, background: `${accent}1a`,
+        border: `1px solid ${accent}44`, padding: '3px 10px', borderRadius: '100px',
+      }}>{String(v)}</span>
+    ))}
+  </div>
+);
+
+const K_GRID: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
+  gap: '12px',
+};
+
+/** Renders the structured sections, which are objects in guidelines rather than strings.
+ *
+ *  Kept apart from renderSectionBody on purpose: these have real shape, and flattening
+ *  them to text to reuse that path is exactly the mistake this change undoes. */
+const renderStructured = (kind: SectionKind, raw: unknown): React.ReactNode => {
+  const arr = Array.isArray(raw) ? (raw as Record<string, any>[]) : [];
+  const obj = (raw && !Array.isArray(raw) ? raw : {}) as Record<string, any>;
+  if (!arr.length && !Object.keys(obj).length) {
+    return (
+      <span style={{ color: 'var(--text-muted)' }}>
+        Not yet extracted for this brand. Run Sync Knowledge Graph — this section is filled by the structured crawl.
+      </span>
+    );
+  }
+
+  if (kind === 'usps') {
+    return (
+      <div style={K_GRID}>
+        {arr.map((u, i) => (
+          <KCard key={i} accent="#FF6B00">
+            <div style={{ fontSize: '14.5px', fontWeight: 800, color: '#fff' }}>{u.name || u.feature}</div>
+            {u.feature && <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)' }}><KLabel>What</KLabel> {u.feature}</div>}
+            {u.benefit && <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)' }}><KLabel>Why it matters</KLabel> {u.benefit}</div>}
+            {u.audience && <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)' }}><KLabel>Who cares</KLabel> {u.audience}</div>}
+            {u.messaging_angle && <div style={{ fontSize: '12.5px', color: '#FF6B00', fontStyle: 'italic' }}>{u.messaging_angle}</div>}
+            <EvidenceMark ev={u.evidence} />
+          </KCard>
+        ))}
+      </div>
+    );
+  }
+
+  if (kind === 'catalogue') {
+    return (
+      <div style={K_GRID}>
+        {arr.map((c, i) => (
+          <KCard key={i} accent="#00D2FF">
+            <div style={{ fontSize: '14.5px', fontWeight: 800, color: '#fff' }}>{c.name}</div>
+            {c.benefit && <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.82)', lineHeight: 1.55 }}>{c.benefit}</div>}
+            {!!(c.products || []).length && (<><KLabel>Products</KLabel><KChips items={c.products} accent="#00D2FF" /></>)}
+            {!!(c.technologies || []).length && (<><KLabel>Tech / materials</KLabel><KChips items={c.technologies} accent="#7C75FF" /></>)}
+            {c.use_case && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}><KLabel>Use case</KLabel> {c.use_case}</div>}
+            {c.audience && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}><KLabel>For</KLabel> {c.audience}</div>}
+            {c.price_range && <div style={{ fontSize: '12px', color: '#00E676' }}>{c.price_range}</div>}
+            <EvidenceMark ev={c.evidence} />
+          </KCard>
+        ))}
+      </div>
+    );
+  }
+
+  if (kind === 'jtbd') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {arr.map((j, i) => (
+          <KCard key={i} accent="#00E676">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', fontSize: '12.5px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.85)' }}>{j.situation}</span>
+              <span style={{ color: 'var(--text-muted)' }}>→</span>
+              <span style={{ color: '#FFB300' }}>{j.problem}</span>
+              <span style={{ color: 'var(--text-muted)' }}>→</span>
+              <span style={{ color: 'rgba(255,255,255,0.85)' }}>{j.desired_outcome}</span>
+              <span style={{ color: 'var(--text-muted)' }}>→</span>
+              <span style={{ color: '#00E676', fontWeight: 700 }}>{j.brand_response}</span>
+            </div>
+            <EvidenceMark ev={j.evidence} />
+          </KCard>
+        ))}
+      </div>
+    );
+  }
+
+  if (kind === 'voice') {
+    const traits = (obj.traits || []) as Record<string, any>[];
+    const scalars = ([
+      ['Formality', obj.formality], ['Energy', obj.energy],
+      ['Sentence style', obj.sentence_style], ['Vocabulary', obj.vocabulary],
+      ['CTA style', obj.cta_style],
+    ] as [string, string][]).filter(([, v]) => !!v);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {!!traits.length && (
+          <div style={K_GRID}>
+            {traits.map((t, i) => (
+              <KCard key={i} accent="#7C75FF">
+                <div style={{ fontSize: '14.5px', fontWeight: 800, color: '#fff' }}>{t.trait}</div>
+                {t.sounds_like && <div style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.8)' }}><KLabel>Sounds like</KLabel> {t.sounds_like}</div>}
+                {t.example && <div style={{ fontSize: '13px', color: '#fff', fontStyle: 'italic', borderLeft: '2px solid #7C75FF', paddingLeft: '10px' }}>“{t.example}”</div>}
+                {t.avoid && <div style={{ fontSize: '12.5px', color: '#ff6b7a' }}><KLabel>Avoid</KLabel> {t.avoid}</div>}
+              </KCard>
+            ))}
+          </div>
+        )}
+        {!!scalars.length && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', fontSize: '12.5px' }}>
+            {scalars.map(([k, v]) => (
+              <div key={k}><KLabel>{k}</KLabel><div style={{ color: 'rgba(255,255,255,0.85)' }}>{v}</div></div>
+            ))}
+          </div>
+        )}
+        {!!(obj.use_words || []).length && (<div><KLabel>Use these words</KLabel><KChips items={obj.use_words} accent="#00E676" /></div>)}
+        {!!(obj.avoid_words || []).length && (<div><KLabel>Never use</KLabel><KChips items={obj.avoid_words} accent="#ff4757" /></div>)}
+      </div>
+    );
+  }
+
+  if (kind === 'messaging') {
+    const supporting = (obj.supporting || []) as Record<string, any>[];
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {obj.core_message && (
+          <div style={{ fontSize: '17px', fontWeight: 800, color: '#fff', lineHeight: 1.45,
+                        borderLeft: '3px solid #FF6B00', paddingLeft: '14px' }}>
+            {obj.core_message}
+          </div>
+        )}
+        {!!supporting.length && (
+          <div style={K_GRID}>
+            {supporting.map((m, i) => (
+              <KCard key={i} accent="#FF6B00">
+                <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff', lineHeight: 1.5 }}>{m.message}</div>
+                {!!(m.proof_points || []).length && (<><KLabel>Proof</KLabel><KChips items={m.proof_points} accent="#00E676" /></>)}
+              </KCard>
+            ))}
+          </div>
+        )}
+        {!!(obj.functional_benefits || []).length && (<div><KLabel>Functional benefits</KLabel><KChips items={obj.functional_benefits} accent="#00D2FF" /></div>)}
+        {!!(obj.emotional_benefits || []).length && (<div><KLabel>Emotional benefits</KLabel><KChips items={obj.emotional_benefits} accent="#FF5296" /></div>)}
+        {!!(obj.angles || []).length && (<div><KLabel>Angles</KLabel><KChips items={obj.angles} accent="#7C75FF" /></div>)}
+      </div>
+    );
+  }
+
+  return null;
+};
+
+/** Claims an ad may safely repeat, and claims it must not make.
+ *  Both come straight from the crawl; the second exists to stop generated copy inventing
+ *  a certification or a superlative the brand never published. */
+const renderClaims = (verified: unknown[], unsupported: unknown[]): React.ReactNode => {
+  if (!verified.length && !unsupported.length) {
+    return (
+      <span style={{ color: 'var(--text-muted)' }}>
+        Not yet extracted for this brand. Run Sync Knowledge Graph — this section is filled by the structured crawl.
+      </span>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      {!!verified.length && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <KLabel>Safe to claim — the site states these</KLabel>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {verified.map((c, i) => (
+              <li key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', lineHeight: 1.6, fontSize: '13px' }}>
+                <span style={{ color: '#00E676', fontWeight: 800, flexShrink: 0 }}>✓</span>
+                <span>{String(c)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {!!unsupported.length && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <KLabel>Do not claim — nothing in this brand&rsquo;s content supports these</KLabel>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {unsupported.map((c, i) => (
+              <li key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', lineHeight: 1.6, fontSize: '13px' }}>
+                <span style={{ color: '#ff4757', fontWeight: 800, flexShrink: 0 }}>✕</span>
+                <span>{String(c)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Renders a section's stored text as the structure it actually is.
+ *
+ *  Everything used to print through a single `whiteSpace: pre-line` div, which flattened
+ *  genuinely good extraction into a wall of grey. The crawl writes USPs and benefits as
+ *  markdown-ish "- item" lines, so a reader saw literal hyphens; categories and key
+ *  messages are arrays joined by newlines, so they read as run-on prose; and the audience
+ *  personas — the richest thing the crawl produces, a named segment plus a written ad hook
+ *  for each — had no section at all. The content was never the weak part; the presentation
+ *  was throwing it away. */
+const renderSectionBody = (
+  section: { id: string; kind: SectionKind } | undefined,
+  content: string,
+): React.ReactNode => {
+  const text = (content || '').trim();
+  if (!text) {
+    return <span style={{ color: 'var(--text-muted)' }}>{EMPTY_SECTION}</span>;
+  }
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // Audience personas: a card each, hook set apart from the segment it targets.
+  if (section?.kind === 'personas') {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '12px' }}>
+        {lines.map((line, i) => {
+          const dash = line.indexOf('—');
+          const who = dash === -1 ? line : line.slice(0, dash).trim();
+          const hook = dash === -1 ? '' : line.slice(dash + 1).trim();
+          return (
+            <div key={i} style={{
+              background: 'rgba(124, 117, 255, 0.06)', border: '1px solid rgba(124, 117, 255, 0.22)',
+              borderRadius: '14px', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '8px',
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: '#fff', lineHeight: 1.35 }}>{who}</div>
+              {hook && (
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.78)', lineHeight: 1.55, fontStyle: 'italic' }}>
+                  “{hook}”
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Comma-separated attribute sections (personality, tone) read far better as chips than
+  // as one long sentence the eye has to parse.
+  if ((section?.id === 'personality' || section?.id === 'tone') && lines.length === 1 && text.includes(',')) {
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        {text.split(',').map(v => v.trim()).filter(Boolean).map((v, i) => (
+          <span key={i} style={{
+            background: 'rgba(255, 107, 0, 0.12)', border: '1px solid rgba(255, 107, 0, 0.3)',
+            color: '#FF6B00', padding: '5px 14px', borderRadius: '100px', fontSize: '12.5px', fontWeight: 700,
+          }}>
+            {v}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  // Anything stored as a list, or prose the crawl already bulleted.
+  const bulleted = lines.every(l => l.startsWith('- ') || l.startsWith('• '));
+  if (section?.kind === 'list' || (bulleted && lines.length > 1)) {
+    return (
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {lines.map((l, i) => (
+          <li key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', lineHeight: 1.6 }}>
+            <span style={{ color: '#FF6B00', fontWeight: 800, flexShrink: 0, marginTop: '1px' }}>▸</span>
+            <span>{l.replace(/^[-•]\s*/, '')}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  // Prose: keep paragraph breaks instead of collapsing everything into one block.
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {text.split(/\n{2,}/).map((para, i) => (
+        <p key={i} style={{ margin: 0, lineHeight: 1.75 }}>{para.trim()}</p>
+      ))}
+    </div>
+  );
+};
 
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('token');
@@ -98,20 +488,39 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
   const [activeKnowledgeTab, setActiveKnowledgeTab] = useState<string>('overview');
   const [profile, setProfile] = useState<BrandProfile | null>(null);
   const [assets, setAssets] = useState<{ id: number; headline: string; image_url?: string | null }[]>([]);
+  const [loadState, setLoadState] = useState<{ phase: 'loading' | 'ready' | 'error'; message?: string }>({ phase: 'loading' });
+  /** Re-runs the load effect without a full remount, for the Retry button. */
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) { setLoadState({ phase: 'error', message: 'No workspace selected yet.' }); return; }
+    let live = true;
+    setLoadState({ phase: 'loading' });
+    // Both failure paths used to end in `.catch(() => {})`, so a 401, a cold backend or an
+    // offline network left the page sitting on an empty shell with nothing to click and no
+    // hint that anything had gone wrong - the reported "Brand Knowledge isn't loading".
     fetch(`/api/workspaces/${workspaceId}/brand-profile`, { headers: authHeaders() })
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) setProfile(d); })
-      .catch(() => {});
+      .then(async r => {
+        if (!live) return;
+        if (r.ok) { setProfile(await r.json()); setLoadState({ phase: 'ready' }); return; }
+        setLoadState({
+          phase: 'error',
+          message: r.status === 401 || r.status === 403
+            ? 'Your session has expired. Sign in again to see this brand’s knowledge.'
+            : `Couldn’t load the brand profile (server said ${r.status}).`,
+        });
+      })
+      .catch(() => {
+        if (live) setLoadState({ phase: 'error', message: 'Couldn’t reach the server. Check your connection and retry.' });
+      });
     fetch(`/api/workspaces/${workspaceId}/creatives`, { headers: authHeaders() })
       .then(r => (r.ok ? r.json() : []))
-      .then(d => setAssets(Array.isArray(d) ? d.slice(-5).reverse() : []))
+      .then(d => { if (live) setAssets(Array.isArray(d) ? d.slice(-5).reverse() : []); })
       .catch(() => {});
+    return () => { live = false; };
     // reloadKey re-runs this after a sync, so the rebuilt guidelines, palette, logos,
     // typography and assets replace what was on screen before it ran.
-  }, [workspaceId, reloadKey]);
+  }, [workspaceId, reloadKey, retryKey]);
 
   const brandName = profile?.name || brand?.name || 'This brand';
   const brandUrl = profile?.url || brand?.url || '';
@@ -159,6 +568,13 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
       return typeof v === 'string' ? v : '';
     }
     const raw = guidelines[s.id];
+    if (s.kind === 'personas') {
+      return Array.isArray(raw)
+        ? (raw as Persona[])
+            .map(p => [p?.persona, p?.hook].filter(Boolean).join(' — '))
+            .filter(Boolean).join('\n')
+        : '';
+    }
     if (s.kind === 'list') {
       return Array.isArray(raw) ? (raw as unknown[]).map(String).join('\n') : '';
     }
@@ -274,7 +690,16 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
         // not become an empty category.
         const value = section?.kind === 'list'
           ? editDraft.split('\n').map(v => v.trim()).filter(Boolean)
-          : editDraft;
+          : section?.kind === 'personas'
+            // Split on the em dash the display writes. A line with no dash is all persona
+            // and no hook — a half-filled entry, not an error, so it is kept.
+            ? editDraft.split('\n').map(v => v.trim()).filter(Boolean).map(line => {
+                const i = line.indexOf('—');
+                return i === -1
+                  ? { persona: line, hook: '' }
+                  : { persona: line.slice(0, i).trim(), hook: line.slice(i + 1).trim() };
+              })
+            : editDraft;
         // Merged over the existing guidelines object, never replacing it: the other
         // sections and everything the crawl wrote (personas, founded year, accents) live
         // in the same JSON column, and a PATCH that sent only this field would erase them.
@@ -300,6 +725,33 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
     }
   };
 
+  /** Save a structured section. The editor returns a partial guidelines object (claims
+   *  writes two keys at once), which is merged over what is stored - every other section
+   *  and the crawl's bookkeeping live in the same JSON column. */
+  const saveStructured = async (patch: Record<string, unknown>) => {
+    if (!workspaceId) return;
+    setSavingSection(true);
+    setEditError(null);
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/brand-profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ guidelines: { ...guidelines, ...patch } }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.detail || `Save failed (${r.status})`);
+      }
+      setProfile(await r.json());
+      setEditingSection(null);
+    } catch (e) {
+      // The draft stays on screen so nothing typed is lost to a failed request.
+      setEditError(e instanceof Error ? e.message : 'Could not save.');
+    } finally {
+      setSavingSection(false);
+    }
+  };
+
   const handleCopy = (hex: string) => {
     navigator.clipboard.writeText(hex);
     setCopiedColor(hex);
@@ -308,7 +760,33 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-      
+
+      {/* Why the panel is empty, when it is. Previously both states rendered the same blank
+          shell, so a still-loading vault and a failed one were indistinguishable. */}
+      {loadState.phase === 'loading' && !profile && (
+        <div style={{ padding: '14px 18px', borderRadius: '12px', fontSize: '13px',
+                      background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)' }}>
+          Loading this brand’s knowledge…
+        </div>
+      )}
+      {loadState.phase === 'error' && (
+        <div style={{ padding: '14px 18px', borderRadius: '12px', fontSize: '13px',
+                      display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
+                      background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.3)',
+                      color: '#ff6b7a' }}>
+          <span>{loadState.message}</span>
+          <button
+            onClick={() => setRetryKey(k => k + 1)}
+            style={{ padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px',
+                     fontWeight: 700, background: 'rgba(255,71,87,0.15)', color: '#ff6b7a',
+                     border: '1px solid rgba(255,71,87,0.4)' }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ── TOP HERO HEADER ───────────────────────────────────────── */}
       <div
         className="glow-card"
@@ -618,6 +1096,171 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
         </div>
       </div>
 
+      {/* ── BRAND AT A GLANCE ─────────────────────────────────────── */}
+      {/* The answers to "who is this brand, what does it offer, who for" above the fold,
+          so the page opens with the summary rather than with a tab strip to hunt through.
+          Each cell is omitted when unknown rather than shown as a dash: an empty cell here
+          is a real signal that the crawl did not establish it. */}
+      {(() => {
+        const g = guidelines as Record<string, any>;
+        const signals = (g.positioning_signals || {}) as Record<string, string>;
+        const cells: { label: string; value: string }[] = [
+          { label: 'Industry', value: g.industry || '' },
+          { label: 'Primary market', value: g.markets || '' },
+          { label: 'Business model', value: g.business_model || '' },
+          {
+            label: 'Positioning',
+            value: [signals.price_tier, signals.orientation, signals.reach]
+              .filter(Boolean).join(' · '),
+          },
+          {
+            label: 'Core audience',
+            value: (profile?.target_audience || '').slice(0, 120),
+          },
+        ].filter(c => c.value);
+
+        const vp = g.value_proposition || '';
+        if (!vp && !cells.length) return null;
+
+        return (
+          <div className="glow-card" style={{
+            background: '#0a0a12', borderRadius: '20px', padding: '24px 28px',
+            border: '1px solid rgba(255, 107, 0, 0.25)',
+            display: 'flex', flexDirection: 'column', gap: '18px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Compass size={18} color="#FF6B00" />
+              <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+                Brand at a glance
+              </h3>
+            </div>
+
+            {vp && (
+              <div style={{ fontSize: '16px', color: '#fff', fontWeight: 700, lineHeight: 1.5,
+                            borderLeft: '3px solid #FF6B00', paddingLeft: '14px' }}>
+                {vp}
+              </div>
+            )}
+
+            {!!cells.length && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '16px' }}>
+                {cells.map(c => (
+                  <div key={c.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase',
+                                   letterSpacing: '0.05em', color: 'var(--text-muted)' }}>{c.label}</span>
+                    <span style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.9)', lineHeight: 1.5 }}>{c.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── KNOWLEDGE QUALITY ─────────────────────────────────────── */}
+      {/* Computed server-side by core.brand_kit.assess_brand_kit from the stored kit, not
+          asserted. Shown because a thin extraction that LOOKS finished is the failure mode
+          worth surfacing: it silently degrades every agent that reads this brand. */}
+      {profile?.quality && typeof profile.quality.completeness_pct === 'number' && (() => {
+        const q = profile.quality!;
+        const bar = (label: string, pct: number, colour: string) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '150px', flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+              <span style={{ color: colour, fontWeight: 800 }}>{pct}%</span>
+            </div>
+            <div style={{ height: '5px', borderRadius: '100px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: '100%', background: colour }} />
+            </div>
+          </div>
+        );
+        const tone = (pct: number) => (pct >= 75 ? '#00E676' : pct >= 45 ? '#FFB300' : '#ff4757');
+        const counts = q.counts || {};
+        return (
+          <div className="glow-card" style={{
+            background: '#0a0a12', borderRadius: '20px', padding: '22px 26px',
+            border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Target size={17} color="#00D2FF" />
+                <h3 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                  Knowledge quality
+                </h3>
+              </div>
+              {(() => {
+                // Provenance. Without it, knowledge crawled months ago is presented exactly
+                // like knowledge crawled this morning, and a site that has since changed
+                // goes unnoticed.
+                const meta = ((guidelines as Record<string, any>)._extraction || {}) as Record<string, any>;
+                const when = meta.last_crawled ? String(meta.last_crawled).slice(0, 10) : '';
+                const days = when ? Math.floor((Date.now() - new Date(when).getTime()) / 86400000) : -1;
+                const stale = days > 90;
+                return (
+                  <span style={{ fontSize: '11.5px', color: stale ? '#FFB300' : 'var(--text-muted)' }}>
+                    {when
+                      ? `Crawled ${when} from ${meta.source_pages || '?'} page(s)${stale ? ' — may be out of date' : ''}`
+                      : 'Measured from the stored knowledge, not estimated'}
+                  </span>
+                );
+              })()}
+            </div>
+
+            <div style={{ display: 'flex', gap: '22px', flexWrap: 'wrap' }}>
+              {bar('Completeness', q.completeness_pct, tone(q.completeness_pct))}
+              {typeof q.connected_pct === 'number'
+                && bar('Connected', q.connected_pct, tone(q.connected_pct))}
+              {bar('Evidence coverage', q.evidence_coverage_pct, tone(q.evidence_coverage_pct))}
+              {bar('Agent readiness', q.agent_readiness_pct, tone(q.agent_readiness_pct))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {[
+                ['Specificity', q.specificity],
+                ['Personas', counts.personas],
+                ['Products', counts.products],
+                ['Differentiators', counts.usps],
+                ['Voice traits', counts.voice_traits],
+                ['Safe claims', counts.verified_claims],
+              ].filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => (
+                <span key={String(k)} style={{
+                  fontSize: '11.5px', color: 'var(--text-secondary)',
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                  padding: '4px 12px', borderRadius: '100px',
+                }}>
+                  {k}: <b style={{ color: '#fff' }}>{String(v)}</b>
+                </span>
+              ))}
+            </div>
+
+            {!!(q.categories_without_audience || []).length && (
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <b style={{ color: '#00D2FF' }}>No audience matched:</b>{' '}
+                {q.categories_without_audience!.join(', ')}. Campaigns have no persona to aim these at —
+                add a persona that names them, or a category the personas already mention.
+              </div>
+            )}
+            {!!(q.personas_without_offer || []).length && (
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <b style={{ color: '#FFB300' }}>No products matched:</b>{' '}
+                {q.personas_without_offer!.join(', ')}. Nothing to promote to these segments yet.
+              </div>
+            )}
+            {!!(q.completeness_missing || []).length && (
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <b style={{ color: '#FFB300' }}>Not yet extracted:</b>{' '}
+                {q.completeness_missing.join(', ').replace(/_/g, ' ')}. Run Sync Knowledge Graph to fill these.
+              </div>
+            )}
+            {!!(q.generic_phrases || []).length && (
+              <div style={{ fontSize: '12.5px', color: '#ff6b7a', lineHeight: 1.6 }}>
+                Generic wording found ({q.generic_phrases.join(', ')}) — these constrain nothing and weaken generated copy.
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── 2. BRAND KNOWLEDGE & STRATEGY TABS ────────────────────── */}
       <div
         className="glow-card"
@@ -703,7 +1346,19 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
               )}
             </div>
 
-            {editingSection === activeKnowledgeTab ? (
+            {editingSection === activeKnowledgeTab
+              && EDITABLE_STRUCTURED.includes(SECTION_BY_ID[activeKnowledgeTab]?.kind) ? (
+              <BrandStructuredEditor
+                kind={(SECTION_BY_ID[activeKnowledgeTab].kind === 'personas'
+                  ? 'personas'
+                  : SECTION_BY_ID[activeKnowledgeTab].kind) as StructuredKind}
+                guidelines={guidelines}
+                saving={savingSection}
+                error={editError}
+                onSave={saveStructured}
+                onCancel={() => { setEditingSection(null); setEditError(null); }}
+              />
+            ) : editingSection === activeKnowledgeTab ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {/* Says how the field is stored, so a list is not typed as prose. */}
                 {SECTION_BY_ID[activeKnowledgeTab]?.hint && (
@@ -749,8 +1404,18 @@ export const BrandKnowledgeBase: React.FC<BrandKnowledgeBaseProps> = ({
                 </div>
               </div>
             ) : (
-              knowledgeSections.find(s => s.id === activeKnowledgeTab)?.content
-                || 'Nothing recorded for this section yet — run Sync Knowledge Graph to extract it from the site, or Edit to write it yourself.'
+              STRUCTURED_KINDS.includes(SECTION_BY_ID[activeKnowledgeTab]?.kind)
+                ? (activeKnowledgeTab === 'verified_claims'
+                    ? renderClaims(
+                        (guidelines.verified_claims as unknown[]) || [],
+                        (guidelines.unsupported_topics as unknown[]) || [])
+                    : renderStructured(
+                        SECTION_BY_ID[activeKnowledgeTab].kind,
+                        guidelines[activeKnowledgeTab]))
+                : renderSectionBody(
+                    SECTION_BY_ID[activeKnowledgeTab],
+                    knowledgeSections.find(s => s.id === activeKnowledgeTab)?.content || ''
+                  )
             )}
           </div>
         )}

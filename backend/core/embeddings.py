@@ -45,6 +45,23 @@ _GEMINI_MODEL_NAME = "models/gemini-embedding-001"
 _GEMINI_DIM = 768
 
 
+# Load the local model from the on-disk cache instead of revalidating it over the network.
+#
+# sentence-transformers asks huggingface.co whether a cached model is current every time it
+# loads one. When that host is unreachable - offline, restricted network, DNS failure - the
+# hub retries with exponential backoff per config file before giving up and using the cache
+# it had all along. Measured on this machine: 166 SECONDS inside a single creative
+# generation, for a model whose weights loaded from cache in under a second afterwards.
+#
+# Offline is the right default for a model pinned by id: it cannot change under us, so the
+# revalidation buys nothing. Set HF_HUB_OFFLINE=0 to allow the network for a first download.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# Belt and braces for any path that still reaches the network: fail in seconds, not minutes.
+os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "3")
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "10")
+
+
 def _local_available() -> bool:
     """Whether sentence-transformers can actually be imported in this process.
 
