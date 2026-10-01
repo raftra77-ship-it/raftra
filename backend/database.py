@@ -11,6 +11,28 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set in environment.")
 
+# Name the driver explicitly rather than letting SQLAlchemy pick one.
+#
+# A bare "postgresql://" means "the default Postgres driver", and the default MOVED:
+# SQLAlchemy 2.0 resolves it to psycopg2, 2.1 resolves it to psycopg (v3). Only
+# psycopg2-binary is installed (see requirements-deploy.txt), so the day 2.1.1 was
+# released every deploy began failing at import with
+#
+#     ModuleNotFoundError: No module named 'psycopg'
+#
+# on an unchanged URL and an unchanged commit - the dependency is unpinned, so Render
+# picked up the new major on its next build while local machines stayed on 2.0.x and saw
+# nothing. requirements-deploy.txt now pins <2.1 as well; this line is the belt to that
+# braces, so the URL keeps working whenever the pin is eventually lifted.
+#
+# Only the bare form is rewritten. An explicit "+psycopg", "+asyncpg" or any other driver
+# is a deliberate choice and is left exactly as written.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    # The legacy Heroku-style scheme, which SQLAlchemy dropped entirely in 1.4.
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+
 try:
     # Supabase uses connection pooling, sometimes requires SSL
     #

@@ -1,6 +1,10 @@
 fastapi
 uvicorn
-sqlalchemy
+# Pinned below 2.1. SQLAlchemy 2.1 changed which driver a bare postgresql:// URL
+# resolves to - 2.0 picks psycopg2, 2.1 picks psycopg (v3) - and only psycopg2-binary
+# is installed here. Unpinned, the 2.1.1 release broke every deploy at import with
+# ModuleNotFoundError: No module named 'psycopg', on an unchanged commit.
+sqlalchemy>=2.0,<2.1
 python-multipart
 passlib[bcrypt]
 razorpay
