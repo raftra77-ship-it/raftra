@@ -62,6 +62,66 @@ _TOKEN_LABEL_RE = re.compile(
 # slipped through - so a three-shade neutral palette reached the model as "near-white
 # (Bg Primary), near-white (Bg Secondary), near-white (Bg Tertiary)": the same colour three
 # times, each made unique by a CSS variable name that means nothing to an image model.
+# Brand-personality adjectives, translated into something an image model can draw.
+#
+# A brand kit's `personality` is written for humans - "Empowering, Motivating, Practical" -
+# and the analyser copies it into `mood`, from where it lands verbatim in the prompt. A
+# diffusion model cannot draw "empowering"; the word occupies prompt budget and competes
+# with the subject for attention while contributing nothing visible. Each entry below names
+# the light, framing or setting the adjective actually implies. Anything unmapped is
+# dropped rather than guessed at.
+_MOOD_TRANSLATIONS = {
+    "empowering": "bright confident lighting",
+    "motivating": "warm energetic lighting",
+    "inspiring": "warm uplifting light",
+    "aspirational": "soft golden light",
+    "practical": "plain uncluttered setting",
+    "focused": "shallow depth of field on the subject",
+    "efficient": "tidy minimal composition",
+    "innovative": "clean modern surfaces",
+    "trustworthy": "even neutral lighting",
+    "reliable": "even neutral lighting",
+    "professional": "clean studio lighting",
+    "friendly": "soft warm light",
+    "approachable": "soft warm light",
+    "premium": "deep contrast, polished surfaces",
+    "luxurious": "deep contrast, polished surfaces",
+    "modern": "clean contemporary surfaces",
+    "minimalist": "sparse uncluttered framing",
+    "bold": "strong directional light, high contrast",
+    "energetic": "vivid saturated light",
+    "calm": "soft diffused light",
+    "playful": "bright saturated colour",
+    "user-friendly": "clear uncluttered framing",
+    "accessible": "clear uncluttered framing",
+    "structured": "orderly symmetrical composition",
+    "instructive": "plain uncluttered setting",
+    "encouraging": "warm uplifting light",
+}
+
+
+def _translate_moods(text: str) -> str:
+    """Replace brand-personality adjectives with what they look like; drop the rest.
+
+    Only applied to `mood`, which is where the brand kit's personality list arrives. A
+    phrase that is already visual ("soft rim light") contains no mapped adjective and passes
+    through untouched.
+    """
+    out = []
+    for item in (i.strip() for i in (text or "").split(",")):
+        if not item:
+            continue
+        mapped = _MOOD_TRANSLATIONS.get(item.lower())
+        if mapped:
+            out.append(mapped)
+        elif item.lower() not in _MOOD_TRANSLATIONS:
+            # Multi-word visual phrases are kept; bare unmapped adjectives are not, since
+            # a single abstract word is the case this exists to remove.
+            if " " in item:
+                out.append(item)
+    return ", ".join(dict.fromkeys(out))
+
+
 _PAREN_TOKEN_RE = re.compile(
     r"\s*\(\s*(?:[A-Z][A-Za-z0-9]*[\s-]+)*"
     r"(?:Color|Colour|Primary|Secondary|Tertiary|Quaternary|Accent|Bg|Background|Surface|"
@@ -155,6 +215,42 @@ def _adds_something(clause: str, seen: set) -> bool:
     return len(fresh) * 2 >= len(meaningful)
 
 
+def _strip_proper_nouns(prompt: str, spec: CreativeSpec) -> str:
+    """Remove the brand and product names from the prompt, whatever the analyser did.
+
+    The analyser is INSTRUCTED to describe a product rather than name it, and mostly obeys -
+    but "mostly" is not a guarantee, and one disobedient run bakes misspelled lettering into
+    a paid generation. Observed directly: the same brief produced a clean prompt on one run
+    and "a vibrant digital interface of the DSA Mastery Hub platform" on the next.
+
+    So the rule is enforced here as well as asked for there. This is the checkpoint the
+    prompt cannot talk its way past.
+
+    Only whole words, and only tokens of 3+ characters: stripping a two-letter name would
+    chew through ordinary words, and a name that short is unlikely to be rendered as text
+    anyway. A leading article left dangling ("of the  platform") is tidied up after.
+    """
+    names = [n for n in ((spec.brand or ""), (spec.product or "")) if n and n.strip()]
+    if not names:
+        return prompt
+
+    # Longest first, so "DSA Mastery Hub" is removed before the bare token "DSA".
+    phrases = sorted({n.strip() for n in names}, key=len, reverse=True)
+    tokens = {w for phrase in phrases for w in re.split(r"[\s\-_]+", phrase) if len(w) >= 3}
+    out = prompt
+    for phrase in phrases:
+        out = re.sub(rf"\b{re.escape(phrase)}\b", "", out, flags=re.IGNORECASE)
+    for token in sorted(tokens, key=len, reverse=True):
+        out = re.sub(rf"\b{re.escape(token)}\b", "", out, flags=re.IGNORECASE)
+
+    # Tidy the holes: "of the  platform" -> "the platform", doubled spaces and commas.
+    out = re.sub(r"\b(?:of|from|by|for)\s+the\s+(?=[,\s])", "", out, flags=re.IGNORECASE)
+    out = re.sub(r"\s{2,}", " ", out)
+    out = re.sub(r"\s+([,.])", r"\1", out)
+    out = re.sub(r"(,\s*){2,}", ", ", out)
+    return out.strip(" ,")
+
+
 def build_image_prompt(spec: CreativeSpec) -> str:
     """One paragraph, subject first, polish last, each idea stated once."""
     parts: list[str] = []
@@ -162,6 +258,8 @@ def build_image_prompt(spec: CreativeSpec) -> str:
     for prefix, field in _IMAGE_FIELD_ORDER:
         raw = spec.subject_line() if field == "subject_line" else getattr(spec, field, "")
         text = _clean(raw)
+        if field == "mood":
+            text = _translate_moods(text)
         if not text:
             continue
         # The subject always leads; everything after it has to earn its place.
@@ -191,7 +289,9 @@ def build_image_prompt(spec: CreativeSpec) -> str:
         seen.update(w.strip(".,").lower() for w in text.split())
         seen.update(i.strip().lower() for i in text.split(","))
 
-    prompt = ", ".join(parts)
+    # Enforced here, not only requested of the analyser: an image model cannot spell, so a
+    # proper noun that reaches it is a defect no matter which layer let it through.
+    prompt = _strip_proper_nouns(", ".join(parts), spec)
 
     # Ad creative needs somewhere to put the headline, and the empty area has to land in a
     # PREDICTABLE place or the copy layer cannot rely on it.

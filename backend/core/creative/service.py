@@ -74,6 +74,47 @@ def _video_provider(name: str):
     return KenBurnsVideoProvider()
 
 
+def _fetch_image_bytes(url: str) -> bytes:
+    """The generated image as bytes, whatever form the provider returned it in.
+
+    Providers disagree: Pollinations hands back an https URL, Gemini a base64 data: URI, and
+    the local disk path is relative. All three have to end up as bytes for the overlay.
+    """
+    import base64
+    import httpx
+
+    if not url:
+        return b""
+    if url.startswith("data:"):
+        _, _, payload = url.partition(",")
+        return base64.b64decode(payload)
+    if url.startswith("/"):
+        from pathlib import Path
+        from core.providers.kenburns_video import MEDIA_ROOT
+        local = Path(MEDIA_ROOT) / url.replace("/api/generated/", "", 1)
+        return local.read_bytes() if local.is_file() else b""
+    r = httpx.get(url, timeout=30, follow_redirects=True)
+    return r.content if r.status_code == 200 else b""
+
+
+def _brand_facts_for(workspace_id):
+    """Palette and brand name for the overlay. Never raises: the overlay has defaults."""
+    if not workspace_id:
+        return {}
+    try:
+        from core.rag import brand_facts
+        return brand_facts(workspace_id) or {}
+    except Exception:
+        return {}
+
+
+try:
+    from core.creative.overlay import OverlayUnavailable as _OverlayUnavailable
+except Exception:                                    # pragma: no cover - import-time safety
+    class _OverlayUnavailable(RuntimeError):
+        pass
+
+
 class CreativeService:
     """One generation request, start to finish."""
 
@@ -249,6 +290,39 @@ class CreativeService:
                        "GEMINI_IMAGE_ENABLED=true (best quality), or top up "
                        "HUGGINGFACE_API_KEY, or set OPENAI_API_KEY.")
             await log("Media Generator", error, "failed")
+
+        # Draw the ad's words on, as real text.
+        #
+        # The prompt no longer asks the image model for any lettering (optimizer appends an
+        # explicit no-text line and leaves a named empty region), because image models
+        # cannot type - they paint letter-shaped pixels and misspell every word. The copy
+        # the analyser already produced is composited here instead, correctly spelled.
+        #
+        # Never fatal. A creative without its headline is still a creative; one that failed
+        # to generate is not. Any failure here keeps the plain image.
+        if image_url and spec.media_type == "image":
+            try:
+                from core.creative import overlay as _overlay
+                ov = _overlay.build_overlay_spec(spec, _brand_facts_for(workspace_id))
+                if _overlay.has_copy(ov):
+                    raw = await asyncio.wait_for(
+                        asyncio.to_thread(_fetch_image_bytes, image_url), timeout=30)
+                    if raw:
+                        composed = await asyncio.to_thread(_overlay.render_overlay, raw, ov)
+                        from storage import store_bytes
+                        image_url = store_bytes(
+                            composed, "creative.png", "image/png",
+                            workspace_id=workspace_id, category="creatives")
+                        await log("Media Generator",
+                                  "Headline and call to action rendered onto the creative.",
+                                  "completed")
+            except _OverlayUnavailable as e:
+                # No font on this host. Say so once, plainly - silently shipping a creative
+                # with no copy on it looks like the feature is broken.
+                print(f"creative: overlay skipped - {e}")
+            except Exception as e:
+                print(f"creative: overlay failed ({type(e).__name__}: {e}); "
+                      f"keeping the plain image.")
 
         if spec.media_type == "video" and image_url:
             await log("Video Agent", "Animating the generated creative into a video...")

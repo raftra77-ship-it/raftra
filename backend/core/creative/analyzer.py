@@ -234,7 +234,14 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
             "from its stated visual language and positioning.\n"
             "- Do NOT render the brand name, wordmark or logo as text in the image unless "
             "`text_in_image` is true; grounding the subject is separate from drawing a logo.\n"
-            "- If a brand fact contradicts the user's request, the user's request wins.\n\n"
+            "- If a brand fact contradicts the user's request, the user's request wins.\n"
+            "- WRITE THE AD COPY. Fill `headline` (<= 9 words), `primary_text` (one "
+            "sentence, <= 18 words) and `cta` (2-4 words) from the brand knowledge below. "
+            "These are rendered as real text by our own code AFTER the image is generated, "
+            "so they are the only place words are guaranteed to be spelled correctly - and "
+            "leaving them empty means the finished ad has no message on it at all. Base "
+            "them on the brand's stated value proposition, differentiators and audience; "
+            "the 'never invent' rule still applies to prices, statistics and awards.\n\n"
             f"{brand_context[:6000]}")
     if reference_image_url:
         instruction.append(
