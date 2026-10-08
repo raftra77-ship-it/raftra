@@ -97,6 +97,47 @@ def _fetch_image_bytes(url: str) -> bytes:
     return r.content if r.status_code == 200 else b""
 
 
+def _pick_copy_angle(workspace_id) -> str:
+    """A different thing for the ad to be about, each time Generate is pressed.
+
+    Regenerating used to return the same ad: the brand kit is identical between runs, the
+    brief is identical, and temperature alone only reshuffles wording - across six runs on
+    one workspace the headline was "Level Up Your Coding Skills" every time.
+
+    The angles come from the brand's own knowledge rather than being invented: each persona
+    with its need, each job-to-be-done with its problem, and each recorded messaging angle.
+    One is chosen at random, so a second press is very likely to produce a genuinely
+    different ad, and every option is something the brand actually stands behind.
+    """
+    import random as _random
+
+    facts = _brand_facts_for(workspace_id)
+    if not facts:
+        return ""
+
+    options = []
+    for p in (facts.get("target_audiences") or []):
+        if not isinstance(p, dict):
+            continue
+        who, need = str(p.get("persona") or "").strip(), str(p.get("need") or "").strip()
+        if who:
+            options.append(f"Speak to {who}." + (f" Their need: {need}" if need else ""))
+
+    for j in (facts.get("jobs_to_be_done") or []):
+        if not isinstance(j, dict):
+            continue
+        problem = str(j.get("problem") or "").strip()
+        if problem:
+            options.append(f"Lead with the problem the customer has: {problem}")
+
+    messaging = facts.get("messaging") if isinstance(facts.get("messaging"), dict) else {}
+    for angle in (messaging.get("angles") or []):
+        if str(angle).strip():
+            options.append(f"Take this messaging angle: {str(angle).strip()}")
+
+    return _random.choice(options) if options else ""
+
+
 def _brand_facts_for(workspace_id):
     """Palette and brand name for the overlay. Never raises: the overlay has defaults."""
     if not workspace_id:
@@ -176,9 +217,13 @@ class CreativeService:
         except Exception:
             pass
 
+        # Rotated per run so pressing Generate again gives a different ad, not the same one.
+        angle = await asyncio.to_thread(_pick_copy_angle, workspace_id)
+
         spec = await analyze(prompt, media_type=media_type, platform=platform,
                              placement=placement, reference_image_url=reference_image_url,
-                             brand_context=brand, input_method=input_method)
+                             brand_context=brand, input_method=input_method,
+                             copy_angle=angle)
         # Ask for a green screen only when a screenshot exists to replace it with.
         #
         # Requesting one otherwise would be strictly worse: the creative would ship with a

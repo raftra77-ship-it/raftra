@@ -3,7 +3,7 @@ import {
   Sparkles, Video, 
   ShieldCheck, CheckCircle2, TrendingUp, Zap, 
   Upload, Image as ImageIcon, Wand2, RefreshCw, BarChart2, Search, 
-  Play, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save,
+  Play, Edit3, Send, Check, X, ArrowRight, Download, Calendar, FolderPlus, Save, Eye,
   Layers
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
@@ -1340,6 +1340,45 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      Vault, an ad it has already generated, and the user's disk; all three are wired here. */
   const carouselFileRef = useRef<HTMLInputElement>(null);
   const [uploadingCardImage, setUploadingCardImage] = useState(false);
+
+  /* Preview and download for the creative on the Create tab.
+     ------------------------------------------------------------------
+     Both only existed inside the canvas editor. The generated ad could be restyled, edited
+     or pushed to a campaign, but not saved - getting a copy meant opening the editor first,
+     which also meant the file you got was the editor's canvas rather than what was
+     generated. */
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [downloadingAd, setDownloadingAd] = useState(false);
+
+  const downloadGeneratedAd = async () => {
+    const url = generatedAd?.videoUrl || generatedAd?.imageUrl;
+    if (!url || downloadingAd) return;
+    setDownloadingAd(true);
+    try {
+      const isVideo = Boolean(generatedAd?.videoUrl);
+      const stamp = Date.now();
+      // Fetched into a blob rather than linked directly: a cross-origin href ignores the
+      // download attribute and opens the image in a tab instead of saving it, and a data:
+      // URL from Gemini is too long for some browsers to treat as a filename.
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Could not fetch the creative (${res.status})`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      const ext = isVideo ? 'mp4' : (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+      a.download = `Raftra_Ad_${stamp}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+      triggerToast(`Saved the ${isVideo ? 'video' : 'image'} to your downloads.`);
+    } catch (e) {
+      triggerToast(e instanceof Error ? e.message : 'Could not download the creative.');
+    } finally {
+      setDownloadingAd(false);
+    }
+  };
 
   const [downloadingCarousel, setDownloadingCarousel] = useState(false);
 
@@ -3152,6 +3191,29 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     {isEditingMode ? 'Direct Editor Active' : 'Enable Direct Edit Mode'}
                   </button>
 
+                  {/* Preview and Download, on the creative itself.
+                      Both existed only inside the canvas editor, so the ad you had just
+                      generated could be pushed to a campaign or restyled but not actually
+                      saved - getting a copy meant opening the editor first. */}
+                  {(generatedAd.imageUrl || generatedAd.videoUrl) && (
+                    <button
+                      onClick={() => setPreviewImageUrl(generatedAd.videoUrl || generatedAd.imageUrl || null)}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', padding: '8px 16px', borderRadius: '100px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Eye size={15} /> Preview
+                    </button>
+                  )}
+
+                  {(generatedAd.imageUrl || generatedAd.videoUrl) && (
+                    <button
+                      onClick={downloadGeneratedAd}
+                      disabled={downloadingAd}
+                      style={{ background: 'rgba(0,230,118,0.14)', border: '1px solid rgba(0,230,118,0.4)', color: '#00E676', padding: '8px 16px', borderRadius: '100px', cursor: downloadingAd ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', opacity: downloadingAd ? 0.6 : 1 }}
+                    >
+                      <Download size={15} /> {downloadingAd ? 'Saving…' : 'Download'}
+                    </button>
+                  )}
+
                   <button onClick={() => onOpenReview && onOpenReview(generatedAd.id)} style={{ background: '#7C75FF', border: 'none', color: '#fff', padding: '8px 18px', borderRadius: '100px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
                     Push to Campaign Manager
                   </button>
@@ -3230,9 +3292,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                         </span>
                       </div>
                     ) : generatedAd.imageUrl ? (
+                      /* Click to see it full size. The card crops to 420px with objectFit
+                         cover, so on a 9:16 or 4:5 creative a good part of the ad - often
+                         the headline - is simply not on screen, and the only way to judge
+                         it was to download the file first. */
                       <img src={generatedAd.imageUrl} alt="Generated Ad"
+                        onClick={() => generatedAd.imageUrl && setPreviewImageUrl(generatedAd.imageUrl)}
                         onError={() => setGeneratedAdImageFailed(true)}
-                        style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block' }} />
+                        title="Click to view full size"
+                        style={{ width: '100%', maxHeight: '420px', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }} />
                     ) : (
                       <div style={{ width: '100%', height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
                         <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
@@ -6178,6 +6246,52 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           workspaceId={workspaceId ?? null}
           onNavigateTab={onNavigateTab}
         />
+      )}
+
+      {/* Full-size preview.
+          The card crops the creative to 420px with objectFit cover, so on a 9:16 or 4:5 ad
+          a good part of it - frequently the headline - is off screen. Judging the thing you
+          just paid to generate should not require downloading it first. */}
+      {previewImageUrl && (
+        <div
+          onClick={() => setPreviewImageUrl(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Creative preview"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(4,6,12,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px',
+            cursor: 'zoom-out',
+          }}
+        >
+          <button
+            onClick={() => setPreviewImageUrl(null)}
+            aria-label="Close preview"
+            style={{
+              position: 'absolute', top: '20px', right: '24px', background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.18)', color: '#fff', width: '38px', height: '38px',
+              borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <X size={18} />
+          </button>
+
+          {/* Stop the click on the media itself from closing, so it can be inspected. */}
+          {generatedAd?.videoUrl && previewImageUrl === generatedAd.videoUrl ? (
+            <video
+              src={previewImageUrl} controls autoPlay loop
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', cursor: 'default' }}
+            />
+          ) : (
+            <img
+              src={previewImageUrl} alt="Creative preview"
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '12px', cursor: 'default' }}
+            />
+          )}
+        </div>
       )}
 
     </div>

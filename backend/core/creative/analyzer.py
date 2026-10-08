@@ -182,7 +182,7 @@ def _heuristic_spec(prompt: str, media_type: str, platform: Optional[str],
 async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[str] = None,
                   placement: Optional[str] = None, reference_image_url: str = "",
                   brand_context: str = "", model: Optional[str] = None,
-                  input_method: str = "") -> CreativeSpec:
+                  input_method: str = "", copy_angle: str = "") -> CreativeSpec:
     """Raw request -> CreativeSpec. Exactly one model call."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key or not (prompt or "").strip():
@@ -286,6 +286,22 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
     directive = _ROUTE_DIRECTIVE.get((input_method or "").strip().lower())
     if directive:
         instruction.append(directive)
+
+    # Which angle this particular generation takes.
+    #
+    # Without it, pressing Generate again returns the same ad. The brand kit does not change
+    # between runs and nor does the brief, so temperature 0.7 only reshuffles the wording -
+    # measured across six consecutive runs on one workspace, the headline came back as
+    # "Level Up Your Coding Skills" every time. The caller rotates through the brand's own
+    # personas and messaging angles and names one here, which changes what the ad is ABOUT
+    # rather than just how it is phrased.
+    if copy_angle:
+        instruction.append(
+            f"ANGLE FOR THIS GENERATION: {copy_angle}\n"
+            "Write `headline`, `primary_text` and `cta` specifically for this angle, and "
+            "make the scene suit it. Do not fall back to the brand's most generic message - "
+            "the user has seen that one. The visual and the copy should both be recognisably "
+            "about this angle.")
 
     parts: list[dict] = [{"text": _SYSTEM + "\n\n" + "\n".join(instruction)}]
     if reference_image_url:
