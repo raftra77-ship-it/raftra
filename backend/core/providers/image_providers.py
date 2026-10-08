@@ -115,7 +115,10 @@ class FluxSchnellProvider(ImageProvider):
         # Pollinations is deterministic on the URL - the same prompt returns the exact
         # same image every time. A random seed makes each generation visually distinct,
         # even when the user regenerates from an identical prompt.
-        seed = random.randint(1, 1_000_000_000)
+        # A caller-supplied seed makes a good generation reproducible; without one we still
+        # randomise, because Pollinations is deterministic on the URL and a fixed seed would
+        # return the identical image every time the user pressed Regenerate.
+        seed = int(kwargs.get("seed") or random.randint(1, 1_000_000_000))
         url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true&seed={seed}"
 
         # Warm the URL before handing it out.
@@ -222,6 +225,10 @@ class HFFluxSchnellProvider(ImageProvider):
             "num_inference_steps": int(kwargs.get("steps", 4)),
             "negative_prompt": kwargs.get("negative_prompt", DEFAULT_NEGATIVE_PROMPT),
         }
+        # Only when the caller supplied one: omitting it lets the service randomise, which is
+        # what Regenerate needs.
+        if kwargs.get("seed"):
+            payload["seed"] = int(kwargs["seed"])
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(url, headers={"Authorization": f"Bearer {api_key}"},
                                   json=payload)

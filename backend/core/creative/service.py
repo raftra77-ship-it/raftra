@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import os
+import random
 
 # Ceiling on the brand-context lookup. It grounds the creative but is not required for one,
 # so it may add latency up to this point and no further.
@@ -186,14 +187,22 @@ class CreativeService:
                 pass   # a dead socket must never fail the generation
 
         image_url, video_url, error = "", "", None
+
+        # One seed per run, chosen here and logged, so a generation someone likes can be
+        # reproduced. Previously each provider invented its own internally and threw it
+        # away, which made a good result a one-off: the same prompt would never return the
+        # same picture again.
+        seed = random.randint(1, 1_000_000_000)
+
         await log("Media Generator", f"Generating the {spec.aspect_ratio} creative "
-                                     f"via {provider_name}...")
+                                     f"via {provider_name} (seed {seed})...")
         async def _make(name: str) -> str:
             return await _image_provider(name).generate_image(
                 prompts["image_prompt"],
                 aspect_ratio=prompts["aspect_ratio"],
                 negative_prompt=prompts["negative_prompt"],
                 image_url=spec.reference_image_url or None,
+                seed=seed,
             )
 
         # Walk the provider chain, best first, instead of trying one and then only the

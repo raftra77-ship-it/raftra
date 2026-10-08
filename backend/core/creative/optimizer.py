@@ -55,6 +55,21 @@ _TOKEN_LABEL_RE = re.compile(
     r"(?=" + _COLOUR_WORDS + r")",
 )
 
+# The same labels, but trailing and parenthesised: "near-white (Bg Primary)".
+#
+# _TOKEN_LABEL_RE only matches a label that PRECEDES the colour, which is how the brand kit
+# stores it. The analyzer frequently reorders it into a parenthetical instead, and that form
+# slipped through - so a three-shade neutral palette reached the model as "near-white
+# (Bg Primary), near-white (Bg Secondary), near-white (Bg Tertiary)": the same colour three
+# times, each made unique by a CSS variable name that means nothing to an image model.
+_PAREN_TOKEN_RE = re.compile(
+    r"\s*\(\s*(?:[A-Z][A-Za-z0-9]*[\s-]+)*"
+    r"(?:Color|Colour|Primary|Secondary|Tertiary|Quaternary|Accent|Bg|Background|Surface|"
+    r"Foreground|Text|Muted|Subtle|Inverse|Neutral|Base|Brand)"
+    r"(?:[\s-]+[A-Za-z0-9]+)*\s*\)",
+    re.I,
+)
+
 
 def _hex_to_words(hex_code: str) -> str:
     """A colour a diffusion model can actually act on.
@@ -107,6 +122,7 @@ def _clean(value: str) -> str:
     # grey". The label is the name of a CSS variable - it describes nothing visual and only
     # competes for the model's attention.
     text = _TOKEN_LABEL_RE.sub("", text)
+    text = _PAREN_TOKEN_RE.sub("", text)
     # The substitutions can leave doubled separators behind.
     text = re.sub(r"\s*,\s*(,\s*)+", ", ", text)
     text = re.sub(r"\s{2,}", " ", text)
@@ -156,8 +172,18 @@ def build_image_prompt(spec: CreativeSpec) -> str:
         # ("energetic" in mood and again in style). Dropping the repeats keeps the useful
         # half of the clause instead of discarding it whole.
         if field in ("mood", "style", "color_direction", "composition"):
-            kept = [item for item in (i.strip() for i in text.split(","))
-                    if item and item.lower() not in seen]
+            # `seen` is only updated after a field is appended, so it catches repeats
+            # ACROSS fields but not within one. A palette arriving as
+            # "near-white, near-white, near-white, dark grey" therefore survived intact and
+            # weighted the prompt three times toward one colour. `local` closes that.
+            local: set = set()
+            kept = []
+            for item in (i.strip() for i in text.split(",")):
+                key = item.lower()
+                if not item or key in seen or key in local:
+                    continue
+                local.add(key)
+                kept.append(item)
             if not kept:
                 continue
             text = ", ".join(kept)
@@ -167,16 +193,35 @@ def build_image_prompt(spec: CreativeSpec) -> str:
 
     prompt = ", ".join(parts)
 
-    # Ad creative needs somewhere to put the headline; only say so when the layout does not
-    # already describe it, to avoid repeating the same instruction twice.
-    if "negative space" not in prompt.lower():
-        prompt += ", clean negative space reserved for a headline"
+    # Ad creative needs somewhere to put the headline, and the empty area has to land in a
+    # PREDICTABLE place or the copy layer cannot rely on it.
+    #
+    # This used to say "clean negative space reserved for a headline". Two problems. The
+    # side was unstated, so the empty area wandered between generations and text could not
+    # be composited blind. And naming "a headline" invites the model to write one - the very
+    # thing it cannot spell. Naming a concrete side and saying nothing about text fixes both.
+    if "negative space" not in prompt.lower() and "empty" not in prompt.lower():
+        prompt += (", the subject positioned on the right of the frame, "
+                   "the left third of the frame clean and completely empty")
 
     # Diffusion models render words poorly. Only ask for text when the user actually did.
     if spec.text_in_image and spec.headline:
         prompt += f', with the words "{_clean(spec.headline)}" rendered clearly'
 
     prompt += ", high detail, sharp focus, professional advertising photography"
+
+    # The no-text instruction, stated positively and last.
+    #
+    # Text suppression used to live only in the negative prompt, which two of the three
+    # providers never receive: Pollinations has no such parameter and Gemini's payload drops
+    # it. So on those providers nothing suppressed lettering at all, and the model filled
+    # every surface it read as a screen, sign or label with invented glyphs.
+    #
+    # Stated positively on purpose. "Without any text" puts the word "text" in the prompt,
+    # and diffusion models frequently render the nouns inside a negation.
+    if not spec.text_in_image:
+        prompt += (". No text, no letters, no numbers, no words, no logos, no watermarks "
+                   "and no badges anywhere in the image")
     return prompt
 
 
