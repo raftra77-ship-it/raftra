@@ -370,7 +370,26 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
                              "responseMimeType": "application/json",
                              "thinkingConfig": {"thinkingBudget": 0}},
     }
-    url = _GEMINI_URL.format(model=(model or _DEFAULT_MODEL))
+    # Walk the shared model chain instead of pinning one id.
+    #
+    # This called _DEFAULT_MODEL ("gemini-2.5-flash") and retried the SAME model on failure.
+    # Retrying is the right response to a 503; it is useless against a 429, which means the
+    # day's quota for that id is gone and will still be gone a second later. Measured on
+    # this project's key: gemini-2.5-flash answers 429 while gemini-3.8-flash and
+    # gemini-flash-latest both answer 200 - so every creative was falling back to the
+    # verbatim heuristic, with no brand knowledge, while two working models sat unused.
+    #
+    # llm_providers already maintains this list, checked against ListModels, with the lite
+    # variants that carry their own separate daily quota. Sharing it means one place to fix
+    # when Google retires an id, which it does on its own schedule.
+    if model:
+        model_chain = [model]
+    else:
+        try:
+            from core.providers.llm_providers import _GEMINI_FALLBACK_MODELS
+            model_chain = list(_GEMINI_FALLBACK_MODELS)
+        except Exception:
+            model_chain = [_DEFAULT_MODEL]
 
     # Retry the transient failures instead of silently falling back.
     #
@@ -384,25 +403,34 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
     finish = None
     text = ""
     last_problem = ""
-    for attempt in range(_ANALYZER_ATTEMPTS):
-        try:
-            async with httpx.AsyncClient(timeout=_ANALYZER_TIMEOUT_SEC) as client:
-                r = await client.post(url, params={"key": api_key}, json=payload)
-            if r.status_code == 200:
-                body = r.json()
-                candidate = (body.get("candidates") or [{}])[0]
-                finish = candidate.get("finishReason")
-                text = ((candidate.get("content") or {}).get("parts") or [{}])[0].get("text", "")
-                break
-            last_problem = f"HTTP {r.status_code}: {r.text[:160]}"
-            if r.status_code not in (429, 500, 502, 503, 504):
-                break        # a client error will not fix itself
-        except Exception as e:
-            last_problem = f"{type(e).__name__}: {e}"
-        if attempt + 1 < _ANALYZER_ATTEMPTS:
-            print(f"[creative.analyzer] {last_problem} - retrying "
-                  f"({attempt + 2}/{_ANALYZER_ATTEMPTS})")
-            await asyncio.sleep(_ANALYZER_RETRY_DELAY_SEC)
+    for model_name in model_chain:
+        url = _GEMINI_URL.format(model=model_name)
+        for attempt in range(_ANALYZER_ATTEMPTS):
+            try:
+                async with httpx.AsyncClient(timeout=_ANALYZER_TIMEOUT_SEC) as client:
+                    r = await client.post(url, params={"key": api_key}, json=payload)
+                if r.status_code == 200:
+                    body = r.json()
+                    candidate = (body.get("candidates") or [{}])[0]
+                    finish = candidate.get("finishReason")
+                    text = ((candidate.get("content") or {}).get("parts") or [{}])[0].get("text", "")
+                    break
+                last_problem = f"{model_name} HTTP {r.status_code}: {r.text[:140]}"
+                # Quota and retirement are facts about this model id, not this moment, so
+                # move on rather than spending the retry budget proving it twice.
+                if r.status_code in (429, 404):
+                    break
+                if r.status_code not in (500, 502, 503, 504):
+                    break        # a client error will not fix itself
+            except Exception as e:
+                last_problem = f"{model_name} {type(e).__name__}: {e}"
+            if attempt + 1 < _ANALYZER_ATTEMPTS:
+                print(f"[creative.analyzer] {last_problem} - retrying "
+                      f"({attempt + 2}/{_ANALYZER_ATTEMPTS})")
+                await asyncio.sleep(_ANALYZER_RETRY_DELAY_SEC)
+        if body is not None:
+            break
+        print(f"[creative.analyzer] {last_problem} - trying the next model")
 
     if body is None:
         # Loud on purpose: the creative that follows will carry no brand knowledge, and that

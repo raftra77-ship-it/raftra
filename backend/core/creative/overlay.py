@@ -234,10 +234,16 @@ def render_overlay(image_bytes: bytes, overlay: dict) -> bytes:
         cursor += int(f_head.size * 0.35)
 
     if overlay.get("subtext"):
-        for line in _wrap(draw, overlay["subtext"], f_body, max_w)[:4]:
+        # Shrink to fit rather than cut. This took the first four wrapped lines and dropped
+        # the rest, which severed a real sentence mid-clause - "...beginner-friendly DSA
+        # lessons and guided" with "challenges." simply gone. A half-sentence on an advert
+        # reads as a rendering fault, and the copy layer exists so the words are right.
+        f_body = _fit(draw, overlay["subtext"], regular, max_w,
+                      body_size, max_lines=4, floor=max(12, int(H * 0.018)))
+        for line in _wrap(draw, overlay["subtext"], f_body, max_w):
             draw.text((x, cursor), line, font=f_body, fill=(226, 232, 240))
-            cursor += int(body_size * 1.45)
-        cursor += int(body_size * 0.8)
+            cursor += int(f_body.size * 1.45)
+        cursor += int(f_body.size * 0.8)
 
     if overlay.get("cta"):
         label = overlay["cta"].strip()
