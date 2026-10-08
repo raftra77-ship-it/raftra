@@ -2085,26 +2085,46 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   /** The brand's visual anchors. Attached to EVERY route, including the ones where the user
    *  writes their own prompt or supplies their own image - those still have to look like
    *  this brand. */
+  /** The brand's look, limited to things a camera can record.
+   *
+   *  Dropped from this list: tone, brand personality, and the "do not visually claim" line.
+   *  Tone and personality are adjectives about writing ("Empowering, Practical") that a
+   *  diffusion model cannot draw - the backend now translates them into light and framing,
+   *  so sending the raw words competed with the subject for nothing. The guardrail list was
+   *  a string of negations, and a prompt ending in a pile of "do not" drove the subject out
+   *  of the frame entirely in testing; it belongs to the copy layer, which is where claims
+   *  are actually made.
+   *
+   *  The palette is capped at three. A full design-token set is mostly greys, and six
+   *  colours dilute the brief rather than sharpen it. */
   const brandVisualAnchor = (): string[] => {
-    const { sentence, colours, visual, avoid } = briefParts();
+    const { sentence, colours, visual } = briefParts();
     return [
       visual ? `Brand visual identity: ${sentence(visual)}` : '',
-      colours.length ? `Use the brand palette: ${colours.join(', ')}.` : '',
-      brandTone ? `Tone: ${sentence(brandTone)}` : '',
-      brandTheme ? `Brand personality: ${sentence(brandTheme)}` : '',
-      avoid.length ? `Do not visually claim: ${avoid.join('; ')}.` : '',
+      colours.length ? `Use the brand palette: ${colours.slice(0, 3).join(', ')}.` : '',
     ].filter(Boolean);
   };
 
+  /* What the brief sends, and what it deliberately does not.
+     ------------------------------------------------------------------
+     This used to send the brand's words: "Subject: <product names>", "Core message: …",
+     "Differentiators to show: …", "Angle: <the written ad hook>". Every one of those is
+     copy, and copy in an image brief is copy the model tries to PAINT - it cannot type, so
+     each phrase came back as unreadable lettering baked into the picture.
+
+     It also was not buying anything. The backend loads the whole brand kit itself
+     (service.plan -> brand_facts_context), so value proposition, differentiators, personas
+     and messaging already reach the analyser through a channel that keeps them out of the
+     image prompt. Sending them a second time, as prose, only gave the model words to draw.
+
+     What stays is what a camera can see: the category of object, and the brand's visual
+     identity. The words are written by the analyser and rendered afterwards as real text by
+     core/creative/overlay.py. */
   const brandBriefLines = (): string[] => {
-    const { sentence, products, categoryName, usps, persona, hook, coreMessage, valueProp } = briefParts();
+    const { sentence, categoryName } = briefParts();
     return [
-      `Subject: ${sentence(products.length ? products.join(', ') : (categoryName || brandName || 'the product'))}`,
-      valueProp ? `What it offers: ${sentence(valueProp)}` : '',
-      coreMessage ? `Core message: ${sentence(coreMessage)}` : '',
-      usps.length ? `Differentiators to show: ${usps.join('; ')}.` : '',
-      persona ? `Audience: ${sentence(persona)}` : (brandAudience ? `Audience: ${sentence(brandAudience)}` : ''),
-      hook ? `Angle: ${sentence(hook)}` : '',
+      // The category, never the product's name. "a running shoe", not "the Vomero 18".
+      `Subject: ${sentence(categoryName || 'the product')}`,
       ...brandVisualAnchor(),
     ].filter(Boolean);
   };
