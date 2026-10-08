@@ -286,6 +286,10 @@ _UI_CONTENT_RE = re.compile(
 
 
 # Nouns that only ever mean "draw me a user interface".
+_URL_IN_PROMPT_RE = re.compile(
+    r"\(?\s*\bhttps?://\S+|\b(?:[a-z0-9-]+\.)+"
+    r"(?:com|net|org|io|ai|app|co|in|dev|me|xyz)\b\s*\)?", re.IGNORECASE)
+
 _UI_NOUNS_RE = re.compile(
     r"\b(?:interface|dashboard|UI|lesson|lessons|code\s+editor|progress\s+bar|"
     r"leaderboard|sidebar|menu|menus|analytics|widget|widgets|app\s+screen)\b",
@@ -357,6 +361,14 @@ def build_image_prompt(spec: CreativeSpec) -> str:
     # Enforced here, not only requested of the analyser: an image model cannot spell, so a
     # proper noun that reaches it is a defect no matter which layer let it through.
     prompt = _strip_proper_nouns(", ".join(parts), spec)
+
+    # Belt and braces on URLs, on every path. A domain is a string of letters the model will
+    # try to draw, and it reaches the prompt through routes the brand-name guard does not
+    # cover - the Brand Knowledge brief opens with "Advertising creative for DSA
+    # (dsahelper.onrender.com)", and when the analyser falls back that whole line becomes
+    # the visual concept.
+    prompt = _URL_IN_PROMPT_RE.sub("", prompt)
+    prompt = re.sub(r"\s{2,}", " ", prompt).strip(" ,")
 
     # Device shots only: the screen's contents are decided below, not by the analyser.
     from .compose import wants_green_screen

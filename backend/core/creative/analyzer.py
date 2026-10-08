@@ -157,6 +157,44 @@ async def _fetch_image_part(image_url: str) -> Optional[dict]:
         return None
 
 
+# Labels the Brand Knowledge brief uses to structure itself, and the lead-in that names the
+# brand and its domain. Meaningful to the analyser, meaningless to an image model - which
+# tries to PAINT them, along with the brand name and the URL sitting beside them.
+_BRIEF_LEAD_RE = re.compile(
+    r"^\s*(?:advertising|marketing)\s+creative\s+for\s+(?P<brand>[^.(]+?)\s*(?:\([^)]*\))?\.\s*",
+    re.IGNORECASE)
+_BRIEF_LABEL_RE = re.compile(
+    r"\b(?:Subject|Brand visual identity|Use the brand palette|Tone|Brand personality|"
+    r"Audience|Angle|Core message|What it offers|Differentiators to show)\s*:\s*",
+    re.IGNORECASE)
+# Any URL or bare domain. A model shown "dsahelper.onrender.com" renders lettering.
+_URL_RE = re.compile(
+    r"\(?\bhttps?://\S+|\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|ai|app|co|in|dev|onrender\.com)\b\)?",
+    re.IGNORECASE)
+
+
+def _scene_only(prompt: str) -> str:
+    """The visual part of a brief, for when the analyser could not run.
+
+    The fallback used the request verbatim as `visual_concept`, which was survivable when a
+    prompt was a sentence someone typed. It is not survivable now that "Generate using Brand
+    Knowledge" composes a structured brief: a real run reached the image model as
+
+        "Advertising creative for DSA (dsahelper.onrender.com). Subject: DSA Topic
+         Modules. Brand visual identity: The visual identity is clean, modern..."
+
+    - brand name, domain and section labels included, because on this path `spec.brand` and
+    `spec.product` are empty, so the proper-noun guard in the optimizer has nothing to match.
+    That is the random image: the model paints the labels.
+    """
+    text = _BRIEF_LEAD_RE.sub("", prompt or "")
+    text = _BRIEF_LABEL_RE.sub("", text)
+    text = _URL_RE.sub("", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\s+([,.])", r"\1", text)
+    return text.strip(" .,")
+
+
 def _heuristic_spec(prompt: str, media_type: str, platform: Optional[str],
                     reference_image_url: str, placement: Optional[str] = None) -> CreativeSpec:
     """Fallback when the model is unavailable or returns junk  the raw request still
@@ -166,8 +204,18 @@ def _heuristic_spec(prompt: str, media_type: str, platform: Optional[str],
     model, so dropping it here silently downgraded an Instagram *story* (9:16) to the feed
     default (4:5) whenever analysis fell back.
     """
+    # Recover the brand from the brief's own lead-in ("Advertising creative for DSA (...)").
+    #
+    # Without it `spec.brand` is empty on this path, so the optimizer's proper-noun guard has
+    # nothing to match and the name survives into the image prompt - which is exactly how
+    # "DSA Topic Modules" reached the model and came back as painted lettering. Setting it
+    # here makes the existing guard work on the fallback too, rather than adding a second one.
+    lead = _BRIEF_LEAD_RE.match(prompt or "")
+    brand = (lead.group("brand").strip() if lead else "")
+
     spec = CreativeSpec(
-        original_prompt=prompt, visual_concept=prompt.strip(),
+        original_prompt=prompt, visual_concept=_scene_only(prompt),
+        brand=brand,
         media_type=media_type, platform=normalise_platform(platform),
         placement=placement or "",
         reference_image_url=reference_image_url or "",
