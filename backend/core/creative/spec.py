@@ -99,6 +99,11 @@ class CreativeSpec(BaseModel):
     # --- how it looks ---
     visual_concept: str = ""              # the single most important field for the image model
     subject: str = ""
+    # Set only when a real screenshot is available to composite. It makes the prompt ask for
+    # a flat green screen instead of an invented UI - which is an improvement ONLY if
+    # something then fills it, so it stays empty when there is no screenshot and the model
+    # is left to render an ordinary device.
+    screen_device: str = ""
     environment: str = ""
     composition: str = "product centred with clean negative space for a headline"
     camera_angle: str = "eye level"

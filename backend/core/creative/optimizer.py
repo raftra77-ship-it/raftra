@@ -304,6 +304,12 @@ def build_image_prompt(spec: CreativeSpec) -> str:
         prompt += (", the subject positioned on the right of the frame, "
                    "the left third of the frame clean and completely empty")
 
+    # A flat green screen the compositor can replace, in place of an invented UI. Only when
+    # a screenshot is actually waiting to fill it - see CreativeSpec.screen_device.
+    if getattr(spec, "screen_device", ""):
+        from .compose import GREEN_SCREEN_CLAUSE
+        prompt += ". " + GREEN_SCREEN_CLAUSE.format(device=spec.screen_device)
+
     # Diffusion models render words poorly. Only ask for text when the user actually did.
     if spec.text_in_image and spec.headline:
         prompt += f', with the words "{_clean(spec.headline)}" rendered clearly'

@@ -114,6 +114,12 @@ except Exception:                                    # pragma: no cover - import
     class _OverlayUnavailable(RuntimeError):
         pass
 
+try:
+    from core.creative.compose import NoScreenFound as _NoScreenFound
+except Exception:                                    # pragma: no cover - import-time safety
+    class _NoScreenFound(RuntimeError):
+        pass
+
 
 class CreativeService:
     """One generation request, start to finish."""
@@ -173,6 +179,19 @@ class CreativeService:
         spec = await analyze(prompt, media_type=media_type, platform=platform,
                              placement=placement, reference_image_url=reference_image_url,
                              brand_context=brand, input_method=input_method)
+        # Ask for a green screen only when a screenshot exists to replace it with.
+        #
+        # Requesting one otherwise would be strictly worse: the creative would ship with a
+        # blank green rectangle where the product should be. `screenshot_url` comes from the
+        # caller; the reference image is the fallback, since a user who supplied one for a
+        # device shot is supplying exactly this.
+        shot = (options.get("screenshot_url") or "").strip() or reference_image_url
+        if shot:
+            from .compose import wants_green_screen
+            device = wants_green_screen(spec)
+            if device:
+                spec.screen_device = device
+
         # Caller-supplied overrides win: these come from explicit UI controls.
         if options.get("style"):
             spec.style = options["style"]
@@ -300,6 +319,35 @@ class CreativeService:
         #
         # Never fatal. A creative without its headline is still a creative; one that failed
         # to generate is not. Any failure here keeps the plain image.
+        # Put the customer's real screenshot on the generated device screen, before any copy
+        # goes over the top. The prompt asked for a flat green panel precisely so this can
+        # replace it; a UI the model invented would be misspelled in every label.
+        if image_url and spec.media_type == "image" and getattr(spec, "screen_device", ""):
+            shot_url = (prompts.get("screenshot_url")
+                        or spec.reference_image_url or "").strip()
+            if shot_url:
+                try:
+                    from core.creative import compose as _compose
+                    base = await asyncio.to_thread(_fetch_image_bytes, image_url)
+                    shot = await asyncio.to_thread(_fetch_image_bytes, shot_url)
+                    if base and shot:
+                        merged = await asyncio.to_thread(
+                            _compose.composite_screenshot, base, shot)
+                        from storage import store_bytes
+                        image_url = store_bytes(
+                            merged, "creative.png", "image/png",
+                            workspace_id=workspace_id, category="creatives")
+                        await log("Media Generator",
+                                  "Screenshot composited onto the device screen.",
+                                  "completed")
+                except _NoScreenFound as e:
+                    # The model did not produce a usable green panel this run. The plain
+                    # image is still a valid creative, so say why and carry on.
+                    print(f"creative: screenshot not composited - {e}")
+                except Exception as e:
+                    print(f"creative: compositing failed ({type(e).__name__}: {e}); "
+                          f"keeping the generated screen.")
+
         if image_url and spec.media_type == "image":
             try:
                 from core.creative import overlay as _overlay
