@@ -9,12 +9,20 @@ provider-specific phrasing lives here and in the providers themselves.
 """
 from __future__ import annotations
 
+import os
 import re
 
 from .spec import BASE_NEGATIVES, CreativeSpec
 
 # Order matters: image models weight earlier tokens more heavily, so the concrete subject
 # leads and stylistic polish trails.
+# How much scene description reaches the model, before the fixed tail is appended.
+#
+# Not a token budget - the models accept far more. It is the point past which the small
+# distilled models we can afford stop tracking the subject. Raise it when a stronger
+# provider is funded; FLUX and Gemini both hold a much longer brief.
+_MAX_DESCRIPTIVE_CHARS = int(os.getenv("CREATIVE_MAX_PROMPT_CHARS", "320"))
+
 _IMAGE_FIELD_ORDER = (
     ("", "subject_line"),
     ("in ", "environment"),
@@ -259,6 +267,47 @@ def _strip_proper_nouns(prompt: str, spec: CreativeSpec) -> str:
     return out.strip(" ,")
 
 
+# Clauses that ask the model to draw interface content on a screen.
+#
+# The analyser is instructed not to write these - "describe the PHYSICAL SCENE only" - and
+# complies on most runs. On the others it produces "with the screen displaying a clean,
+# modern interface featuring data structures and algorithms content", and the model answers
+# with the melted pseudo-UI this whole change exists to stop. Same lesson as the brand
+# names: an instruction is a request, so the rule is enforced here too.
+_UI_CLAUSE_RE = re.compile(
+    r",?\s*(?:with\s+|and\s+)?(?:the\s+|a\s+|its\s+)?screen\s+"
+    r"(?:displaying|showing|featuring|filled\s+with)[^,.]*", re.IGNORECASE)
+_UI_CONTENT_RE = re.compile(
+    r",?\s*(?:displaying|showing|featuring)\s+(?:a\s+|an\s+|the\s+)?"
+    r"(?:[a-z]+,?\s+){0,3}"
+    r"(?:interface|dashboard|UI|user\s+interface|lesson|lessons|code\s+editor|"
+    r"progress\s+bar|leaderboard|menu|menus|sidebar|chart|charts|graph|graphs|"
+    r"analytics|window|windows|app\s+screen)[^,.]*", re.IGNORECASE)
+
+
+# Nouns that only ever mean "draw me a user interface".
+_UI_NOUNS_RE = re.compile(
+    r"\b(?:interface|dashboard|UI|lesson|lessons|code\s+editor|progress\s+bar|"
+    r"leaderboard|sidebar|menu|menus|analytics|widget|widgets|app\s+screen)\b",
+    re.IGNORECASE)
+
+
+def _strip_ui_description(prompt: str) -> str:
+    """Remove requests to render interface content. Applied only to device shots."""
+    out = _UI_CLAUSE_RE.sub("", prompt)
+    out = _UI_CONTENT_RE.sub("", out)
+    # A second, clause-level pass. The patterns above stop at the first comma, and these
+    # descriptions routinely run across several - "with the screen displaying a clean,
+    # modern interface featuring data structures content" left "modern interface featuring
+    # data structures content" behind. Any remaining comma-separated clause whose subject is
+    # a UI noun goes whole.
+    kept = [c for c in out.split(", ") if c and not _UI_NOUNS_RE.search(c)]
+    out = ", ".join(kept) if kept else out
+    out = re.sub(r"\s{2,}", " ", out)
+    out = re.sub(r"(,\s*){2,}", ", ", out)
+    return out.strip(" ,")
+
+
 def build_image_prompt(spec: CreativeSpec) -> str:
     """One paragraph, subject first, polish last, each idea stated once."""
     parts: list[str] = []
@@ -309,6 +358,27 @@ def build_image_prompt(spec: CreativeSpec) -> str:
     # proper noun that reaches it is a defect no matter which layer let it through.
     prompt = _strip_proper_nouns(", ".join(parts), spec)
 
+    # Device shots only: the screen's contents are decided below, not by the analyser.
+    from .compose import wants_green_screen
+    if wants_green_screen(spec):
+        prompt = _strip_ui_description(prompt)
+
+    # Keep the descriptive half short enough that the subject survives.
+    #
+    # Measured against the provider actually in use: "a silver laptop open on a wooden desk,
+    # product photo" rendered a laptop; the same scene at ~650 characters, with the laptop
+    # still the FIRST noun, rendered a mug and an empty wall and no laptop at all. The
+    # attribute tail does not refine the subject on a small distilled model, it buries it.
+    #
+    # Trimmed from the end, because _IMAGE_FIELD_ORDER is already sorted by importance -
+    # subject and environment lead, mood and style trail. The fixed tail added below (screen
+    # clause, quality words, no-text line) is not counted here and is never dropped.
+    if len(prompt) > _MAX_DESCRIPTIVE_CHARS:
+        clauses = [c for c in prompt.split(", ") if c]
+        while len(", ".join(clauses)) > _MAX_DESCRIPTIVE_CHARS and len(clauses) > 2:
+            clauses.pop()
+        prompt = ", ".join(clauses)
+
     # Ad creative needs somewhere to put the headline, and the empty area has to land in a
     # PREDICTABLE place or the copy layer cannot rely on it.
     #
@@ -320,11 +390,30 @@ def build_image_prompt(spec: CreativeSpec) -> str:
         prompt += (", the subject positioned on the right of the frame, "
                    "the left third of the frame clean and completely empty")
 
-    # A flat green screen the compositor can replace, in place of an invented UI. Only when
-    # a screenshot is actually waiting to fill it - see CreativeSpec.screen_device.
+    # What the device's screen should show.
+    #
+    # Two cases, and neither is "whatever the model decides". Left to itself it renders an
+    # invented interface - menus, panels, labels - and every one of those labels is
+    # unreadable scribble, which is what made the SaaS creatives look fake.
+    #
+    #   screenshot waiting -> flat green, so compose.py can put the real product there.
+    #   no screenshot      -> a plain, near-empty screen. A soft gradient is something
+    #                         diffusion models render cleanly, and an out-of-focus screen in
+    #                         an otherwise sharp photograph is ordinary product photography
+    #                         rather than an obvious dodge.
+    from .compose import GREEN_SCREEN_CLAUSE, wants_green_screen
     if getattr(spec, "screen_device", ""):
-        from .compose import GREEN_SCREEN_CLAUSE
         prompt += ". " + GREEN_SCREEN_CLAUSE.format(device=spec.screen_device)
+    else:
+        device = wants_green_screen(spec)
+        if device:
+            # Stated positively and briefly. The first version listed what the screen must
+            # NOT show - no interface, no windows, no menus, no icons, no charts - and that
+            # list, stacked in front of the no-text line, left the prompt ending in eleven
+            # consecutive negations. The model answered with an almost empty room: the
+            # laptop itself went missing. It also said "slightly out of focus" three words
+            # before the prompt asks for "sharp focus".
+            prompt += f". The {device} screen shows a plain soft colour gradient and nothing else"
 
     # Diffusion models render words poorly. Only ask for text when the user actually did.
     if spec.text_in_image and spec.headline:
@@ -342,8 +431,11 @@ def build_image_prompt(spec: CreativeSpec) -> str:
     # Stated positively on purpose. "Without any text" puts the word "text" in the prompt,
     # and diffusion models frequently render the nouns inside a negation.
     if not spec.text_in_image:
-        prompt += (". No text, no letters, no numbers, no words, no logos, no watermarks "
-                   "and no badges anywhere in the image")
+        # Short on purpose. The long form ("no text, no letters, no numbers, no words, no
+        # logos, no watermarks and no badges") spent seven clauses at the position the model
+        # weights last, and combined with the screen clause's own negatives it drove the
+        # subject out of the frame entirely. One clause suppresses lettering just as well.
+        prompt += ". No text, letters or logos anywhere in the image"
     return prompt
 
 
