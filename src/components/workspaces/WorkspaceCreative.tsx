@@ -1686,12 +1686,20 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       // The whole kit, plus anything typed as a steer on top of it.
       composedPrompt = [brandKnowledgeBrief(), typed].filter(Boolean).join(' ');
     } else if (inputOption === 'vault_assets' || inputOption === 'upload_image') {
-      // The supplied image IS the subject, so the brand brief must not talk the model into
-      // rendering a different product - only into styling this one on-brand.
+      /* The supplied image IS the subject, so nothing from the brand kit goes in here.
+         ------------------------------------------------------------------
+         This used to open with "Advertising creative for <brand> (<domain>)." and append the
+         brand's visual identity and palette. Two problems. The brand name and the domain are
+         words, and an image model paints words - which is why generations from this route
+         carried scribbled lettering. And the styling instructions fought the picture the
+         user had just chosen: they picked that asset because it already looks right.
+
+         Brand grounding belongs to "Generate using Brand Knowledge", the card to the left of
+         this one, which is built for exactly that. Here the reference image carries the
+         brand on its own. */
       composedPrompt = [
-        typed || `Advertising creative for ${brandName || 'this brand'}${brandSite ? ` (${brandSite})` : ''}.`,
+        typed,
         'Keep the product in the supplied reference image exactly as it is; do not redesign or substitute it.',
-        ...anchor,
       ].filter(Boolean).join(' ');
     } else {
       // ai_generate_image: the user's idea leads, the brand anchors follow it.
