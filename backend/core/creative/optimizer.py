@@ -243,8 +243,16 @@ def _strip_proper_nouns(prompt: str, spec: CreativeSpec) -> str:
     for token in sorted(tokens, key=len, reverse=True):
         out = re.sub(rf"\b{re.escape(token)}\b", "", out, flags=re.IGNORECASE)
 
-    # Tidy the holes: "of the  platform" -> "the platform", doubled spaces and commas.
-    out = re.sub(r"\b(?:of|from|by|for)\s+the\s+(?=[,\s])", "", out, flags=re.IGNORECASE)
+    # Tidy the holes the removal leaves.
+    #
+    # Removing the object of a phrase strands whatever introduced it: "a close-up of a
+    # screen showing the DSA Mastery Hub platform" became "...showing the," which reads as
+    # a broken sentence and tells the model nothing. Any article or preposition left facing
+    # a comma or the end of the prompt goes with it.
+    out = re.sub(r"\s{2,}", " ", out)
+    out = re.sub(r"\b(?:of|from|by|for|with|showing|displaying|featuring)?\s*"
+                 r"\b(?:the|a|an)\s*(?=[,.]|$)", "", out, flags=re.IGNORECASE)
+    out = re.sub(r"\b(?:of|from|by|for|on|in)\s*(?=[,.]|$)", "", out, flags=re.IGNORECASE)
     out = re.sub(r"\s{2,}", " ", out)
     out = re.sub(r"\s+([,.])", r"\1", out)
     out = re.sub(r"(,\s*){2,}", ", ", out)
@@ -284,6 +292,14 @@ def build_image_prompt(spec: CreativeSpec) -> str:
                 kept.append(item)
             if not kept:
                 continue
+            # Cap the list. An image model weights earlier tokens most heavily, so a long
+            # tail of attributes dilutes the subject rather than refining it - and these
+            # lists arrive long. A live run carried six colours ("vivid sky blue,
+            # near-white, dark grey, mid grey, light grey, pale blue": a full design-token
+            # palette, most of it greys that describe nothing) and five mood phrases
+            # containing three different and mutually contradictory lighting instructions.
+            # Three colours is a palette; six is a stylesheet.
+            kept = kept[:3] if field in ("color_direction", "mood") else kept[:4]
             text = ", ".join(kept)
         parts.append(f"{prefix}{text}")
         seen.update(w.strip(".,").lower() for w in text.split())
