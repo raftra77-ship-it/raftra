@@ -2435,7 +2435,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {
         id: 'el_badge',
         type: 'badge',
-        content: '⚡ FLAT 30% OFF • SPECIAL OFFER',
+        // Was hardcoded "FLAT 30% OFF - SPECIAL OFFER" on EVERY design, for every
+        // brand, whether or not an offer existed. A fabricated discount is not a
+        // placeholder, it is a claim - and one a customer could publish by accident.
+        content: adData.offer || '',
         x: 8,
         y: 8,
         width: 48,
@@ -2452,7 +2455,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {
         id: 'el_headline',
         type: 'text',
-        content: adData.headline || adData.title || 'Unstoppable Power in Your Pocket',
+        // Fallbacks were another brand's ad copy - "Unstoppable Power in Your Pocket"
+        // and a 22.5W power-bank line - left over from the seeded demo. A workspace
+        // whose creative had no headline silently loaded a competitor's.
+        content: adData.headline || adData.title || 'Your headline here',
         x: 8,
         y: 60,
         width: 84,
@@ -2467,7 +2473,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {
         id: 'el_body',
         type: 'text',
-        content: adData.bodyText || 'Engineered with smart AI heat control and 22.5W Power Delivery.',
+        content: adData.bodyText || 'Your supporting line here',
         x: 8,
         y: 75,
         width: 84,
@@ -2481,7 +2487,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       {
         id: 'el_button',
         type: 'button',
-        content: adData.cta ? `${adData.cta} →` : 'Claim Offer →',
+        content: adData.cta ? `${adData.cta} →` : 'Your call to action →',
         x: 8,
         y: 86,
         width: 45,
