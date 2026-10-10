@@ -393,6 +393,16 @@ class CreativeService:
                     print(f"creative: compositing failed ({type(e).__name__}: {e}); "
                           f"keeping the generated screen.")
 
+        # The image as the model made it, before any copy is drawn on.
+        #
+        # The overlay burns the headline, subtext and CTA into the picture, which is right
+        # for the finished ad someone downloads - and wrong for the canvas editor, which
+        # adds those same three as moveable layers on top. Opening a creative there showed
+        # every line twice, with the burned-in copy impossible to edit or move. Keeping the
+        # clean version lets the editor use it as the background and keep the text as real
+        # layers, which is the whole point of the hand-off to Figma.
+        background_url = image_url
+
         if image_url and spec.media_type == "image":
             try:
                 from core.creative import overlay as _overlay
@@ -471,6 +481,15 @@ class CreativeService:
             asset.provider = provider_name
             asset.image_url = image_url or None
             asset.video_url = video_url or None
+
+            # Record the pre-overlay image alongside the spec, so the canvas editor can
+            # load a background without the copy already printed on it. creative_spec is
+            # already "the source of truth" for how this creative was generated, and this
+            # is part of that; it also avoids a migration for one nullable string.
+            if background_url and background_url != image_url:
+                spec_json = dict(asset.creative_spec or {})
+                spec_json["background_url"] = background_url
+                asset.creative_spec = spec_json
             asset.error_message = error
             succeeded = bool(image_url) and (spec.media_type != "video" or bool(video_url))
             asset.generation_status = "completed" if succeeded else (
@@ -518,6 +537,11 @@ class CreativeService:
                 "creative_spec": a.creative_spec,
                 "asset_url": a.video_url or a.image_url,
                 "image_url": a.image_url,
+                # The same picture without the copy drawn on, for the canvas editor. Falls
+                # back to image_url for creatives generated before this existed, and for
+                # any run where the overlay did not apply.
+                "background_url": ((a.creative_spec or {}).get("background_url")
+                                   if isinstance(a.creative_spec, dict) else None) or a.image_url,
                 "video_url": a.video_url,
                 "platform": a.platform,
                 "aspect_ratio": a.aspect_ratio,

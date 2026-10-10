@@ -866,6 +866,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
     description: string;
     hashtags: string;
     imageUrl: string;
+    /** The same picture WITHOUT the copy drawn on it.
+     *
+     *  The overlay prints the headline, body and CTA into the finished ad, which is
+     *  what gets previewed and downloaded. The canvas editor needs the version before
+     *  that, because it lays those same three down as moveable elements - given the
+     *  finished image it showed each line twice, with the printed one unmovable. */
+    backgroundUrl?: string;
     /** The rendered video, when the run produced one.
      *
      *  There was no such field. A video generation returns BOTH a still and a video, and
@@ -1763,6 +1770,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       description: d.optimized_prompt || '',
       hashtags: '',
       imageUrl: d.image_url || '',
+      // The same picture without the copy drawn on, for the canvas editor.
+      backgroundUrl: d.background_url || d.image_url || '',
       videoUrl: d.video_url || '',
       type: d.type === 'video' ? 'Video' : selectedAdType,
       platform: d.platform || platform,
@@ -1945,6 +1954,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           description: d.optimized_prompt || '',
           hashtags: '',
           imageUrl: d.image_url || '',
+          // The same picture without the copy drawn on, for the canvas editor.
+          backgroundUrl: d.background_url || d.image_url || '',
           videoUrl: d.video_url || '',
           type: d.type === 'video' ? 'Video' : selectedAdType,
           platform: d.platform || platform,
@@ -2424,7 +2435,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         type: 'image',
         // Empty rather than a stock photo: the canvas then shows an empty background slot
         // instead of a product that has nothing to do with the ad being edited.
-        content: adData.imageUrl || adData.img || '',
+        // Prefer the clean background. Using imageUrl here put the finished ad - copy
+        // already burned in - underneath the editor's own headline, body and CTA
+        // layers, so every line appeared twice and the printed one could not be moved.
+        content: adData.backgroundUrl || adData.imageUrl || adData.img || '',
         x: 0,
         y: 0,
         width: 100,
