@@ -1999,17 +1999,28 @@ export function BrandDashboard() {
               below, so its ellipsis actually engages instead of the row just growing. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '4px 6px', alignSelf: 'stretch' }}>
             <div className="user-avatar" style={{ flexShrink: 0, width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #7C75FF 0%, #5A52FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '13px' }}>
-              {(brandProfile?.name || 'D').charAt(0)}
+              {(brandProfile?.name || userName || 'U').charAt(0).toUpperCase()}
             </div>
             <div className="sidebar-footer-info" style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                {/* Was `brandProfile?.name || 'Demo Brand'` with a matching
+                    'https://demobrand.com/' below. brandProfile is only set when
+                    /api/workspaces returns at least one row, so an account with no
+                    workspace yet - every newly registered brand, and anyone signing in
+                    through Google for the first time - was shown a brand name and a
+                    company domain that do not exist and that they never entered. It reads
+                    as "your data is here" when nothing has been saved, which is how
+                    someone concludes their own website vanished.
+
+                    Falls back to the signed-in identity instead, which is true, and the
+                    line below says plainly that no brand is connected yet. */}
                 <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {brandProfile?.name || 'Demo Brand'}
+                  {brandProfile?.name || userName || 'Your workspace'}
                 </h4>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00E676', flexShrink: 0 }} title="Online Workspace" />
               </div>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '1px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {brandProfile?.url || 'https://demobrand.com/'}
+              <p style={{ fontSize: '11px', color: brandProfile?.url ? 'var(--text-secondary)' : 'var(--text-muted)', margin: '1px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {brandProfile?.url || userEmail || 'No brand connected yet'}
               </p>
             </div>
           </div>
