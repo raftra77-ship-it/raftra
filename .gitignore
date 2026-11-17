@@ -34,8 +34,11 @@ backend/venv/
 # Gemini / OpenAI / OpenRouter / Firecrawl / Tavily keys), one `git add -A` away from
 # being published. Cover the whole family.
 .env.*
-# ...but keep the safe placeholder file
+# ...but keep the safe placeholder files. Both carry only key names and obvious
+# placeholders - no hosts beyond localhost, no keys, no tokens. The real local file,
+# backend/.env.development, is NOT excepted and stays ignored by the rule above.
 !.env.example
+!.env.development.example
 
 # Python compiled files
 __pycache__/
