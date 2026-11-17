@@ -205,7 +205,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
         style={{
           position: 'fixed',
           top: '16px',
-          right: '24px',
+          /* Anchored to the viewport centre, not its right edge.
+             `right: 24px` pinned this to the corner while the navbar centred itself, so
+             the two boxes closed on each other as the window widened or narrowed and
+             overlapped: at 1536 the bar ended at 1325 and this pill began at 1302. The
+             navbar now shifts left by 108px (half this pill's 204px width plus the 12px
+             gap) whenever this pill is visible, and this sits 12px past the bar's right
+             edge on the same centre line. The pair reads as one row with equal margins,
+             and the gap is a constant 12px at every width instead of a number that
+             happens to work at one. 560 is half the bar's 1120 maxWidth. */
+          left: 'calc(50% - 108px + 560px + 12px)',
           zIndex: 1100,
           display: 'flex',
           alignItems: 'center',
@@ -269,12 +278,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartFree, onBookDem
             0% { left: -60%; }
             60%, 100% { left: 130%; }
           }
-          /* 1379px, matching the Navbar's WIDE_QUERY. The pill only has a gap to sit in
-             once the bar takes its nudged wide layout; below that the bar is centred and
-             runs full width, so the pill would land on the bar's right end (on the
-             hamburger below 1200px, on the Login button between 1200 and 1379). */
-          @media (max-width: 1379px) {
-            .floating-marketplace-pill { display: none !important; }
+          /* Hidden by default, shown only at the EXACT query the navbar uses to shift
+             itself left (nav.nav-shell --nav-pair-offset, in Navbar.tsx).
+
+             This was a max-width 1379px hide rule against the navbar's min-width 1380px
+             shift. Those look complementary but are not: on a fractional viewport such as
+             1379.5 NEITHER matches, so the pill rendered while the bar stayed centred and
+             they overlapped by 96px. Measured at innerWidth 1379 - matchMedia reported
+             false for both queries.
+
+             Two rules keyed off one identical condition cannot disagree at any width,
+             fractional ones included. If this breakpoint ever moves, move the one in
+             Navbar.tsx in the same commit. */
+          .floating-marketplace-pill { display: none !important; }
+          @media (min-width: 1380px) {
+            .floating-marketplace-pill { display: flex !important; }
           }
         `}</style>
       </div>

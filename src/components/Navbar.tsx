@@ -13,10 +13,21 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
   const [isNavHovered, setIsNavHovered] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  /* The width at which the full desktop bar actually fits.
+     Was 960 in the media query and in each window.innerWidth test below, but the bar's
+     own content budget is 1118px: logo 102 + links 669 + actions 275, plus the 24px
+     margin before the actions and 48 of padding (see maxWidth further down). So between
+     961 and 1117 the desktop layout rendered with nowhere to put itself - at 1024 the
+     "Login" button sat outside the bar entirely, unreachable, while the hamburger that
+     would have replaced it stayed hidden until 960.
+     One constant now drives the media query and all three JS tests, so the layout
+     switches exactly where the content stops fitting. */
+  const DESKTOP_MIN = 1120;
+
   useEffect(() => {
     const handleScroll = () => {
       // Smooth scroll threshold (collapse past 220px on desktop only, expand when <150px)
-      if (window.innerWidth > 960) {
+      if (window.innerWidth >= DESKTOP_MIN) {
         if (window.scrollY > 220) {
           setIsScrolled(true);
         } else if (window.scrollY < 150) {
@@ -77,6 +88,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
   return (
     <>
       <motion.nav
+        className="nav-shell"
         onMouseEnter={() => setIsNavHovered(true)}
         onMouseLeave={() => {
           setIsNavHovered(false);
@@ -86,26 +98,24 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         initial={false}
         animate={{
           width: isCollapsed ? 78 : 'calc(100% - 32px)',
-          /* 1240 put the bar's right edge at 1340px on a 1440 viewport, while the floating
-             Creator Marketplace pill LandingPage pins at `right: 24px` begins around 1206
-             — a ~134px collision. The pill's zIndex is 1100 against this bar's 999, so it
-             painted over Login rather than being pushed aside. 1120 is the bar's real
-             content budget: logo 102 + links 669 + actions 275, plus the 24px margin
-             before the actions and 48 of padding = 1118. */
+          /* 1120 is the bar's content budget: logo 102 + links 669 + actions 275, plus the
+             24px margin before the actions and 48 of padding = 1118. */
           maxWidth: isCollapsed ? 78 : 1120,
           height: isCollapsed ? 46 : 52,
           paddingLeft: isCollapsed ? 12 : 24,
           paddingRight: isCollapsed ? 12 : 24,
-          /* Narrowing alone is not enough: centred, a 1120 bar still reaches 1280 on a 1440
-             viewport. The bar is nudged 105px left so the pill sits in the gap it leaves and
-             the two read as one row. Written in CSS rather than read from window.innerWidth,
-             so it follows a resize instead of freezing at mount; the max() floor keeps the
-             left edge on-screen (half of 1120, plus a 16px margin) at widths where the nudge
-             would otherwise pull it off. */
-          left: isScrolled && window.innerWidth > 960
+          /* The bar and the Creator Marketplace pill are centred TOGETHER, as one row.
+             --nav-pair-offset is 0 by default, so the bar is plainly centred; the rule in
+             the style block below sets it to half the pill's footprint once the pill is
+             actually on screen, which shifts the bar left by exactly enough to make room.
+             The pill is positioned off the same centre line (LandingPage), so the pair
+             keeps a fixed 12px gap and equal margins at every width, and the two boxes
+             cannot overlap. Done in CSS rather than from window.innerWidth so it follows a
+             resize instead of freezing at mount. */
+          left: isScrolled && window.innerWidth >= DESKTOP_MIN
             ? 'max(24px, calc(50% - 620px))'
-            : 'max(576px, calc(50% - 105px))',
-          x: isScrolled && window.innerWidth > 960 ? '0%' : '-50%'
+            : 'calc(50% - var(--nav-pair-offset, 0px))',
+          x: isScrolled && window.innerWidth >= DESKTOP_MIN ? '0%' : '-50%'
         }}
         transition={{
           type: 'spring',
@@ -531,7 +541,7 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
         }
 
         /* ── RESPONSIVE MEDIA QUERIES ───────────────────────────── */
-        @media (max-width: 960px) {
+        @media (max-width: ${DESKTOP_MIN - 1}px) {
           .nav-desktop-links,
           .nav-desktop-actions {
             display: none !important;
@@ -539,6 +549,17 @@ export const Navbar: React.FC<{onOpenCreatorPortal?: () => void}> = ({onOpenCrea
           .nav-mobile-toggle {
             display: flex !important;
           }
+        }
+
+        /* The Creator Marketplace pill (LandingPage) is display:none below 1380px, so
+           below that the bar has the row to itself and sits dead centre. At 1380 and up
+           the pill appears beside it, and the pair is centred as one unit: the bar moves
+           left by half the pill's footprint (204px wide + 12px gap = 216, so 108), and
+           the pill is pinned to the same centre line on the other side. Equal margins,
+           a constant gap, and no overlap at any width. */
+        nav.nav-shell { --nav-pair-offset: 0px; }
+        @media (min-width: 1380px) {
+          nav.nav-shell { --nav-pair-offset: 108px; }
         }
       `}</style>
     </>
