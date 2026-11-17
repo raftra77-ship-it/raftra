@@ -1,9 +1,24 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-import os
-import threading
+# FIRST, before anything else imports or loads configuration.
+#
+# config.py resolves APP_ENV, loads backend/.env.<app_env> ahead of backend/.env, and
+# refuses a remote database outside production. Its precedence rests on python-dotenv's
+# override=False rule: the first value set for a key wins. So it only works if it runs
+# before any other `load_dotenv()`.
+#
+# The bare load_dotenv() that used to be line 7 ran first and loaded backend/.env - which
+# holds the production DSN - so .env.development could never take effect and a local run
+# resolved to Supabase. The guard caught it and refused to start, which is the right
+# failure, but the cause was this import order. Keep this import at the top.
+import config  # noqa: F401,E402
 
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+import os  # noqa: E402
+import threading  # noqa: E402
+
+# Now a no-op for anything config.py already set, and still useful for keys it does not
+# manage. Left in place so nothing that relied on it changes behaviour.
 load_dotenv()
 
 app = FastAPI(title="Raftra Engine API", description="Backend for Raftra Platform")

@@ -1,15 +1,17 @@
 import os
-from dotenv import load_dotenv
-load_dotenv()
+
+# Resolves APP_ENV, loads the env files by absolute path instead of by walking up from
+# the current directory, and refuses a remote database outside production - all at import,
+# before an engine exists. This replaces a bare `load_dotenv()` that found whichever .env
+# was nearest, which in this repository is the one holding the production DSN. See
+# config.py for the whole story.
+from config import settings
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL is not set in environment.")
+DATABASE_URL = settings.database_url
 
 # Name the driver explicitly rather than letting SQLAlchemy pick one.
 #
@@ -72,7 +74,11 @@ try:
         pool_timeout=int(os.getenv("DB_POOL_TIMEOUT_SEC", "30")),
         pool_recycle=int(os.getenv("DB_POOL_RECYCLE_SEC", "300")),
     )
-    print("Connected to PostgreSQL (Supabase) successfully.")
+    # create_engine() builds a pool; it does not connect. The old message here claimed a
+    # successful Supabase connection for any syntactically valid URL, including a local
+    # one - which is worse than silence when the question is "which database am I on?".
+    # Host and database name only; never the credentials.
+    print("[db] %s" % settings.describe())
 except Exception as e:
     print(f"Error connecting to database: {e}")
     raise e
