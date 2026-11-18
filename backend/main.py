@@ -11,6 +11,22 @@
 # failure, but the cause was this import order. Keep this import at the top.
 import config  # noqa: F401,E402
 
+# Strip credentials out of uvicorn's access log before anything can be served.
+#
+# uvicorn logs the full request line, query string included, and nothing here configured
+# that logger. The Google callback arrives carrying a live authorization `code` and the
+# signed `state` JWT, so a completed sign-in wrote a credential straight into the log.
+#
+# It goes here because uvicorn configures its loggers in Config.__init__, before it
+# imports this module - so a filter added at import time is not overwritten, and is in
+# place before the first request is logged.
+import log_redaction  # noqa: E402
+
+# Said out loud at boot: a security control that fails silently is one nobody notices has
+# stopped working.
+print("[logs] query-string redaction active on: %s"
+      % (", ".join(log_redaction.install()) or "already installed"))
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
