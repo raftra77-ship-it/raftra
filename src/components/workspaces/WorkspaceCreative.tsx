@@ -976,6 +976,13 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      mount, so a sync run from the modal filled the database while this tab kept showing
      "No competitor ads collected yet" until a full page reload. */
   const [adVaultVersion, setAdVaultVersion] = useState(0);
+  /* Whether an ad SOURCE is configured at all, straight from the API.
+     GET /competitor-ads already returns source_configured, and the Market Intelligence
+     modal reads it — but this tab threw it away and told the user to "run the competitor
+     sync in Market Intelligence" regardless. With no source configured that sync cannot
+     succeed: it raises "No ad source configured" and records a failure. So the vault sat
+     empty while the screen kept pointing at a button that could not fill it. */
+  const [adSourceConfigured, setAdSourceConfigured] = useState<boolean | null>(null);
   const reloadAdVault = () => setAdVaultVersion(v => v + 1);
 
   useEffect(() => {
@@ -992,6 +999,7 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         setAdVault(groups);
         setSelectedCompetitor(prev =>
           groups.some(g => g.competitor === prev) ? prev : (groups[0]?.competitor || ''));
+        if (typeof d?.source_configured === 'boolean') setAdSourceConfigured(d.source_configured);
       })
       .catch(() => { /* the tab shows its empty state */ })
       .finally(() => { if (!cancelled) setAdVaultLoading(false); });
@@ -1713,7 +1721,17 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       composedPrompt = [typed || brandKnowledgeBrief(), ...anchor].filter(Boolean).join(' ');
     }
 
-    const job = await Promise.resolve(onGenerate(composedPrompt || brandKnowledgeBrief(), undefined, {
+    const finalPrompt = composedPrompt || brandKnowledgeBrief();
+    if (!finalPrompt.trim()) {
+      setIsGenerating(false);
+      setGenerationError(
+        inputOption === 'brand_kb'
+          ? 'There is no brand knowledge to build a brief from yet. Add your website in Brand Knowledge and run a sync, or describe the ad you want.'
+          : 'Describe the ad you want before generating.');
+      return;
+    }
+
+    const job = await Promise.resolve(onGenerate(finalPrompt, undefined, {
       // Which of the four routes this came from, so the backend can weight the reference
       // image against the brand kit instead of guessing from the prompt text.
       input_method: inputOption,
@@ -1813,6 +1831,15 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
       if (d.media_type === 'video' && !d.video_url) {
         setGenerationError(d.error
           || 'The image was generated but the video render did not finish, so there is no preview. Generate again to retry the animation.');
+      }
+
+      /* An image with no copy drawn on it. The picture is kept - it cost a provider call and
+         may be exactly the background someone wanted - but it is not a finished ad, and
+         saying so is the whole point of the `incomplete` status. `no_copy` means the user
+         asked for a clean image, so there is nothing to report. */
+      if (d.status === 'incomplete' && !d.no_copy) {
+        setGenerationError(d.error
+          || 'This came back with no headline or call to action, so it is an image rather than an advertisement. Generate again with a brief that says what is being advertised.');
       }
 
       adoptCreativeJob(d);
@@ -1962,7 +1989,23 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
           aspectRatio: d.aspect_ratio || aspectRatio,
         });
         setGeneratedCreativeId(d.creative_id);
-        triggerToast(`Rendered the ${kind.replace('_', ' ')} variation.`);
+
+        /* Same rule as the main Generate poller above.
+           ------------------------------------------------------------------
+           A variation inherits its parent's copy, so this only fires when the parent was
+           itself incomplete - but it fired SILENTLY, which is the inconsistency: one poller
+           reported a copy-less creative and this one adopted it with a cheerful toast. The
+           image is kept either way; what changes is that the toast stops claiming a finished
+           advertisement was rendered. `no_copy` means a clean image was asked for, so there
+           is nothing to report. */
+        const variationIncomplete = d.status === 'incomplete' && !d.no_copy;
+        if (variationIncomplete) {
+          setGenerationError(d.error
+            || 'This variation came back with no headline or call to action, so it is an image rather than an advertisement.');
+        }
+        triggerToast(variationIncomplete
+          ? `Rendered the ${kind.replace('_', ' ')} variation, but it carries no ad copy.`
+          : `Rendered the ${kind.replace('_', ' ')} variation.`);
         return;
       }
       throw new Error('The variation is still rendering after 3 minutes.');
@@ -2205,7 +2248,12 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
      promise is to send it. */
   const brandKnowledgeBrief = (): string => {
     const lines = brandBriefLines();
-    if (!lines.length) return "Brand Knowledge Generation";   // nothing crawled yet
+    /* Nothing crawled: send NOTHING rather than the placeholder.
+       The literal string used to go out as the prompt, and the backend now refuses it (422)
+       because a label with no subject, product or offer in it is not a brief - 17 production
+       creatives were generated from exactly that and came back with no copy at all. An
+       empty string lets the caller below show the user what to do instead. */
+    if (!lines.length) return "";
     return [`Advertising creative for ${brandName || "this brand"}${brandSite ? ` (${brandSite})` : ""}.`,
             ...lines].join(" ");
   };
@@ -3589,13 +3637,37 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             {!adVaultLoading && !adVault.length && (
               <div style={{ padding: '22px', borderRadius: '16px', border: '1px dashed rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.02)' }}>
                 <p style={{ fontSize: '13.5px', color: '#fff', margin: '0 0 6px 0', fontWeight: 600 }}>
-                  No competitor ads collected yet
+                  {adSourceConfigured === false
+                    ? 'No ad source is connected, so no rival ads can be collected'
+                    : 'No competitor ads collected yet'}
                 </p>
+                {/* Says WHY, rather than sending the user to a sync that cannot succeed.
+                    GET /competitor-ads reports source_configured, and when it is false the
+                    sync raises "No ad source configured" and records a failure — so the old
+                    copy, which simply told the user to press Sync now, described a loop with
+                    no exit. Meta's own Ad Library API is not a substitute here either: a
+                    connected Meta ad account token is rejected for it ("Application does not
+                    have permission for this action"), because that API needs its own
+                    identity verification. */}
                 <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: 1.55 }}>
-                  The ad vault fills from the Meta Ad Library on the competitor sync. Add rivals
-                  with “Research a competitor” above (or let the sync discover them from your brand
-                  profile), then press <strong>Sync now</strong> in Market Intelligence — their live
-                  ads appear here ordered by how long each has been running.
+                  {adSourceConfigured === false ? (
+                    <>
+                      Collecting a rival’s live ads needs an ad-library source on the server, and
+                      none is set. Either <strong>META_AD_LIBRARY_TOKEN</strong> (official Meta Ad
+                      Library API — commercial ads for EU/EEA countries only, and it requires its
+                      own Meta identity verification, separate from connecting an ad account) or
+                      <strong> APIFY_TOKEN</strong> (a collector that also covers non-EU markets
+                      such as India). Until one is configured this vault stays empty, and running
+                      the sync will report the same thing.
+                    </>
+                  ) : (
+                    <>
+                      The ad vault fills from the Meta Ad Library on the competitor sync. Add rivals
+                      with “Research a competitor” above (or let the sync discover them from your brand
+                      profile), then press <strong>Sync now</strong> in Market Intelligence — their live
+                      ads appear here ordered by how long each has been running.
+                    </>
+                  )}
                 </p>
                 <GlowButton
                   variant="glow"
@@ -3676,7 +3748,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 {adVault.find(g => g.competitor === selectedCompetitor)?.strategy?.summary
                   || (activeCompetitorAds.length
                       ? `${activeCompetitorAds.length} ads collected. The list below is ordered by how long each has been live — an ad still running after weeks is one they are choosing to keep funding.`
-                      : 'Run the competitor sync in Market Intelligence to collect this rival’s live ads.')}
+                      : adSourceConfigured === false
+                        ? 'No ad-library source is configured on the server, so this rival’s live ads cannot be collected.'
+                        : 'Run the competitor sync in Market Intelligence to collect this rival’s live ads.')}
               </p>
             </div>
 
@@ -3794,7 +3868,9 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                     {adVaultLoading
                       ? 'Reading the ad vault…'
                       : !adVault.length
-                        ? 'No competitor ads collected yet. Run the competitor sync in Market Intelligence and this vault fills from their live ads.'
+                        ? (adSourceConfigured === false
+                            ? 'No ad-library source is configured on the server (META_AD_LIBRARY_TOKEN or APIFY_TOKEN), so no rival ads can be collected yet.'
+                            : 'No competitor ads collected yet. Run the competitor sync in Market Intelligence and this vault fills from their live ads.')
                         : vaultSubTab === 'ctas'
                           ? 'None of the collected ads state a discount, code or free perk in their copy.'
                           : 'The collected ads did not carry text in this field.'}
