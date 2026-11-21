@@ -52,7 +52,18 @@ _COOLDOWN_SEC = 900.0     # 15 minutes: long enough to stop burning time, short 
 
 # The errors that mean "this will not work until you pay", as opposed to a transient blip.
 _HARD_REFUSAL = ("402", "429", "quota", "credit", "billing", "payment required",
-                 "resource_exhausted", "insufficient")
+                 "resource_exhausted", "insufficient",
+                 # Retirement, not exhaustion — and more permanent than either. A
+                 # retired model refuses identically on every call, so leaving it out
+                 # of this list meant the chain re-tried it on every generation.
+                 # Measured: hf_flux answers 410 "the requested model is deprecated and
+                 # no longer supported by provider nscale" for FLUX.1-schnell, and every
+                 # other HuggingFace backend refuses it too (together 410, replicate /
+                 # novita / fal-ai 400 "model not supported by provider"). None of those
+                 # strings matched, so each image generation paid that round trip before
+                 # silently falling back to the weaker keyless provider.
+                 "410", "deprecated", "no longer supported",
+                 "not supported by provider", "is not available")
 
 
 def is_hard_refusal(error_text: str) -> bool:
