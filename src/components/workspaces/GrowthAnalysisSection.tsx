@@ -228,7 +228,10 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
   // chart shows that workspace's actual Meta/Google delivery, including an empty array when
   // nothing is connected. Rendering the sample curve for a real brand is what made this
   // screen contradict the dashboard's own $0 revenue tiles.
-  const currentChartData = live ? live.series : chartDatasets[timeframe];
+  // Keyed on isSample for the same reason the channel table is: `live` is null on first
+  // paint and after a failed request, so `live ? … : sample` drew the sample curve for a
+  // real brand - the exact contradiction with the $0 revenue tiles described above.
+  const currentChartData = live ? live.series : (isSample ? chartDatasets[timeframe] : []);
 
   // ── Budget Simulator State ──
   const [budgetMeta, setBudgetMeta] = useState(45);
@@ -440,7 +443,24 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
         badgeColor: channelChrome[c.name]?.badgeColor ?? '#7C75FF',
         connectId: channelChrome[c.name]?.connectId ?? 'meta_ads',
       }))
-    : sampleChannels;
+    : isSample
+      ? sampleChannels
+      /* A real workspace whose data has not arrived - first paint, or a failed request -
+         gets the rows with no numbers in them. Falling through to sampleChannels here
+         printed ₹1.32L spend and 3.78x ROAS to a brand that had spent nothing, with no
+         label saying it was an example: `live` starts null and the fetch is in an effect,
+         so this happened on EVERY first render, and stayed if the request failed. */
+      : Object.entries(channelChrome).map(([name, chrome]) => ({
+          name,
+          connected: false,
+          spend: '—',
+          revenue: '—',
+          roas: '—',
+          trend: 'up' as const,
+          trendPct: '',
+          badgeColor: chrome.badgeColor,
+          connectId: chrome.connectId,
+        }));
 
   // ── Top Influencers Data ──
   const sampleCreators = [
@@ -503,7 +523,11 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
         reach: c.followers || '—',
         conversions: null as number | null,
       }))
-    : sampleCreators.map(c => ({ ...c, conversions: c.conversions as number | null }));
+    : isSample
+      ? sampleCreators.map(c => ({ ...c, conversions: c.conversions as number | null }))
+      /* Same reason as the channel table: stock headshots with invented reach belong to
+         the design-review state, not to a brand whose creator list has not loaded. */
+      : [];
 
   /* Measured spend split for the Budget Efficiency card. Only Meta, Google and creator
      bookings report spend, so those are the only slices; null when nothing was spent. */
@@ -1380,6 +1404,11 @@ export const GrowthAnalysisSection: React.FC<GrowthAnalysisSectionProps> = ({
 
             {/* Creator Cards */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {!creators.length && (
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', padding: '8px 0' }}>
+                  No creators booked in this window yet.
+                </div>
+              )}
               {creators.map((c) => (
                 <div
                   key={c.name}

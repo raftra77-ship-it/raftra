@@ -141,9 +141,27 @@ function VectorDatastores({ workspaceId, reindexing }: { workspaceId: number | n
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>Vector store isn't reachable right now.</p>
       )}
 
-      {!loading && stats?.available && stats.total_vectors === 0 && (
+      {!loading && stats?.available && stats.total_vectors === 0 && stats.stranded_total > 0 && (
+        <p style={{ fontSize: '13px', color: '#FFB300', lineHeight: 1.6 }}>
+          This workspace has {stats.stranded_total} indexed {stats.stranded_total === 1 ? 'chunk' : 'chunks'}, but
+          they were written by a different embedding model and cannot be searched from here.
+          Re-index to rebuild them under <b style={{ color: '#fff' }}>{stats.embedding_model}</b>.
+        </p>
+      )}
+
+      {!loading && stats?.available && stats.total_vectors === 0 && !stats.stranded_total && (
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           No vectors indexed yet. Add a resource URL and click <b style={{ color: '#fff' }}>Re-index Knowledge Graph</b> to build it.
+        </p>
+      )}
+
+      {/* Stranded chunks alongside a working index: the count above is real, but it is not
+          everything the workspace holds, and saying nothing makes the shortfall look like
+          the site simply had less on it. */}
+      {!loading && stats?.available && stats.total_vectors > 0 && stats.stranded_total > 0 && (
+        <p style={{ fontSize: '12px', color: '#FFB300', lineHeight: 1.6, margin: 0 }}>
+          {stats.stranded_total} further {stats.stranded_total === 1 ? 'chunk is' : 'chunks are'} stored under an
+          older embedding model and not searchable. Re-index to bring {stats.stranded_total === 1 ? 'it' : 'them'} back.
         </p>
       )}
 
@@ -2283,7 +2301,7 @@ export function BrandDashboard() {
               {/* MODERN HOME OVERVIEW (Brand Kit Extraction, Action Needed, Top Creatives, Schedules) */}
               <ModernHomeOverview
                 userName={userName}
-                brandName={brandProfile?.name || 'Demo Brand'}
+                brandName={brandProfile?.name || undefined}
                 workspaceId={workspaceId}
                 connectorStatus={connectorStatus}
                 connectorStatusFailed={connectorStatusFailed}
@@ -2372,7 +2390,7 @@ export function BrandDashboard() {
           {activeTab === 'influencer' && workspaceId && (
             <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px' }}>
 
-              <WorkspaceInfluencer workspaceId={workspaceId} />
+              <WorkspaceInfluencer workspaceId={workspaceId} brandName={brandProfile?.name} />
             </div>
           )}
 
@@ -2501,7 +2519,8 @@ export function BrandDashboard() {
           {activeTab === 'reports' && (
             <WorkspaceReports
               onNavigateTab={(t: string) => setActiveTab(t as NavigationTab)}
-              brandName={brandProfile?.name || 'Demo Brand'}
+              brandName={brandProfile?.name || undefined}
+              workspaceId={workspaceId}
             />
           )}
 

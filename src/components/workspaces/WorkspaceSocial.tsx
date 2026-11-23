@@ -252,52 +252,25 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
       </div>
 
       {/* 2. BRAND SOCIAL PRESENCE ANALYTICS */}
+      {/* This used to be four stat cards under a "Live Brand Social Performance" heading:
+          1.2M reach, 14,302 brand mentions, 4.8% engagement "vs 3.2% industry avg" and
+          +12.4k audience growth "Driven by AI Automations". Every figure was a literal in
+          this file, so every customer saw the same four numbers presented as their own.
+          Nothing in the product ingests social metrics - this component takes no props and
+          its only two requests submit a lead form - so there is no number to show here and
+          no way to get one yet. Saying so is the only honest option. */}
       <div>
         <h3 style={{ fontSize: '15px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
-          <Activity size={18} color="var(--success)" /> Live Brand Social Performance
+          <Activity size={18} color="var(--success)" /> Brand Social Performance
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px' }}>
-          
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <Users size={16} /> <span style={{ fontSize: '12px' }}>Total Active Reach</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>1.2M</div>
-            <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingUp size={12} /> +24% this week
-            </div>
+        <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ fontSize: '14px', color: '#fff', fontWeight: 600 }}>
+            No social accounts connected yet
           </div>
-
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <MessageCircle size={16} /> <span style={{ fontSize: '12px' }}>Brand Mentions</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>14,302</div>
-            <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingUp size={12} /> +102 organically
-            </div>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            Reach, mentions and engagement will appear here once a social account is linked
+            in Integrations &amp; Connectors.
           </div>
-
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <Heart size={16} /> <span style={{ fontSize: '12px' }}>Engagement Rate</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>4.8%</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              vs 3.2% industry avg
-            </div>
-          </div>
-
-          <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-              <Zap size={16} /> <span style={{ fontSize: '12px' }}>Audience Growth</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>+12.4k</div>
-            <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingUp size={12} /> Driven by AI Automations
-            </div>
-          </div>
-
         </div>
       </div>
 

@@ -126,7 +126,7 @@ const HOME_CONNECTORS_UNAVAILABLE = [
 
 export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   userName = 'aryan070606',
-  brandName = 'Demo Brand',
+  brandName = 'your brand',
   workspaceId = null,
   connectorStatus = null,
   connectorStatusFailed = false,
@@ -252,11 +252,24 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
   };
   const kitPct = Math.round((Object.values(kitReady).filter(Boolean).length / 6) * 100);
 
+  /* What the crawl actually obtained, as the server computed it. The checklist above says
+     WHICH items are missing; this says WHY, which is the part a user can act on. A site
+     that could not be read at all is not a brand kit in progress - six of nine workspaces
+     sat at "17% Extracted" in a green pill, two of them because the crawl read zero
+     pages, and nothing on the screen ever said so. */
+  const extraction = brandKit?.extraction || null;
+  const unreadable = extraction?.status === 'unreachable';
+  const thinCrawl = !unreadable && typeof extraction?.source_pages === 'number'
+    && extraction.source_pages > 0 && extraction.source_pages < 3;
+
   const inr = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
   const score = metrics?.growthScore ?? null;
   // A band, not a trend: nothing stores yesterday's score, so the "+18.4 pts" the mock
   // showed has no honest replacement.
-  const scoreBand = score == null ? 'Loading…'
+  // null means two different things: the fetch is still in flight, or it settled with
+  // nothing (no workspace, or /metrics returned no growthScore). Only the first is
+  // 'Loading…' - the second sat on that spinner forever.
+  const scoreBand = score == null ? (brandKitLoading ? 'Loading…' : 'Not enough data yet')
     : score >= 75 ? 'Strong' : score >= 50 ? 'Building' : score > 0 ? 'Early stage' : 'Not enough data yet';
 
   // 'error' means the status call failed and we know nothing — never treat it as a state.
@@ -519,7 +532,12 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
             {/* Replaces "Conversion Rate 3.8%": nothing in the product records conversions
                 per session, but live-vs-launched campaigns is measured. */}
             <div style={{ fontSize: '20px', fontWeight: 900, color: '#fff', marginTop: '2px' }}>
-              {metrics ? `${metrics.campaignsLive} / ${metrics.campaignsLaunched}` : '—'}
+              {/* `metrics` being an object does not mean it carries these two fields. The
+                  fetch above stores whatever /metrics returns without checking its shape, so a
+                  partial response rendered the literal string "undefined / undefined" in the
+                  tile. Check the values, not the container. */}
+              {typeof metrics?.campaignsLive === 'number' && typeof metrics?.campaignsLaunched === 'number'
+                ? `${metrics.campaignsLive} / ${metrics.campaignsLaunched}` : '—'}
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, marginLeft: '6px' }}>
                 {metrics && metrics.campaignsLaunched ? 'running of launched' : 'none launched yet'}
               </span>
@@ -585,13 +603,33 @@ export const ModernHomeOverview: React.FC<ModernHomeOverviewProps> = ({
               <h2 style={{ fontSize: '20px', color: '#fff', margin: 0, fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
                 Brand kit extraction
               </h2>
-              <span style={{ fontSize: '11px', background: 'rgba(0, 230, 118, 0.15)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.3)', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
-                {brandKitLoading ? 'Checking…' : `${kitPct}% Extracted`}
+              <span style={{ fontSize: '11px',
+                background: unreadable ? 'rgba(255, 82, 82, 0.15)' : 'rgba(0, 230, 118, 0.15)',
+                color: unreadable ? '#FF5252' : '#00E676',
+                border: `1px solid ${unreadable ? 'rgba(255, 82, 82, 0.35)' : 'rgba(0, 230, 118, 0.3)'}`,
+                padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
+                {brandKitLoading ? 'Checking…' : unreadable ? 'Site unreadable' : `${kitPct}% Extracted`}
               </span>
             </div>
             <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: 0 }}>
               Review each item once it's ready to make sure we got it right
             </p>
+            {!brandKitLoading && unreadable && (
+              <p style={{ fontSize: '13px', color: '#FF5252', margin: '6px 0 0 0', lineHeight: 1.55 }}>
+                We couldn't read any page of{' '}
+                <b style={{ color: '#fff' }}>{extraction?.crawled_url || 'your website'}</b>.
+                Nothing below was extracted from your site. Check the address in Workspace
+                settings, or fill the items in by hand — anything you enter is used exactly
+                as you write it.
+              </p>
+            )}
+            {!brandKitLoading && thinCrawl && (
+              <p style={{ fontSize: '13px', color: '#FFB300', margin: '6px 0 0 0', lineHeight: 1.55 }}>
+                Only {extraction.source_pages} page{extraction.source_pages === 1 ? '' : 's'} of your
+                site could be read, so this kit is built from very little. If your site is a
+                single-page app, its inner pages may not be reachable directly.
+              </p>
+            )}
           </div>
 
           <button

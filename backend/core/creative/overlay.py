@@ -63,35 +63,85 @@ class OverlayUnavailable(RuntimeError):
     """No scalable font on this host, so drawing text would make the image worse."""
 
 
-def _font_path(bold: bool = False) -> str:
+def resolve_font(bold: bool = False) -> tuple:
+    """(path, source) for a usable typeface. `source` is recorded, never guessed.
+
+    The order is deliberate: an operator override wins, then the font vendored into this
+    repository, then whatever the host happens to carry.
+
+    The vendored face is why this can no longer come up empty. Before it existed the chain
+    ended at _SYSTEM_FONTS, which lists Linux and Windows paths; it resolved on a developer
+    machine to C:/Windows/Fonts/segoeuib.ttf and on Render - a native Python runtime with
+    no font package installed by the build - to nothing at all. The caller then skipped the
+    overlay, so the creative shipped with no headline, no call to action and no brand name.
+    A font the repository carries cannot be absent on any host.
+    """
     override = (os.getenv("CREATIVE_FONT_PATH") or "").strip()
     if override and Path(override).is_file():
-        return override
+        return override, "operator_override"
 
     if _VENDORED_DIR.is_dir():
         files = sorted(_VENDORED_DIR.glob("*.ttf")) + sorted(_VENDORED_DIR.glob("*.otf"))
         if files:
-            # Prefer a bold face for headlines when the folder offers one.
+            # A folder offering a named bold face is preferred for headlines; a single
+            # variable file (what we vendor) is handled by the weight axis in load_font().
             if bold:
                 for f in files:
                     if "bold" in f.name.lower():
-                        return str(f)
-            return str(files[0])
+                        return str(f), "vendored"
+            return str(files[0]), "vendored"
 
     for candidate in _SYSTEM_FONTS:
         if Path(candidate).is_file():
             if bold and "bold" not in candidate.lower() and "b.ttf" not in candidate.lower():
                 continue
-            return candidate
+            return candidate, "system"
     # Second pass without the bold preference, so a host with only a regular face still works.
     for candidate in _SYSTEM_FONTS:
         if Path(candidate).is_file():
-            return candidate
+            return candidate, "system"
 
     raise OverlayUnavailable(
-        "No scalable font found. Set CREATIVE_FONT_PATH to a .ttf, or drop one into "
-        "backend/assets/fonts/. Pillow's built-in font is a bitmap and is unreadable at "
-        "advertising sizes, so the overlay is skipped rather than drawn badly.")
+        "No scalable font found, and the vendored fallback at backend/assets/fonts/ is "
+        "missing. Restore it, or set CREATIVE_FONT_PATH to a .ttf. Pillow's built-in font "
+        "is a bitmap and is unreadable at advertising sizes.")
+
+
+def _font_path(bold: bool = False) -> str:
+    """Path only. Kept so callers that do not care about provenance stay simple."""
+    return resolve_font(bold)[0]
+
+
+# Whether this host's FreeType can select a weight on a variable font. Probed once: the
+# answer is a property of the build, not of the request, and the vendored Inter is a
+# variable file whose Bold lives on the wght axis rather than in a separate file.
+_VARIATIONS_OK = None
+
+
+def load_font(path: str, size: int, bold: bool = False):
+    """A sized font, with the bold axis applied when the host supports variations.
+
+    Degrades to the regular weight rather than failing: a headline in regular weight is a
+    cosmetic loss, and no headline at all is not.
+    """
+    global _VARIATIONS_OK
+    from PIL import ImageFont
+
+    font = ImageFont.truetype(path, size)
+    if not bold:
+        return font
+    if _VARIATIONS_OK is False:
+        return font
+    try:
+        font.set_variation_by_name("Bold")
+        _VARIATIONS_OK = True
+    except Exception as e:
+        if _VARIATIONS_OK is None:
+            # Once, loudly. A silent regular-weight headline looks like a design choice.
+            print(f"[overlay] variable-font weights unavailable on this host "
+                  f"({type(e).__name__}); headlines render at regular weight.")
+        _VARIATIONS_OK = False
+    return font
 
 
 def build_overlay_spec(spec, facts: Optional[dict] = None,
@@ -104,14 +154,30 @@ def build_overlay_spec(spec, facts: Optional[dict] = None,
     picture.
     """
     facts = facts or {}
+    # Accent by MEANING, not by position. palette[0] is whichever colour the extractor
+    # happened to list first; on a brand whose first colour is a background that painted
+    # the call to action in the page background. select_accent reads the roles, names and
+    # provenance the extractor already records, and says which one it used.
+    from core.brand_kit import select_accent
     palette = [c for c in (facts.get("color_palette") or []) if isinstance(c, str)]
+    accent_hex, accent_reason = select_accent(facts.get("color_tokens"), palette)
     return {
         "layout": layout if layout in LAYOUTS else DEFAULT_LAYOUT,
-        "brand": (getattr(spec, "brand", "") or facts.get("brand_name") or "").strip(),
+        # core.rag.brand_facts() emits this under "name" - it has never had a
+        # "brand_name" key, so this read was always empty and the brand line was silently
+        # dropped from every overlay. Measured on workspace 4: facts["name"] == "DSA" while
+        # facts.get("brand_name") is None, so every generated creative shipped unbranded.
+        # spec.brand still wins when the analyser filled it from what the user actually
+        # said; this is the fallback to the stored brand, which is the only other place a
+        # brand name may legitimately come from. "name" is the contract - see
+        # rag.format_brand_kit and evaluate/criteria.py, which both read it.
+        "brand": (getattr(spec, "brand", "") or facts.get("name") or "").strip(),
         "headline": (getattr(spec, "headline", "") or "").strip(),
         "subtext": (getattr(spec, "primary_text", "") or "").strip(),
         "cta": (getattr(spec, "cta", "") or "").strip(),
-        "accent": palette[0] if palette else "#FFFFFF",
+        "accent": accent_hex,
+        # Recorded so a questionable button colour is traceable to the token behind it.
+        "accent_source": accent_reason,
     }
 
 
@@ -146,7 +212,7 @@ def _wrap(draw, text: str, font, max_width: int) -> list:
 
 
 def _fit(draw, text: str, font_path: str, max_width: int, start: int,
-         max_lines: int, floor: int):
+         max_lines: int, floor: int, bold: bool = False):
     """Largest size at which `text` wraps into at most `max_lines`.
 
     A fixed headline size only suits a headline of the expected length. "Crack coding
@@ -158,11 +224,27 @@ def _fit(draw, text: str, font_path: str, max_width: int, start: int,
 
     size = start
     while size > floor:
-        font = ImageFont.truetype(font_path, size)
+        font = load_font(font_path, size, bold=bold)
         if len(_wrap(draw, text, font, max_width)) <= max_lines:
             return font
         size = int(size * 0.92)
-    return ImageFont.truetype(font_path, floor)
+    return load_font(font_path, floor, bold=bold)
+
+
+def _fit_pill(draw, label: str, font_path: str, max_width: int, start: int, floor: int):
+    """Largest size at which the CTA *and its padding* fit the text column.
+
+    _fit measures wrapped text; a CTA is a pill, so its width is the label plus two pads
+    and it cannot wrap. Measured at 1080x1920 the pill reached 675px inside a 356px
+    column - it broke out of the copy block and past the scrim entirely.
+    """
+    size = start
+    while size > floor:
+        font = load_font(font_path, size, bold=True)
+        if draw.textlength(label, font=font) + int(size * 0.9) * 2 <= max_width:
+            return font
+        size = int(size * 0.92)
+    return load_font(font_path, floor, bold=True)
 
 
 def render_overlay(image_bytes: bytes, overlay: dict) -> bytes:
@@ -176,24 +258,81 @@ def render_overlay(image_bytes: bytes, overlay: dict) -> bytes:
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     W, H = img.size
     box = LAYOUTS.get(overlay.get("layout"), LAYOUTS[DEFAULT_LAYOUT])
-    x = int(W * box["x"])
-    y = int(H * box["y"])
-    max_w = int(W * box["w"])
 
-    regular, bold = _font_path(False), _font_path(True)
+    # Scale from the SHORT edge, not the height.
+    #
+    # Sizing from H while the column is sized from W made the two diverge: measured across
+    # the five platform sizes, headline/width ran from 0.030 at 1200x628 to 0.103 at
+    # 1080x1920 - a 3.4x swing for identical copy. The short edge is the dimension that
+    # actually governs how large type reads in a frame, so the same spec now renders at
+    # comparable weight everywhere.
+    S = min(W, H)
+    portrait = H > W
+    tall = H >= W * 1.5                      # stories and reels
+
+    # A 33% column is right for landscape and far too narrow for a story, where it forced
+    # the headline to five lines against a three-line cap.
+    col_frac = box["w"] if not portrait else (0.74 if tall else 0.62)
+    x = int(W * box["x"])
+    max_w = min(int(W * col_frac), W - 2 * x)
+
+    # Platform safe areas: stories put UI chrome over the top and bottom of the frame.
+    safe_top = int(H * (0.12 if tall else 0.07))
+    safe_bot = int(H * (0.16 if tall else 0.07))
+    y = max(int(H * box["y"]), safe_top)
+
+    regular, reg_src = resolve_font(False)
+    bold, bold_src = resolve_font(True)
+    # Provenance, so a creative rendered in the fallback is identifiable as such rather
+    # than being mistaken for the brand's own typeface.
+    print(f"[overlay] font regular={Path(regular).name} ({reg_src}) "
+          f"bold={Path(bold).name} ({bold_src}) "
+          f"accent={overlay.get('accent')} ({overlay.get('accent_source')})")
     draw = ImageDraw.Draw(img)
 
-    # Sized from the image height so a 1080px square and a 1920px landscape look alike.
-    head_size = max(28, int(H * 0.058))
-    body_size = max(16, int(H * 0.026))
-    cta_size = max(16, int(H * 0.028))
+    # Scale from WIDTH, capped by height.
+    #
+    # min(W,H) was the first attempt and still left a 1.93x spread in headline/width,
+    # because a landscape frame takes its short edge from the height and so got small type
+    # relative to the frame. How large a headline *reads* tracks the frame's width, so that
+    # is the reference; the height cap keeps a short wide banner (a 970x250 leaderboard)
+    # from being given type taller than its own frame.
+    head_size = max(24, min(int(W * 0.045), int(H * 0.11)))
+    body_size = max(14, min(int(W * 0.020), int(H * 0.050)))
+    cta_size = max(14, min(int(W * 0.022), int(H * 0.055)))
+    brand_size = max(12, min(int(W * 0.018), int(H * 0.044)))
 
-    f_body = ImageFont.truetype(regular, body_size)
-    f_cta = ImageFont.truetype(bold, cta_size)
-    f_brand = ImageFont.truetype(bold, max(14, int(H * 0.022)))
-    # Shrunk to fit rather than fixed, so a long headline does not wrap into a wall.
+    f_brand = load_font(bold, brand_size, bold=True)
+    # The floor is low enough that the three-line cap is reachable. It used to be
+    # max(20, H*0.030) = 57px at 1080x1920, which the headline could not fit into three
+    # lines of a 356px column, so _fit returned the floor and the text wrapped to five.
     f_head = _fit(draw, overlay.get("headline") or "", bold, max_w,
-                  head_size, max_lines=3, floor=max(20, int(H * 0.030)))
+                  head_size, max_lines=3, floor=max(16, int(min(W * 0.022, H * 0.055))), bold=True)
+    f_cta = _fit_pill(draw, (overlay.get("cta") or "").strip(), bold, max_w,
+                      cta_size, floor=max(12, int(min(W * 0.013, H * 0.033))))
+    f_body = _fit(draw, overlay.get("subtext") or "", regular, max_w,
+                  body_size, max_lines=4, floor=max(11, int(min(W * 0.013, H * 0.033))))
+
+    # Measure the whole block before placing it, so it can be centred in the safe band
+    # instead of being pinned near the top. At 9:16 the fixed y left the lower two thirds
+    # of the frame empty while the copy crowded the top.
+    def _block_height():
+        h = 0
+        if overlay.get("brand"):
+            h += int(f_brand.size * 1.9)
+        if overlay.get("headline"):
+            lines = _wrap(draw, overlay["headline"], f_head, max_w)
+            h += len(lines) * int(f_head.size * 1.18) + int(f_head.size * 0.35)
+        if overlay.get("subtext"):
+            lines = _wrap(draw, overlay["subtext"], f_body, max_w)
+            h += len(lines) * int(f_body.size * 1.45) + int(f_body.size * 0.8)
+        if overlay.get("cta"):
+            h += f_cta.size + int(f_cta.size * 0.55) * 2
+        return h
+
+    block_h = _block_height()
+    avail = H - safe_top - safe_bot
+    y = safe_top + max(0, (avail - block_h) // 2)
 
     accent = _hex_to_rgb(overlay.get("accent"), (255, 255, 255))
 
@@ -238,8 +377,6 @@ def render_overlay(image_bytes: bytes, overlay: dict) -> bytes:
         # the rest, which severed a real sentence mid-clause - "...beginner-friendly DSA
         # lessons and guided" with "challenges." simply gone. A half-sentence on an advert
         # reads as a rendering fault, and the copy layer exists so the words are right.
-        f_body = _fit(draw, overlay["subtext"], regular, max_w,
-                      body_size, max_lines=4, floor=max(12, int(H * 0.018)))
         for line in _wrap(draw, overlay["subtext"], f_body, max_w):
             draw.text((x, cursor), line, font=f_body, fill=(226, 232, 240))
             cursor += int(f_body.size * 1.45)
@@ -247,15 +384,18 @@ def render_overlay(image_bytes: bytes, overlay: dict) -> bytes:
 
     if overlay.get("cta"):
         label = overlay["cta"].strip()
-        pad_x, pad_y = int(cta_size * 0.9), int(cta_size * 0.55)
+        pad_x, pad_y = int(f_cta.size * 0.9), int(f_cta.size * 0.55)
         tw = int(draw.textlength(label, font=f_cta))
+        # Hard clamp as well as the fitted size: the pill must never leave the column.
+        pill_right = min(x + tw + pad_x * 2, x + max_w)
         draw.rounded_rectangle(
-            [x, cursor, x + tw + pad_x * 2, cursor + cta_size + pad_y * 2],
-            radius=int(cta_size * 0.45), fill=accent)
+            [x, cursor, pill_right, cursor + f_cta.size + pad_y * 2],
+            radius=int(f_cta.size * 0.45), fill=accent)
         # Dark text on a light accent, light on a dark one.
         luminance = 0.299 * accent[0] + 0.587 * accent[1] + 0.114 * accent[2]
         draw.text((x + pad_x, cursor + pad_y), label, font=f_cta,
                   fill=(15, 23, 42) if luminance > 140 else (255, 255, 255))
+        cursor += f_cta.size + pad_y * 2
 
     out = io.BytesIO()
     img.save(out, format="PNG", optimize=True)

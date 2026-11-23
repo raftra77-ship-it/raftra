@@ -1044,6 +1044,52 @@ async def synthesis_and_persistence_node(state: OnboardingState) -> OnboardingSt
                           f"(read from the site, not the domain)")
                     ws.name = extracted_name[:120]
 
+            # What the crawl actually obtained, recorded beside it.
+            #
+            # is_onboarded stays a record of "this person finished the flow" because that is
+            # what the post-login route reads; tightening it would trap anyone with a thin
+            # kit in onboarding forever. The question it was being asked to answer as well -
+            # "do we hold a usable brand" - is answered here instead, written into the same
+            # _extraction block as the provenance so a thin kit is visible as thin rather
+            # than indistinguishable from a rich one.
+            try:
+                from core.brand_kit import coverage as _coverage, extraction_status
+                cov = _coverage(
+                    logos=bp.logos, color_palette=bp.color_palette,
+                    color_tokens=getattr(bp, "color_tokens", None), typography=bp.typography,
+                    brand_voice=ws.brand_voice, target_audience=bp.target_audience,
+                    guidelines=existing)
+                pages = len(state.get("scraped_pages") or [])
+                status = extraction_status(cov, pages)
+                meta = dict(existing.get(EXTRACTION_META_KEY) or {})
+                meta.update({"status": status, "coverage": cov["score"],
+                             "coverage_total": cov["total"], "missing": cov["missing"],
+                             "usable": cov["usable"]})
+                existing[EXTRACTION_META_KEY] = meta
+                bp.guidelines = existing   # reassignment marks the JSON column dirty
+                state["extraction_status"] = status
+                state["coverage"] = cov
+                state["source_pages"] = pages
+
+                # Say so, rather than reporting a success the kit does not support. A user
+                # who is told the logo and palette are missing can upload them; one who is
+                # told "brand extracted" has no reason to look.
+                if status == "unreachable":
+                    await manager.broadcast_agent_log(
+                        "Brand Strategist",
+                        "Could not read any page of %s. Your brand kit is empty - check the "
+                        "address, or add your logo, colours and fonts by hand in Brand "
+                        "Knowledge." % (state.get("brand_url") or ws.company_url or "the site"),
+                        "failed")
+                elif cov["missing"]:
+                    await manager.broadcast_agent_log(
+                        "Brand Strategist",
+                        "Brand kit %d/%d from %d page(s). Still missing: %s."
+                        % (cov["score"], cov["total"], pages, ", ".join(cov["missing"])),
+                        "completed" if cov["usable"] else "failed")
+            except Exception as e:
+                print("[onboarding] coverage record skipped: %s" % e)
+
             bp.is_onboarded = True
 
             # Fill the Asset Vault from the same site we just read.
@@ -1167,9 +1213,34 @@ async def run_onboarding_pipeline(workspace_id: int, brand_url: str, brand_logo:
         # A vector-store failure degrades retrieval but does not undo it, so it is reported
         # as a caveat on a completed run rather than as a failed one.
         kb_error = (result or {}).get("kb_error") or ""
-        summary = ("Brand profile & knowledge base built" if not kb_error
-                   else f"Brand profile rebuilt. Search indexing unavailable: {kb_error[:70]}")
-        record_agent_task(workspace_id, "ONBOARDING", "COMPLETED", summary)
+
+        # Report what the run actually obtained.
+        #
+        # This said "Brand profile & knowledge base built" unconditionally. Measured on
+        # production: all eight recorded onboarding runs say COMPLETED with that message,
+        # including workspace 18 (a real, reachable site) and workspace 19, both of which
+        # crawled ZERO pages and produced an empty kit. A run that read nothing is not a
+        # completed run, and calling it one is why nobody knew their brand kit was empty.
+        cov = (result or {}).get("coverage") or {}
+        status = (result or {}).get("extraction_status") or ""
+        pages = (result or {}).get("source_pages")
+
+        if status == "unreachable":
+            record_agent_task(workspace_id, "ONBOARDING", "FAILED",
+                              f"Could not read any page of {brand_url}. Brand kit is empty.")
+        elif cov and not cov.get("usable"):
+            record_agent_task(
+                workspace_id, "ONBOARDING", "FAILED",
+                f"Brand kit {cov.get('score')}/{cov.get('total')} from {pages} page(s). "
+                f"Missing: {', '.join(cov.get('missing') or [])}.")
+        else:
+            detail = (f"Brand kit {cov.get('score')}/{cov.get('total')} from {pages} page(s)"
+                      if cov else "Brand profile & knowledge base built")
+            if cov and cov.get("missing"):
+                detail += f". Missing: {', '.join(cov['missing'])}"
+            if kb_error:
+                detail += f". Search indexing unavailable: {kb_error[:70]}"
+            record_agent_task(workspace_id, "ONBOARDING", "COMPLETED", detail)
         return result
     except Exception as e:
         record_agent_task(workspace_id, "ONBOARDING", "FAILED", str(e)[:120])

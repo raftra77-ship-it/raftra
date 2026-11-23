@@ -74,6 +74,7 @@ def _pg_upsert(workspace_id: int, kind: str, texts: List[dict],
 def _pg_search(workspace_id: int, query: str, kinds: List[str], limit: int) -> List[dict]:
     import models
     from database import SessionLocal
+    from sqlalchemy import func as sa_func
     from core.embeddings import embed_query, EMBEDDING_MODEL_NAME
 
     # Is there anything to search, before paying to search it?
@@ -96,6 +97,24 @@ def _pg_search(workspace_id: int, query: str, kinds: List[str], limit: int) -> L
         if kinds:
             probe = probe.filter(models.KnowledgeChunk.kind.in_(kinds))
         if probe.first() is None:
+            # Nothing under the ACTIVE model. That is either an empty workspace or a
+            # mis-indexed one, and those two must not look the same: a workspace indexed
+            # by a different provider returns [] here and every caller downstream reports
+            # "no brand knowledge", which is how workspace 4 ran for weeks on an index it
+            # could not see. Name the other models rather than returning a bare [].
+            other = (db.query(models.KnowledgeChunk.model,
+                              sa_func.count().label("n"))
+                       .filter(models.KnowledgeChunk.workspace_id == workspace_id))
+            if kinds:
+                other = other.filter(models.KnowledgeChunk.kind.in_(kinds))
+            rows = other.group_by(models.KnowledgeChunk.model).all()
+            stale = [(m, n) for m, n in rows if m != EMBEDDING_MODEL_NAME]
+            if stale:
+                detail = ", ".join(f"{n} under {m}" for m, n in stale)
+                print(f"[vector_store] ws {workspace_id}: 0 chunks under the active model "
+                      f"{EMBEDDING_MODEL_NAME}, but {detail}. These are UNSEARCHABLE here - "
+                      f"re-embed them (scripts/reembed_knowledge.py) or set "
+                      f"EMBEDDING_PROVIDER to the provider that wrote them.")
             return []
     except Exception as e:
         # A failed probe must not block retrieval; fall through to the real query.
@@ -124,6 +143,44 @@ def _pg_search(workspace_id: int, query: str, kinds: List[str], limit: int) -> L
         return out
     finally:
         db.close()
+
+
+def index_health(workspace_id: int) -> dict:
+    """Per-model chunk counts for one workspace, and which of them are searchable.
+
+    `stats()` answers only for the active model, so a workspace whose rows were written by
+    another provider reports total 0 - indistinguishable from never having been indexed.
+    This separates the two: `searchable` is what retrieval can reach, `stale` is what is
+    sitting in the table unreachable, keyed by the model that wrote it.
+    """
+    import models
+    from database import SessionLocal
+    from sqlalchemy import func
+    from core.embeddings import EMBEDDING_MODEL_NAME
+
+    db = SessionLocal()
+    try:
+        rows = (db.query(models.KnowledgeChunk.model, models.KnowledgeChunk.kind,
+                         func.count().label("n"))
+                  .filter(models.KnowledgeChunk.workspace_id == workspace_id)
+                  .group_by(models.KnowledgeChunk.model, models.KnowledgeChunk.kind).all())
+    finally:
+        db.close()
+
+    searchable, stale = {}, {}
+    for model, kind, n in rows:
+        bucket = searchable if model == EMBEDDING_MODEL_NAME else stale.setdefault(model, {})
+        if model == EMBEDDING_MODEL_NAME:
+            bucket[kind] = bucket.get(kind, 0) + n
+        else:
+            bucket[kind] = bucket.get(kind, 0) + n
+    return {
+        "active_model": EMBEDDING_MODEL_NAME,
+        "searchable": searchable,
+        "searchable_total": sum(searchable.values()),
+        "stale": stale,
+        "stale_total": sum(sum(v.values()) for v in stale.values()),
+    }
 
 
 def _pg_stats(workspace_id: int) -> dict:

@@ -282,6 +282,22 @@ async def generate(body: GenerateBody, background: BackgroundTasks,
     _require_workspace(body.workspace_id, db, current_user)
     media_type = _media_type(body.type)
 
+    # Refuse our own placeholder strings before spending a model call on them.
+    #
+    # Measured on production: 17 creatives were generated from "Generate fresh ad variants."
+    # or "Brand Knowledge Generation" sent as the prompt. The analyser was asked to write
+    # advertising copy about a label containing no subject, product or offer, so it wrote
+    # none, and the user was handed a bare image. The current web client no longer sends
+    # either string except when the brand vault is empty, but the deployed build and the
+    # older client copy still can, and the backend is the only place that can stop them.
+    from core.creative.validation import is_placeholder_prompt
+    if is_placeholder_prompt(body.prompt):
+        raise HTTPException(
+            status_code=422,
+            detail=("That request carried no brief - only a placeholder. Describe what is "
+                    "being advertised, or complete the Brand Knowledge vault so a brief can "
+                    "be built from it."))
+
     spec = await service.plan(
         workspace_id=body.workspace_id, prompt=body.prompt, media_type=media_type,
         platform=body.platform, placement=body.placement,

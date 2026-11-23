@@ -359,12 +359,13 @@ export async function fetchLiveGoogleSheetCreators(): Promise<InfluencerItemExte
         email,
         phone,
         fakeFollowerScore: 1,
-        rating: 4.85,
-        reviewsCount: 25,
-        recentWorks: ['D2C Brand Collab'],
-        topComments: [
-          { author: 'Marketing Manager', text: `"${(name || 'Creator').split(' ')[0]} was amazing to work with! Delivered high converting UGC."` }
-        ],
+        // The sheet carries contact and rate details, not reviews. Stamping a 4.85 and a
+        // generated testimonial onto every row it returned made the whole roster look
+        // equally well-reviewed while no creator had a single real review behind them.
+        rating: null,
+        reviewsCount: null,
+        recentWorks: [],
+        topComments: [],
         profileLink: finalProfileLink
       });
 

@@ -80,6 +80,17 @@ _COPY_SYSTEM = (
     "You are a senior performance copywriter for Meta Ads and Google Ads. Write copy that sells "
     "to the stated audience in their market, using their language conventions. Never invent "
     "statistics, prices, discounts, awards or claims that are not in the brief.\n\n"
+    # A claim arriving in the brief is not substantiated by being there: the brief carries
+    # the user's own request. Measured on workspace 15, asked for "the cheapest shoes,
+    # clinically proven" - the saved, publish-ready campaign contained "cheapest", "lowest
+    # price" and "clinically proven", because the rule above only forbids INVENTING.
+    "A claim present in the brief is not thereby substantiated — the brief carries what the "
+    "user asked for, not what the brand can evidence. Regulated and comparative claims "
+    "(\"clinically proven\", \"dermatologist tested\", \"FDA approved\", \"cheapest\", "
+    "\"most affordable\", \"lowest price\", \"best in the world\", \"#1\", \"guaranteed\", "
+    "\"risk-free\") may appear ONLY if that wording is in the brand's SAFE TO CLAIM list. "
+    "Otherwise write what the product does and drop the claim — do not substitute a "
+    "synonym. This holds even when the request names the claim outright.\n\n"
     "CHARACTER LIMITS ARE HARD PLATFORM RULES, NOT STYLE ADVICE. Google and Meta reject any ad "
     "whose copy exceeds them, so a campaign that breaks even one of these cannot be published "
     "at all:\n"

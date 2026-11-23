@@ -6,9 +6,11 @@ the SAME company knowledge - the onboarded brand profile, the exact design token
 workspace's slice of the vector store. Centralising it here means one consistent, real
 source instead of each agent inventing generic output or duplicating retrieval logic.
 
-The retrieval now spans three kinds of indexed content, not just the site crawl: the
-onboarding pages, the fortnightly competitor ad vault and the four-weekly market-trend
-radar. See core/rag.py for the split between looked-up facts and retrieved judgement.
+Retrieval spans what the brand itself published - the onboarding pages and the fortnightly
+competitor ad vault. The four-weekly market-trend radar is indexed too, but it is the
+model's commentary on a search market rather than anything the brand said, so it is opt-in
+(include_trends=True) for the callers that are actually asking about the market. See
+core/rag.py for the split between looked-up facts and retrieved judgement.
 """
 
 
@@ -109,14 +111,27 @@ def brand_excerpts(workspace_id: int, query: str = "", kb_limit: int = 3) -> str
     Separated because it loads the embedding model and is by far the slowest part. It is
     supplementary - the facts above are the brand - so a caller may bound it tightly and
     proceed without it.
+
+    Only content the brand itself published is retrieved here. KIND_TREND used to be in
+    this list and must not be: a trend report is the model's own commentary on a search
+    market, not something the brand said, and the radar writes one whether or not the crawl
+    found anything. Measured on workspace 13, whose URL ("https://hdh") resolves to no site
+    at all: the vault held ten trend chunks and zero brand chunks, including an invented
+    company description - "Hssh offers practical utility for your everyday needs" - derived
+    from nothing but the workspace's name. Retrieved as brand context, that is a
+    hallucination presented to the creative pipeline as fact, and the generated ad would
+    have described a company that does not exist.
+
+    Trends remain indexed and remain available to campaign planning, which asks about the
+    market on purpose. What grounds a creative is the brand's own site and its own ads.
     """
     try:
         from core.rag import retrieve, KIND_BRAND
-        from core.intel_sync import KIND_AD, KIND_TREND
+        from core.intel_sync import KIND_AD
         passages = retrieve(
             workspace_id,
             query or "company overview products audience positioning",
-            [KIND_BRAND, KIND_AD, KIND_TREND],
+            [KIND_BRAND, KIND_AD],
             limit=kb_limit + 2,
         )
         excerpts = [p["content"] for p in passages if p.get("content")]
@@ -128,11 +143,16 @@ def brand_excerpts(workspace_id: int, query: str = "", kb_limit: int = 3) -> str
     return ""
 
 
-def get_brand_context(workspace_id: int, query: str = "", kb_limit: int = 3) -> str:
+def get_brand_context(workspace_id: int, query: str = "", kb_limit: int = 3,
+                      include_trends: bool = False) -> str:
     """
     Returns a formatted brand-context string for a workspace:
       - brand voice/tone, target audience, guidelines (from Postgres BrandProfile)
-      - the most relevant knowledge-base excerpts for `query` (from Qdrant)
+      - the most relevant knowledge-base excerpts for `query` (from the vector store)
+
+    `include_trends` adds the market-trend radar to that retrieval. It is off by default
+    because what grounds a claim about the brand is the brand's own site and its own ads;
+    turn it on only where the market itself is the subject.
 
     Never raises - on any failure it returns whatever it managed to gather (or a clear
     'no context' message), so a laggy DB or empty KB degrades gracefully instead of
@@ -186,17 +206,30 @@ def get_brand_context(workspace_id: int, query: str = "", kb_limit: int = 3) -> 
     except Exception as e:
         print(f"brand_context: brand kit load failed for ws {workspace_id}: {e}")
 
-    # 2) Relevant excerpts from the knowledge base - now spanning the onboarding crawl,
-    #    the competitor ad vault and the market-trend radar, all filtered to this
-    #    workspace. Agents used to see only the site crawl, so a campaign brief had no idea
-    #    what rivals were currently running or which search intents were rising.
+    # 2) Relevant excerpts from the knowledge base - the onboarding crawl and the
+    #    competitor ad vault, filtered to this workspace.
+    #
+    #    Market trends are NOT in that list by default, for the same reason they were taken
+    #    out of brand_excerpts(): a trend report is the model's own commentary on a search
+    #    market, not something the brand published, and the radar writes one whether or not
+    #    the crawl found anything. Measured on workspace 13, whose company_url
+    #    ("https://hdh") resolves to no site: nine trend chunks, one brand chunk, and an
+    #    invented company description - "Hssh offers practical utility for your everyday
+    #    needs" - derived from nothing but the workspace's name. Retrieved as brand context
+    #    that is a hallucination handed to copy generation as fact.
+    #
+    #    Fixing brand_excerpts() alone was not enough: that function is used only by the
+    #    image pipeline, while ad copy, social captions, SEO metadata and campaign planning
+    #    all come through here. Callers that genuinely ask about the market - rather than
+    #    about the brand - opt back in with include_trends=True.
     try:
         from core.rag import retrieve, KIND_BRAND
         from core.intel_sync import KIND_AD, KIND_TREND
+        kinds = [KIND_BRAND, KIND_AD] + ([KIND_TREND] if include_trends else [])
         passages = retrieve(
             workspace_id,
             query or "company overview products audience positioning",
-            [KIND_BRAND, KIND_AD, KIND_TREND],
+            kinds,
             limit=kb_limit + 2,
         )
         excerpts = [p["content"] for p in passages if p.get("content")]

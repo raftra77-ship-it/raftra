@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, MessageCircle, Send, ShieldAlert, BadgeCheck, DollarSign, Video, Image as ImageIcon, Star, ExternalLink, Activity, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
@@ -11,10 +11,12 @@ export type { InfluencerItemExtended };
 const INITIAL_CREATORS: InfluencerItemExtended[] = (parsedCreatorsData as any[]).map(item => ({
   ...item,
   fakeFollowerScore: item.fakeFollowerScore || 1,
-  rating: item.rating || 4.8,
-  reviewsCount: item.reviewsCount || 20,
-  recentWorks: item.recentWorks || ['D2C Brand Collab'],
-  topComments: item.topComments
+  // No invented social proof. These used to default to 4.8 / 20 reviews / a past client,
+  // which meant a creator nobody had ever booked still presented as well-reviewed.
+  rating: item.rating ?? null,
+  reviewsCount: item.reviewsCount ?? null,
+  recentWorks: item.recentWorks || [],
+  topComments: item.topComments || []
 }));
 
 import { BrandPostedDealsView } from './PostedDealsWorkflow';
@@ -23,7 +25,7 @@ import { BrandPostedDealsView } from './PostedDealsWorkflow';
    dashboard, where a workspace is always resolved, and on the public /influencer-marketplace
    page, where a signed-out visitor has none. Every authenticated fetch below must therefore
    check it — see loadCreatorsData, which did not and fired a 401 on every public visit. */
-export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ workspaceId }) => {
+export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null; brandName?: string }> = ({ workspaceId, brandName }) => {
   // Every deal route is behind get_current_user. The proposal and release calls below were
   // written without a token, so the server rejected them and the UI showed success anyway.
   const authHeaders = (): HeadersInit => {
@@ -159,7 +161,8 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
       });
 
       if (!matched && custom.name) {
-        return [{ id: 'creator_custom', deliverables: ['UGC Video'], rating: 4.9, reviewsCount: 12, ...custom }, ...list];
+        // A creator added by hand has no booking history here, so no rating is asserted.
+        return [{ id: 'creator_custom', deliverables: ['UGC Video'], rating: null, reviewsCount: null, ...custom }, ...list];
       }
       return updatedList;
     } catch (err) {
@@ -521,6 +524,43 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
 
   const [showEmailReceiptModal, setShowEmailReceiptModal] = useState<boolean>(false);
   const [paidDealInfo, setPaidDealInfo] = useState<{ amount: number, creator: InfluencerItemExtended } | null>(null);
+
+  /* The escrow completion message, built ONCE per deal.
+     It was previously written out twice - once for the on-screen preview and again inside
+     the copy button - and each copy called Math.random() and new Date() of its own. So the
+     verification code the brand read on screen was never the code that reached the
+     clipboard, and the timestamps differed too. The creator uploads a screenshot of this
+     message to release escrow, so the two have to be the same string.
+     The brand and campaign lines were also hardcoded to "Demo Brand" and "Video Reel
+     Campaign"; they now carry the real workspace brand and the deliverables actually
+     agreed with this creator, and a line is dropped rather than guessed when unknown. */
+  const verificationMessage = useMemo(() => {
+    if (!paidDealInfo) return '';
+    const { creator } = paidDealInfo;
+    let brand = brandName || '';
+    if (!brand) {
+      try {
+        brand = JSON.parse(localStorage.getItem('raftra_guest_brand') || '{}').brandName || '';
+      } catch { /* no stored identity; the line is omitted below */ }
+    }
+    const campaign = (creator.deliverables || []).join(', ');
+    const rule = '-'.repeat(50);
+    return [
+      rule,
+      '🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION',
+      rule,
+      ...(campaign ? [`Campaign: ${campaign}`] : []),
+      ...(brand ? [`Brand: ${brand}`] : []),
+      `Creator: ${creator.name} (${creator.handle})`,
+      `Timestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}`,
+      `Verification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}`,
+      '',
+      '"We hereby confirm that deliverables are received, reviewed, published, and we are '
+        + '100% satisfied with the work! You may upload screenshot proof to Team Raftra for '
+        + 'Escrow payout release."',
+      rule,
+    ].join('\n');
+  }, [paidDealInfo, brandName]);
 
   const handlePayRazorpay = async (amount: number) => {
     try {
@@ -1612,9 +1652,16 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
                 </h3>
                 <div style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '16px', fontSize: '14px' }}>
                   <span>{viewProfile.handle}</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--warning)' }}>
-                    <Star size={14} fill="currentColor" /> {viewProfile.rating} ({viewProfile.reviewsCount} reviews)
-                  </span>
+                  {/* Shown only when a real rating exists. "Not rated yet" is information;
+                      a default 4.85 beside it would be a claim about work nobody did. */}
+                  {viewProfile.rating ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--warning)' }}>
+                      <Star size={14} fill="currentColor" /> {viewProfile.rating}
+                      {viewProfile.reviewsCount ? ` (${viewProfile.reviewsCount} reviews)` : ''}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>Not rated yet</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -1657,7 +1704,12 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
             <div style={{ marginBottom: '30px' }}>
               <h4 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>RECENT BRAND COLLABORATIONS</h4>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {viewProfile.recentWorks.map(work => (
+                {!(viewProfile.recentWorks || []).length && (
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    No collaborations recorded on Raftra yet.
+                  </span>
+                )}
+                {(viewProfile.recentWorks || []).map(work => (
                   <span key={work} style={{ padding: '6px 12px', background: 'rgba(90,82,255,0.1)', color: 'var(--primary)', border: '1px solid rgba(90,82,255,0.2)', borderRadius: '20px', fontSize: '12px' }}>
                     {work}
                   </span>
@@ -1691,13 +1743,29 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
             <div>
               <h4 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>LATEST REVIEWS</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {(viewProfile.topComments || [
-                  { author: `Marketing Director, ${viewProfile.recentWorks[0] || 'Tech Corp'}`, text: `"${viewProfile.name.split(' ')[0]} was amazing to work with! Delivered the UGC video 2 days early and it converted at 3.5x ROAS immediately. Highly recommended."` }
-                ]).map((comment, idx) => (
+                {/* Real reviews only. This used to fall back to a generated five-star
+                    testimonial - the creator's own first name and a past client spliced
+                    into "was amazing to work with ... converted at 3.5x ROAS" - and since
+                    not one of the 42 parsed creators carried a review, every profile in the
+                    marketplace showed it. It is a review of work that never happened,
+                    attributed to a company that never commissioned it, on a named person's
+                    profile, read by brands deciding who to pay. */}
+                {!(viewProfile.topComments || []).length && (
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    No reviews yet. This creator has not been rated on Raftra.
+                  </div>
+                )}
+                {(viewProfile.topComments || []).map((comment, idx) => (
                   <div key={idx} style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', gap: '4px', color: 'var(--warning)', marginBottom: '8px' }}>
-                      <Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" />
-                    </div>
+                    {/* Filled to the creator's actual rating rather than always five. */}
+                    {!!viewProfile.rating && (
+                      <div style={{ display: 'flex', gap: '4px', color: 'var(--warning)', marginBottom: '8px' }}>
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <Star key={n} size={12}
+                                fill={n <= Math.round(viewProfile.rating as number) ? 'currentColor' : 'none'} />
+                        ))}
+                      </div>
+                    )}
                     <p style={{ fontSize: '13px', color: '#fff', lineHeight: 1.5, margin: 0 }}>
                       {comment.text}
                     </p>
@@ -1770,13 +1838,13 @@ export const WorkspaceInfluencer: React.FC<{ workspaceId: number | null }> = ({ 
               </p>
 
               <div style={{ background: '#070709', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '12px', fontSize: '11.5px', fontFamily: 'var(--font-mono)', color: '#00E676', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                {`--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Demo Brand\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`}
+                {verificationMessage}
               </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
                 <button
                   onClick={() => {
-                    const text = `--------------------------------------------------\n🛡️ RAFTRA OFFICIAL BRAND COMPLETION VERIFICATION\n--------------------------------------------------\nCampaign: Video Reel Campaign\nBrand: Demo Brand\nCreator: ${paidDealInfo.creator.name} (${paidDealInfo.creator.handle})\nTimestamp: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}\nVerification Code: RAFTRA-VERIFIED-${Math.floor(10000 + Math.random() * 90000)}\n\n"We hereby confirm that deliverables are received, reviewed, published, and we are 100% satisfied with the work! You may upload screenshot proof to Team Raftra for Escrow payout release."\n--------------------------------------------------`;
+                    const text = verificationMessage;
                     navigator.clipboard.writeText(text);
                     alert("Copied Satisfactory Approval Message! Send this to influencer on WhatsApp once work is delivered.");
                   }}

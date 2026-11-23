@@ -21,6 +21,7 @@ import json
 import asyncio
 import os
 import re
+import time
 from typing import Optional
 
 import httpx
@@ -36,8 +37,46 @@ _DEFAULT_MODEL = os.getenv("CREATIVE_ANALYZER_MODEL", "gemini-2.5-flash")
 # so it gets a retry. 120s rather than 90s because a populated vault makes the request
 # meaningfully larger, and a timeout here costs the whole brand grounding.
 _ANALYZER_TIMEOUT_SEC = float(os.getenv("CREATIVE_ANALYZER_TIMEOUT_SEC", "120"))
+
+# How much brand knowledge reaches the analyser.
+#
+# This was 6000, chosen when a measured context was 3,643 chars. Contexts have since grown
+# with the vault: a fully-onboarded workspace now measures 20,207 chars, so that cap was
+# silently discarding 70% of the brand - and discarding it from the END, which is where
+# core.rag.format_brand_kit puts the two lists that keep copy out of trouble. Measured on
+# live workspace 12: SAFE TO CLAIM sat at char 14,944 and DO NOT CLAIM at 15,943, both far
+# past the cut, along with the voice guide, differentiators, categories and core message.
+#
+# Input budget is not the constraint here. This is a text call to a model that accepts
+# about a million tokens; 24k chars is roughly 6k. The image prompt is built separately by
+# core.creative.optimizer from the returned spec, so a longer analyser prompt does NOT make
+# the prompt that reaches the image model any longer.
+_BRAND_CONTEXT_CHARS = int(os.getenv("CREATIVE_BRAND_CONTEXT_CHARS", "24000"))
+
+# Sections that must survive truncation even when a context is too large to send whole.
+# A brand big enough to overflow the budget is exactly the one whose prohibited-claims list
+# matters most, and losing it produces confident, on-brand, unsupportable copy - the single
+# most expensive failure this pipeline can produce.
+_PRIORITY_SECTIONS = (
+    "DO NOT CLAIM",
+    "SAFE TO CLAIM",
+    "VOICE (write in this voice",
+)
 _ANALYZER_ATTEMPTS = int(os.getenv("CREATIVE_ANALYZER_ATTEMPTS", "2"))
 _ANALYZER_RETRY_DELAY_SEC = float(os.getenv("CREATIVE_ANALYZER_RETRY_DELAY_SEC", "2"))
+
+# Wall-clock ceiling for the WHOLE model walk, not per attempt.
+#
+# Per-model limits do not bound the total: seven ids at one 120s timeout each is still
+# fourteen minutes before anything reaches the user. A measured service.plan() took 250s
+# while the image generation after it took 8, so this is nearly all of what "generating
+# an image ad is slow" means.
+#
+# Exceeding it is not a failure path — the function already falls back to _heuristic_spec,
+# which produces a usable creative from the prompt verbatim without brand knowledge. So
+# the trade is explicit: past this point a plainer creative now beats a better one in four
+# minutes. Raise CREATIVE_ANALYZER_BUDGET_SEC if a deployment would rather wait.
+_ANALYZER_BUDGET_SEC = float(os.getenv("CREATIVE_ANALYZER_BUDGET_SEC", "75"))
 
 _SYSTEM = """You are an advertising creative director who outputs ONLY JSON.
 
@@ -48,6 +87,12 @@ HARD RULES
   style word they wrote must survive into the spec.
 - NEVER invent a brand name, statistic, price, claim or audience the user did not state.
   Leave those fields as empty strings instead.
+- A claim the USER asked for is not thereby substantiated. Regulated and comparative
+  claims - "clinically proven", "dermatologist tested", "FDA approved", "cheapest", "most
+  affordable", "best in the world", "#1", "guaranteed", "risk-free" - may appear ONLY if
+  that wording is in the brand context below under SAFE TO CLAIM. Otherwise write what the
+  product does and drop the claim; do not substitute a synonym for it. This holds even
+  when the request names the claim outright, and it holds when no brand context is given.
 - Use sensible defaults for purely visual fields (lighting, composition, camera angle) 
   those are craft decisions, not facts about the user's business.
 - Set "text_in_image" to true ONLY if the user explicitly asked for words, a slogan or a
@@ -160,6 +205,57 @@ async def _fetch_image_part(image_url: str) -> Optional[dict]:
 # Labels the Brand Knowledge brief uses to structure itself, and the lead-in that names the
 # brand and its domain. Meaningful to the analyser, meaningless to an image model - which
 # tries to PAINT them, along with the brand name and the URL sitting beside them.
+_TRUNCATION_NOTE = ("\n\n[Some brand detail was omitted to fit. The sections below were "
+                    "kept because they constrain what the copy may claim.]")
+
+
+def _fit_brand_context(text: str, limit: int = _BRAND_CONTEXT_CHARS) -> str:
+    """The brand context, trimmed to `limit` without losing the sections that matter most.
+
+    A plain `text[:limit]` keeps whatever happens to come first and throws away the rest.
+    That is the wrong end: core.rag.format_brand_kit builds the kit in reading order and
+    finishes with the claim lists, so a blind cut keeps the brand's self-description and
+    drops the rules about what may not be said about it.
+
+    This keeps the head as before, then guarantees the priority sections are appended -
+    reserving room for them first, so they cannot be squeezed out by a long preamble.
+    """
+    text = text or ""
+    if len(text) <= limit:
+        return text
+
+    kept, seen = [], set()
+    for marker in _PRIORITY_SECTIONS:
+        start = text.find(marker)
+        if start == -1 or start in seen:
+            continue
+        seen.add(start)
+        # To the end of this block: sections are separated by a blank line, and the claim
+        # lists sit at the tail of the kit block.
+        end = text.find("\n\n", start)
+        kept.append(text[start:end if end != -1 else len(text)].rstrip())
+
+    tail = "\n\n".join(kept)
+    if not tail:
+        return text[:limit]
+
+    # Half the budget is held for the head no matter how long the priority sections are.
+    #
+    # Reserving the tail's full length first looked right and was not: on a brand whose
+    # claim lists alone ran to 6.7k, the head budget went to zero and the context opened
+    # with "DO NOT CLAIM" - no brand name, no audience, no palette. Rules about a brand
+    # the model has not been told about are worse than useless.
+    #
+    # When the tail must be cut it is cut from its end, and _PRIORITY_SECTIONS is ordered
+    # so that DO NOT CLAIM survives longest.
+    overhead = len(_TRUNCATION_NOTE) + 2
+    max_tail = max(0, limit - max(1, limit // 2) - overhead)
+    if len(tail) > max_tail:
+        tail = tail[:max_tail].rstrip()
+    head_budget = max(0, limit - len(tail) - overhead)
+    return f"{text[:head_budget].rstrip()}{_TRUNCATION_NOTE}\n\n{tail}"
+
+
 _BRIEF_LEAD_RE = re.compile(
     r"^\s*(?:advertising|marketing)\s+creative\s+for\s+(?P<brand>[^.(]+?)\s*(?:\([^)]*\))?\.\s*",
     re.IGNORECASE)
@@ -230,7 +326,8 @@ def _heuristic_spec(prompt: str, media_type: str, platform: Optional[str],
 async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[str] = None,
                   placement: Optional[str] = None, reference_image_url: str = "",
                   brand_context: str = "", model: Optional[str] = None,
-                  input_method: str = "", copy_angle: str = "") -> CreativeSpec:
+                  input_method: str = "", copy_angle: str = "",
+                  no_copy: bool = False) -> CreativeSpec:
     """Raw request -> CreativeSpec. Exactly one model call."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key or not (prompt or "").strip():
@@ -253,9 +350,10 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
         # of a measured 3,643-char context, and the brand kit's product names and
         # technologies sit near the end of it - exactly the part being cut.
         #
-        # The budget was never the constraint: this context is ~900 tokens against a model
-        # that accepts far more, and the earlier token problem was output-side (fixed by
-        # disabling thinking, see below), not input-side.
+        # The budget was never the constraint, and the earlier token problem was output-side
+        # (fixed by disabling thinking, see below), not input-side. The cap that replaced
+        # that 1500 was itself too small once vaults grew - see _BRAND_CONTEXT_CHARS and
+        # _fit_brand_context, which now keep the claim lists whatever else has to go.
         instruction.append(
             "VERIFIED BRAND KNOWLEDGE for this workspace. This was extracted from the "
             "brand's own website and is given to you as fact - using it is NOT inventing, "
@@ -298,7 +396,7 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
             "leaving them empty means the finished ad has no message on it at all. Base "
             "them on the brand's stated value proposition, differentiators and audience; "
             "the 'never invent' rule still applies to prices, statistics and awards.\n\n"
-            f"{brand_context[:6000]}")
+            f"{_fit_brand_context(brand_context)}")
     if reference_image_url:
         instruction.append(
             "A reference image is attached. Describe its product, colours, shape and framing "
@@ -391,6 +489,25 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
         except Exception:
             model_chain = [_DEFAULT_MODEL]
 
+    # Drop models already known to be out of daily quota.
+    #
+    # llm_providers records that when a call comes back 429, and this module shares its
+    # model LIST but not that knowledge — so the analyzer re-tried ids that had already
+    # answered 429 elsewhere seconds earlier. With most of a free tier exhausted it walks
+    # a chain of dead models, and because a timeout or 5xx is retried, one unresponsive id
+    # can cost ATTEMPTS x TIMEOUT = 240s on its own. A measured service.plan() took 250s;
+    # the image provider after it takes 8.
+    #
+    # Never empties the chain: if every id is cooling down, try them all rather than fall
+    # back to the heuristic spec without asking.
+    try:
+        from core.providers.llm_providers import _on_cooldown
+        live = [m for m in model_chain if not _on_cooldown(m)]
+        if live:
+            model_chain = live
+    except Exception:
+        pass
+
     # Retry the transient failures instead of silently falling back.
     #
     # Falling back means _heuristic_spec, which echoes the user's raw prompt with generic
@@ -403,11 +520,22 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
     finish = None
     text = ""
     last_problem = ""
+    _deadline = time.monotonic() + _ANALYZER_BUDGET_SEC
     for model_name in model_chain:
+        if time.monotonic() >= _deadline:
+            last_problem = ("analyzer budget of %.0fs exhausted; %s"
+                            % (_ANALYZER_BUDGET_SEC, last_problem or "no model answered"))
+            break
         url = _GEMINI_URL.format(model=model_name)
         for attempt in range(_ANALYZER_ATTEMPTS):
             try:
-                async with httpx.AsyncClient(timeout=_ANALYZER_TIMEOUT_SEC) as client:
+                # Bounded by whatever is LEFT of the budget, not the per-call limit.
+                # Checking the deadline only between models does not bound the total: a
+                # call already in flight runs its full timeout past it, which is how a
+                # 75s budget still produced a 132s plan. Floored at 5s so the last slice
+                # is a real attempt rather than an instant timeout.
+                _left = max(5.0, min(_ANALYZER_TIMEOUT_SEC, _deadline - time.monotonic()))
+                async with httpx.AsyncClient(timeout=_left) as client:
                     r = await client.post(url, params={"key": api_key}, json=payload)
                 if r.status_code == 200:
                     body = r.json()
@@ -419,11 +547,27 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
                 # Quota and retirement are facts about this model id, not this moment, so
                 # move on rather than spending the retry budget proving it twice.
                 if r.status_code in (429, 404):
+                    # Tell llm_providers too, so every other caller skips this id for the
+                    # cooldown window instead of each rediscovering it at a round trip each.
+                    if r.status_code == 429:
+                        try:
+                            from core.providers.llm_providers import _mark_exhausted
+                            _mark_exhausted(model_name)
+                        except Exception:
+                            pass
                     break
                 if r.status_code not in (500, 502, 503, 504):
                     break        # a client error will not fix itself
             except Exception as e:
                 last_problem = f"{model_name} {type(e).__name__}: {e}"
+                # A model that did not answer within the timeout will not answer on a
+                # second try either — it is overloaded, not unlucky. Retrying it spends
+                # another full TIMEOUT before moving on, which is how one unresponsive id
+                # costs 2 x 120s. Move to the next model instead; 5xx still retries above,
+                # because that genuinely is transient, and nothing changes for a call that
+                # succeeds.
+                if isinstance(e, (httpx.TimeoutException, asyncio.TimeoutError)):
+                    break
             if attempt + 1 < _ANALYZER_ATTEMPTS:
                 print(f"[creative.analyzer] {last_problem} - retrying "
                       f"({attempt + 2}/{_ANALYZER_ATTEMPTS})")
@@ -449,11 +593,14 @@ async def analyze(prompt: str, *, media_type: str = "image", platform: Optional[
               f"{len(text)} chars); falling back to the verbatim prompt")
         return _heuristic_spec(prompt, media_type, platform, reference_image_url, placement)
     return build_spec(data, prompt=prompt, media_type=media_type, platform=platform,
-                      placement=placement, reference_image_url=reference_image_url)
+                      placement=placement, reference_image_url=reference_image_url,
+                      finish_reason=finish, no_copy=no_copy)
 
 
 def build_spec(data: dict, *, prompt: str, media_type: str, platform: Optional[str],
-               placement: Optional[str] = None, reference_image_url: str = "") -> CreativeSpec:
+               placement: Optional[str] = None, reference_image_url: str = "",
+               finish_reason: Optional[str] = None,
+               no_copy: bool = False) -> CreativeSpec:
     """Model JSON -> validated CreativeSpec. Caller-supplied values win over the model's:
     the user explicitly picked a platform and media type in the UI, so a model that
     disagrees does not get to override them."""
@@ -495,4 +642,31 @@ def build_spec(data: dict, *, prompt: str, media_type: str, platform: Optional[s
             voiceover=str(vd.get("voiceover") or ""),
             scenes=[s for s in (vd.get("scenes") or []) if isinstance(s, dict)],
         )
+
+    # Carried from the caller, and set BEFORE the check below.
+    #
+    # The route used to apply this only after plan() returned, by which time the diagnostic
+    # had already run and printed - so every deliberate clean-image request logged a false
+    # positive. analyze() and build_spec() have one caller each, so threading it through is
+    # a two-signature change rather than a refactor.
+    spec.no_copy = bool(no_copy)
+
+    # The one silent branch in this file.
+    #
+    # Every other failure here prints: a retry, a model switch, "GIVING UP", an unparseable
+    # response. This one - the analyser answered, the JSON parsed, and it simply contained no
+    # advertising copy - said nothing at all, and the creative went on to render as a bare
+    # image marked `completed`. Measured on production: 32 creatives, 31 of them delivered to
+    # a user that way. finishReason is included because it is the only signal that separates
+    # a model that chose to omit copy from one that was cut off mid-answer, and until now it
+    # was printed once and discarded.
+    from .validation import missing_ad_copy
+    gaps = missing_ad_copy(spec)
+    if gaps:
+        print(f"[creative.analyzer] analysis SUCCEEDED but returned no "
+              f"{', '.join(gaps)} (media_type={spec.media_type}, "
+              f"platform={spec.platform or '-'}/{spec.placement or '-'}, "
+              f"finishReason={finish_reason or 'unknown'}, "
+              f"prompt_chars={len(prompt or '')}). The creative will have no copy to render.")
+
     return spec.apply_platform_defaults()

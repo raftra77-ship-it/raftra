@@ -91,6 +91,22 @@ def setup_workspace(body: OnboardingSetup, db: Session = Depends(database.get_db
     if not ws:
         name = (body.name or "").strip() or "My Workspace"
         url = normalize_target_url(body.company_url or "") or (body.company_url or None)
+
+        # Refuse a host nothing could ever crawl, before a workspace is built around it.
+        #
+        # normalize_target_url fixes the shape of a URL and asks nothing about the host, so
+        # "hdh", "bdh" and "12345678" were accepted on production and became three
+        # permanent, unusable workspaces - each one ran a full onboarding crawl against
+        # nothing, reported COMPLETED, and left its owner with an empty brand kit and no
+        # explanation. Catching it here costs one regex and gives the user something they
+        # can act on.
+        from core.brand_kit import is_crawlable_host
+        if url and not is_crawlable_host(url):
+            raise HTTPException(
+                status_code=400,
+                detail=(f"{body.company_url!r} is not a website address we can read. "
+                        f"Enter your brand's public domain, for example "
+                        f"https://yourbrand.com"))
         ws = models.Workspace(name=name, company_url=url, brand_color=body.brand_color,
                               brand_voice=body.brand_voice, user_id=current_user.id)
         db.add(ws)
@@ -220,6 +236,9 @@ class BrandProfileUpdate(_WorkspaceBase):
     guidelines: Optional[dict] = None
 
 
+from core.brand_kit import extraction_report  # noqa: E402
+
+
 def _brand_profile_json(ws, bp) -> dict:
     """Merges the workspace's own brand fields with the scraped profile. The Knowledge Vault
     needs both: name/url/voice/colour live on the workspace, while the summary, audience,
@@ -244,6 +263,13 @@ def _brand_profile_json(ws, bp) -> dict:
         # than asserted. The vault shows it so a thin extraction is visible as thin instead
         # of looking finished, and so someone can see WHICH sections are missing.
         "quality": _brand_quality(bp),
+        # What the crawl actually obtained, across the six dimensions the Brand Kit card
+        # renders. Distinct from `quality`, which scores the written guidelines and returns
+        # {} when there are none - silence in exactly the case worth reporting. Six of nine
+        # production workspaces held no logo, palette or typography and were all flagged
+        # onboarded; two had crawled zero pages. This is what lets the card say so.
+        "extraction": extraction_report(bp, (bp.guidelines if bp else None) or {},
+                                        brand_voice=ws.brand_voice),
     }
 
 
@@ -543,6 +569,14 @@ def knowledge_stats(workspace_id: int, db: Session = Depends(database.get_db),
         "dimensions": EMBEDDING_DIM,
         "total_vectors": 0,
         "stores": [],
+        # Chunks this workspace HAS but the running provider cannot search, keyed by the
+        # model that wrote them. Without this the screen cannot tell "never indexed" from
+        # "indexed by the other provider": stats() counts only the active model, so a
+        # stranded page reports as a flat zero and the user is told their site was never
+        # crawled. Measured on workspace 4, whose only brand page sat under bge-small
+        # while the deploy searched for gemini rows.
+        "stranded": {},
+        "stranded_total": 0,
     }
     try:
         st = vector_store.stats(workspace_id)
@@ -568,6 +602,13 @@ def knowledge_stats(workspace_id: int, db: Session = Depends(database.get_db),
             for t, n in sorted(by_type.items(), key=lambda kv: -kv[1])
         ]
         base.update({"available": True, "total_vectors": st.get("total", 0), "stores": stores})
+        try:
+            health = vector_store.index_health(workspace_id)
+            base["stranded"] = health.get("stale") or {}
+            base["stranded_total"] = health.get("stale_total", 0)
+        except Exception as e:
+            # Never fail the whole panel over the diagnostic half of it.
+            print(f"knowledge_stats: index health unavailable for ws {workspace_id}: {e}")
         return base
     except Exception as e:
         print(f"knowledge_stats: vector store unavailable for ws {workspace_id}: {e}")

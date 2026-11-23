@@ -26,6 +26,16 @@ DEFAULT_COUNTRY = os.getenv("DEFAULT_MARKET_COUNTRY", "IN")
 KIND_AD = "competitor_ad"
 KIND_TREND = "market_trend"
 
+# The product's cadences, and the only copy of them. They used to be stated three times -
+# here in the scheduler's trigger, and again in intelligence_routes - so the number the UI
+# promised and the number the job honoured could drift apart silently.
+TREND_SYNC_DAYS = 30
+AD_SYNC_DAYS = 15
+
+# A run that failed or was skipped is retried sooner than the full cadence: the usual cause
+# is a missing token or a rate limit, and neither is worth a fortnight's wait once fixed.
+RETRY_AFTER_FAILURE_DAYS = 1
+
 
 def _record(db, workspace_id: int, kind: str, status: str, message: str = "",
             items: int = 0, started: Optional[datetime] = None):
@@ -351,8 +361,22 @@ async def _eligible_workspaces() -> List[int]:
     return [r[0] for r in rows if r[0]]
 
 
-async def run_all_competitor_ad_syncs():
+async def _due_workspaces(kind: str, cadence_days: int) -> List[int]:
+    """The eligible workspaces that are actually owed a run of `kind`.
+
+    The scheduler polls far more often than the cadence and this decides who runs, so a
+    missed window is picked up on the next poll instead of being lost until the next boot.
+    """
+    from database import SessionLocal
     ids = await _eligible_workspaces()
+    with SessionLocal() as db:
+        return [ws_id for ws_id in ids if is_due(db, ws_id, kind, cadence_days)]
+
+
+async def run_all_competitor_ad_syncs():
+    ids = await _due_workspaces("competitor_ads", AD_SYNC_DAYS)
+    if not ids:
+        return
     print("[intel_sync] competitor-ad sync starting for %d workspace(s)." % len(ids))
     for ws_id in ids:
         try:
@@ -365,7 +389,9 @@ async def run_all_competitor_ad_syncs():
 
 
 async def run_all_market_trend_syncs():
-    ids = await _eligible_workspaces()
+    ids = await _due_workspaces("market_trends", TREND_SYNC_DAYS)
+    if not ids:
+        return
     print("[intel_sync] market-trend sync starting for %d workspace(s)." % len(ids))
     for ws_id in ids:
         try:
@@ -387,3 +413,39 @@ def last_sync(db, workspace_id: int, kind: str):
 
 def next_due(last: Optional[datetime], days: int) -> Optional[datetime]:
     return (last + timedelta(days=days)) if last else None
+
+
+def is_due(db, workspace_id: int, kind: str, cadence_days: int) -> bool:
+    """Whether a scheduled run of `kind` is owed for this workspace.
+
+    Read from sync_runs rather than from the scheduler, because the scheduler cannot be the
+    authority on this. APScheduler is configured with the default in-memory job store, so
+    every restart forgets when a job last fired and re-arms it relative to boot. On Render's
+    free tier the process sleeps after fifteen idle minutes, so the competitor-ad job - armed
+    three hours after each boot - needed three unbroken hours of uptime just to fire once,
+    and fifteen unbroken days to fire twice. Measured against production: market trends ran
+    three times in five weeks while competitor ads did not attempt a single run between
+    2026-09-25 and 2026-11-03, despite a fifteen-day cadence.
+
+    The same bug points the other way on a host that restarts often but stays up: each boot
+    re-arms a fire an hour later, so a paid source could be billed far more often than the
+    cadence promises. Anchoring to the last recorded run fixes both directions.
+    """
+    last = last_sync(db, workspace_id, kind)
+    return due_from(getattr(last, "status", None),
+                    getattr(last, "started_at", None), cadence_days)
+
+
+def due_from(last_status: Optional[str], last_started_at: Optional[datetime],
+             cadence_days: int, now: Optional[datetime] = None) -> bool:
+    """The cadence rule itself, separated from the query so it can be tested directly.
+
+    A workspace that has never run is owed one immediately. After that the wait is the full
+    cadence on success, and RETRY_AFTER_FAILURE_DAYS on a failure or a skip - a run that
+    failed for want of a token should resume the day the token is added, not a fortnight
+    later. Times are naive UTC throughout, matching SyncRun.started_at.
+    """
+    if last_started_at is None:
+        return True
+    wait = cadence_days if last_status == "success" else RETRY_AFTER_FAILURE_DAYS
+    return (now or datetime.utcnow()) >= last_started_at + timedelta(days=wait)

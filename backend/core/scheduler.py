@@ -29,6 +29,12 @@ _scheduler: AsyncIOScheduler | None = None
 # all at once (the free Gemini tier is per-day, per-model).
 _DELAY_BETWEEN_WORKSPACES_SEC = 20
 
+# How often the intelligence jobs ASK whether a sync is owed - not how often they sync.
+# Kept under Render's fifteen-minute idle timeout so a free-tier process polls at least
+# once before it is put to sleep; the due-ness check in core.intel_sync is what stops a
+# frequent poll turning into a frequent sync.
+_INTEL_POLL_MINUTES = int(os.getenv("INTEL_POLL_MINUTES", "10"))
+
 
 RULE_ENFORCEMENT_MINUTES = int(os.getenv("RULE_ENFORCEMENT_MINUTES", "30"))
 
@@ -207,25 +213,39 @@ def start_scheduler():
         print("[scheduler] Monthly SEO/GEO audit scheduler started (1st of month, 06:00 UTC).")
 
     if intel:
-        from core.intel_sync import run_all_competitor_ad_syncs, run_all_market_trend_syncs
+        from core.intel_sync import (run_all_competitor_ad_syncs, run_all_market_trend_syncs,
+                                     AD_SYNC_DAYS, TREND_SYNC_DAYS)
 
-        # Interval rather than cron: a cron day-of-month rule drifts against a fixed day
-        # count in every month that is not 28 days long. The first run is deferred by an
-        # hour so a redeploy does not fire both syncs for every workspace the moment the
-        # process boots.
+        # These two jobs POLL; they do not themselves keep the cadence. Each run asks the
+        # database which workspaces are owed a sync (intel_sync.is_due) and skips the rest.
+        #
+        # The trigger used to carry the cadence directly - IntervalTrigger(days=15) from a
+        # start_date of boot+3h - which quietly made process uptime the schedule. This
+        # scheduler uses APScheduler's default in-memory job store, so a restart forgets
+        # when a job last fired and re-arms it relative to the new boot. Render's free tier
+        # sleeps the process after fifteen idle minutes, so the competitor-ad job needed
+        # three unbroken hours just to fire once and fifteen unbroken days to fire twice:
+        # in production it did not attempt a single run between 2026-09-25 and 2026-11-03.
         #
         # Cadences are the product's, not inferred: market trends every 30 days, competitor
         # ads every 15. An earlier comment here argued the reverse — that trends move faster
         # than a rival's creative rotation, so trends deserved the shorter slot — and swapped
         # them on that reasoning. That is backwards for this product: a competitor's live ad
         # set is the thing that changes week to week and is worth catching early, while a
-        # market trend report is a slower, broader read. Changing these two numbers changes
-        # how often external APIs are billed, so they are stated in days to match the spec
-        # exactly rather than in weeks that approximate it.
-        first = datetime.utcnow() + timedelta(hours=1)
+        # market trend report is a slower, broader read. They now live in one place,
+        # core.intel_sync, because the UI quotes the same numbers back to the user.
+        #
+        # The poll window is deliberately shorter than Render's fifteen-minute idle timeout.
+        # A longer one would reintroduce the same bug in miniature: a free-tier process that
+        # sleeps before the first poll fires never syncs at all. The old hour-long deferral
+        # was there to stop a redeploy stampeding every workspace at once; that job now
+        # belongs to the due-ness check, which only returns workspaces genuinely overdue, so
+        # a few minutes is enough to keep boot quiet. The two are staggered so they never
+        # share a window.
+        first = datetime.utcnow() + timedelta(minutes=5)
         _scheduler.add_job(
             run_all_market_trend_syncs,
-            IntervalTrigger(days=30, start_date=first),
+            IntervalTrigger(minutes=_INTEL_POLL_MINUTES, start_date=first),
             id="monthly_market_trend_sync",
             replace_existing=True,
             misfire_grace_time=6 * 3600,
@@ -234,15 +254,16 @@ def start_scheduler():
         )
         _scheduler.add_job(
             run_all_competitor_ad_syncs,
-            IntervalTrigger(days=15, start_date=first + timedelta(hours=2)),
+            IntervalTrigger(minutes=_INTEL_POLL_MINUTES, start_date=first + timedelta(minutes=2)),
             id="fortnightly_competitor_ad_sync",
             replace_existing=True,
             misfire_grace_time=6 * 3600,
             coalesce=True,
             max_instances=1,
         )
-        print("[scheduler] Intelligence syncs started (market trends every 30 days, "
-              "competitor ads every 15 days; first run ~1h from boot).")
+        print("[scheduler] Intelligence syncs started (market trends every %d days, "
+              "competitor ads every %d days; due-check every %dm, first check ~5m from boot)."
+              % (TREND_SYNC_DAYS, AD_SYNC_DAYS, _INTEL_POLL_MINUTES))
 
     # Campaign Optimization Rules enforcement. Opt-in for the same reason the audits are:
     # this one PAUSES live advertising without the user present, so it must be a deliberate

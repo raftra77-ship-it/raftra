@@ -243,7 +243,10 @@ class AdAsset(Base):
     # generation_status is deliberately separate from `status` above: that column is the
     # human review state (pending_review/approved/rejected) and existing queries filter on
     # it, so overloading it with processing/completed/failed would break them.
-    generation_status = Column(String, nullable=True)   # processing | completed | failed
+    # processing | completed | incomplete | failed. `incomplete` means the asset
+    # rendered but carries no advertising copy, so it is a picture rather than a
+    # finished advertisement - see core/creative/validation.py.
+    generation_status = Column(String, nullable=True)
     original_prompt = Column(Text, nullable=True)       # exactly what the user typed
     optimized_prompt = Column(Text, nullable=True)      # what the provider actually received
     creative_spec = Column(JSON, nullable=True)         # CreativeSpec — the source of truth
@@ -259,6 +262,39 @@ class AdAsset(Base):
 
     workspace_id = Column(Integer, ForeignKey("workspaces.id"))
     workspace = relationship("Workspace", back_populates="ad_assets")
+
+
+class BrandEvaluation(Base):
+    """One scored check of a generated asset against the workspace's brand vault.
+
+    Mirrors migration b4c7e2f09a13. Append-only: a row is never updated in place, so a
+    verdict that changes can be traced to the cause - the brand being edited
+    (profile_fingerprint), the rule set changing (criteria_version), or a different model
+    answering (models_used). Overwriting would destroy exactly that history.
+
+    `status` is PASS | FAIL | UNKNOWN. UNKNOWN is a first-class outcome, not a failure to
+    record: a criterion whose tier is not enabled reports that it could not be judged
+    rather than silently passing.
+    """
+    __tablename__ = "brand_evaluations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    ad_asset_id = Column(Integer, ForeignKey("ad_assets.id", ondelete="CASCADE"),
+                         nullable=True, index=True)
+    media_type = Column(String, nullable=True)
+    status = Column(String, nullable=False, index=True)
+    overall_score = Column(Integer, nullable=True)
+    dimension_scores = Column(JSON, nullable=True)
+    violations = Column(JSON, nullable=True)
+    unknowns = Column(JSON, nullable=True)
+    profile_fingerprint = Column(String, nullable=True, index=True)
+    criteria_version = Column(String, nullable=True)
+    models_used = Column(JSON, nullable=True)
+    tiers_run = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
 
 class SEOAudit(Base):
     __tablename__ = "seo_audits"

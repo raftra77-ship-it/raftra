@@ -220,10 +220,11 @@ class CreativeService:
         # Rotated per run so pressing Generate again gives a different ad, not the same one.
         angle = await asyncio.to_thread(_pick_copy_angle, workspace_id)
 
+        from core.creative.validation import wants_no_copy
         spec = await analyze(prompt, media_type=media_type, platform=platform,
                              placement=placement, reference_image_url=reference_image_url,
                              brand_context=brand, input_method=input_method,
-                             copy_angle=angle)
+                             copy_angle=angle, no_copy=wants_no_copy(options))
         # Ask for a green screen only when a screenshot exists to replace it with.
         #
         # Requesting one otherwise would be strictly worse: the creative would ship with a
@@ -494,6 +495,27 @@ class CreativeService:
             succeeded = bool(image_url) and (spec.media_type != "video" or bool(video_url))
             asset.generation_status = "completed" if succeeded else (
                 "completed" if image_url else "failed")
+
+            # An image with no copy on it is a picture, not an advertisement, and must not
+            # be reported as a finished one.
+            #
+            # Measured on production: 31 creatives were marked `completed` and handed to a
+            # user with no headline, no body and no call to action. The image is KEPT - it
+            # cost a provider call and may be exactly the background someone wanted - but the
+            # status says what it is and the row carries the reason, which the job endpoint
+            # already exposes as `error`. Video is untouched: its copy lives in captions and
+            # voiceover, neither of which this pipeline produces yet.
+            from core.creative.validation import (missing_ad_copy, describe_missing,
+                                                  final_generation_status)
+            gaps = missing_ad_copy(spec)
+            resolved = final_generation_status(asset.generation_status, gaps)
+            if resolved != asset.generation_status:
+                asset.generation_status = resolved
+                note = describe_missing(gaps)
+                asset.error_message = f"{error} | {note}" if error else note
+                await log("Copy Check",
+                          f"No {', '.join(gaps)} to render - delivered as an image, not an "
+                          f"advertisement.", "failed")
             db.commit()
             payload = {
                 "id": asset.id, "workspace_id": asset.workspace_id,
@@ -519,6 +541,38 @@ class CreativeService:
                               f"Generated: {(spec.original_prompt or '')[:80]}")
         except Exception:
             pass
+
+        # Brand-consistency check on the finished asset.
+        #
+        # Until this call existed, core.creative.evaluate was imported by nothing: the rule
+        # set, its tests and its table were all in place and no generated creative was ever
+        # actually checked against the vault it was generated for. The prompt-side rules in
+        # analyzer.py stop a bad claim being WRITTEN; this is the independent read of what
+        # was in fact produced, which is the only one that can catch a prompt rule missing.
+        #
+        # Three deliberate constraints:
+        #   * It runs AFTER the asset is committed and broadcast, so a slow or broken
+        #     evaluation can never delay or fail a generation the user is waiting on.
+        #   * It is advisory only. evaluate/__init__ states there is no path from a report
+        #     to regeneration; a FAIL is recorded for a person to act on, and the asset is
+        #     delivered either way.
+        #   * Everything is swallowed. A missing brand_evaluations table (the migration is
+        #     applied separately) must degrade to a log line, not a failed creative.
+        if workspace_id and (image_url or video_url):
+            try:
+                from core.creative.evaluate import evaluate_asset
+                report = await asyncio.to_thread(evaluate_asset, creative_id, workspace_id)
+                if report is not None:
+                    unknown = len(getattr(report, "unknowns", None) or [])
+                    detail = (f"Brand check: {report.status} ({report.overall_score}/100)"
+                              + (f", {len(report.violations)} violation(s)"
+                                 if report.violations else "")
+                              + (f", {unknown} not evaluable" if unknown else ""))
+                    await log("Brand Evaluator", detail,
+                              "failed" if report.status == "FAIL" else "completed")
+            except Exception as e:
+                print(f"[creative.service] brand evaluation skipped "
+                      f"({type(e).__name__}: {e})")
 
     def get(self, creative_id: int, workspace_id: int) -> Optional[dict]:
         """Job/status read. Scoped by workspace so one workspace cannot read another's asset."""
@@ -551,6 +605,10 @@ class CreativeService:
                 "primary_text": a.body_text,
                 "cta": a.cta,
                 "error": a.error_message,
+                # Whether a wordless creative was ASKED for. Without it the caller cannot
+                # tell an intentional background plate from copy that went missing.
+                "no_copy": bool((a.creative_spec or {}).get("no_copy")
+                                if isinstance(a.creative_spec, dict) else False),
                 # What was REQUESTED. Without it the poller cannot tell "an image ad, which
                 # correctly has no video" from "a video ad whose video step failed" — both
                 # arrive as status=completed with an image_url and no video_url, so the

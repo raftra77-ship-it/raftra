@@ -1400,3 +1400,246 @@ def assess_brand_kit(kit: "BrandKit", page_count: int = 0) -> dict:
         "agent_questions_answerable": answerable,
         "agent_readiness_pct": round(100 * sum(1 for v in answerable.values() if v) / len(answerable)),
     }
+
+
+# --------------------------------------------------------------- extraction outcome
+#
+# Why this exists
+# ---------------
+# `is_onboarded` was set to True at the end of the onboarding pipeline unconditionally, so
+# it recorded "the pipeline ran", not "we obtained a brand". Measured on production: of nine
+# workspaces, six had no logo, no palette and no typography, and every one of them was
+# flagged onboarded. Two had crawled ZERO pages (one of them a real, reachable site) and
+# still reported success; three never reached the persistence step at all and left no record
+# of having tried.
+#
+# The flag is deliberately NOT repurposed. "Did this person finish onboarding" drives
+# routing after login - tightening it would trap anyone with a thin kit in the onboarding
+# loop forever. "Do we actually hold a usable brand" is a different question, and this is
+# it: computed, recorded with the extraction, and surfaced so a user can see what is missing
+# and fix it.
+#
+# The six dimensions mirror the Brand Kit checklist the dashboard already renders
+# (ModernHomeOverview `kitReady`), so the screen and the pipeline cannot disagree about
+# what "complete" means.
+
+COVERAGE_FIELDS = ("logo", "colors", "typography", "voice", "audience", "guidelines")
+
+# Below this, generation is working from almost nothing and the output will be generic no
+# matter which image model runs. Chosen to match the dashboard's own checklist rather than
+# tuned: 2 of 6 is the point where a creative can carry neither the brand's look (logo,
+# colours, type) nor its words (voice, audience, guidelines).
+COVERAGE_USABLE_MIN = 3
+
+
+def _nonempty(value) -> bool:
+    """True when a stored field actually carries something.
+
+    JSON columns arrive as [], {}, None or the string "null" depending on how they were
+    written, and every one of those has been seen in this table.
+    """
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() not in ("", "null", "[]", "{}", NOT_AVAILABLE)
+    if isinstance(value, (list, dict, tuple, set)):
+        return len(value) > 0
+    return bool(value)
+
+
+def coverage(*, logos=None, color_palette=None, color_tokens=None, typography=None,
+             brand_voice=None, target_audience=None, guidelines=None) -> dict:
+    """What this workspace actually holds, per dimension. Pure: no database, no network.
+
+    Returns the per-field booleans, how many are present, the ones that are missing, and
+    whether the kit clears the bar at which generation can carry the brand at all.
+    """
+    g = guidelines if isinstance(guidelines, dict) else {}
+
+    present = {
+        "logo": _nonempty(logos),
+        # Either shape counts: color_tokens is the richer one, color_palette the older
+        # flat list. A workspace holding only the old shape is still a workspace with
+        # colours.
+        "colors": _nonempty(color_tokens) or _nonempty(color_palette),
+        "typography": _nonempty(typography),
+        "voice": _nonempty(brand_voice) or _nonempty(g.get("tone")),
+        "audience": _nonempty(target_audience) or _nonempty(g.get("target_audiences")),
+        "guidelines": any(_nonempty(g.get(k)) for k in ("usps", "categories", "positioning",
+                                                        "messaging", "brand_story")),
+    }
+    missing = [f for f in COVERAGE_FIELDS if not present[f]]
+    score = len(COVERAGE_FIELDS) - len(missing)
+    return {
+        "fields": present,
+        "score": score,
+        "total": len(COVERAGE_FIELDS),
+        "pct": round(100 * score / len(COVERAGE_FIELDS)),
+        "missing": missing,
+        "usable": score >= COVERAGE_USABLE_MIN,
+    }
+
+
+def extraction_status(cov: dict, source_pages: int) -> str:
+    """One word for what the extraction achieved, for the record and for the user.
+
+    `unreachable` is distinguished from `empty` on purpose: a site we could not read is a
+    different problem, with a different fix, from a site we read and learned nothing from.
+    """
+    if source_pages <= 0:
+        return "unreachable"
+    if cov["score"] == cov["total"]:
+        return "complete"
+    if cov["usable"]:
+        return "partial"
+    return "empty"
+
+
+# A host we could plausibly crawl, checked before a workspace is built around it.
+#
+# normalize_target_url() fixes the SHAPE of a URL - scheme, trailing slash - but asks
+# nothing about the host, so "hdh", "bdh" and "12345678" were all accepted and became
+# permanent workspaces on production. Each one then ran a full onboarding crawl against
+# nothing, reported COMPLETED, and left a user with an empty brand kit and no explanation.
+# Three of nine workspaces are unusable for exactly this reason.
+#
+# Deliberately a shape check, not a DNS lookup: this runs inside a request, a lookup would
+# add latency and fail for sites that are merely down at that moment, and a workspace
+# should not be refused because the site is having a bad minute. Unreachability is a
+# separate, recoverable outcome and is already reported by the crawl itself as
+# status="unreachable".
+_PUBLIC_HOST_RE = re.compile(
+    r"^(?=.{1,253}$)(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$", re.I)
+
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+
+def is_crawlable_host(url: str) -> bool:
+    """True when the URL names a public domain a crawler could reach.
+
+    Rejects bare words with no dot, all-numeric labels, and loopback. Does not resolve
+    anything.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return False
+    host = raw.split("://", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+    host = host.split("@")[-1].split(":", 1)[0].strip().rstrip(".").lower()
+    if not host or host in _LOCAL_HOSTS:
+        return False
+    # An all-numeric dotted host is an IP literal, not a brand's website.
+    if all(part.isdigit() for part in host.split(".")):
+        return False
+    return bool(_PUBLIC_HOST_RE.match(host))
+
+
+def extraction_report(bp, guidelines: dict, brand_voice=None) -> dict:
+    """Coverage of a stored brand kit, plus what the last crawl recorded about itself.
+
+    Shared by the brand-profile and brand-kit endpoints so both answer the same way.
+
+    Computed on read rather than trusted from storage, for two reasons: workspaces
+    onboarded before the provenance block existed carry no recorded coverage at all, and a
+    user editing the kit by hand changes the answer with no crawl having run.
+
+    Distinct from assess_brand_kit(): that scores how good the WRITTEN guidelines are and
+    returns {} when there are none - which is silence in precisely the case worth
+    reporting. This one answers for an empty kit, and covers the visual dimensions
+    (logo, colours, type) that the written assessment does not look at.
+    """
+    meta = dict((guidelines or {}).get(EXTRACTION_META_KEY) or {})
+    if brand_voice is None:
+        brand_voice = getattr(getattr(bp, "workspace", None), "brand_voice", None)
+    cov = coverage(
+        logos=getattr(bp, "logos", None),
+        color_palette=getattr(bp, "color_palette", None),
+        color_tokens=getattr(bp, "color_tokens", None),
+        typography=getattr(bp, "typography", None),
+        brand_voice=brand_voice,
+        target_audience=getattr(bp, "target_audience", None),
+        guidelines=guidelines or {})
+    pages = meta.get("source_pages")
+    return {
+        **cov,
+        "status": meta.get("status") or (extraction_status(cov, pages)
+                                         if isinstance(pages, int) else "unknown"),
+        "source_pages": pages,
+        "last_crawled": meta.get("last_crawled"),
+        "crawled_url": meta.get("crawled_url"),
+    }
+
+
+# --------------------------------------------------------- semantic accent selection
+#
+# The overlay used to paint its call-to-action with color_palette[0] - the FIRST colour,
+# chosen by position rather than by meaning. On workspace 4 and workspace 12 position 0
+# happens to hold the accent, so it looked correct by luck. A brand whose first colour is a
+# background would get a background-coloured button.
+#
+# Roles alone cannot be trusted either: on workspace 4 the extractor labels BOTH
+# "Bg Primary #ffffff" AND "Text Primary #212529" with role "Key CTAs & highlights", so a
+# role-first rule paints the button white or near-black. The name is the more reliable
+# signal, and `source` is the most reliable of all - "computed-cta" means the colour was
+# derived from the site's actual buttons.
+#
+# Order: explicit computation, then name, then role, then any saturated non-surface colour,
+# then the legacy behaviour. Every branch returns WHY, so a questionable button colour can
+# be traced to the token that produced it instead of being guessed at.
+
+_SURFACE_WORDS = ("bg", "background", "surface", "text", "border", "muted", "navbar",
+                  "footer", "shadow", "overlay", "divider", "placeholder", "disabled")
+_ACCENT_WORDS = ("accent", "primary", "brand", "cta", "action", "highlight", "link")
+_ROLE_WORDS = ("cta", "accent", "highlight")
+
+DEFAULT_ACCENT = "#FFFFFF"
+
+
+def _is_surface_named(token: dict) -> bool:
+    return any(w in str(token.get("name") or "").lower() for w in _SURFACE_WORDS)
+
+
+def select_accent(color_tokens, color_palette) -> tuple:
+    """(hex, reason) for the colour the call to action should be painted.
+
+    Deterministic and total: it always returns something, and always says why.
+    Neutrals are excluded by is_brand_colour(), so white, black and greys can never be
+    chosen as an accent however they are labelled.
+    """
+    tokens = [t for t in (color_tokens or []) if isinstance(t, dict)]
+    usable = [t for t in tokens if is_brand_colour(str(t.get("hex") or ""))]
+
+    for t in usable:
+        if str(t.get("source") or "").strip().lower() == "computed-cta":
+            return t["hex"], "source=computed-cta"
+
+    for t in usable:
+        name = str(t.get("name") or "").lower()
+        if any(w in name for w in _ACCENT_WORDS) and not _is_surface_named(t):
+            return t["hex"], f"name={t.get('name')!r}"
+
+    for t in usable:
+        role = str(t.get("role") or "").lower()
+        if any(w in role for w in _ROLE_WORDS) and not _is_surface_named(t):
+            return t["hex"], f"role={t.get('role')!r}"
+
+    for t in usable:
+        if not _is_surface_named(t):
+            return t["hex"], "first saturated non-surface token"
+
+    for c in (color_palette or []):
+        if isinstance(c, str) and is_brand_colour(c):
+            return c, "first saturated palette entry"
+
+    # Legacy behaviour, preserved on purpose: a brand with only neutral colours recorded
+    # still gets its own first colour rather than a default that belongs to nobody.
+    #
+    # Normalised rather than passed through. The first version of this returned any
+    # non-empty string, so a malformed entry like "notahex" became the accent, was handed
+    # to _hex_to_rgb, quietly fell back to white at draw time - and the recorded reason
+    # still claimed it came from the palette. A reason that does not match the pixels is
+    # worse than no reason.
+    for c in (color_palette or []):
+        if isinstance(c, str) and _norm_hex(c):
+            return _norm_hex(c), "palette[0] (no saturated colour available)"
+
+    return DEFAULT_ACCENT, "no colour data"

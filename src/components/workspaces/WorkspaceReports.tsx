@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -31,17 +31,78 @@ import {
 } from 'lucide-react';
 import { GlowButton } from '../GlowButton';
 
+/* Where this screen's data comes from.
+   ------------------------------------------------------------------
+   Everything here used to be two literal arrays: five "power bank" keywords and forty
+   Portronics/StuffCool ads, hard-coded from the design mock this layout came from. They
+   rendered for every workspace, so a Nike customer opened Market Intelligence and read a
+   competitor analysis of a power-bank brand.
+
+   The data was never missing - /api/workspaces/{id}/competitor-ads and /market-trends have
+   been serving the real thing all along, and Creative Studio's ad vault already reads the
+   first of them. This screen simply never asked. It does now, and renders nothing rather
+   than someone else's brand when a workspace has not been synced yet. */
+interface CompetitorAdRow {
+  id: string;
+  brand: string;
+  title: string;
+  hook: string;
+  offer: string;
+  runningDays: string;
+  category: string;
+  color: string;
+}
+
+interface KeywordRow {
+  keyword: string;
+  bucket: string;
+  avgInterest: number;
+  adHook: string;
+  badgeColor: string;
+}
+
+// Stable per competitor, so a brand keeps the same chip colour between renders rather than
+// flickering as the list reorders.
+const BRAND_COLORS = ['#7C75FF', '#00E676', '#00D2FF', '#FFB300', '#FF5C7A', '#A78BFA'];
+
+// Keyed to INTENT_BUCKETS in core/market_trends.py - these are the only four the radar
+// emits. Ordered by how close the intent is to a purchase, so the colour reads as value.
+const BUCKET_COLORS: Record<string, string> = {
+  high_intent: '#00E676',
+  core: '#7C75FF',
+  utility: '#00D2FF',
+  lifestyle: '#FFB300',
+};
+
 interface WorkspaceReportsProps {
   onNavigateTab?: (tab: string) => void;
   brandName?: string;
+  workspaceId?: number | null;
 }
 
 export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
   onNavigateTab,
-  brandName = 'Demo Brand'
+  brandName = 'your brand',
+  workspaceId = null
 }) => {
   const [activeTab, setActiveTab] = useState<'competitor_ads' | 'market_research'>('competitor_ads');
-  const [selectedCompetitor, setSelectedCompetitor] = useState<'all' | 'portronics' | 'stuffcool'>('all');
+  const [selectedCompetitor, setSelectedCompetitor] = useState<string>('all');
+  const [competitorAds, setCompetitorAds] = useState<CompetitorAdRow[]>([]);
+  const [strategicKeywords, setStrategicKeywords] = useState<KeywordRow[]>([]);
+  const [competitorNames, setCompetitorNames] = useState<string[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
+  const [dataError, setDataError] = useState<string>('');
+  // The written analysis. These replaced four paragraphs of prose about Portronics and
+  // StuffCool that were rendered to every brand regardless of who they compete with.
+  const [strategySummary, setStrategySummary] = useState<string>('');
+  const [blueOcean, setBlueOcean] = useState<{ title?: string; rationale?: string; actions?: string[] }>({});
+  const [redOcean, setRedOcean] = useState<{ title?: string; rationale?: string; actions?: string[] }>({});
+  const [videoRefs, setVideoRefs] = useState<{ title: string; url: string }[]>([]);
+  const [totalAds, setTotalAds] = useState<number>(0);
+  const [trendSummary, setTrendSummary] = useState<string>('');
+  const [trendTitle, setTrendTitle] = useState<string>('');
+  const [winningPatterns, setWinningPatterns] = useState<string[]>([]);
+  const [observedOn, setObservedOn] = useState<string>('');
   const [adFilterType, setAdFilterType] = useState<string>('all');
   const [copiedHook, setCopiedHook] = useState<string | null>(null);
 
@@ -91,204 +152,102 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
     }, 1500);
   };
 
-  // Strategic Keywords for Monthly Market Research
-  const strategicKeywords = [
-    {
-      keyword: 'power bank',
-      bucket: 'core',
-      avgInterest: 84,
-      adHook: '“One power bank. No dead-phone panic.” Open with a real low-battery moment, then prove the recovery.',
-      badgeColor: '#00E676'
-    },
-    {
-      keyword: 'charging cable',
-      bucket: 'core',
-      avgInterest: 78,
-      adHook: '“Your cable does more than charge.” Lead with the built-in/utility benefit and a fast visual test.',
-      badgeColor: '#00E676'
-    },
-    {
-      keyword: 'MagSafe power bank',
-      bucket: 'emerging',
-      avgInterest: 24,
-      adHook: '“Snap. Charge. Keep moving.” Use an iPhone-on-the-go scene rather than a feature list.',
-      badgeColor: '#7C75FF'
-    },
-    {
-      keyword: 'fast charger',
-      bucket: 'core',
-      avgInterest: 8,
-      adHook: '“The charger that keeps up with your day.” Show a timed fast-charge proof and multi-device use.',
-      badgeColor: '#00D2FF'
-    },
-    {
-      keyword: '100W charger',
-      bucket: 'lifestyle',
-      avgInterest: 8,
-      adHook: '“One desk charger for laptop, phone and travel.” Demonstrate ports, laptop compatibility and packability.',
-      badgeColor: '#FFB300'
-    }
-  ];
+  /* Live market intelligence for THIS workspace.
 
-  // 40 Meta Ads Data from Ad Library
-  const competitorAds = [
-    {
-      id: 'ad-1',
-      brand: 'Portronics',
-      title: 'Muffs M6 – Made for Music, Movies & More',
-      type: 'Static Banner',
-      hook: 'Cinema sound in your backpack. 50h playback with ultra-soft cushions.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '28 days active',
-      tag: 'Broad Merchandising',
-      category: 'Audio',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-2',
-      brand: 'Portronics',
-      title: 'Play Longer with Twins One',
-      type: 'Static Commerce',
-      hook: 'Switch effortlessly between work and play with dual device pairing.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '21 days active',
-      tag: 'Value Promotion',
-      category: 'Audio',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-3',
-      brand: 'Portronics',
-      title: 'Stylish, Silent & Smart – Meet Key11 Combo',
-      type: 'Static Banner',
-      hook: 'Smart tech, cute setup – now that’s a vibe.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '16 days active',
-      tag: 'Desk Setup',
-      category: 'Peripherals',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-4',
-      brand: 'Portronics',
-      title: 'Beem 560 - Smart LED Netflix Projector',
-      type: 'Video Ad',
-      hook: 'Turn your bedroom ceiling into a 150-inch private cinema.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '35 days active',
-      tag: 'Long Running Winner',
-      category: 'Entertainment',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-5',
-      brand: 'Portronics',
-      title: 'Adapto 65W GaN Fast Charger',
-      type: 'Static Ad',
-      hook: 'One compact adapter for iPhone, Android, and your Type-C laptop.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '14 days active',
-      tag: 'Feature Led',
-      category: 'Charging',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-6',
-      brand: 'Portronics',
-      title: 'Konnect CL Type-C to Lightning Cable',
-      type: 'Static Ad',
-      hook: 'Unbreakable nylon braided fast charging cable with 12-month warranty.',
-      offer: '10% Extra Off with code TODAY',
-      cta: 'Shop now',
-      runningDays: '42 days active',
-      tag: 'Utility Volume',
-      category: 'Cables',
-      color: '#7C75FF'
-    },
-    {
-      id: 'ad-7',
-      brand: 'StuffCool',
-      title: 'Mega 20000mAh 65W Laptop Power Bank',
-      type: 'Video Reel',
-      hook: 'Charge your MacBook anywhere. Full 65W PD output in your backpack.',
-      offer: 'Free Fast Delivery + Cable Included',
-      cta: 'Shop now',
-      runningDays: '32 days active',
-      tag: 'High Wattage Winner',
-      category: 'Power Banks',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-8',
-      brand: 'StuffCool',
-      title: 'Neutron 33W Tiny GaN Fast Charger',
-      type: 'Static Ad',
-      hook: 'Smaller than an iPhone camera bump. Powers iPhones & Samsungs to 50% in 25 mins.',
-      offer: 'Standard Warranty Included',
-      cta: 'Shop now',
-      runningDays: '19 days active',
-      tag: 'Form Factor Hook',
-      category: 'Chargers',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-9',
-      brand: 'StuffCool',
-      title: 'Magnetic MagSafe Wireless Powerbank with Stand',
-      type: 'Video Reel',
-      hook: 'Snap. Stand. Binge watch while wireless charging your iPhone 15 & 16.',
-      offer: 'Special Bundle Pricing',
-      cta: 'Shop now',
-      runningDays: '27 days active',
-      tag: 'Lifestyle MagSafe',
-      category: 'Power Banks',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-10',
-      brand: 'StuffCool',
-      title: 'Centurion 100W 4-Port Fast Desktop Charger',
-      type: 'Static Ad',
-      hook: 'Replace 4 bulky adapters with one sleek GaN charging hub.',
-      offer: 'Free Worldwide Delivery',
-      cta: 'Shop now',
-      runningDays: '15 days active',
-      tag: 'Desk Heavy Duty',
-      category: 'Chargers',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-11',
-      brand: 'StuffCool',
-      title: 'Type-C 100W Braided Cable with LED Wattage Display',
-      type: 'Video Ad',
-      hook: 'See your real-time charging speed right on the cable screen.',
-      offer: 'Instant Dispatch',
-      cta: 'Shop now',
-      runningDays: '38 days active',
-      tag: 'Visual Proof Ad',
-      category: 'Cables',
-      color: '#00D2FF'
-    },
-    {
-      id: 'ad-12',
-      brand: 'StuffCool',
-      title: 'PowerBolt 25000mAh 140W MacBook Pro Monster',
-      type: 'Video Reel',
-      hook: 'Fast charge a 16-inch M3 Max MacBook Pro at full throttle anywhere on Earth.',
-      offer: 'Premium Metal Finish',
-      cta: 'Shop now',
-      runningDays: '12 days active',
-      tag: 'Extreme Power Spec',
-      category: 'Power Banks',
-      color: '#00D2FF'
-    }
-  ];
+     Both endpoints already existed and are already proven - Creative Studio's ad vault
+     reads /competitor-ads today. Failures are soft on purpose: an empty screen that says
+     nothing has been synced is honest, whereas the previous behaviour was to show another
+     brand's competitors with no indication they were fictional. */
+  useEffect(() => {
+    if (!workspaceId) { setCompetitorAds([]); setStrategicKeywords([]); setCompetitorNames([]); return; }
+
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+    setLoadingData(true);
+    setDataError('');
+
+    Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/competitor-ads`, { headers })
+        .then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch(`/api/workspaces/${workspaceId}/market-trends`, { headers })
+        .then(r => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([adsRes, trendRes]: [any, any]) => {
+      if (cancelled) return;
+
+      const names: string[] = [];
+      const ads: CompetitorAdRow[] = [];
+      for (const comp of (adsRes?.competitors || [])) {
+        const name = String(comp?.competitor || '').trim();
+        if (!name) continue;
+        const color = BRAND_COLORS[names.length % BRAND_COLORS.length];
+        names.push(name);
+        for (const ad of (comp?.ads || [])) {
+          // `offers` is a free-shaped object from the Ad Library; take the first value it
+          // actually carries rather than assuming a key name.
+          const offerValues = ad?.offers && typeof ad.offers === 'object'
+            ? Object.values(ad.offers).filter(Boolean) : [];
+          ads.push({
+            id: String(ad?.id ?? `${name}-${ads.length}`),
+            brand: name,
+            title: String(ad?.title || '').trim() || 'Untitled ad',
+            hook: String(ad?.copy || '').trim(),
+            offer: offerValues.length ? String(offerValues[0]) : '',
+            runningDays: ad?.days_active ? `${ad.days_active} days active` : '',
+            category: Array.isArray(ad?.platforms) && ad.platforms.length
+              ? String(ad.platforms[0]) : String(ad?.source || 'meta'),
+            color,
+          });
+        }
+      }
+
+      const kws: KeywordRow[] = ((trendRes?.latest?.strategic_keywords) || [])
+        .filter((k: any) => k && k.keyword)
+        .map((k: any) => {
+          const bucket = String(k.bucket || 'core').toLowerCase();
+          return {
+            keyword: String(k.keyword),
+            bucket,
+            // Interest is a measured score; round it rather than inventing precision.
+            avgInterest: Math.round(Number(k.score) || 0),
+            adHook: String(k.hook || ''),
+            badgeColor: BUCKET_COLORS[bucket] || '#00D2FF',
+          };
+        });
+
+      // The written analysis, taken from whichever competitor the sync actually analysed.
+      const withStrategy = (adsRes?.competitors || [])
+        .find((c: any) => c?.strategy && (c.strategy.summary || c.strategy.blue_ocean?.rationale));
+      setStrategySummary(String(withStrategy?.strategy?.summary || ''));
+      setBlueOcean(withStrategy?.strategy?.blue_ocean || {});
+      setRedOcean(withStrategy?.strategy?.red_ocean || {});
+      setObservedOn(String(withStrategy?.strategy?.synced_at || adsRes?.sync?.last_synced_at || ''));
+      // The scan headline counts every ad in the vault, not just the ones passing the filter.
+      setTotalAds(Number(adsRes?.total_ads) || ads.length);
+
+      setTrendSummary(String(trendRes?.latest?.summary || ''));
+      setTrendTitle(String(trendRes?.latest?.report_title || ''));
+      setWinningPatterns(((trendRes?.latest?.winning_patterns) || []).map((p: any) => String(p)));
+      // Only keep refs that actually have somewhere to go - a title with no URL renders as a
+      // link that does nothing.
+      setVideoRefs(((trendRes?.latest?.creator_video_refs) || [])
+        .filter((v: any) => v && v.url && v.title)
+        .map((v: any) => ({ title: String(v.title), url: String(v.url) })));
+
+      setCompetitorNames(names);
+      setCompetitorAds(ads);
+      setStrategicKeywords(kws);
+      if (!ads.length && !kws.length) {
+        setDataError((adsRes || trendRes)
+          ? 'No market intelligence has been synced for this brand yet. Run a competitor or trend sync to populate it.'
+          : 'Could not load market intelligence for this workspace.');
+      }
+    }).finally(() => { if (!cancelled) setLoadingData(false); });
+
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
 
   const filteredAds = competitorAds.filter(ad => {
     if (selectedCompetitor !== 'all' && ad.brand.toLowerCase() !== selectedCompetitor) return false;
@@ -432,7 +391,7 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                 </span>
               </div>
               <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                40 Active Meta Ads scanned • Next scan {adsLockedUntil ? `unlocked on ${adsLockedUntil}` : 'ready to sync'}
+                {totalAds > 0 ? `${totalAds} Active Meta Ads scanned` : 'No ads scanned yet'} • Next scan {adsLockedUntil ? `unlocked on ${adsLockedUntil}` : 'ready to sync'}
               </p>
             </div>
           </div>
@@ -470,7 +429,7 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                 </span>
               </div>
               <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                Festive Run-Up & Search Intent • Next issue {monthlyLockedUntil ? `unlocked on ${monthlyLockedUntil}` : 'ready to generate'}
+                {trendTitle || 'No report generated yet'} • Next issue {monthlyLockedUntil ? `unlocked on ${monthlyLockedUntil}` : 'ready to generate'}
               </p>
             </div>
           </div>
@@ -491,10 +450,14 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
               <span style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 {brandName.toUpperCase()} COMPETITOR AD REPORT · IN · META ADS
               </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Observed on August 18, 2026</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                {observedOn
+                  ? `Observed on ${new Date(observedOn).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                  : 'Not yet synced'}
+              </span>
             </div>
             <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: 0, lineHeight: 1.6 }}>
-              <strong>Portronics</strong> uses broad, feature-led electronics merchandising with a recurring 10% coupon, while <strong>StuffCool</strong> owns the sharper high-wattage, laptop-ready power narrative. The opening for <strong>{brandName}</strong> is to turn its charging range into scenario-led proof: pocket backup, cable-free iPhone charging, and dependable laptop power—without relying on spec density alone.
+              {strategySummary || `No competitor analysis has been generated for ${brandName} yet. Once a competitor sync runs, the written read on their positioning appears here.`}
             </p>
           </div>
 
@@ -506,16 +469,20 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Sparkles size={18} color="#00E676" />
                 <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 800 }}>
-                  Where We Win ({brandName} Advantage)
+                  Where We Win — {brandName}'s Advantage
                 </h4>
               </div>
               <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.85)', margin: 0, lineHeight: 1.5 }}>
-                {brandName} can own <strong>practical, proudly Indian charging confidence</strong>: modern power for the exact device and moment people depend on.
+                {blueOcean.rationale
+                  || (blueOcean.title ? <strong>{blueOcean.title}</strong> : null)
+                  || `The opening for ${brandName} appears here once a competitor sync has analysed the category.`}
               </p>
+              {/* The actions the analysis actually proposed, rather than three fixed lines
+                  written about a power-bank brand. */}
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div>• Neither competitor consistently organizes the charging decision around everyday scenarios.</div>
-                <div>• Portronics lacks charging authority; StuffCool underplays approachable convenience.</div>
-                <div>• Both use universal <em>"Shop now"</em>, leaving room for decision-support creative.</div>
+                {(blueOcean.actions || []).slice(0, 4).map((action, i) => (
+                  <div key={i}>• {action}</div>
+                ))}
               </div>
             </div>
 
@@ -527,13 +494,30 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                   Blue Ocean & Red Ocean Moves
                 </h4>
               </div>
-              <div style={{ fontSize: '12.5px', color: 'rgba(255, 255, 255, 0.85)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div>🌊 <strong style={{ color: '#00D2FF' }}>Blue Ocean:</strong> Scenario-led charging confidence (Commute, campus, MacBook workday, iPhone desk).</div>
-                <div>🥊 <strong style={{ color: '#ff4757' }}>Red Ocean:</strong> Win high-power proof with transparent workday compatibility rather than generic superlatives.</div>
-              </div>
-              <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                Action: Produce a 4-part scenario Meta creative series & guided choice carousel.
-              </div>
+              {/* Both oceans come from the same analysed competitor as the summary above.
+                  The title is the short framing and the rationale the argument; either may be
+                  blank depending on what the model returned, so each falls back to the other
+                  rather than printing an empty line. */}
+              {(blueOcean.title || blueOcean.rationale || redOcean.title || redOcean.rationale) ? (
+                <div style={{ fontSize: '12.5px', color: 'rgba(255, 255, 255, 0.85)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {(blueOcean.title || blueOcean.rationale) && (
+                    <div>🌊 <strong style={{ color: '#00D2FF' }}>Blue Ocean:</strong> {blueOcean.title || blueOcean.rationale}</div>
+                  )}
+                  {(redOcean.title || redOcean.rationale) && (
+                    <div>🥊 <strong style={{ color: '#ff4757' }}>Red Ocean:</strong> {redOcean.title || redOcean.rationale}</div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                  The uncontested angle and the crowded claim appear here once a competitor sync
+                  has analysed {brandName}'s category.
+                </div>
+              )}
+              {(redOcean.actions?.[0] || blueOcean.actions?.[0]) && (
+                <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                  Action: {redOcean.actions?.[0] || blueOcean.actions?.[0]}
+                </div>
+              )}
             </div>
 
           </div>
@@ -557,9 +541,18 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                   onChange={e => setSelectedCompetitor(e.target.value as any)}
                   style={{ background: '#141420', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12.5px' }}
                 >
-                  <option value="all">All Brands (Portronics + StuffCool)</option>
-                  <option value="portronics">Portronics Only (20 Ads)</option>
-                  <option value="stuffcool">StuffCool Only (20 Ads)</option>
+                  <option value="all">
+                    {competitorNames.length
+                      ? `All Brands (${competitorNames.length})`
+                      : 'All Brands'}
+                  </option>
+                  {/* The competitors this workspace actually tracks, named by the Ad
+                      Library rather than by the mock this layout came from. */}
+                  {competitorNames.map(name => (
+                    <option key={name} value={name.toLowerCase()}>
+                      {name} ({competitorAds.filter(a => a.brand === name).length} Ads)
+                    </option>
+                  ))}
                 </select>
 
                 <select
@@ -567,14 +560,35 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                   onChange={e => setAdFilterType(e.target.value)}
                   style={{ background: '#141420', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12.5px' }}
                 >
-                  <option value="all">All Categories</option>
-                  <option value="charging">Power & Charging</option>
-                  <option value="audio">Audio & TWS</option>
-                  <option value="cables">Cables</option>
-                  <option value="peripherals">Desk & Accessories</option>
+                  <option value="all">All Placements</option>
+                  {/* Derived from the ads themselves. The fixed list this replaced named
+                      power-bank categories, which matched nothing for any other brand. */}
+                  {Array.from(new Set(competitorAds.map(a => a.category).filter(Boolean)))
+                    .sort()
+                    .map(cat => (
+                      <option key={cat} value={cat.toLowerCase()}>
+                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>
+
+            {/* Nothing to show is said plainly. This screen's whole failure mode used to be
+                showing a different brand's ads as though they were the customer's. */}
+            {!filteredAds.length && (
+              <div style={{ padding: '36px 20px', textAlign: 'center', borderRadius: '16px',
+                            background: 'rgba(255,255,255,0.02)',
+                            border: '1px dashed rgba(255,255,255,0.12)' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', margin: 0 }}>
+                  {loadingData
+                    ? 'Loading competitor ads…'
+                    : (dataError || (competitorAds.length
+                        ? 'No ads match the selected filters.'
+                        : 'No competitor ads have been synced for this brand yet.'))}
+                </p>
+              </div>
+            )}
 
             {/* Ad Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
@@ -610,8 +624,10 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                   </div>
 
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {/* Most Ad Library entries carry no offer at all, and a bare tag icon
+                        reads as a missing value rather than "no discount". */}
                     <div style={{ fontSize: '11.5px', color: '#00E676' }}>
-                      🏷️ {ad.offer}
+                      {ad.offer ? `🏷️ ${ad.offer}` : ''}
                     </div>
                     <button
                       onClick={() => handleCopy(ad.hook)}
@@ -639,32 +655,23 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
             </div>
           </div>
 
-          {/* 3 Core Action Items */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#7C75FF', marginBottom: '4px' }}>01</div>
-              <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Build Scenario Series</h4>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                Scenario-first creative gives {brandName} a more ownable route than broad gadget merchandising.
-              </p>
+          {/* Recommended moves, from the analysis rather than from the mock.
+              The three cards this replaced were written for a power-bank brand and named a
+              competitor by hand, so every workspace was told to "prove laptop power". */}
+          {!!(blueOcean.actions || []).length && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+              {(blueOcean.actions || []).slice(0, 3).map((action, i) => (
+                <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: BRAND_COLORS[i % BRAND_COLORS.length], marginBottom: '4px' }}>
+                    {String(i + 1).padStart(2, '0')}
+                  </div>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
+                    {action}
+                  </p>
+                </div>
+              ))}
             </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#00D2FF', marginBottom: '4px' }}>02</div>
-              <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Create Choice Carousel</h4>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                A guided product-selection carousel reduces choice friction left unresolved by universal Shop now buttons.
-              </p>
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#00E676', marginBottom: '4px' }}>03</div>
-              <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>Prove Laptop Power</h4>
-              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                StuffCool dominates high-wattage claims; real workday demo with compatibility proof wins conversion.
-              </p>
-            </div>
-          </div>
+          )}
 
         </div>
       )}
@@ -679,12 +686,16 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
           <div className="glow-card" style={{ background: '#0a0a12', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '20px', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
               <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                INDIA CHARGING TRENDS: {brandName.toUpperCase()}’S FESTIVE RUN-UP (MONTHLY EDITION)
+                {(trendTitle || `${brandName} MARKET RADAR`).toUpperCase()}
               </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>August 17, 2025 – August 22, 2026 Review</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                {strategicKeywords.length
+                  ? `${strategicKeywords.length} tracked keywords`
+                  : 'Not yet generated'}
+              </span>
             </div>
             <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: 0, lineHeight: 1.6 }}>
-              India’s charging category is still led by broad utility searches: <strong>“power bank” (84)</strong> and <strong>“charging cable” (78)</strong>. Emerging lanes are high-intent: <strong>“MagSafe power bank” (24)</strong> and <strong>“fast charger”</strong> reaching annual highs in mid-August. Short video proof and Diwali festive bundles are the primary conversion levers for {brandName}.
+              {trendSummary || `The written read on ${brandName}'s search category appears here once a market-trend report has been generated.`}
             </p>
           </div>
 
@@ -693,6 +704,18 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
             <h3 style={{ fontSize: '18px', color: '#fff', margin: '0 0 16px 0', fontWeight: 800 }}>
               Strategic Keywords & High-Converting Ad Hooks
             </h3>
+
+            {!strategicKeywords.length && (
+              <div style={{ padding: '36px 20px', textAlign: 'center', borderRadius: '16px',
+                            background: 'rgba(255,255,255,0.02)',
+                            border: '1px dashed rgba(255,255,255,0.12)' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', margin: 0 }}>
+                  {loadingData
+                    ? 'Loading market trends…'
+                    : 'No market trend report has been generated for this brand yet.'}
+                </p>
+              </div>
+            )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {strategicKeywords.map((item, idx) => (
@@ -720,7 +743,7 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                           {item.keyword}
                         </h4>
                         <span style={{ fontSize: '10.5px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
-                          {item.bucket}
+                          {item.bucket.replace(/_/g, ' ')}
                         </span>
                       </div>
                       <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', margin: '4px 0 0 0' }}>
@@ -760,10 +783,14 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
               <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
                 Winning Patterns in India Content
               </h4>
+              {/* From the trend report's own winning_patterns. The three bullets here
+                  before described power-bank drain tests to every brand. */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
-                <div>• <strong>Real Test Short Videos:</strong> Battery-vs-phone drain challenges outperforming static specs.</div>
-                <div>• <strong>Built-in Cable Visuals:</strong> Instantly understood in metro, college, and desk setups.</div>
-                <div>• <strong>Diwali Festive Bundles (Nov 2026):</strong> Transition from pure utility to gifting & travel upgrade sets starting September.</div>
+                {winningPatterns.length
+                  ? winningPatterns.slice(0, 6).map((p, i) => <div key={i}>• {p}</div>)
+                  : <div style={{ color: 'var(--text-muted)' }}>
+                      No patterns recorded yet — they appear with the next market-trend report.
+                    </div>}
               </div>
             </div>
 
@@ -772,11 +799,12 @@ export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
                 Creator Video References
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {[
-                  { title: 'Thor Wala Powerbank ⚡ #shorts', url: 'https://www.youtube.com/watch?v=mpuqxOWKdZ8' },
-                  { title: 'New Fast PowerBank From Xiaomi - Test !', url: 'https://www.youtube.com/watch?v=plp4hkEEQ0c' },
-                  { title: 'Throw Away Your Charging Cables 🚨', url: 'https://www.youtube.com/watch?v=pNJlpb79oSA' }
-                ].map((v, i) => (
+                {!videoRefs.length && (
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                    No creator videos have been collected for this category yet.
+                  </div>
+                )}
+                {videoRefs.map((v, i) => (
                   <a
                     key={i}
                     href={v.url}

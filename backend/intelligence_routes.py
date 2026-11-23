@@ -30,8 +30,11 @@ router = APIRouter(prefix="/api/workspaces", tags=["intelligence"])
 # Market trends every 30 days, competitor ads every 15: a rival's live ad set turns over
 # faster than a market read does, so the shorter slot belongs to competitors. Both of these
 # were previously inverted (14 / 28) on the opposite argument.
-TREND_SYNC_DAYS = 30
-AD_SYNC_DAYS = 15
+#
+# Imported rather than restated: the scheduler decides when a sync is owed from these same
+# numbers, and a second copy here would let the date the UI promises drift away from the
+# date the job honours.
+from core.intel_sync import TREND_SYNC_DAYS, AD_SYNC_DAYS  # noqa: E402
 
 
 def _require_workspace(workspace_id: int, db: Session, current_user: models.User):
@@ -62,6 +65,8 @@ def _sync_json(row, cadence_days: int) -> dict:
 
 # ---------------------------------------------------------------------- brand kit
 
+from core.brand_kit import extraction_report as _extraction_report  # noqa: E402
+
 @router.get("/{workspace_id}/brand-kit")
 def get_brand_kit(workspace_id: int, db: Session = Depends(database.get_db),
                   current_user: models.User = Depends(auth.get_current_user)):
@@ -82,6 +87,13 @@ def get_brand_kit(workspace_id: int, db: Session = Depends(database.get_db),
         "brand_color": ws.brand_color,
         "brand_logo": ws.brand_logo,
         "is_onboarded": bool(bp.is_onboarded) if bp else False,
+        # What the extraction actually obtained, so a thin kit is visible as thin.
+        # is_onboarded answers "did this person finish the flow" and drives routing; it
+        # says nothing about whether a brand was found. On production, six of nine
+        # workspaces were flagged onboarded while holding no logo, no palette and no
+        # typography - two of them had crawled zero pages. This is the field a screen can
+        # use to ask the user for what is missing.
+        "extraction": _extraction_report(bp, guidelines),
         "overview": guidelines.get("overview") or (bp.brand_guidelines_summary if bp else "") or "",
         "mission": guidelines.get("slogan") or "",
         "positioning": guidelines.get("competitive") or "",

@@ -76,17 +76,24 @@ def _local_available() -> bool:
 
 
 def _select_provider() -> str:
-    """`EMBEDDING_PROVIDER` wins when set; otherwise prefer local, fall back to Gemini.
+    """`EMBEDDING_PROVIDER` wins when set; otherwise match production, which is Gemini.
 
-    Preferring local keeps every existing development machine on the same vectors it
-    already has indexed. Production has no sentence-transformers and lands on Gemini.
+    This used to prefer `local` whenever sentence-transformers could be imported, and that
+    is how the index split in two. A developer machine wrote a workspace's chunks under
+    bge-small (384 dims); the deployed API, which has no sentence-transformers, searched
+    for gemini-embedding-001 rows, found none, and reported the workspace as EMPTY rather
+    than as mis-indexed. Measured on production: workspace 4's only brand chunk was written
+    by bge-small, so every deployed retrieval for that brand returned nothing at all.
+
+    Defaulting to whatever production uses means local indexing writes rows the deploy can
+    actually read. Set EMBEDDING_PROVIDER=local to opt out - offline work, or no API key.
     """
     explicit = (os.getenv("EMBEDDING_PROVIDER") or "").strip().lower()
     if explicit in ("local", "gemini"):
         return explicit
-    if _local_available():
-        return "local"
-    return "gemini"
+    if os.getenv("GEMINI_API_KEY"):
+        return "gemini"
+    return "local" if _local_available() else "gemini"
 
 
 EMBEDDING_PROVIDER = _select_provider()
@@ -101,6 +108,9 @@ else:
     EMBEDDING_DIM = _LOCAL_DIM
     # Unchanged name: existing local collections stay valid.
     COLLECTION_NAME = "brand_knowledge"
+
+print(f"[embeddings] provider={EMBEDDING_PROVIDER} model={EMBEDDING_MODEL_NAME} "
+      f"dim={EMBEDDING_DIM} - only chunks written by this model are searchable.")
 
 # BGE retrieval works noticeably better when the *query* (not the stored passages)
 # carries this instruction prefix. Recommended by the model authors.

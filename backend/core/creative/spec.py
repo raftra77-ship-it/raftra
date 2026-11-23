@@ -116,6 +116,13 @@ class CreativeSpec(BaseModel):
     headline: str = ""
     primary_text: str = ""
     cta: str = ""
+    # The caller asked for a clean image rather than an advertisement: a background plate,
+    # or a product shot someone will lay out themselves. Recorded here rather than inferred,
+    # so an intentionally wordless creative is distinguishable from one whose copy went
+    # missing - on production those two were identical in the database. Living on the spec
+    # means it persists in ad_assets.creative_spec (no migration) and survives `variation()`,
+    # which deep-copies the spec and only edits style fields.
+    no_copy: bool = False
     creative_angle: str = ""
     # True only when the user explicitly asked for words rendered INSIDE the image. Diffusion
     # models render text badly, so this stays off unless asked for.
