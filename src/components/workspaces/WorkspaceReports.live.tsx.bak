@@ -1,0 +1,1399 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  TrendingUp,
+  ShieldCheck,
+  ExternalLink,
+  Sparkles,
+  Copy,
+  Check,
+  Search,
+  RefreshCw,
+  Target,
+  ArrowRight,
+  AlertCircle,
+  Lock,
+  Trash2,
+  Globe,
+  Users,
+  MessageSquareQuote,
+  Megaphone,
+  PlugZap
+} from 'lucide-react';
+import { GlowButton } from '../GlowButton';
+
+/**
+ * Market Intelligence — "Intelligence & Strategic Reports".
+ *
+ * Layout, copy and styling follow the reference dashboard screen exactly: the header banner
+ * with its two cadence-locked action buttons, the two frequency status cards that double as
+ * tab switchers, then either the competitor ad tab (executive summary, Where We Win, Blue /
+ * Red Ocean moves, the ad explorer, three action items) or the market research tab (report
+ * banner, strategic keywords with copyable hooks, winning patterns, creator references).
+ *
+ * The difference from the reference is where the content comes from. There, all of it was
+ * hardcoded: forty invented ads for two power-bank brands, a fixed India trend report, and
+ * two buttons that waited on a setTimeout before announcing "Synced 40 active Meta
+ * competitor ads!". Here every panel reads a real endpoint:
+ *
+ *   GET/POST  /api/workspaces/{id}/competitor-ads[/sync]   - ad vault + strategy read
+ *   GET/POST  /api/workspaces/{id}/market-trends[/sync]    - trend radar
+ *   GET/POST  /api/workspaces/{id}/competitors[/analyze]   - site-based competitor research
+ *
+ * The cooldown locks are real too: `sync.next_due_at` comes from the cadence the scheduler
+ * actually runs, so the date on the button is a date a refresh will genuinely happen.
+ */
+
+/* ── types ─────────────────────────────────────────────────────────── */
+
+interface SyncState {
+  status?: string;
+  last_run_at?: string | null;
+  next_due_at?: string | null;
+  message?: string;
+  items?: number;
+}
+
+interface CompetitorAd {
+  id: number;
+  title?: string;
+  copy?: string;
+  snapshot_url?: string;
+  platforms?: string[];
+  offers?: { code?: string; percent_off?: number | null; flat_off?: number | null; perks?: string[] };
+  days_active?: number | null;
+  started_at?: string | null;
+  country?: string | null;
+  source?: string | null;
+}
+
+interface OceanMove {
+  title?: string;
+  rationale?: string;
+  actions?: string[];
+}
+
+interface AdStrategy {
+  summary?: string;
+  offer_strategy?: string;
+  evergreen_winners?: string[];
+  fatiguing?: string[];
+  blue_ocean?: OceanMove;
+  red_ocean?: OceanMove;
+  recommended_formats?: string[];
+  ads_analysed?: number;
+  synced_at?: string | null;
+}
+
+interface CompetitorGroup {
+  competitor: string;
+  ads: CompetitorAd[];
+  ad_count: number;
+  evergreen_count: number;
+  strategy?: AdStrategy | null;
+}
+
+interface AdsPayload {
+  competitors: CompetitorGroup[];
+  total_ads: number;
+  sync: SyncState;
+  cadence_days: number;
+  source_configured: boolean;
+}
+
+interface StrategicKeyword {
+  keyword: string;
+  score?: number;
+  bucket?: string;
+  hook?: string;
+  source?: string;
+}
+
+interface CreatorVideo {
+  title?: string;
+  channel?: string;
+  url?: string;
+  format?: string;
+  published_at?: string;
+}
+
+interface TrendReport {
+  id: number;
+  report_title?: string;
+  summary?: string;
+  region?: string;
+  period_start?: string | null;
+  period_end?: string | null;
+  strategic_keywords?: StrategicKeyword[];
+  winning_patterns?: string[];
+  creative_formats?: string[];
+  creator_video_refs?: CreatorVideo[];
+  sources?: string[];
+}
+
+interface TrendsPayload {
+  latest: TrendReport | null;
+  history: { id: number; report_title?: string; region?: string; period_end?: string | null; keyword_count?: number }[];
+  sync: SyncState;
+  cadence_days: number;
+  source_configured: boolean;
+}
+
+interface CompetitorSource {
+  url: string;
+  kind?: string;
+  title?: string;
+}
+
+interface CompetitorReport {
+  id: number;
+  competitor: string;
+  site_url?: string | null;
+  positioning?: string;
+  audience?: string;
+  tone?: string;
+  offers?: string[];
+  hooks?: string[];
+  ctas?: string[];
+  notes?: string;
+  sources?: CompetitorSource[];
+  researched_at?: string | null;
+}
+
+interface WorkspaceReportsProps {
+  onNavigateTab?: (tab: string) => void;
+  brandName?: string;
+  /** Required: every intelligence endpoint is scoped to a workspace. */
+  workspaceId?: number | null;
+}
+
+/* ── helpers ───────────────────────────────────────────────────────── */
+
+const authHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const parseDate = (iso?: string | null): Date | null => {
+  if (!iso) return null;
+  const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : `${iso}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const formatWhen = (iso?: string | null) => {
+  const d = parseDate(iso);
+  return d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+};
+
+/** A sync is locked until next_due_at passes; a null next_due_at means it never ran. */
+const lockedUntil = (sync?: SyncState): string | null => {
+  const due = parseDate(sync?.next_due_at);
+  return due && due.getTime() > Date.now() ? formatWhen(sync?.next_due_at) : null;
+};
+
+/** Per-competitor accent, so a brand keeps one colour across chips and cards. */
+const ACCENTS = ['#7C75FF', '#00D2FF', '#FFB300', '#FF6B9D', '#00E676', '#FF7A45'];
+
+const BUCKET_COLORS: Record<string, string> = {
+  core: '#00E676',
+  high_intent: '#7C75FF',
+  utility: '#00D2FF',
+  lifestyle: '#FFB300',
+};
+
+/** "10% Extra Off with code TODAY" from the extracted offer signals. */
+const offerLine = (offers?: CompetitorAd['offers']): string => {
+  if (!offers) return '';
+  const bits: string[] = [];
+  if (offers.percent_off) bits.push(`${offers.percent_off}% Off`);
+  if (offers.flat_off) bits.push(`Flat ${offers.flat_off} Off`);
+  if (offers.code) bits.push(`with code ${offers.code}`);
+  (offers.perks || []).forEach((p) => bits.push(`Free ${p}`));
+  return bits.join(' ');
+};
+
+/** The reference screen's action items are a bold title plus a line of detail. A model
+ *  writes these as one sentence, so the lead clause becomes the title. */
+const splitFormat = (text: string): { title: string; body: string } => {
+  const m = String(text || '').match(/^(.{4,52}?)\s*[:—-]\s+(.*)$/s);
+  if (m) return { title: m[1].trim(), body: m[2].trim() };
+  const stop = String(text || '').indexOf('. ');
+  if (stop > 8 && stop < 60) {
+    return { title: text.slice(0, stop).trim(), body: text.slice(stop + 1).trim() };
+  }
+  return { title: '', body: String(text || '') };
+};
+
+/* ── component ─────────────────────────────────────────────────────── */
+
+export const WorkspaceReports: React.FC<WorkspaceReportsProps> = ({
+  onNavigateTab,
+  brandName = 'Demo Brand',
+  workspaceId = null,
+}) => {
+  const [activeTab, setActiveTab] = useState<'competitor_ads' | 'market_research'>('competitor_ads');
+
+  const [ads, setAds] = useState<AdsPayload | null>(null);
+  const [trends, setTrends] = useState<TrendsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [isSyncingAds, setIsSyncingAds] = useState(false);
+  const [isGeneratingMonthly, setIsGeneratingMonthly] = useState(false);
+  /** One inline banner instead of alert() — an alert blocks the tab and cannot be styled. */
+  const [notice, setNotice] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null);
+
+  const [selectedCompetitor, setSelectedCompetitor] = useState<string>('all');
+  const [adFilterType, setAdFilterType] = useState<string>('all');
+  const [copiedHook, setCopiedHook] = useState<string | null>(null);
+
+  // Site-based research: the only competitor source that needs no ad-platform token.
+  const [reports, setReports] = useState<CompetitorReport[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [input, setInput] = useState('');
+  const [researching, setResearching] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedHook(text);
+    setTimeout(() => setCopiedHook((c) => (c === text ? null : c)), 2000);
+  };
+
+  const loadAll = useCallback(async () => {
+    if (!workspaceId) {
+      setLoading(false);
+      return;
+    }
+    const get = async (path: string) => {
+      try {
+        const r = await fetch(`/api/workspaces/${workspaceId}${path}`, { headers: authHeaders() });
+        return r.ok ? await r.json() : null;
+      } catch {
+        return null;
+      }
+    };
+    const [a, t, c] = await Promise.all([
+      get('/competitor-ads'),
+      get('/market-trends'),
+      get('/competitors'),
+    ]);
+    if (a) setAds(a);
+    if (t) setTrends(t);
+    if (Array.isArray(c)) {
+      setReports(c);
+      setSelectedId((prev) => (prev && c.some((d: CompetitorReport) => d.id === prev) ? prev : c[0]?.id ?? null));
+    }
+    setLoading(false);
+  }, [workspaceId]);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const adsLockedUntil = lockedUntil(ads?.sync);
+  const monthlyLockedUntil = lockedUntil(trends?.sync);
+
+  /* 1. Sync competitor ads */
+  const handleSyncCompetitorAds = async () => {
+    if (!workspaceId || isSyncingAds) return;
+    if (adsLockedUntil) {
+      setNotice({ tone: 'warn', text: `Competitor ad scan already locked. The next scan unlocks on ${adsLockedUntil}.` });
+      return;
+    }
+    setIsSyncingAds(true);
+    setNotice(null);
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/competitor-ads/sync`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: '{}',
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        const found = d.ads ?? d.items ?? 0;
+        setNotice({ tone: 'ok', text: `Synced ${found} competitor ad${found === 1 ? '' : 's'}.` });
+        await loadAll();
+      } else {
+        setNotice({ tone: 'error', text: d.detail || `Competitor ad sync failed (${r.status}).` });
+      }
+    } catch {
+      setNotice({ tone: 'error', text: 'Could not reach the server to run the competitor ad scan.' });
+    }
+    setIsSyncingAds(false);
+  };
+
+  /* 2. Generate monthly report */
+  const handleGenerateMonthlyReport = async () => {
+    if (!workspaceId || isGeneratingMonthly) return;
+    if (monthlyLockedUntil) {
+      setNotice({ tone: 'warn', text: `Monthly market research report already generated. The next report unlocks on ${monthlyLockedUntil}.` });
+      return;
+    }
+    setIsGeneratingMonthly(true);
+    setNotice(null);
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/market-trends/sync`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: '{}',
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setNotice({ tone: 'ok', text: 'Generated the market research report.' });
+        await loadAll();
+        setActiveTab('market_research');
+      } else {
+        setNotice({ tone: 'error', text: d.detail || `Market research report failed (${r.status}).` });
+      }
+    } catch {
+      setNotice({ tone: 'error', text: 'Could not reach the server to generate the market research report.' });
+    }
+    setIsGeneratingMonthly(false);
+  };
+
+  /* Site research */
+  const runResearch = async (e?: React.FormEvent, override?: string) => {
+    if (e) e.preventDefault();
+    const target = (override ?? input).trim();
+    if (!target || !workspaceId || researching) return;
+
+    setResearching(true);
+    setError('');
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/competitors/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ competitor: target }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        // The backend upserts, so replace in place rather than gaining a second copy.
+        setReports((prev) => [d, ...prev.filter((p) => p.id !== d.id)]);
+        setSelectedId(d.id);
+        if (!override) setInput('');
+      } else {
+        setError(d.detail || `Research failed (${r.status}).`);
+      }
+    } catch {
+      setError('Could not reach the server. Please try again in a moment.');
+    }
+    setResearching(false);
+  };
+
+  const removeReport = async (id: number) => {
+    if (!workspaceId) return;
+    const previous = reports;
+    setReports((prev) => prev.filter((p) => p.id !== id));
+    if (selectedId === id) setSelectedId(previous.find((p) => p.id !== id)?.id ?? null);
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/competitors/${id}`, {
+        method: 'DELETE', headers: authHeaders(),
+      });
+      if (!r.ok) setReports(previous);     // put it back rather than pretend it went
+    } catch {
+      setReports(previous);
+    }
+  };
+
+  /* ── derived ─────────────────────────────────────────────────────── */
+
+  const groups = ads?.competitors || [];
+  const report = trends?.latest || null;
+  const selected = reports.find((r) => r.id === selectedId) || null;
+  const region = report?.region || 'IN';
+
+  // The strategy shown at the top belongs to whichever competitor is in focus; under
+  // "all brands" that is the one with the most ads, which the API sorts first.
+  const focusGroup = selectedCompetitor === 'all'
+    ? groups.find((g) => g.strategy) || groups[0]
+    : groups.find((g) => g.competitor === selectedCompetitor);
+  const strategy = focusGroup?.strategy || null;
+
+  const competitorAds = groups.flatMap((g, i) =>
+    g.ads.map((ad) => ({ ...ad, brand: g.competitor, color: ACCENTS[i % ACCENTS.length] })));
+
+  const filteredAds = competitorAds.filter((ad) => {
+    if (selectedCompetitor !== 'all' && ad.brand !== selectedCompetitor) return false;
+    if (adFilterType === 'evergreen' && (ad.days_active || 0) < 45) return false;
+    if (adFilterType === 'fresh' && !((ad.days_active || 0) > 0 && (ad.days_active || 0) < 10)) return false;
+    if (adFilterType === 'offers' && !offerLine(ad.offers)) return false;
+    return true;
+  });
+
+  /* ── shared bits ─────────────────────────────────────────────────── */
+
+  const copyHookButton = (text: string, small = false) => (
+    <button
+      onClick={() => handleCopy(text)}
+      style={{
+        flexShrink: 0,
+        background: copiedHook === text ? 'rgba(0, 230, 118, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+        border: '1px solid',
+        borderColor: copiedHook === text ? '#00E676' : small ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.12)',
+        color: copiedHook === text ? '#00E676' : '#fff',
+        padding: small ? '4px 10px' : '6px 14px',
+        borderRadius: '100px',
+        fontSize: small ? '11px' : '11.5px',
+        fontWeight: small ? 600 : 700,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: small ? '4px' : '5px',
+      }}
+    >
+      {copiedHook === text ? <Check size={small ? 11 : 12} /> : <Copy size={small ? 11 : 12} />}
+      <span>{copiedHook === text ? (small ? 'Copied' : 'Copied!') : 'Copy Hook'}</span>
+    </button>
+  );
+
+  /** Shown in place of a panel whose data source has no key configured. */
+  const notConfigured = (what: string, keys: string, why: string) => (
+    <div className="glow-card" style={{
+      background: '#0a0a12', border: '1px dashed rgba(255, 255, 255, 0.14)',
+      borderRadius: '20px', padding: '34px 26px', textAlign: 'center',
+    }}>
+      <PlugZap size={28} color="#FFB300" style={{ opacity: 0.85 }} />
+      <h3 style={{ fontSize: '16.5px', color: '#fff', margin: '12px 0 6px', fontWeight: 700 }}>
+        {what} is not connected yet
+      </h3>
+      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 auto', maxWidth: '560px', lineHeight: 1.6 }}>
+        {why}
+      </p>
+      <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '12px auto 0', maxWidth: '560px', lineHeight: 1.6 }}>
+        Set <code style={{ color: '#FFB300' }}>{keys}</code> on the backend, then run the sync above.
+      </p>
+    </div>
+  );
+
+  const listCard = (
+    label: string,
+    items: string[] | undefined,
+    color: string,
+    Icon: typeof Target,
+    copyable = false,
+  ) => {
+    if (!items || !items.length) return null;
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '16px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Icon size={15} color={color} />
+          <span style={{ fontSize: '11px', fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {label}
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+          {items.map((item, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px',
+              fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5,
+            }}>
+              <span>{copyable ? `"${item}"` : item}</span>
+              {copyable && copyHookButton(item, true)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  /* ── render ──────────────────────────────────────────────────────── */
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+      {/* ── HEADER BANNER & TIMELINE CARDS ───────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(124, 117, 255, 0.12)', borderRadius: '100px', border: '1px solid rgba(124, 117, 255, 0.3)', marginBottom: '8px' }}>
+            <Sparkles size={13} color="#7C75FF" />
+            <span style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              AUTONOMOUS AD INTELLIGENCE ENGINE
+            </span>
+          </div>
+          <h1 style={{ fontSize: '32px', color: '#fff', margin: '0 0 6px 0', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+            Intelligence &amp; Strategic Reports
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', margin: 0 }}>
+            Bi-weekly ad library competitor scans and monthly {region} search demand trend reports for {brandName}.
+          </p>
+        </div>
+
+        {/* ── TWO DEDICATED ACTION BUTTONS WITH COOLDOWN UNLOCK LOCKS ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+
+          {/* Button 1: Sync Competitor Ads */}
+          <button
+            onClick={handleSyncCompetitorAds}
+            disabled={isSyncingAds || !!adsLockedUntil || !workspaceId}
+            style={{
+              background: adsLockedUntil ? 'rgba(255, 255, 255, 0.04)' : 'rgba(124, 117, 255, 0.15)',
+              border: adsLockedUntil ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(124, 117, 255, 0.4)',
+              color: adsLockedUntil ? 'var(--text-muted)' : '#7C75FF',
+              padding: '9px 18px',
+              borderRadius: '100px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: adsLockedUntil || !workspaceId ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+              opacity: workspaceId ? 1 : 0.5,
+              boxShadow: adsLockedUntil ? 'none' : '0 0 14px rgba(124, 117, 255, 0.15)'
+            }}
+          >
+            {adsLockedUntil ? (
+              <>
+                <Lock size={13} color="var(--text-muted)" />
+                <span>2-Wk Ads Synced (Next: {adsLockedUntil})</span>
+              </>
+            ) : isSyncingAds ? (
+              <>
+                <RefreshCw size={13} className="animate-spin" />
+                <span>Syncing Competitor Ads...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw size={13} />
+                <span>Sync 2 Weeks Competitor Ads</span>
+              </>
+            )}
+          </button>
+
+          {/* Button 2: Generate Monthly Report */}
+          <button
+            onClick={handleGenerateMonthlyReport}
+            disabled={isGeneratingMonthly || !!monthlyLockedUntil || !workspaceId}
+            style={{
+              background: monthlyLockedUntil ? 'rgba(255, 255, 255, 0.04)' : 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
+              border: monthlyLockedUntil ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+              color: monthlyLockedUntil ? 'var(--text-muted)' : '#000000',
+              padding: '9px 20px',
+              borderRadius: '100px',
+              fontSize: '13px',
+              fontWeight: 800,
+              cursor: monthlyLockedUntil || !workspaceId ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+              opacity: workspaceId ? 1 : 0.5,
+              boxShadow: monthlyLockedUntil ? 'none' : '0 4px 18px rgba(0, 230, 118, 0.35)'
+            }}
+          >
+            {monthlyLockedUntil ? (
+              <>
+                <Lock size={13} color="var(--text-muted)" />
+                <span>Monthly Report Generated (Next: {monthlyLockedUntil})</span>
+              </>
+            ) : isGeneratingMonthly ? (
+              <>
+                <Sparkles size={13} className="animate-spin" />
+                <span>Generating Report...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={13} />
+                <span>Generate Monthly Report 🚀</span>
+              </>
+            )}
+          </button>
+
+        </div>
+      </div>
+
+      {/* Outcome of either action, in place of the reference screen's alert() calls. */}
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            style={{
+              display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '13px 16px', borderRadius: '12px',
+              background: notice.tone === 'ok' ? 'rgba(0,230,118,0.08)'
+                : notice.tone === 'warn' ? 'rgba(255,193,7,0.07)' : 'rgba(255,71,87,0.08)',
+              border: `1px solid ${notice.tone === 'ok' ? 'rgba(0,230,118,0.3)'
+                : notice.tone === 'warn' ? 'rgba(255,193,7,0.28)' : 'rgba(255,71,87,0.3)'}`,
+              color: notice.tone === 'ok' ? '#00E676' : notice.tone === 'warn' ? '#ffc107' : '#ff6b7a',
+              fontSize: '13px', lineHeight: 1.5,
+            }}
+          >
+            {notice.tone === 'ok' ? <Check size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+              : <AlertCircle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />}
+            <span style={{ flex: 1 }}>{notice.text}</span>
+            <button
+              onClick={() => setNotice(null)}
+              style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: 0 }}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {!workspaceId && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '9px', padding: '12px 16px', borderRadius: '12px',
+          background: 'rgba(255,193,7,0.07)', border: '1px solid rgba(255,193,7,0.28)',
+          color: '#ffc107', fontSize: '13px',
+        }}>
+          <AlertCircle size={15} />
+          Select a workspace to run market intelligence.
+        </div>
+      )}
+
+      {/* ── 2 FREQUENCY STATUS CARDS ──────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+
+        {/* Card 1: Bi-weekly Competitor Analysis */}
+        <div
+          onClick={() => setActiveTab('competitor_ads')}
+          className="glow-card"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveTab('competitor_ads'); } }}
+          style={{
+            background: activeTab === 'competitor_ads' ? 'linear-gradient(135deg, rgba(28, 24, 45, 0.9) 0%, rgba(12, 10, 22, 0.98) 100%)' : '#0a0a12',
+            border: activeTab === 'competitor_ads' ? '1.5px solid #7C75FF' : '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '20px',
+            padding: '22px 26px',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: activeTab === 'competitor_ads' ? '0 8px 30px rgba(124, 117, 255, 0.2)' : 'none',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(124, 117, 255, 0.15)', border: '1px solid rgba(124, 117, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ShieldCheck size={22} color="#7C75FF" />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                  Competitor Ad Analysis
+                </h3>
+                <span style={{ fontSize: '10.5px', background: 'rgba(124, 117, 255, 0.2)', color: '#7C75FF', border: '1px solid rgba(124, 117, 255, 0.4)', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
+                  BI-WEEKLY ({ads?.cadence_days ?? 15} DAYS)
+                </span>
+              </div>
+              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                {ads?.total_ads ?? 0} Active Meta Ads scanned • Next scan {adsLockedUntil ? `unlocked on ${adsLockedUntil}` : 'ready to sync'}
+              </p>
+            </div>
+          </div>
+          <ArrowRight size={18} color={activeTab === 'competitor_ads' ? '#7C75FF' : 'var(--text-muted)'} />
+        </div>
+
+        {/* Card 2: Monthly Market Research */}
+        <div
+          onClick={() => setActiveTab('market_research')}
+          className="glow-card"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveTab('market_research'); } }}
+          style={{
+            background: activeTab === 'market_research' ? 'linear-gradient(135deg, rgba(20, 35, 25, 0.9) 0%, rgba(10, 18, 14, 0.98) 100%)' : '#0a0a12',
+            border: activeTab === 'market_research' ? '1.5px solid #00E676' : '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '20px',
+            padding: '22px 26px',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: activeTab === 'market_research' ? '0 8px 30px rgba(0, 230, 118, 0.2)' : 'none',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 230, 118, 0.15)', border: '1px solid rgba(0, 230, 118, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <TrendingUp size={22} color="#00E676" />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: '17px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                  {region} Market Trend Radar
+                </h3>
+                <span style={{ fontSize: '10.5px', background: 'rgba(0, 230, 118, 0.2)', color: '#00E676', border: '1px solid rgba(0, 230, 118, 0.4)', padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
+                  MONTHLY ({trends?.cadence_days ?? 30} DAYS)
+                </span>
+              </div>
+              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                {report ? `${(report.strategic_keywords || []).length} keywords & Search Intent` : 'Search Intent'} • Next issue {monthlyLockedUntil ? `unlocked on ${monthlyLockedUntil}` : 'ready to generate'}
+              </p>
+            </div>
+          </div>
+          <ArrowRight size={18} color={activeTab === 'market_research' ? '#00E676' : 'var(--text-muted)'} />
+        </div>
+
+      </div>
+
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {[0, 1].map((i) => (
+            <div key={i} className="skeleton" style={{ height: '82px', borderRadius: '16px', background: 'rgba(255,255,255,0.03)' }} />
+          ))}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════ */}
+      {/* TAB 1: COMPETITOR AD LIBRARY (BI-WEEKLY SCANS)               */}
+      {/* ════════════════════════════════════════════════════════════ */}
+      {!loading && activeTab === 'competitor_ads' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+
+          {/* Executive Summary Card */}
+          {strategy?.summary && (
+            <div className="glow-card" style={{ background: '#0a0a12', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '20px', padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
+                <span style={{ fontSize: '11px', color: '#7C75FF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {brandName.toUpperCase()} COMPETITOR AD REPORT · {region} · AD LIBRARY
+                </span>
+                {strategy.synced_at && (
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Observed on {formatWhen(strategy.synced_at)}</span>
+                )}
+              </div>
+              <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: 0, lineHeight: 1.6 }}>
+                {strategy.summary}
+              </p>
+              {strategy.offer_strategy && (
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '10px 0 0', lineHeight: 1.6 }}>
+                  <strong style={{ color: '#00E676' }}>Offer strategy:</strong> {strategy.offer_strategy}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Where We Win + Blue / Red Ocean Moves */}
+          {(strategy?.blue_ocean?.rationale || strategy?.red_ocean?.rationale) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '16px' }}>
+
+              {/* Where We Win */}
+              {strategy?.blue_ocean?.rationale && (
+                <div className="glow-card" style={{ background: 'linear-gradient(135deg, rgba(0, 230, 118, 0.08) 0%, rgba(10, 20, 15, 0.9) 100%)', border: '1.5px solid rgba(0, 230, 118, 0.3)', borderRadius: '18px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={18} color="#00E676" />
+                    <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                      Where We Win ({brandName} Advantage)
+                    </h4>
+                  </div>
+                  <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.85)', margin: 0, lineHeight: 1.5 }}>
+                    {strategy.blue_ocean.title
+                      ? <>{brandName} can own <strong>{strategy.blue_ocean.title}</strong>. {strategy.blue_ocean.rationale}</>
+                      : strategy.blue_ocean.rationale}
+                  </p>
+                  {!!strategy.blue_ocean.actions?.length && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {strategy.blue_ocean.actions.map((a, i) => <div key={i}>• {a}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Blue Ocean / Red Ocean Strategy */}
+              <div className="glow-card" style={{ background: 'linear-gradient(135deg, rgba(124, 117, 255, 0.08) 0%, rgba(15, 12, 25, 0.9) 100%)', border: '1.5px solid rgba(124, 117, 255, 0.3)', borderRadius: '18px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Target size={18} color="#7C75FF" />
+                  <h4 style={{ fontSize: '16px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                    Blue Ocean &amp; Red Ocean Moves
+                  </h4>
+                </div>
+                <div style={{ fontSize: '12.5px', color: 'rgba(255, 255, 255, 0.85)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {strategy?.blue_ocean?.rationale && (
+                    <div>🌊 <strong style={{ color: '#00D2FF' }}>Blue Ocean:</strong> {strategy.blue_ocean.title || strategy.blue_ocean.rationale}</div>
+                  )}
+                  {strategy?.red_ocean?.rationale && (
+                    <div>🥊 <strong style={{ color: '#ff4757' }}>Red Ocean:</strong> {strategy.red_ocean.title || strategy.red_ocean.rationale}</div>
+                  )}
+                </div>
+                {!!strategy?.red_ocean?.actions?.length && (
+                  <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                    Action: {strategy.red_ocean.actions[0]}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+
+          {/* Evergreen winners vs fatiguing angles */}
+          {(!!strategy?.evergreen_winners?.length || !!strategy?.fatiguing?.length) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '14px' }}>
+              {listCard('Evergreen winners (45 days+)', strategy?.evergreen_winners, '#00E676', ShieldCheck)}
+              {listCard('Fatiguing angles', strategy?.fatiguing, '#FFB300', Target)}
+            </div>
+          )}
+
+          {/* Ad Library Telemetry Explorer */}
+          {ads && !ads.source_configured && !ads.total_ads ? (
+            notConfigured(
+              'The competitor ad library',
+              'APIFY_TOKEN or META_AD_LIBRARY_TOKEN',
+              'The ad explorer reads live ad-library listings, which needs an ad-library source. Nothing on this screen is sampled or simulated, so the vault stays empty until one is connected.',
+            )
+          ) : !!competitorAds.length && (
+            <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+                <div>
+                  <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                    Active Meta Ads in {region} ({filteredAds.length} Displayed)
+                  </h3>
+                  <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                    Scraped and classified from the ad library • Updated every {ads?.cadence_days ?? 15} days
+                  </span>
+                </div>
+
+                {/* Filters */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <select
+                    value={selectedCompetitor}
+                    onChange={(e) => setSelectedCompetitor(e.target.value)}
+                    aria-label="Filter by brand"
+                    style={{ background: '#141420', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12.5px' }}
+                  >
+                    <option value="all">All Brands ({groups.map((g) => g.competitor).join(' + ') || 'none'})</option>
+                    {groups.map((g) => (
+                      <option key={g.competitor} value={g.competitor}>
+                        {g.competitor} Only ({g.ad_count} Ads)
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={adFilterType}
+                    onChange={(e) => setAdFilterType(e.target.value)}
+                    aria-label="Filter by ad type"
+                    style={{ background: '#141420', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12.5px' }}
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="evergreen">Evergreen Winners (45d+)</option>
+                    <option value="fresh">Fresh / Fatiguing (under 10d)</option>
+                    <option value="offers">Carrying an Offer</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Ad Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '14px' }}>
+                {filteredAds.map((ad) => {
+                  const offer = offerLine(ad.offers);
+                  return (
+                    <div
+                      key={ad.id}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        border: '1px solid rgba(255, 255, 255, 0.07)',
+                        borderRadius: '16px',
+                        padding: '18px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '12px'
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', background: `${ad.color}22`, color: ad.color, border: `1px solid ${ad.color}44`, padding: '2px 8px', borderRadius: '100px', fontWeight: 800 }}>
+                            {ad.brand}
+                          </span>
+                          <span style={{ fontSize: '11.5px', color: (ad.days_active || 0) >= 45 ? '#00E676' : 'var(--text-muted)' }}>
+                            {ad.days_active ? `${ad.days_active} days active` : 'newly live'}
+                          </span>
+                        </div>
+
+                        {ad.title && (
+                          <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>
+                            {ad.title}
+                          </h4>
+                        )}
+
+                        {ad.copy && (
+                          <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)', margin: '0 0 10px 0', lineHeight: 1.45 }}>
+                            "{ad.copy}"
+                          </p>
+                        )}
+
+                        {!!ad.platforms?.length && (
+                          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                            {ad.platforms.map((p, i) => (
+                              <span key={i} style={{ fontSize: '10.5px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ fontSize: '11.5px', color: offer ? '#00E676' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {offer ? `🏷️ ${offer}` : 'No offer in copy'}
+                          </span>
+                          {ad.snapshot_url && (
+                            <a href={ad.snapshot_url} target="_blank" rel="noopener noreferrer" title="Open the ad" style={{ color: '#7C75FF', display: 'flex', flexShrink: 0 }}>
+                              <ExternalLink size={12} />
+                            </a>
+                          )}
+                        </div>
+                        {ad.copy && copyHookButton(ad.copy, true)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!filteredAds.length && (
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', margin: '8px 0' }}>
+                  No ads match this filter.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 3 Core Action Items */}
+          {!!strategy?.recommended_formats?.length && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '14px' }}>
+              {strategy.recommended_formats.slice(0, 3).map((fmt, i) => {
+                const { title, body } = splitFormat(fmt);
+                const color = ['#7C75FF', '#00D2FF', '#00E676'][i] || '#7C75FF';
+                return (
+                  <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px' }}>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color, marginBottom: '4px' }}>
+                      {String(i + 1).padStart(2, '0')}
+                    </div>
+                    {title && (
+                      <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 6px 0', fontWeight: 700 }}>{title}</h4>
+                    )}
+                    <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
+                      {body}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Competitor site research ─────────────────────────── */}
+          <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', color: '#fff', margin: 0, fontWeight: 800 }}>
+                  Competitor Site Research
+                </h3>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                  Reads a rival's public pages for positioning, audience, offers, hooks and CTAs • No ad-library token needed
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={runResearch} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: '1 1 320px', minWidth: 0 }}>
+                <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="competitor.com or a brand name"
+                  aria-label="Competitor website or brand name"
+                  disabled={!workspaceId}
+                  style={{
+                    width: '100%', background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.14)', borderRadius: '100px',
+                    padding: '11px 18px 11px 38px', color: '#fff', fontSize: '13.5px', outline: 'none',
+                  }}
+                />
+              </div>
+              <GlowButton
+                variant="glow"
+                disabled={researching || !input.trim() || !workspaceId}
+                style={{ fontSize: '13px', padding: '11px 22px', opacity: researching || !input.trim() ? 0.6 : 1 }}
+              >
+                {researching ? 'Researching…' : 'Research competitor'}
+              </GlowButton>
+            </form>
+
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '13px 16px', borderRadius: '12px',
+                    background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.3)',
+                    color: '#ff6b7a', fontSize: '13px', lineHeight: 1.5,
+                  }}
+                >
+                  <AlertCircle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                  <span>{error}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {!reports.length && (
+              <div style={{ border: '1px dashed rgba(255,255,255,0.14)', borderRadius: '16px', padding: '28px 22px', textAlign: 'center' }}>
+                <Globe size={26} color="#7C75FF" style={{ opacity: 0.8 }} />
+                <h4 style={{ fontSize: '15.5px', color: '#fff', margin: '10px 0 6px', fontWeight: 700 }}>
+                  No competitors researched yet
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 auto', maxWidth: '520px', lineHeight: 1.6 }}>
+                  Enter a competitor above and their public pages will be read and broken down. Reports are saved here.
+                </p>
+              </div>
+            )}
+
+            {!!reports.length && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {reports.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => setSelectedId(r.id)}
+                    style={{
+                      background: r.id === selectedId ? 'rgba(124,117,255,0.16)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${r.id === selectedId ? 'rgba(124,117,255,0.5)' : 'rgba(255,255,255,0.09)'}`,
+                      color: r.id === selectedId ? '#fff' : 'var(--text-secondary)',
+                      borderRadius: '100px', padding: '7px 16px', fontSize: '13px', fontWeight: 700,
+                      cursor: 'pointer', transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {r.competitor}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selected && (
+              <motion.div
+                key={selected.id}
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                style={{
+                  background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: '18px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '18px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px', flexWrap: 'wrap' }}>
+                  <div>
+                    <h3 style={{ fontSize: '20px', color: '#fff', margin: 0, fontWeight: 800 }}>{selected.competitor}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px', flexWrap: 'wrap' }}>
+                      {/* Skipped when the URL only repeats the heading one line above. */}
+                      {selected.site_url && selected.site_url.replace(/^https?:\/\//, '').replace(/\/$/, '') !== selected.competitor.trim().toLowerCase() && (
+                        <a
+                          href={selected.site_url} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: '12.5px', color: '#7C75FF', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          {selected.site_url.replace(/^https?:\/\//, '')}
+                          <ExternalLink size={11} />
+                        </a>
+                      )}
+                      {selected.researched_at && (
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                          Researched {formatWhen(selected.researched_at)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => runResearch(undefined, selected.competitor)}
+                      disabled={researching}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+                        color: '#fff', borderRadius: '100px', padding: '7px 15px', fontSize: '12px',
+                        fontWeight: 700, cursor: researching ? 'not-allowed' : 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '6px', opacity: researching ? 0.6 : 1,
+                      }}
+                    >
+                      <RefreshCw size={12} className={researching ? 'animate-spin' : undefined} />
+                      Refresh
+                    </button>
+                    <button
+                      onClick={() => removeReport(selected.id)}
+                      title="Delete this report"
+                      style={{
+                        background: 'rgba(255,71,87,0.08)', border: '1px solid rgba(255,71,87,0.25)',
+                        color: '#ff6b7a', borderRadius: '100px', padding: '7px 12px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center',
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {selected.positioning && (
+                  <div>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#7C75FF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Positioning
+                    </span>
+                    <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.9)', margin: '6px 0 0', lineHeight: 1.6 }}>
+                      {selected.positioning}
+                    </p>
+                  </div>
+                )}
+
+                {(selected.audience || selected.tone) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px,100%), 1fr))', gap: '14px' }}>
+                    {selected.audience && (
+                      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '15px 18px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px' }}>
+                          <Users size={14} color="#00D2FF" />
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#00D2FF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audience</span>
+                        </div>
+                        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.55 }}>{selected.audience}</p>
+                      </div>
+                    )}
+                    {selected.tone && (
+                      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '15px 18px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px' }}>
+                          <MessageSquareQuote size={14} color="#00E676" />
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tone</span>
+                        </div>
+                        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.55 }}>{selected.tone}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px,100%), 1fr))', gap: '14px' }}>
+                  {listCard('Offers', selected.offers, '#00E676', Target)}
+                  {listCard('Hooks they run', selected.hooks, '#7C75FF', Megaphone, true)}
+                  {listCard('Calls to action', selected.ctas, '#00D2FF', ArrowRight)}
+                </div>
+
+                {selected.notes && (
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                    {selected.notes}
+                  </p>
+                )}
+
+                {/* Sources: shown so every claim above can be checked against what was read. */}
+                {!!selected.sources?.length && (
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Read from {selected.sources.length} source{selected.sources.length > 1 ? 's' : ''}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '8px' }}>
+                      {selected.sources.map((s, i) => (
+                        <a
+                          key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                          style={{
+                            fontSize: '12.5px', color: '#7C75FF', display: 'flex', alignItems: 'center', gap: '6px',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <ExternalLink size={11} style={{ flexShrink: 0 }} />
+                          {s.title || s.url}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!!selected.hooks?.length && onNavigateTab && (
+                  <button
+                    onClick={() => onNavigateTab('studio')}
+                    style={{
+                      alignSelf: 'flex-start', background: 'rgba(124,117,255,0.14)',
+                      border: '1px solid rgba(124,117,255,0.4)', color: '#7C75FF', borderRadius: '100px',
+                      padding: '9px 18px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '7px',
+                    }}
+                  >
+                    <Sparkles size={13} />
+                    Write against these angles in Creative Studio
+                    <ArrowRight size={13} />
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </div>
+
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════ */}
+      {/* TAB 2: MARKET RESEARCH & TRENDS (MONTHLY EDITION)             */}
+      {/* ════════════════════════════════════════════════════════════ */}
+      {!loading && activeTab === 'market_research' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+
+          {!report && !trends?.source_configured && notConfigured(
+            'The market trend radar',
+            'SERPAPI_KEY or YOUTUBE_API_KEY',
+            'Trend reports are built from measured search interest and the creator videos actually ranking in your region. Without a source there are no real numbers to show, and invented ones would be indistinguishable from measured ones.',
+          )}
+
+          {!report && trends?.source_configured && (
+            <div className="glow-card" style={{ background: '#0a0a12', border: '1px dashed rgba(255,255,255,0.14)', borderRadius: '20px', padding: '38px 26px', textAlign: 'center' }}>
+              <TrendingUp size={30} color="#00E676" style={{ opacity: 0.8 }} />
+              <h3 style={{ fontSize: '17px', color: '#fff', margin: '12px 0 6px', fontWeight: 700 }}>
+                No market report yet
+              </h3>
+              <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: '0 auto', maxWidth: '540px', lineHeight: 1.6 }}>
+                Use <strong>Generate Monthly Report</strong> above to build the first one for {brandName}.
+              </p>
+            </div>
+          )}
+
+          {report && (
+            <>
+              {/* Monthly Report Overview Banner */}
+              <div className="glow-card" style={{ background: '#0a0a12', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '20px', padding: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
+                  <span style={{ fontSize: '11px', color: '#00E676', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {(report.report_title || `${region} TRENDS: ${brandName}`).toUpperCase()} (MONTHLY EDITION)
+                  </span>
+                  {(report.period_start || report.period_end) && (
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                      {formatWhen(report.period_start)} – {formatWhen(report.period_end)} Review
+                    </span>
+                  )}
+                </div>
+                {report.summary && (
+                  <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.9)', margin: 0, lineHeight: 1.6 }}>
+                    {report.summary}
+                  </p>
+                )}
+                {!!report.sources?.length && (
+                  <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: '12px 0 0' }}>
+                    Measured from {report.sources.join(', ')}.
+                  </p>
+                )}
+              </div>
+
+              {/* Strategic Keywords & Copyable Hooks */}
+              {!!report.strategic_keywords?.length && (
+                <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <h3 style={{ fontSize: '18px', color: '#fff', margin: '0 0 16px 0', fontWeight: 800 }}>
+                    Strategic Keywords &amp; High-Converting Ad Hooks
+                  </h3>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {report.strategic_keywords.map((item, idx) => {
+                      const badgeColor = BUCKET_COLORS[item.bucket || ''] || '#7C75FF';
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            borderRadius: '14px',
+                            padding: '14px 18px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '12px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                            <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '10px', background: `${badgeColor}22`, border: `1px solid ${badgeColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: badgeColor, fontWeight: 900, fontSize: '14px' }}>
+                              {item.score ?? '—'}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <h4 style={{ fontSize: '15px', color: '#fff', margin: 0, fontWeight: 700 }}>
+                                  {item.keyword}
+                                </h4>
+                                {item.bucket && (
+                                  <span style={{ fontSize: '10.5px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
+                                    {item.bucket.replace('_', ' ')}
+                                  </span>
+                                )}
+                              </div>
+                              {item.hook && (
+                                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', margin: '4px 0 0 0' }}>
+                                  {item.hook}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {item.hook && copyHookButton(item.hook)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Winning Patterns & Creator References */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '16px' }}>
+
+                {!!report.winning_patterns?.length && (
+                  <div className="glow-card" style={{ background: 'rgba(0, 230, 118, 0.04)', border: '1px solid rgba(0, 230, 118, 0.25)', borderRadius: '18px', padding: '22px' }}>
+                    <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
+                      Winning Patterns in {region} Content
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
+                      {report.winning_patterns.map((p, i) => <div key={i}>• {p}</div>)}
+                    </div>
+                    {!!report.creative_formats?.length && (
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '14px', paddingTop: '12px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#00E676', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Formats to produce
+                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', fontSize: '12.5px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
+                          {report.creative_formats.map((f, i) => <div key={i}>• {f}</div>)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!!report.creator_video_refs?.length && (
+                  <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '18px', padding: '22px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                    <h4 style={{ fontSize: '16px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
+                      Creator Video References
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {report.creator_video_refs.map((v, i) => (
+                        <a
+                          key={i}
+                          href={v.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 14px', textDecoration: 'none', color: '#fff', fontSize: '12.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}
+                        >
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {v.title}
+                            </span>
+                            {(v.channel || v.format) && (
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {v.channel}{v.channel && v.format ? ' · ' : ''}{v.format === 'short' ? 'Short' : v.format === 'long' ? 'Long-form' : ''}
+                              </span>
+                            )}
+                          </span>
+                          <ExternalLink size={13} color="#7C75FF" style={{ flexShrink: 0 }} />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Earlier issues, so this month reads against last month. */}
+              {!!trends?.history?.length && (
+                <div className="glow-card" style={{ background: '#0a0a12', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <h4 style={{ fontSize: '15px', color: '#fff', margin: '0 0 12px 0', fontWeight: 700 }}>
+                    Earlier Issues
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                    {trends.history.map((h) => (
+                      <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.report_title}</span>
+                        <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+                          {h.keyword_count ? `${h.keyword_count} keywords · ` : ''}{formatWhen(h.period_end)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+        </div>
+      )}
+
+    </div>
+  );
+};
