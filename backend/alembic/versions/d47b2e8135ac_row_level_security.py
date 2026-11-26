@@ -37,6 +37,7 @@ HOW THIS WORKS, because the obvious approach silently does nothing:
 from typing import Sequence, Union
 
 from alembic import op
+import sqlalchemy as sa
 
 revision: str = 'd47b2e8135ac'
 down_revision: Union[str, Sequence[str], None] = 'c31f4a90b7e2'
@@ -74,6 +75,45 @@ USER_TABLES = ["workspaces", "notifications", "auth_events"]
 _CURRENT_USER = "NULLIF(current_setting('app.user_id', true), '')::int"
 
 
+def _ensure_protected_tables_exist() -> list:
+    """Create any table this revision protects that the chain has not built yet.
+
+    Every table below is in models.py, but only some are created by an earlier revision -
+    the rest existed because models.Base.metadata.create_all() runs at main.py import and
+    had already made them on the deployed database. On an empty one the loops below hit
+    `relation "agent_memories" does not exist` and the whole chain stopped, so
+    `alembic upgrade head` could not build a database from scratch.
+
+    Creating them here rather than skipping them is deliberate. A skip would leave the
+    table to be created later by create_all, with no RLS on it and no error anywhere -
+    a table silently outside tenant isolation is a worse outcome than a failed migration.
+    Everything this revision names must end up protected, so anything missing is built
+    first, from the same metadata create_all uses, which keeps one definition of each table.
+
+    Returns the tables it had to create, for the log line below. On the deployed database
+    that list is empty and this function does nothing at all.
+    """
+    import models                                   # noqa: F401  (registers the metadata)
+    from database import Base
+
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    missing = [t for t in (WORKSPACE_TABLES + USER_TABLES) if not insp.has_table(t)]
+    if not missing:
+        return []
+
+    # agent_memories and knowledge_chunks carry pgvector columns. Supabase ships the
+    # extension; it just has to be enabled, the same way f61a9c204db3 enables pgcrypto.
+    if any(t in missing for t in ("agent_memories", "knowledge_chunks")):
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+    # checkfirst, and sorted_tables order, so foreign keys land after their targets.
+    for table in Base.metadata.sorted_tables:
+        if table.name in missing:
+            table.create(bind=bind, checkfirst=True)
+    return missing
+
+
 def upgrade() -> None:
     # 1) The role we switch into. NOLOGIN: it is a permission set, not an account.
     op.execute(
@@ -94,6 +134,12 @@ def upgrade() -> None:
 
     # The connecting user must be able to assume the role.
     op.execute("GRANT %s TO CURRENT_USER" % APP_ROLE)
+
+    # Nothing below can protect a table that is not there yet.
+    _created = _ensure_protected_tables_exist()
+    if _created:
+        print("[rls] created %d table(s) the chain had not built yet: %s"
+              % (len(_created), ", ".join(sorted(_created))))
 
     # 2) Workspace-scoped tables.
     for table in WORKSPACE_TABLES:

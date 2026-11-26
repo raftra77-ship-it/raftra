@@ -46,6 +46,7 @@ drops every function introduced here.
 from typing import Sequence, Union
 
 from alembic import op
+import sqlalchemy as sa
 
 revision: str = 'c9f3a1b47de2'
 down_revision: Union[str, Sequence[str], None] = 'b4c7e2f09a13'
@@ -80,7 +81,72 @@ def _policy(table: str, using: str, check: str = None) -> None:
                % (table, using, check if check is not None else using))
 
 
+def _reconcile_missing_columns() -> dict:
+    """Add every column models.py declares that no revision ever created.
+
+    The chain and the models drifted apart years ago: tables were created by revisions,
+    but columns were added by models.Base.metadata.create_all() at main.py import, which
+    adds nothing to a table that already exists - so in practice they arrived through
+    main.py's own light-migration pass instead. On the deployed database the columns are
+    simply there. On an empty one they are not, and the policies below reference them:
+    this revision's app_my_influencer_ids() reads influencers.user_id, a column
+    89da7f6b7d19 never creates, so the chain stopped here with
+    `column "user_id" does not exist`.
+
+    Here, in the LAST revision, is the safe place for this. Every table exists by now, and
+    every op.add_column anywhere in the chain has already run (brand_profiles.color_tokens
+    and .logos in c31f4a90b7e2, tenants.created_by in f61a9c204db3), so nothing this adds
+    can collide with a later step. Doing it earlier would race those three.
+
+    Added nullable whatever the model says: rows already in the table have no value for a
+    column being introduced, and a revision cannot invent one. That matches what create_all
+    leaves behind on the deployed database, which is the shape this has to reproduce.
+
+    Returns {table: [columns]} for the log line. On the deployed database it is empty.
+    """
+    import models                                   # noqa: F401  (registers the metadata)
+    from database import Base
+
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+
+    # Tables first. d47b2e8135ac builds the ones it protects, but this revision also
+    # policies tables deliberately left outside workspace RLS - deal_deliverable_
+    # submissions and creator_payout_requests, reached by creators through capability
+    # links - so those have no earlier creator. knowledge_chunks is pgvector-backed,
+    # hence the extension, enabled the same way f61a9c204db3 enables pgcrypto.
+    missing_tables = [t for t in Base.metadata.sorted_tables if not insp.has_table(t.name)]
+    if any(t.name in ("agent_memories", "knowledge_chunks") for t in missing_tables):
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    for table in missing_tables:
+        table.create(bind=bind, checkfirst=True)
+    if missing_tables:
+        print("[migration] created %d table(s) no revision ever created: %s"
+              % (len(missing_tables), ", ".join(sorted(t.name for t in missing_tables))))
+        insp = sa.inspect(bind)
+
+    added = {}
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        have = {col["name"] for col in insp.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in have:
+                continue
+            op.add_column(table.name, sa.Column(column.name, column.type, nullable=True))
+            added.setdefault(table.name, []).append(column.name)
+    return added
+
+
 def upgrade() -> None:
+    # Nothing below can reference a column that was never created.
+    _added = _reconcile_missing_columns()
+    if _added:
+        _n = sum(len(v) for v in _added.values())
+        print("[migration] added %d column(s) no revision ever created: %s"
+              % (_n, "; ".join("%s(%s)" % (t, ", ".join(cs))
+                              for t, cs in sorted(_added.items()))))
+
     # ---------------------------------------------------------------- helper functions
 
     # Exactly core/marketplace.py clean_handle(). IMMUTABLE so it can be used in an index
