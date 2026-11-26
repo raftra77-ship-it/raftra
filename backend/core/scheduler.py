@@ -211,6 +211,18 @@ def start_scheduler():
             max_instances=1,
         )
         print("[scheduler] Monthly SEO/GEO audit scheduler started (1st of month, 06:00 UTC).")
+        # Performance is 15 of the 100 points in an SEO score and is the one category
+        # that needs a key. Without PAGESPEED_API_KEY the keyless Google API shares one
+        # daily quota across every caller, so it returns 429 and the category comes back
+        # not_verified. An audit a person runs shows that on screen; a scheduled run at
+        # 06:00 on the 1st has nobody watching, so every customer silently gets a score
+        # out of 85 instead of 100. Say it here, where turning the scheduler on is the
+        # decision being made.
+        if not (os.getenv("PAGESPEED_API_KEY") or "").strip():
+            print("[scheduler] WARNING: PAGESPEED_API_KEY is not set. Scheduled audits "
+                  "will score out of 85, not 100 - Performance (15 points) cannot be "
+                  "measured on the keyless shared quota. The key is free from the "
+                  "Google Cloud console.")
 
     if intel:
         from core.intel_sync import (run_all_competitor_ad_syncs, run_all_market_trend_syncs,
