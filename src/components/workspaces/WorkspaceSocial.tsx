@@ -301,19 +301,29 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
           +12.4k audience growth "Driven by AI Automations". Every figure was a literal in
           this file, so every customer saw the same four numbers presented as their own.
           Nothing in the product ingests social metrics - this component takes no props and
-          its only two requests submit a lead form - so there is no number to show here and
-          no way to get one yet. Saying so is the only honest option. */}
+          its only request submits a lead form - so there is no number to show here and
+          no way to get one yet. Saying so is the only honest option.
+
+          The replacement text then sent people somewhere that does not exist: "once a
+          social account is linked in Integrations & Connectors". There is no social
+          connector to link. The eight that exist are Shopify, WordPress, Meta Ads,
+          Google Ads, GA4, Search Console, GitHub and Google Drive - a store, ad
+          accounts, analytics and search, and not one social account among them. So the
+          empty state was an instruction a user could follow to a page, hunt through,
+          and find nothing. Naming the absence is better than naming a dead end. */}
       <div>
         <h3 style={{ fontSize: '15px', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', marginBottom: '16px' }}>
           <Activity size={18} color="var(--success)" /> Brand Social Performance
         </h3>
         <div className="glow-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ fontSize: '14px', color: '#fff', fontWeight: 600 }}>
-            No social accounts connected yet
+            Social analytics are not available yet
           </div>
           <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            Reach, mentions and engagement will appear here once a social account is linked
-            in Integrations &amp; Connectors.
+            Raftra does not read social metrics today, and there is no social account to
+            connect &mdash; Integrations &amp; Connectors covers your store, ad accounts,
+            analytics and search. Reach, mentions and engagement would show here once
+            that exists. The specialist packages below are unaffected.
           </div>
         </div>
       </div>
