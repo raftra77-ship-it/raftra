@@ -1116,6 +1116,10 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   // Now genuinely empty, and the locally-created drafts below still push into it.
   const [projectsList, setProjectsList] = useState<ProjectCard[]>([]);
   const [selectedProjectModal, setSelectedProjectModal] = useState<ProjectCard | null>(null);
+  // The library had no way to find anything: every ad this workspace has ever generated
+  // rendered as one unbroken grid, so a workspace with dozens of assets could only be
+  // searched by scrolling. Matches the headline, body copy, CTA and type.
+  const [projectQuery, setProjectQuery] = useState('');
 
   // This workspace's actual generated ads, shaped for the same grids. `assets` was being
   // passed in and ignored, so the Projects and Ad Library tabs showed the three seeded demo
@@ -1135,6 +1139,43 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
   }));
   // Real assets first, then anything drafted in this session. No fixture fallback.
   const displayProjects: ProjectCard[] = [...realProjects, ...projectsList];
+
+  // What the grid actually renders. Trimmed and lower-cased on both sides so a trailing
+  // space or a capital letter cannot make a real asset look missing.
+  const visibleProjects: ProjectCard[] = (() => {
+    const q = projectQuery.trim().toLowerCase();
+    if (!q) return displayProjects;
+    return displayProjects.filter(p => [p.title, p.headline, p.bodyText, p.cta, p.date]
+      .some(v => (v || '').toLowerCase().includes(q)));
+  })();
+
+  /* Put an existing asset back on the Create tab, so the variation controls reach it.
+
+     Those controls are gated on generatedCreativeId, which was only ever set by a
+     generation in the current session - so "Make a variation" was dead for every asset
+     in the library, including one generated a minute earlier and reopened. The backend
+     route /api/creative/{id}/variation takes any creative id, so the gap was purely
+     that nothing on this screen ever handed it one. */
+  const openProjectInEditor = (proj: ProjectCard) => {
+    const asset = assets.find(a => String(a.id) === String(proj.id));
+    setGeneratedAd({
+      id: proj.id,
+      headline: proj.headline || '',
+      bodyText: proj.bodyText || '',
+      cta: proj.cta || '',
+      description: '',
+      hashtags: proj.hashtags || '',
+      imageUrl: asset?.imageUrl || proj.img || '',
+      videoUrl: asset?.videoUrl || '',
+      type: asset?.type || selectedAdType,
+      platform,
+      aspectRatio,
+    });
+    setGeneratedCreativeId(Number(proj.id) || null);
+    if (workspaceId && Number(proj.id)) rememberCreative(workspaceId, Number(proj.id));
+    setSelectedProjectModal(null);
+    setActiveTab('create');
+  };
 
   // UGC State & Realistic Generation Flow
   const [ugcSubTab, setUgcSubTab] = useState<'ai_ugc' | 'hire_human'>('ai_ugc');
@@ -3335,6 +3376,30 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 )}
               </div>
 
+              {/* What the image model was actually sent.
+
+                  generatedAd.description is the backend's optimized_prompt, and it was
+                  already being stored on both load paths (the job poller and the
+                  WebSocket arrival) - then never rendered. So the one field that
+                  explains why a creative came out the way it did was fetched on every
+                  poll and dropped. Collapsed by default: useful when an image is wrong,
+                  noise the rest of the time. */}
+              {generatedAd.description && (
+                <details style={{ marginBottom: '18px', background: '#0d0d14',
+                                  border: '1px solid var(--border)', borderRadius: '12px',
+                                  padding: '12px 16px' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                                    color: 'var(--text-secondary)' }}>
+                    Prompt sent to the image model
+                  </summary>
+                  <p style={{ margin: '10px 0 0 0', fontSize: '12px', lineHeight: 1.6,
+                              color: '#bbb', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word' }}>
+                    {generatedAd.description}
+                  </p>
+                </details>
+              )}
+
               {/* Preview & Editable Details Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '32px' }}>
                 
@@ -3979,8 +4044,40 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
             </p>
           </div>
 
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <input
+              value={projectQuery}
+              onChange={e => setProjectQuery(e.target.value)}
+              placeholder="Search by headline, copy, CTA or type…"
+              style={{ flex: '1 1 280px', minWidth: 0, padding: '10px 14px', borderRadius: '100px',
+                       background: '#0d0d14', border: '1px solid var(--border)', color: '#fff', fontSize: '13px' }}
+            />
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              {projectQuery.trim()
+                ? `${visibleProjects.length} of ${displayProjects.length}`
+                : `${displayProjects.length} ${displayProjects.length === 1 ? 'asset' : 'assets'}`}
+            </span>
+            {projectQuery.trim() && (
+              <button
+                onClick={() => setProjectQuery('')}
+                style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                         padding: '8px 14px', borderRadius: '100px', fontSize: '12px', cursor: 'pointer' }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {projectQuery.trim() && visibleProjects.length === 0 && (
+            <div style={{ padding: '28px', textAlign: 'center', color: 'var(--text-secondary)',
+                          border: '1px dashed var(--border)', borderRadius: '16px', fontSize: '13px' }}>
+              Nothing matches “{projectQuery.trim()}”. {displayProjects.length}{' '}
+              {displayProjects.length === 1 ? 'asset is' : 'assets are'} stored in this workspace.
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
-            {displayProjects.map((proj) => (
+            {visibleProjects.map((proj) => (
                 <div
                   key={proj.id}
                   onClick={() => setSelectedProjectModal(proj)}
@@ -4083,7 +4180,22 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
                 </div>
 
                 {/* MODAL ACTION BUTTONS */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px', flexWrap: 'wrap' }}>
+                  {/* Real stored assets only: a card drafted in this session has no
+                      creative id behind it, so the variation controls would have
+                      nothing to call. */}
+                  {selectedProjectModal.real && (
+                    <button
+                      onClick={() => openProjectInEditor(selectedProjectModal)}
+                      style={{ marginRight: 'auto', background: 'rgba(124,117,255,0.15)',
+                               border: '1px solid rgba(124,117,255,0.4)', color: '#bdb9ff',
+                               padding: '10px 18px', borderRadius: '100px', fontSize: '12px',
+                               fontWeight: 600, cursor: 'pointer', display: 'flex',
+                               alignItems: 'center', gap: '7px' }}
+                    >
+                      <Sparkles size={14} /> Open in editor &amp; make variations
+                    </button>
+                  )}
                   {/* Deletes for real. This was hidden for real assets, because dropping a
                       database row from local state would have looked like a delete while
                       changing nothing — the card returned on the next refresh. It now goes

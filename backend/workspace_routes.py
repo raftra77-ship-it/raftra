@@ -1990,12 +1990,46 @@ def get_creatives(workspace_id: int, db: Session = Depends(database.get_db), cur
             body_text=r.body_text,
             cta=r.cta,
             type=r.type,
-            video_url=r.video_url,
+            video_url=_playable_video_url(r.video_url),
             status=r.status,
             image_url=(_signed_image_url(workspace_id, r.id, r.digest) if r.digest else r.plain_url),
         )
         for r in rows
     ]
+
+_VIDEO_URL_PREFIX = "/api/generated/videos/"
+
+
+def _playable_video_url(url):
+    """Blank a video_url whose file is no longer on disk.
+
+    These URLs are served by StaticFiles from VIDEO_DIR, so the row and the file can
+    part company: an ephemeral disk on redeploy, a cleanup, or a restore from a dump
+    leaves the row pointing at nothing. The frontend then renders a <video> that can
+    never play, which reads as a broken product rather than as a missing file.
+    Measured against production: 31 rows pointed at videos, and 9 of those files
+    existed.
+
+    Reporting None instead lets the UI fall back to the still image, which is the
+    honest answer. A URL that is not ours (a provider's CDN) is returned untouched -
+    this cannot verify what it does not serve.
+    """
+    if not url or not url.startswith(_VIDEO_URL_PREFIX):
+        return url
+    from core.providers.kenburns_video import VIDEO_DIR
+    rel = url[len(_VIDEO_URL_PREFIX):].split("?")[0].split("#")[0]
+    try:
+        root = VIDEO_DIR.resolve()
+        target = (root / rel).resolve()
+        # These values come from our own rows, but resolve() then a containment check
+        # costs nothing and means a malformed one can never stat a path outside the
+        # media directory.
+        if root != target and root not in target.parents:
+            return None
+        return url if target.is_file() else None
+    except (OSError, ValueError):
+        return None
+
 
 @router.post("/{workspace_id}/creatives/save", response_model=schemas.AdAssetResponse)
 def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -2010,7 +2044,7 @@ def save_creative(workspace_id: int, asset: schemas.AdAssetCreate, db: Session =
         cta=asset.cta,
         type=asset.type,
         image_url=asset.image_url,
-        video_url=asset.video_url,
+        video_url=_playable_video_url(asset.video_url),
         destination_url=asset.destination_url,
         # Was hardcoded "approved", so a design saved from the Studio as a *draft* came back
         # as an approved library asset. Constrained to the states the review flow knows.

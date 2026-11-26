@@ -456,3 +456,76 @@ async def make_variation(creative_id: int, body: VariationBody, background: Back
             "optimized_prompt": prompts["image_prompt"],
             "creative_spec": spec.summary(),
             "poll_url": f"/api/creative/jobs/{new_id}?workspace_id={body.workspace_id}"}
+
+class EvaluateBody(BaseModel):
+    workspace_id: int
+    # Downloading the creative to measure its palette costs a round trip. Off is a
+    # valid choice for a bulk re-score of copy only; the palette criteria then report
+    # UNKNOWN rather than passing, which is the point of UNKNOWN being a verdict.
+    fetch_image: bool = True
+
+
+@router.post("/{creative_id}/evaluate")
+def evaluate_creative(creative_id: int, body: EvaluateBody,
+                      db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    """Re-score a stored creative against this workspace's Brand Knowledge.
+
+    Evaluation ran in exactly one place: inside generation, right after the asset was
+    committed (core/creative/service.py). So a verdict was fixed at the moment of
+    creation and could never be revisited - edit the brand vault, change a rule, and
+    every existing asset kept a score measured against a brand that no longer exists,
+    with nothing in the product able to refresh it.
+
+    That is the opposite of what the table was built for: brand_evaluations is
+    append-only and carries profile_fingerprint and criteria_version precisely so a
+    verdict that moves can be attributed to the brand being edited or the rules
+    changing. Without a way to run a second evaluation there was never a second row.
+
+    Read-only with respect to the creative. This never rewrites copy, never
+    regenerates the image and never changes the asset's review status - it records
+    findings for a person to act on. Acting on one stays a separate, deliberate step,
+    which is why evaluation and regeneration are different endpoints.
+    """
+    _require_workspace(body.workspace_id, db, current_user)
+    from core.creative.evaluate import evaluate_asset
+
+    report = evaluate_asset(creative_id, body.workspace_id,
+                            fetch_image=body.fetch_image)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Creative not found.")
+    return {"success": True, "evaluation": report.model_dump(mode="json")}
+
+
+@router.get("/{creative_id}/evaluation")
+def latest_evaluation(creative_id: int, workspace_id: int,
+                      db: Session = Depends(database.get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    """The most recent stored evaluation, without running a new one.
+
+    Separate from the POST so a screen can show the current verdict without paying for
+    model calls on every render.
+    """
+    _require_workspace(workspace_id, db, current_user)
+    row = (db.query(models.BrandEvaluation)
+             .filter(models.BrandEvaluation.ad_asset_id == creative_id,
+                     models.BrandEvaluation.workspace_id == workspace_id)
+             .order_by(models.BrandEvaluation.created_at.desc())
+             .first())
+    if not row:
+        raise HTTPException(status_code=404,
+                            detail="This creative has not been evaluated yet.")
+    return {"success": True, "evaluation": {
+        "id": row.id,
+        "status": row.status,
+        "overall_score": row.overall_score,
+        "media_type": row.media_type,
+        "dimensions": row.dimension_scores or [],
+        "violations": row.violations or [],
+        "unknowns": row.unknowns or [],
+        "profile_fingerprint": row.profile_fingerprint,
+        "criteria_version": row.criteria_version,
+        "models_used": row.models_used or {},
+        "tiers_run": row.tiers_run or [],
+        "evaluated_at": row.created_at.isoformat() if row.created_at else None,
+    }}

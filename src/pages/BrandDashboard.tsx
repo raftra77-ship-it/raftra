@@ -2415,7 +2415,8 @@ export function BrandDashboard() {
               <div>
                 <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', marginBottom: '8px' }}>AI Network Specialist Agents</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Manage specialized sub-agent rules, active graph operations, and status indicators in your growth pipeline.
+                  Every agent in your growth pipeline, in the order it runs — with its live status and
+                  what it did last. Read-only: agents start when you run a pipeline from its own section.
                 </p>
               </div>
 
