@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 import auth
 import database
 import models
+import payments
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -58,6 +59,11 @@ def summary(db: Session = Depends(database.get_db),
         "posted_deals_by_status": counts(models.PostedDeal.status),
         "collab_payment_requests": db.query(func.count(models.DealApplication.id))
                                      .filter(models.DealApplication.cashout_requested.is_(True)).scalar() or 0,
+        # Configuration health, not a count. A deployment where checkout works but
+        # the webhook secret is missing takes money without crediting anyone who
+        # closes the tab, and that was previously visible only in the server log,
+        # after the fact.
+        "payments_config": payments.payments_config_status(),
     }
 
 

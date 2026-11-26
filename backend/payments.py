@@ -244,6 +244,59 @@ def verify_payment(payload: VerifyPaymentRequest, db: Session = Depends(database
     return {"status": "success", "balance": user.billing_balance, "payment_status": user.payment_status}
 
 
+def payments_config_status() -> dict:
+    """What is and is not configured for payments, as plain booleans.
+
+    Exposed through /api/admin/summary so a half-configured deployment is visible in the
+    product, not only to whoever reads the server log at the right moment.
+    """
+    key_id = (os.getenv("RAZORPAY_KEY_ID") or "").strip()
+    secret = (os.getenv("RAZORPAY_KEY_SECRET") or "").strip()
+    hook = (os.getenv("RAZORPAY_WEBHOOK_SECRET") or "").strip()
+    checkout_ready = key_id not in _PLACEHOLDERS and secret not in _PLACEHOLDERS
+    webhook_ready = hook not in _PLACEHOLDERS
+    return {
+        "checkout_configured": checkout_ready,
+        "webhook_configured": webhook_ready,
+        # The combination that quietly costs money, called out rather than left to be
+        # inferred from two booleans.
+        "at_risk": bool(checkout_ready and not webhook_ready),
+        "detail": (
+            "Customers can pay, but RAZORPAY_WEBHOOK_SECRET is not set so the webhook is "
+            "refused with 503. Razorpay retries for about 24 hours and then gives up and "
+            "can disable the endpoint. Until it is set, anyone who pays and closes the tab "
+            "before the browser confirms is never credited."
+            if (checkout_ready and not webhook_ready)
+            else "Payments are not configured." if not checkout_ready
+            else "Checkout and webhook are both configured."
+        ),
+    }
+
+
+def _warn_if_payments_half_configured() -> None:
+    """Say at startup when checkout works but the webhook does not.
+
+    Until now this combination announced itself only as an error line written AFTER a
+    customer had already paid and the webhook had already been refused - by which point
+    the money is taken and the credit is not applied. The scheduler prints what it is and
+    is not running at boot for the same reason; payments deserve at least that.
+
+    This warns rather than refusing to start. A missing webhook secret breaks the safety
+    net, not checkout itself, so stopping the whole product over it would do more damage
+    than the fault.
+    """
+    status = payments_config_status()
+    if status["at_risk"]:
+        logger.error(
+            "[payments] RAZORPAY_WEBHOOK_SECRET is NOT set while checkout IS configured. "
+            "%s Set it from the Razorpay dashboard webhook settings.", status["detail"])
+    elif not status["checkout_configured"]:
+        logger.info("[payments] Razorpay is not configured; checkout answers 503.")
+
+
+_warn_if_payments_half_configured()
+
+
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(database.get_db)):
     webhook_secret = (os.getenv("RAZORPAY_WEBHOOK_SECRET") or "").strip()
