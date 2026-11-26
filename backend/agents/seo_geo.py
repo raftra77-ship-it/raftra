@@ -975,24 +975,84 @@ async def run_seo_pipeline(workspace_id: int, target_url: str):
     await manager.broadcast_node_update("seo_geo", "Awaiting Approval", "completed")
     return result
 
-async def run_seo_publish_pipeline(workspace_id: int):
-    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
-    # Retrieve state from DB or memory in a real app. We mock it here.
-    initial_state = {
+def _publish_state_from_last_audit(workspace_id: int, pipeline: str):
+    """Rebuild a publish run's state from the audit it is meant to be publishing.
+
+    Both publish pipelines used to start from a dict typed out by hand:
+
+        "target_url": "approved_url",   # a literal string, never a URL
+        "audit_score": 92,              # 90 on the GEO side
+        "crawl_data": {}, "keyword_clusters": {}, ...
+
+    under the comment "Retrieve state from DB or memory in a real app. We mock it here."
+    Nothing downstream could tell: reporting_agent_node reads
+    section.get('score_100', state.get('audit_score', 0)), and with no scorecard in that
+    state it fell through to the literal and announced "SEO report ready: 92/100" for a
+    site the run had never crawled - the same number for every workspace.
+
+    The real state is already on disk. _persist_audit writes the structured audit, the
+    target_url and the connector summary into SEOAudit.keywords_data at the end of every
+    completed run, and the dashboard reads it back from there. This reads the same row,
+    with the same selector.
+
+    Returns None when there is no completed audit of that pipeline to publish, which is
+    the honest answer - the caller then stops instead of inventing a score to report.
+    """
+    from database import SessionLocal
+    import models
+
+    with SessionLocal() as db:
+        rows = (db.query(models.SEOAudit)
+                  .filter(models.SEOAudit.workspace_id == workspace_id)
+                  .order_by(models.SEOAudit.created_at.desc())
+                  .all())
+        # Mirrors workspace_routes._latest_pipeline_row: the most recent row of THIS
+        # pipeline that actually carries a structured audit.
+        row = next((r for r in rows
+                    if (r.keywords_data or {}).get("pipeline") == pipeline
+                    and (r.keywords_data or {}).get("audit")), None)
+        if row is None:
+            return None
+        kd = row.keywords_data or {}
+        score = row.score
+        report = row.recommendation or ""
+
+    return {
         "workspace_id": workspace_id,
-        "target_url": "approved_url",
+        "target_url": kd.get("target_url") or "",
         "logs": [],
         "current_node": "Publishing Agent",
         "status": "approved",
-        "audit_score": 92,
+        # The score this audit actually measured. reporting_agent_node prefers the
+        # scorecard inside `audit` and only falls back to this, so the two now agree
+        # instead of one being a literal.
+        "audit_score": score or 0,
+        "audit": kd.get("audit") or {},
+        # Which integrations the audit could read. publishing_agent_node branches on
+        # connections.site to say whether the changes can be applied, and with this empty
+        # it told every workspace to go and connect a site it had already connected.
+        "connections": kd.get("connections") or {},
         "crawl_data": {},
         "keyword_clusters": {},
         "content_gaps": [],
         "internal_links": [],
         "backlink_strategy": {},
-        "schema_markup": {},
-        "report": ""
+        "schema_markup": kd.get("schema_markup") or {},
+        "report": report,
     }
+
+
+async def run_seo_publish_pipeline(workspace_id: int):
+    current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
+    initial_state = _publish_state_from_last_audit(workspace_id, "SEO")
+    if initial_state is None:
+        msg = "No completed SEO audit to publish. Run the audit first - the deployment plan is built from what it measured."
+        await manager.broadcast_agent_log("SEO Agent", msg, "failed")
+        # Imported here, not at module scope: this file imports agent_status
+        # inside each function that needs it (see _seo_stage_done).
+        from core.agent_status import record_agent_task
+        record_agent_task(workspace_id, "SEO", "FAILED", msg[:120])
+        return None
     await manager.broadcast_agent_log("SEO Agent", "Human approval received. Commencing publishing sequence.", "running")
     result = await seo_publish_graph.ainvoke(initial_state)
 
@@ -1599,21 +1659,15 @@ async def run_geo_pipeline(workspace_id: int, target_url: str):
 
 async def run_geo_publish_pipeline(workspace_id: int):
     current_workspace_id.set(workspace_id)  # scope all broadcasts in this task to this workspace
-    initial_state = {
-        "workspace_id": workspace_id,
-        "target_url": "approved_url",
-        "logs": [],
-        "current_node": "Publishing Agent",
-        "status": "approved",
-        "audit_score": 90,
-        "crawl_data": {},
-        "keyword_clusters": {},
-        "content_gaps": [],
-        "internal_links": [],
-        "backlink_strategy": {},
-        "schema_markup": {},
-        "report": ""
-    }
+    initial_state = _publish_state_from_last_audit(workspace_id, "GEO")
+    if initial_state is None:
+        msg = "No completed GEO audit to publish. Run the audit first - the deployment plan is built from what it measured."
+        await manager.broadcast_agent_log("GEO Agent", msg, "failed")
+        # Imported here, not at module scope: this file imports agent_status
+        # inside each function that needs it (see _seo_stage_done).
+        from core.agent_status import record_agent_task
+        record_agent_task(workspace_id, "GEO", "FAILED", msg[:120])
+        return None
     await manager.broadcast_agent_log("GEO Agent", "Human approval received. Commencing GEO deployment.", "running")
     result = await geo_publish_graph.ainvoke(initial_state)
     await manager.broadcast_node_update("geo_pipeline", "Pipeline", "completed")
