@@ -1119,3 +1119,33 @@ class TenantMember(Base):
 
     tenant = relationship("Tenant", back_populates="members")
     user = relationship("User")
+
+
+class SpecialistPackagePrice(Base):
+    """A price override for one Social Hub specialist package.
+
+    The five packages on the Social Hub are defined in the page itself - each has an icon
+    component, a colour and a list of what it automates, none of which belong in a
+    database. Their PRICES were in there too, so changing "Starting from Rs 25,000/month"
+    meant a code change and a frontend deploy, which is not how a price should move.
+
+    Only the price lives here, keyed by the package's slug, and only when someone has set
+    one. An empty table means every package shows the figure built into the page, so
+    deploying this changes nothing until a row is written - which is the safe default for
+    a table that controls what customers are quoted.
+    """
+    __tablename__ = "specialist_package_prices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Matches the id the page gives each package: social, seo, paid_ads, influencer, cro.
+    slug = Column(String, unique=True, index=True, nullable=False)
+    # What the customer reads, e.g. "Starting from Rs 20,000/month". Free text because the
+    # unit varies - /month for retainers, /project for CRO.
+    price_label = Column(String, nullable=False)
+    # The number behind the label, for anything that needs to compare or total.
+    base_price = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow)
+
+    # Deliberately no RLS: this is global reference data, like `plans`. Every brand sees
+    # the same price list, and the marketplace page is reachable logged out.

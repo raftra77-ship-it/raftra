@@ -364,3 +364,20 @@ def expert_inquiry(body: ExpertInquiry, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_send)
     return {"status": "success", "message": "Thanks - our team will be in touch within 24 hours."}
+
+
+# ------------------------------------------------------------ specialist package prices
+
+@router.get("/specialist-packages")
+def specialist_packages(db: Session = Depends(database.get_db)):
+    """Price overrides for the Social Hub packages. Unauthenticated, like the enquiry form.
+
+    Returns only the packages someone has actually set a price for. The page holds the
+    built-in figure for each one and uses it unless a slug appears here, so an empty list
+    - the state on a fresh deploy - means nothing on screen changes.
+    """
+    rows = db.query(models.SpecialistPackagePrice).all()
+    return {"packages": [
+        {"slug": r.slug, "price_label": r.price_label, "base_price": r.base_price}
+        for r in rows
+    ]}

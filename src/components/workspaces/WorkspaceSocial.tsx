@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Activity, Users, MessageCircle, Heart, Zap, Sparkles, UserCheck, 
   ShieldCheck, CheckCircle2, Briefcase, TrendingUp, Search, 
@@ -33,6 +33,35 @@ interface EnquiryItem {
 
 export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
   const [selectedSpecialistIndex, setSelectedSpecialistIndex] = useState<number>(0);
+
+  /* Prices an admin has changed, keyed by package slug.
+
+     The packages themselves stay below: their icons are components and their feature
+     lists are copy, neither of which belongs in a database. Only the price moved,
+     because changing what a customer is quoted should not need a frontend deploy.
+
+     Empty is the normal state. A package with no override shows the figure written
+     below, so this fetch failing - offline, backend down, endpoint missing on an
+     older build - leaves the page exactly as it was. */
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, { price_label: string; base_price: number | null }>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/deals/specialist-packages')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled || !d || !Array.isArray(d.packages)) return;
+        const map: Record<string, { price_label: string; base_price: number | null }> = {};
+        for (const p of d.packages) {
+          if (p && p.slug && p.price_label) {
+            map[p.slug] = { price_label: p.price_label, base_price: p.base_price ?? null };
+          }
+        }
+        setPriceOverrides(map);
+      })
+      .catch(() => { /* keep the built-in prices */ });
+    return () => { cancelled = true; };
+  }, []);
   
   // Enquiry Modal state
   const [enquirySpecialist, setEnquirySpecialist] = useState<{id: string, name: string, price: string, basePrice: number} | null>(null);
@@ -165,7 +194,16 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
     }
   ];
 
-  const currentSpecialist = specialistRoles[selectedSpecialistIndex];
+  /* What the page actually renders: the packages above, with any admin-set price
+     applied over them. basePrice falls back to the built-in number when an override
+     carries only a label, so nothing that reads it can end up undefined. */
+  const displayedRoles = specialistRoles.map(role => {
+    const override = priceOverrides[role.id];
+    if (!override) return role;
+    return { ...role, price: override.price_label, basePrice: override.base_price ?? role.basePrice };
+  });
+
+  const currentSpecialist = displayedRoles[selectedSpecialistIndex];
 
   const handleOpenEnquiry = (role: { id: string; title: string; price: string; basePrice: number }) => {
     setEnquirySpecialist({ id: role.id, name: role.title, price: role.price, basePrice: role.basePrice });
@@ -337,7 +375,7 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
 
         {/* Role Selector Tabs */}
         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '20px' }}>
-          {specialistRoles.map((role, idx) => {
+          {displayedRoles.map((role, idx) => {
             const Icon = role.icon;
             const isSelected = selectedSpecialistIndex === idx;
             return (
