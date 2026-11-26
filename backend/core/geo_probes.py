@@ -11,9 +11,15 @@ return counts and verbatim answers, so a reader can check the finding rather tha
 
 Two limits stated plainly, because a GEO number that overclaims is worse than none:
 
-  * One model, not four. This probes Gemini, which is what the workspace has credentials
-    for. It is a real answer engine and a reasonable proxy, but it is not ChatGPT, Perplexity
-    and Claude, and every result here says which model produced it.
+  * As many engines as are configured, which today is usually one. Gemini always runs;
+    OpenRouter and OpenAI are added when their keys are present, asked THE SAME prompts so
+    the numbers are comparable, and reported per engine. It was hardcoded to Gemini, so
+    adding a provider key changed every other part of the product and left the measurement
+    that is specifically about answer engines looking at one. Anthropic is excluded until
+    AnthropicProvider stops raising "not implemented".
+    `model` names only the engines that actually answered, so one key does not let the
+    report imply four. An engine that errors is recorded against itself and does not
+    affect the others.
   * Training knowledge, not live retrieval. The probes ask what the model knows, so they
     measure the brand's presence in model weights — which is exactly the GEO question — and
     not what a retrieval-augmented product would surface today.
@@ -96,6 +102,88 @@ def _json_block(raw: str):
     return None
 
 
+def _extra_engines() -> list:
+    """Answer engines besides Gemini that this deployment can actually reach.
+
+    GEO's claim is about how AI assistants answer, and one model is one data point. This
+    probe was hardcoded to Gemini, so adding another provider's key changed nothing here -
+    the extra engine was reachable everywhere else in the product and invisible to the
+    measurement that is specifically about engines.
+
+    Only providers with a key present AND an implementation are returned.
+    AnthropicProvider is excluded deliberately: it raises
+    "AnthropicProvider is not implemented yet", so including it would add an engine that
+    can only ever report an error.
+
+    Empty on a deployment with just GEMINI_API_KEY, which is why this changes nothing
+    until a second key is set.
+    """
+    import os
+    engines = []
+    if (os.getenv("OPENROUTER_API_KEY") or "").strip():
+        from core.providers.llm_providers import OpenRouterProvider
+        engines.append(("OpenRouter", OpenRouterProvider()))
+    if (os.getenv("OPENAI_API_KEY") or "").strip():
+        from core.providers.llm_providers import OpenAIProvider
+        engines.append(("GPT", OpenAIProvider()))
+    return engines
+
+
+async def _answer_and_count(llm, prompts: list, names: list) -> dict:
+    """Put one engine through the prompts and count how often the brand is named.
+
+    Lifted out of probe_prompt_visibility unchanged so every engine is measured the same
+    way - same batched call, same per-prompt retry for anything the batch left out, same
+    mention test. A second engine scored by slightly different rules would not be
+    comparable with the first, which is the whole point of asking more than one.
+    """
+    import asyncio
+
+    res = {"answers": [], "hits": 0, "unanswered": 0, "error": None}
+    answered = await llm.generate_text(
+        prompt=("Answer each question below the way you normally would, naming the specific "
+                "companies, products or sites you would actually recommend. If you do not "
+                "know of any, say so.\n\n"
+                + "\n".join(f"{i+1}. {p}" for i, p in enumerate(prompts))
+                + "\n\nReply with ONLY a JSON array of objects: "
+                  '[{"question": "...", "answer": "..."}]'),
+        system_prompt=_NO_TOOLS + " Reply with JSON only.",
+    )
+    rows = _json_block(answered)
+    rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+    by_prompt = [rows[i] if i < len(rows) else None for i in range(len(prompts))]
+
+    # A long batched reply comes back truncated often enough that _json_block salvaging
+    # the first two answers was routine - and the audit then printed "named in 0 of 2"
+    # beside a list of five prompts. Any prompt the batch did not answer is asked on its
+    # own, so every prompt listed is a prompt measured.
+    missing = [i for i, r in enumerate(by_prompt) if r is None]
+    if missing:
+        async def _ask(question: str):
+            try:
+                reply = await llm.generate_text(
+                    prompt=(question + "\n\nAnswer the way you normally would, naming the "
+                            "specific companies, products or sites you would recommend. If "
+                            "you do not know of any, say so."),
+                    system_prompt=_NO_TOOLS)
+                return {"question": question, "answer": reply or ""} if (reply or "").strip() else None
+            except Exception:
+                return None
+
+        for i, r in zip(missing, await asyncio.gather(*(_ask(prompts[i]) for i in missing))):
+            by_prompt[i] = r
+
+    for prompt, r in zip(prompts, by_prompt):
+        if not r:
+            continue
+        ans = str(r.get("answer", ""))
+        hit = _mentions(ans, names)
+        res["hits"] += 1 if hit else 0
+        res["answers"].append({"question": prompt[:200], "mentioned": hit, "answer": ans[:500]})
+    res["unanswered"] = len(prompts) - len(res["answers"])
+    return res
+
+
 async def probe_prompt_visibility(url: str, brand_name: str = "", category: str = "",
                                   n_prompts: int = 5) -> dict:
     """Does the brand get named when a buyer asks the questions it should win?
@@ -107,7 +195,7 @@ async def probe_prompt_visibility(url: str, brand_name: str = "", category: str 
     names = _brand_names(url, brand_name)
     out = {"ok": False, "model": MODEL_LABEL, "prompts": [], "mentioned_in": 0,
            "total": 0, "visibility_pct": 0.0, "answers": [], "error": None,
-           "brand_terms": names}
+           "brand_terms": names, "engines": []}
     try:
         llm = GeminiProvider()
         topic = (category or "").strip() or f"the business at {url}"
@@ -128,57 +216,48 @@ async def probe_prompt_visibility(url: str, brand_name: str = "", category: str 
         prompts = [str(p)[:200] for p in prompts[:n_prompts]]
         out["prompts"] = prompts
 
-        answered = await llm.generate_text(
-            prompt=("Answer each question below the way you normally would, naming the specific "
-                    "companies, products or sites you would actually recommend. If you do not "
-                    "know of any, say so.\n\n"
-                    + "\n".join(f"{i+1}. {p}" for i, p in enumerate(prompts))
-                    + "\n\nReply with ONLY a JSON array of objects: "
-                      '[{"question": "...", "answer": "..."}]'),
-            system_prompt=_NO_TOOLS + " Reply with JSON only.",
-        )
-        rows = _json_block(answered)
-        rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
-        by_prompt = [rows[i] if i < len(rows) else None for i in range(len(prompts))]
-
-        # A long batched reply comes back truncated often enough that _json_block salvaging
-        # the first two answers was routine - and the audit then printed "named in 0 of 2"
-        # beside a list of five prompts. Any prompt the batch did not answer is asked on its
-        # own, so every prompt listed is a prompt measured. (The old fallback, when nothing
-        # parsed, scored the whole raw reply once per prompt: one mention counted five times.)
-        missing = [i for i, r in enumerate(by_prompt) if r is None]
-        if missing:
-            import asyncio
-
-            async def _ask(question: str):
-                try:
-                    reply = await llm.generate_text(
-                        prompt=(question + "\n\nAnswer the way you normally would, naming the "
-                                "specific companies, products or sites you would recommend. If "
-                                "you do not know of any, say so."),
-                        system_prompt=_NO_TOOLS)
-                    return {"question": question, "answer": reply or ""} if (reply or "").strip() else None
-                except Exception:
-                    return None
-
-            for i, r in zip(missing, await asyncio.gather(*(_ask(prompts[i]) for i in missing))):
-                by_prompt[i] = r
-
-        hits = 0
-        for prompt, r in zip(prompts, by_prompt):
-            if not r:
-                continue
-            ans = str(r.get("answer", ""))
-            hit = _mentions(ans, names)
-            hits += 1 if hit else 0
-            out["answers"].append({"question": prompt[:200], "mentioned": hit, "answer": ans[:500]})
+        primary = await _answer_and_count(llm, prompts, names)
+        out["answers"] = primary["answers"]
         if not out["answers"]:
             out["error"] = "The model returned no usable answers to the probe prompts."
             return out
-        out["total"] = len(out["answers"])
-        out["unanswered"] = len(prompts) - len(out["answers"])
-        out["mentioned_in"] = hits
-        out["visibility_pct"] = round(hits / out["total"] * 100, 1)
+        engines = [{"name": MODEL_LABEL, "ok": True,
+                    "mentioned_in": primary["hits"], "total": len(primary["answers"]),
+                    "visibility_pct": round(primary["hits"] / len(primary["answers"]) * 100, 1),
+                    "error": None}]
+
+        # Every other engine this deployment can reach, asked THE SAME prompts so the
+        # numbers are comparable. One engine failing is reported against that engine and
+        # leaves the rest of the measurement standing.
+        for label, other in _extra_engines():
+            try:
+                res = await _answer_and_count(other, prompts, names)
+                if not res["answers"]:
+                    engines.append({"name": label, "ok": False, "mentioned_in": 0, "total": 0,
+                                    "visibility_pct": 0.0,
+                                    "error": "No usable answers."})
+                    continue
+                out["answers"].extend({**a, "engine": label} for a in res["answers"])
+                engines.append({"name": label, "ok": True, "mentioned_in": res["hits"],
+                                "total": len(res["answers"]),
+                                "visibility_pct": round(res["hits"] / len(res["answers"]) * 100, 1),
+                                "error": None})
+            except Exception as e:
+                engines.append({"name": label, "ok": False, "mentioned_in": 0, "total": 0,
+                                "visibility_pct": 0.0, "error": str(e)[:200]})
+
+        answered_engines = [e for e in engines if e["ok"]]
+        out["engines"] = engines
+        # Across every engine that answered. With one engine configured these are exactly
+        # the single-engine numbers, which is why this changes nothing until a second key
+        # is set.
+        out["total"] = sum(e["total"] for e in answered_engines)
+        out["mentioned_in"] = sum(e["mentioned_in"] for e in answered_engines)
+        out["unanswered"] = primary["unanswered"]
+        out["visibility_pct"] = round(out["mentioned_in"] / out["total"] * 100, 1) if out["total"] else 0.0
+        # Name the engines actually behind the number, never a fixed label - a reader has
+        # to be able to tell one model from four.
+        out["model"] = ", ".join(e["name"] for e in answered_engines) or MODEL_LABEL
         out["ok"] = True
     except Exception as e:
         out["error"] = str(e)[:200]
