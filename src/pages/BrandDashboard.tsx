@@ -42,7 +42,6 @@ const TabFallback = () => (
 
 import {
   Cpu,
-  Bot,
   LayoutDashboard,
   Sparkles,
   Megaphone,
@@ -1907,21 +1906,6 @@ export function BrandDashboard() {
             <div className="sidebar-item-left">
               <Calendar size={15} />
               <span>Marketing Calendar</span>
-            </div>
-          </button>
-
-          {/* The screen behind this was already wired to real agent runs, but nothing ever
-              navigated to it: no sidebar entry existed and setActiveTab('agents') was
-              called nowhere in the app, so it could only be reached by typing ?tab=agents
-              into the address bar. */}
-          <button
-            onClick={() => setActiveTab('agents')}
-            className={`sidebar-item ${activeTab === 'agents' ? 'active' : ''}`}
-            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
-          >
-            <div className="sidebar-item-left">
-              <Bot size={15} />
-              <span>AI Agents</span>
             </div>
           </button>
 
