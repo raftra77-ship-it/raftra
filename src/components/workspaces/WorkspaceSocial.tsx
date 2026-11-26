@@ -193,41 +193,47 @@ export const WorkspaceSocial: React.FC<WorkspaceSocialProps> = () => {
 
     setEnquiriesList(prev => [newEnquiry, ...prev]);
 
-    // Background email dispatch, so the enquiry actually reaches someone rather than
-    // living only in this component's state until the page is refreshed.
-    fetch('https://formsubmit.co/ajax/raftra.77@gmail.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        _subject: `🚨 NEW SPECIALIST HIRE REQUEST: ${enquirySpecialist.name}`,
-        specialist_role: enquirySpecialist.name,
-        package_price: enquirySpecialist.price,
-        client_name: enquiryForm.name,
-        client_email: enquiryForm.email,
-        client_phone: enquiryForm.phone,
-        client_notes: enquiryForm.notes || 'N/A',
-        target_whatsapp_number: '+91 9650271859',
-        submitted_at: new Date().toLocaleString()
-      })
-    }).catch(() => {});
-
-    // Background notification dispatch (no browser tab / WhatsApp redirect).
-    fetch('/api/workspaces/social/enquiry', {
+    // One dispatch, to this product's own backend.
+    //
+    // What was here sent the prospect's name, email and phone from the browser straight to
+    // formsubmit.co/ajax/raftra.77@gmail.com - a third-party form relay, so customer
+    // contact details left this stack entirely - and then POSTed to
+    // /api/workspaces/social/enquiry, which is not a route this backend serves. It 404s;
+    // the real endpoint is /api/deals/expert-inquiry. Both calls swallowed their errors
+    // with .catch(() => {}) and the toast below fired unconditionally, claiming delivery
+    // "directly to raftra.77@gmail.com & WhatsApp (+91 9650271859)". So a hire request on
+    // a priced page could be lost while the prospect was told it had arrived. Nothing here
+    // sends WhatsApp, which is why the message no longer says it does.
+    const specialist = enquirySpecialist;
+    fetch('/api/deals/expert-inquiry', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        specialist_role: enquirySpecialist.name,
-        package_price: enquirySpecialist.price,
-        client_name: enquiryForm.name,
-        client_email: enquiryForm.email,
-        client_phone: enquiryForm.phone,
-        client_notes: enquiryForm.notes || 'N/A'
+        name: enquiryForm.name,
+        email: enquiryForm.email,
+        phone: enquiryForm.phone,
+        // The backend's ExpertInquiry model carries no specialist fields, so the role and
+        // the quoted package go in the notes. Without them the team receives an enquiry
+        // without knowing which specialist was asked for, or at what price.
+        notes: [
+          `Specialist requested: ${specialist.name}`,
+          `Package quoted: ${specialist.price}`,
+          enquiryForm.notes ? `Notes: ${enquiryForm.notes}` : '',
+        ].filter(Boolean).join('\n'),
+      }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        showToast('Enquiry sent. Our team will get in touch by email shortly.');
+        setEnquirySpecialist(null);
+        setEnquiryForm({ name: '', email: '', phone: '', notes: '' });
       })
-    }).catch(() => {});
-
-    showToast(`ENQUIRY SUBMITTED SUCCESSFULLY!\nEnquiry details sent directly to raftra.77@gmail.com & WhatsApp (+91 9650271859).\nOur team will get in touch shortly.`);
-    setEnquirySpecialist(null);
-    setEnquiryForm({ name: '', email: '', phone: '', notes: '' });
+      .catch(() => {
+        // Report the failure instead of claiming success, take the optimistic row back
+        // out, and leave the form filled so nothing has to be retyped.
+        setEnquiriesList((prev) => prev.filter((x) => x.id !== newEnquiry.id));
+        showToast('Could not send that enquiry - it has not reached our team. Please check your connection and try again.');
+      });
   };
 
   return (
