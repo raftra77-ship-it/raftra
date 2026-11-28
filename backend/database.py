@@ -130,6 +130,56 @@ def rls_enabled() -> bool:
     return os.getenv("ENABLE_RLS", "false").strip().lower() in ("1", "true", "yes", "on")
 
 
+# Whether the scope switch is actually working, as opposed to configured.
+#
+# enter_tenant_scope() never raises: if the role or the policies are missing it logs and
+# lets the request continue under the application-level checks. That is the right call for
+# availability and a terrible one for knowing where you stand - the deployment keeps
+# serving traffic, ENABLE_RLS still reads "true", and the only trace is a log line on a
+# host nobody tails. A deployment can therefore believe it has database-level tenant
+# isolation while every request runs unscoped.
+#
+# These counters make the difference observable. Process-local and approximate by design:
+# they are a health signal, not an audit log, and a restart resets them.
+_RLS_SCOPED_OK = 0
+_RLS_FELL_BACK = 0
+_RLS_LAST_ERROR = None
+
+
+def rls_status() -> dict:
+    """Is tenant isolation actually in force, or only switched on?
+
+    Surfaced through /api/admin/summary, because "ENABLE_RLS=true" answers a different
+    question from "the database is filtering rows". Counts are since this process started.
+    """
+    configured = rls_enabled()
+    attempted = _RLS_SCOPED_OK + _RLS_FELL_BACK
+    return {
+        "enabled": configured,
+        "role": RLS_ROLE,
+        "requests_scoped": _RLS_SCOPED_OK,
+        "requests_fell_back": _RLS_FELL_BACK,
+        "last_error": _RLS_LAST_ERROR,
+        # The state worth alarming on: switched on, has been exercised, and is failing
+        # every time - which looks identical to working from outside.
+        "silently_unenforced": bool(configured and attempted and not _RLS_SCOPED_OK),
+        "detail": (
+            "ENABLE_RLS is off; tenant isolation rests on the application-level checks only."
+            if not configured else
+            "No authenticated request has entered a tenant scope yet since this process "
+            "started, so there is nothing to report."
+            if not attempted else
+            "Every attempt to enter a tenant scope has failed and fallen back to "
+            "application-level checks. The database is NOT filtering rows, though "
+            "ENABLE_RLS reads true. Check that the %s role and the policies exist." % RLS_ROLE
+            if not _RLS_SCOPED_OK else
+            "Tenant scope is being entered; the database is filtering rows."
+            if not _RLS_FELL_BACK else
+            "Mostly working, but some requests fell back - see last_error."
+        ),
+    }
+
+
 def enter_tenant_scope(db, user_id: int) -> None:
     """Bind this transaction to one user, so RLS policies filter every subsequent query.
 
@@ -158,7 +208,12 @@ def enter_tenant_scope(db, user_id: int) -> None:
         db.execute(text("SET LOCAL ROLE " + RLS_ROLE + "; "
                         "SELECT set_config('app.user_id', :uid, true)"),
                    {"uid": str(int(user_id))})
+        global _RLS_SCOPED_OK
+        _RLS_SCOPED_OK += 1
     except Exception as e:
         db.rollback()
+        global _RLS_FELL_BACK, _RLS_LAST_ERROR
+        _RLS_FELL_BACK += 1
+        _RLS_LAST_ERROR = str(e)[:300]
         print(f"[rls] could not enter tenant scope for user {user_id}: {e} "
               f"- falling back to application-level checks for this request.")

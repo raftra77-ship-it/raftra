@@ -68,6 +68,10 @@ def summary(db: Session = Depends(database.get_db),
         # default from this repository looks completely normal from outside, so the
         # state has to be readable somewhere other than a boot log nobody tails.
         "auth_config": auth.auth_config_status(),
+        # Whether the database is actually filtering rows, not merely whether
+        # ENABLE_RLS is set. enter_tenant_scope falls back silently by design, so
+        # those two can disagree and nothing outside the log would show it.
+        "rls_config": database.rls_status(),
     }
 
 
