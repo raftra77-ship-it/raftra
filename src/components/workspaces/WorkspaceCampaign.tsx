@@ -2578,7 +2578,19 @@ export const WorkspaceCampaign: React.FC<WorkspaceCampaignProps> = ({ workspaceI
               { n: 'Creative assets', d: selectedImage ? '1 image approved' : 'None selected', ok: !!selectedImage },
               ...(platforms.meta ? [{ n: 'Meta Ads', d: metaReady ? money(split.meta?.amount) : 'Not ready', ok: !!metaReady }] : []),
               ...(platforms.google ? [{ n: 'Google Ads', d: googleReady ? money(split.google?.amount) : 'Not ready', ok: !!googleReady }] : []),
-              { n: 'Optimization rules', d: smart.killAds || smart.autoRotate ? 'Configured' : 'Off', ok: true },
+              /* The last screen before money is spent, so this row has to match the
+                 rules panel above rather than contradict it. It said 'Configured'
+                 with a green tick whether or not anything enforces the limits -
+                 which reads, right at the point of committing budget, as a
+                 safeguard that is in place. rulesEnforced already comes from
+                 /api/schedules/runner-status; the panel uses it and this did not.
+                 Rules switched off is a deliberate choice and still ticks; rules
+                 switched on with nothing enforcing them is the case worth flagging. */
+              (!smart.killAds && !smart.autoRotate)
+                ? { n: 'Optimization rules', d: 'Off', ok: true }
+                : rulesEnforced
+                  ? { n: 'Optimization rules', d: 'Enforced', ok: true }
+                  : { n: 'Optimization rules', d: 'Saved, not enforced', ok: false },
             ].map(s => (
               <div key={s.n} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, var(--border-color))', borderRadius: '10px', padding: '13px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '5px' }}>
