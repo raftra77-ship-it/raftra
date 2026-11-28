@@ -2641,8 +2641,8 @@ export const WorkspaceCreative: React.FC<WorkspaceCreativeProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px', width: '100%' }}>
           {[
             { id: 'create_intel', label: '1. Create & Intelligence 🪄', tag: 'AI GENERATOR & VAULT', desc: 'AI Generator, Saved Projects, Competitor Spy & Winning Vault', color: '#00E676', bg: 'linear-gradient(135deg, rgba(0,230,118,0.14) 0%, rgba(10,14,20,0.95) 100%)' },
-            { id: 'editing', label: '2. Creative Editing 🎨', tag: 'CANVA & FIGMA WORKBENCH', desc: 'Single Graphic Studio, Multi-Card Carousel Builder & Video Storyboard', color: '#7C75FF', bg: 'linear-gradient(135deg, rgba(124,117,255,0.14) 0%, rgba(12,10,24,0.95) 100%)' },
-            { id: 'services', label: '3. UGC Services 🤝', tag: 'AI REELS & MARKETPLACE', desc: 'AI UGC Avatar Reel Generator & Hire Verified Human Influencers', color: '#FFB74D', bg: 'linear-gradient(135deg, rgba(255,183,77,0.14) 0%, rgba(20,14,10,0.95) 100%)' }
+            { id: 'editing', label: '2. Creative Editing 🎨', tag: 'CANVAS EDITOR — EXPORTS TO FIGMA & CANVA', desc: 'Single Graphic Studio, Multi-Card Carousel Builder & Video Storyboard', color: '#7C75FF', bg: 'linear-gradient(135deg, rgba(124,117,255,0.14) 0%, rgba(12,10,24,0.95) 100%)' },
+            { id: 'services', label: '3. UGC Services 🤝', tag: 'AI REELS & MARKETPLACE', desc: 'Script-to-Reel Generator & Hire Verified Human Influencers', color: '#FFB74D', bg: 'linear-gradient(135deg, rgba(255,183,77,0.14) 0%, rgba(20,14,10,0.95) 100%)' }
           ].map(sec => {
             const isSelected = masterSection === sec.id;
             return (
