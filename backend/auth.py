@@ -19,6 +19,9 @@ from email.utils import formataddr
 import httpx
 
 import database, models, schemas
+# settings.is_production gates the refusal below. database already imports config,
+# so this adds no cycle.
+from config import settings
 from pydantic import BaseModel
 from core import tenancy
 
@@ -78,12 +81,25 @@ def auth_config_status() -> dict:
 
 _KEY_PROBLEM = _signing_key_problem(SECRET_KEY)
 if _KEY_PROBLEM:
-    # Reporting only. Whether a deployed instance should REFUSE to start on this is a
-    # separate change, deliberately kept separate: shipping the refusal while nobody knows
-    # which state production is in risks replacing a quiet security hole with an outage.
-    # This half tells you the state - from the log at boot, and from /api/admin/summary at
-    # any time - so that decision can be made on evidence rather than on a guess.
-    print("WARNING: JWT_SECRET_KEY is weak - %s. Tokens signed now are forgeable.\n%s"
+    # In production this stops the process. Before this it only printed a warning, and a
+    # warning on a deployed instance is read by nobody - the server came up and served
+    # traffic signing tokens with a key anyone could read off GitHub. This key signs access
+    # tokens, password-reset tokens and the OAuth `state` parameter, so a guessable value
+    # lets anyone mint a token for any user id, role 'admin' included, and simply be that
+    # user. Refusing to boot is the safer failure because it is the loud one.
+    #
+    # Shipped only after confirming the deployed instance sets JWT_SECRET_KEY to a value
+    # over the 32-character floor, so this cannot fire there. The reporting half
+    # (auth_config_status, and the warning below) went out first for exactly that reason -
+    # a refusal deployed blind trades a quiet security hole for an outage.
+    if settings.is_production:
+        raise RuntimeError(
+            "JWT_SECRET_KEY is not usable in production: %s.\n\n"
+            "Every access token, password-reset token and OAuth state parameter is signed "
+            "with this key, so a guessable value lets anyone forge a session as any "
+            "user.\n\n%s" % (_KEY_PROBLEM, _HOW_TO_FIX))
+    print("WARNING: JWT_SECRET_KEY is weak - %s. Tokens signed now are forgeable, which is "
+          "tolerable locally; with APP_ENV=production this would refuse to start.\n%s"
           % (_KEY_PROBLEM, _HOW_TO_FIX))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
