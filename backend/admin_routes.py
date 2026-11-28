@@ -64,6 +64,10 @@ def summary(db: Session = Depends(database.get_db),
         # closes the tab, and that was previously visible only in the server log,
         # after the fact.
         "payments_config": payments.payments_config_status(),
+        # Same reasoning as payments_config: a deployment signing tokens with the
+        # default from this repository looks completely normal from outside, so the
+        # state has to be readable somewhere other than a boot log nobody tails.
+        "auth_config": auth.auth_config_status(),
     }
 
 

@@ -26,11 +26,65 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback_secret_key_for_raftra_dev")
-# Refuse to run silently with a guessable signing key — a weak secret lets anyone forge login tokens.
-if SECRET_KEY in ("fallback_secret_key_for_raftra_dev", "dev_secret_change_me_in_production",
-                  "super_secret_jwt_key_here", "change_me_generate_a_strong_random_value", ""):
-    print("WARNING: JWT_SECRET_KEY is weak/default. Set a strong random value "
-          "(python -c \"import secrets; print(secrets.token_urlsafe(64))\") before production.")
+
+# Signing keys that are public knowledge. The fallback above is the worst of them: it is
+# committed in this file, so anyone who can read the repository can sign a token with it.
+_PUBLISHED_SECRETS = frozenset({
+    "fallback_secret_key_for_raftra_dev",
+    "dev_secret_change_me_in_production",
+    "super_secret_jwt_key_here",
+    "change_me_generate_a_strong_random_value",
+    "",
+})
+# HS256 signs with the secret itself, so a short one is the weakest link in the whole
+# scheme. 32 characters is the floor worth having.
+_MIN_SECRET_CHARS = 32
+
+_HOW_TO_FIX = ("Generate one and set JWT_SECRET_KEY in the deployment environment:\n"
+               '    python -c "import secrets; print(secrets.token_urlsafe(64))"')
+
+
+def _signing_key_problem(key):
+    """Why this key is unusable, or None if it is fine."""
+    if key in _PUBLISHED_SECRETS:
+        return "it is a known default value, published in this repository"
+    if len(key) < _MIN_SECRET_CHARS:
+        return "it is %d characters long; the minimum is %d" % (len(key), _MIN_SECRET_CHARS)
+    return None
+
+
+def auth_config_status() -> dict:
+    """Whether the token signing key is usable, WITHOUT revealing it.
+
+    Exposed through /api/admin/summary because the honest answer to "is production signing
+    tokens with the default from our own repository?" should not require shell access to a
+    deployed instance. Returns the reason only - never the key, never its length when it is
+    fine, and nothing an admin could not already work out.
+    """
+    problem = _signing_key_problem(SECRET_KEY)
+    return {
+        "jwt_key_ok": problem is None,
+        "reason": problem,
+        "detail": (
+            "The token signing key is a published default or too short, so anyone able to "
+            "read this repository can mint a token for any user id - role 'admin' included "
+            "- and be that user. Every access token, password-reset token and OAuth state "
+            "parameter is signed with it."
+            if problem else
+            "The token signing key is set and of usable length."
+        ),
+    }
+
+
+_KEY_PROBLEM = _signing_key_problem(SECRET_KEY)
+if _KEY_PROBLEM:
+    # Reporting only. Whether a deployed instance should REFUSE to start on this is a
+    # separate change, deliberately kept separate: shipping the refusal while nobody knows
+    # which state production is in risks replacing a quiet security hole with an outage.
+    # This half tells you the state - from the log at boot, and from /api/admin/summary at
+    # any time - so that decision can be made on evidence rather than on a guess.
+    print("WARNING: JWT_SECRET_KEY is weak - %s. Tokens signed now are forgeable.\n%s"
+          % (_KEY_PROBLEM, _HOW_TO_FIX))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 

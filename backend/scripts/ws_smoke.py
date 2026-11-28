@@ -1,9 +1,26 @@
+"""Watch the agent WebSocket while a creative generation runs. Manual, not a test.
+
+This lived at backend/test_ws.py, where pytest collected it as `test_ws.py::test` and the
+whole suite reported a failure on every run:
+
+    Failed: async def functions are not natively supported
+
+That was never a real regression. The file asserts nothing, needs a server already
+listening on localhost:8005, waits up to 20s per message and prints what arrives - it is
+something you read, not something that passes or fails. Its name was the only reason
+pytest looked at it, so a red suite hid genuine failures behind a permanent one.
+
+Installing pytest-asyncio to make it "run" would have been the wrong fix: it would then
+hang for 20s and still assert nothing. It belongs here beside section_smoke.py instead.
+
+    python scripts/ws_smoke.py        # with the API already running on :8005
+"""
 import asyncio
 import json
 import urllib.request
 import websockets
 
-async def test():
+async def main():
     async with websockets.connect('ws://localhost:8005/ws') as ws:
         # Trigger creative ad generation
         req = urllib.request.Request(
@@ -35,4 +52,4 @@ async def test():
                 break
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    asyncio.run(main())
