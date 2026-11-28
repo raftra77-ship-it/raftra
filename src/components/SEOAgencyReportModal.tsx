@@ -71,12 +71,31 @@ const scoreColor = (v: number) => (v >= 80 ? '#00ff9d' : v >= 55 ? '#ffae00' : '
 const SEV_COLOR: Record<string, string> = { Critical: '#ff5c5c', High: '#ff8a5c', Medium: '#ffae00', Low: '#00ff9d' };
 const SEV_ORDER = ['Critical', 'High', 'Medium', 'Low'];
 
-const ScoreTile: React.FC<{ label: string; value: number | null }> = ({ label, value }) => (
+/* A score, and what it could not measure.
+
+   The scorecard already records this: _finalise() in core/seo_scoring.py divides the
+   points earned by the points it was ABLE to verify, so a category that could not be
+   measured is excluded from both sides rather than counted as zero. The score is honest
+   arithmetic - but on its own it is silent about the exclusion, and "72/100" reads the
+   same whether every category was measured or one was skipped.
+
+   That matters most for Performance, 15 points of the SEO score, which needs
+   PAGESPEED_API_KEY. Without it a fast site and a slow site score identically and
+   nothing on screen says why. The audit knew; only the reader did not. */
+const ScoreTile: React.FC<{ label: string; value: number | null; notVerified?: string[] }> = ({ label, value, notVerified }) => (
   <div style={{ flex: 1, minWidth: '110px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px 12px', textAlign: 'center' }}>
     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>{label}</div>
     <div style={{ fontSize: '26px', fontWeight: 800, color: value == null ? 'var(--text-muted)' : scoreColor(value), lineHeight: 1 }}>
       {value == null ? '—' : value}<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{value == null ? '' : '/100'}</span>
     </div>
+    {value != null && notVerified && notVerified.length > 0 && (
+      <div
+        title={`Scored across the categories that could be measured. Not measured: ${notVerified.join(', ')}.`}
+        style={{ fontSize: '10px', color: 'var(--warning, #ffae00)', marginTop: '7px', lineHeight: 1.35 }}
+      >
+        Excludes {notVerified.join(', ')}
+      </div>
+    )}
   </div>
 );
 
@@ -556,8 +575,10 @@ export const SEOAgencyReportModal: React.FC<Props> = ({ isOpen, onClose, workspa
                 <div style={{ marginBottom: '22px' }}>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                     <ScoreTile label="Overall Health" value={report.url_mismatch ? null : report.overall_health} />
-                    <ScoreTile label="SEO Score" value={report.seo?.audit?.seo?.score_100 ?? null} />
-                    <ScoreTile label="GEO Score" value={report.geo?.audit?.geo?.score_100 ?? null} />
+                    <ScoreTile label="SEO Score" value={report.seo?.audit?.seo?.score_100 ?? null}
+                               notVerified={report.seo?.audit?.seo?.not_verified} />
+                    <ScoreTile label="GEO Score" value={report.geo?.audit?.geo?.score_100 ?? null}
+                               notVerified={report.geo?.audit?.geo?.not_verified} />
                   </div>
                   {!anyRunning && (report.seo?.duration_seconds || report.geo?.duration_seconds) && (
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
